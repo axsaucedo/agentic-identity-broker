@@ -17,6 +17,7 @@ type UserGrantRepository struct {
 	grants              map[id.GrantID]*storage.UserGrant // ID -> Grant
 	byPrincipalAndAgent map[string]id.GrantID             // "principal:agent_id" -> ID
 	grantIDsByAgent     map[id.AgentID][]id.GrantID       // agent_id -> []grant_id (for cascade delete)
+	psRepo              ports.PermissionSetRepository     // optional: for service-based lookups
 }
 
 // NewUserGrantRepository creates a new in-memory user grant repository.
@@ -26,6 +27,12 @@ func NewUserGrantRepository() *UserGrantRepository {
 		byPrincipalAndAgent: make(map[string]id.GrantID),
 		grantIDsByAgent:     make(map[id.AgentID][]id.GrantID),
 	}
+}
+
+// WithPermissionSetRepository sets the permission set repository for service-based lookups.
+func (r *UserGrantRepository) WithPermissionSetRepository(psRepo ports.PermissionSetRepository) *UserGrantRepository {
+	r.psRepo = psRepo
+	return r
 }
 
 // Create creates a new user grant or updates existing grant for same principal+agent (upsert semantics).
@@ -45,7 +52,7 @@ func (r *UserGrantRepository) Create(ctx context.Context, grant *storage.UserGra
 		// Update existing grant
 		existingGrant := r.grants[existingID]
 		existingGrant.ValidUntil = grant.ValidUntil
-		existingGrant.DelegatedOAuth2Tokens = grant.DelegatedOAuth2Tokens
+		existingGrant.GrantedPermissionSets = grant.GrantedPermissionSets
 		existingGrant.UpdatedAt = grant.UpdatedAt
 
 		// Copy back the existing ID to the provided grant
@@ -267,57 +274,79 @@ func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal id.
 	return activeGrants, nil
 }
 
-// CountAgentsByServiceID counts how many agents have delegated OAuth2 tokens for a given service.
-// This is used to show dependent agent count when terminating a session.
-// Returns the count of distinct agents with delegated_oauth2_tokens JSONB entries for the service.
+// CountAgentsByServiceID counts how many agents have grants referencing
+// permission sets that include the given service.
 func (r *UserGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	// Use a set to track unique agent IDs that have delegated tokens for this service
-	uniqueAgents := make(map[id.AgentID]bool)
-
+	agentSet := make(map[id.AgentID]bool)
 	for _, grant := range r.grants {
-		// Check if this grant has delegated tokens for the service
-		for _, token := range grant.DelegatedOAuth2Tokens {
-			if token.ThirdpartyOAuth2ServiceID == serviceID {
-				uniqueAgents[grant.AgentID] = true
-				break // Only count each agent once
-			}
+		if r.grantReferencesService(ctx, grant, serviceID) {
+			agentSet[grant.AgentID] = true
 		}
 	}
 
-	return len(uniqueAgents), nil
+	return len(agentSet), nil
 }
 
-// ListByServiceID retrieves all agent IDs that have delegated OAuth2 tokens for a given service.
-// This is used to show the actual dependent agents when terminating a session.
-// Returns the list of distinct agent IDs with delegated_oauth2_tokens entries for the service.
-// Returns empty slice if no agents have delegated tokens for the service.
+// ListByServiceID retrieves all agent IDs that have grants referencing
+// permission sets that include the given service.
 func (r *UserGrantRepository) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	// Use a set to track unique agent IDs that have delegated tokens for this service
-	uniqueAgents := make(map[id.AgentID]bool)
-
+	agentSet := make(map[id.AgentID]bool)
 	for _, grant := range r.grants {
-		// Check if this grant has delegated tokens for the service
-		for _, token := range grant.DelegatedOAuth2Tokens {
-			if token.ThirdpartyOAuth2ServiceID == serviceID {
-				uniqueAgents[grant.AgentID] = true
-				break // Only add each agent once
+		if r.grantReferencesService(ctx, grant, serviceID) {
+			agentSet[grant.AgentID] = true
+		}
+	}
+
+	result := make([]id.AgentID, 0, len(agentSet))
+	for agentID := range agentSet {
+		result = append(result, agentID)
+	}
+
+	return result, nil
+}
+
+// CountGrantsReferencingPermissionSet counts active user grants that contain the given permission set ID.
+func (r *UserGrantRepository) CountGrantsReferencingPermissionSet(_ context.Context, psID id.PermissionSetID) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	count := 0
+	for _, grant := range r.grants {
+		if !grant.IsActive() {
+			continue
+		}
+		for _, entry := range grant.GrantedPermissionSets {
+			if entry.PermissionSetID == psID {
+				count++
+				break
+			}
+		}
+	}
+	return count, nil
+}
+
+// grantReferencesService checks if any of the grant's permission set entries
+// include the given service ID. Unlike CountGrantsReferencingPermissionSet,
+// this helper does NOT filter by expiry — it matches all grants regardless of
+// valid_until. Callers (CountAgentsByServiceID, ListByServiceID) use it for
+// agent-association lookups, not deletion-protection, so expired grants are
+// intentionally included.
+func (r *UserGrantRepository) grantReferencesService(ctx context.Context, grant *storage.UserGrant, serviceID id.ServiceID) bool {
+	for _, entry := range grant.GrantedPermissionSets {
+		for _, svcID := range entry.IncludedServiceIDs {
+			if svcID == serviceID {
+				return true
 			}
 		}
 	}
 
-	// Convert map to sorted slice for consistent results
-	agentIDs := make([]id.AgentID, 0, len(uniqueAgents))
-	for agentID := range uniqueAgents {
-		agentIDs = append(agentIDs, agentID)
-	}
-
-	return agentIDs, nil
+	return false
 }
 
 // removeGrantFromAgentIndex removes a grant ID from the agent's grant list.
@@ -361,7 +390,7 @@ func (r *UserGrantRepository) CreateTestGrant(ctx context.Context, grant *storag
 		// Update existing grant
 		existingGrant := r.grants[existingID]
 		existingGrant.ValidUntil = grant.ValidUntil
-		existingGrant.DelegatedOAuth2Tokens = grant.DelegatedOAuth2Tokens
+		existingGrant.GrantedPermissionSets = grant.GrantedPermissionSets
 		existingGrant.UpdatedAt = grant.UpdatedAt
 
 		// Copy back the existing ID to the provided grant

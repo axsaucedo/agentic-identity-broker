@@ -8,60 +8,46 @@
  * - Expiration dates
  */
 
-import type { DelegatedToken } from '../types/consent';
-
 /**
  * Validates a grant creation/update request.
  * Returns array of error messages (empty if valid).
- * Works with internal frontend format (camelCase).
  *
  * @param request - Grant request to validate
- * @param request.delegatedTokens - Selected delegated service tokens
+ * @param request.grantedPermissionSets - Selected permission sets with included service IDs
  * @param request.validUntil - Optional grant expiration date
- * @param request.requireAtLeastOneService - When true (default), at least one delegated token
+ * @param request.requireAtLeastOneService - When true (default), at least one permission set
  *   is required. Pass false for agents that have only optional service requirements, where
  *   approval without selecting any services is permitted.
  * @returns Array of validation error messages
  */
 export function validateGrantRequest(request: {
-  delegatedTokens: DelegatedToken[];
+  grantedPermissionSets?: Record<string, string[]>;
   validUntil?: string | null;
   requireAtLeastOneService?: boolean;
 }): string[] {
   const errors: string[] = [];
 
-  // Must have delegatedTokens field
-  if (!request.delegatedTokens) {
-    errors.push('delegatedTokens field is required');
+  // Must have grantedPermissionSets field
+  if (!request.grantedPermissionSets) {
+    errors.push('grantedPermissionSets field is required');
     return errors;
   }
 
-  // Require at least one delegated token only when mandatory service requirements exist
-  if ((request.requireAtLeastOneService ?? true) && request.delegatedTokens.length === 0) {
-    errors.push('Please select at least one service with scopes');
+  // Require at least one permission set only when mandatory service requirements exist
+  const psIds = Object.keys(request.grantedPermissionSets);
+  if ((request.requireAtLeastOneService ?? true) && psIds.length === 0) {
+    errors.push('Please select at least one permission set');
     return errors;
   }
 
-  // Validate each delegated token
-  request.delegatedTokens.forEach((token, index) => {
-    // Service ID is required
-    if (!token.thirdparty_oauth2_service_id) {
-      errors.push(
-        `Service ${index + 1}: thirdparty_oauth2_service_id is required`,
-      );
-    } else if (!validateServiceId(token.thirdparty_oauth2_service_id)) {
-      errors.push(
-        `Service ${index + 1}: invalid thirdparty_oauth2_service_id format`,
-      );
+  // Validate each permission set entry
+  psIds.forEach((psId, index) => {
+    if (!psId || typeof psId !== 'string') {
+      errors.push(`Permission set ${index + 1}: invalid ID`);
     }
-
-    // Scopes are required
-    if (!token.scopes) {
-      errors.push(`Service ${index + 1}: scopes field is required`);
-    } else if (token.scopes.length === 0) {
-      errors.push(`Service ${index + 1}: at least one scope must be selected`);
-    } else if (!validateScopes(token.scopes)) {
-      errors.push(`Service ${index + 1}: invalid scope format`);
+    const serviceIds = request.grantedPermissionSets![psId];
+    if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
+      errors.push(`Permission set ${psId}: must include at least one service`);
     }
   });
 

@@ -212,6 +212,12 @@ type UserGrantRepository interface {
 	// Returns empty slice if no agents have delegated tokens for the service.
 	// Returns StorageError for connection/timeout issues.
 	ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error)
+
+	// CountGrantsReferencingPermissionSet counts user grants whose granted_permission_sets
+	// array contains an entry with the given permission set ID.
+	// Used for permission set deletion protection — blocks deletion if count > 0.
+	// Returns the count of user grants referencing this permission set.
+	CountGrantsReferencingPermissionSet(ctx context.Context, psID id.PermissionSetID) (int, error)
 }
 
 // UserSessionRepository stores and retrieves user OAuth2 sessions.
@@ -247,9 +253,15 @@ type UserSessionRepository interface {
 	// Returns nil if no session exists (not an error).
 	FindByPrincipalAndService(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storage.UserSession, error)
 
-	// ListByPrincipal retrieves all sessions for a principal.
+	// ListByPrincipal retrieves all sessions for a principal, including expired ones.
+	// Used for user-visible session lists (DELETE /api/third-party/sessions).
 	// Returns empty slice if no sessions exist (not an error).
 	ListByPrincipal(ctx context.Context, principal id.Principal) ([]*storage.UserSession, error)
+
+	// ListActiveByPrincipal retrieves only non-expired sessions for a principal.
+	// Used for FR-020 consent submission validation and anyDelegatedSessionExpired checks.
+	// Returns empty slice if no active sessions exist (not an error).
+	ListActiveByPrincipal(ctx context.Context, principal id.Principal) ([]*storage.UserSession, error)
 
 	// Delete deletes a session by ID.
 	// Returns error if storage operation fails.
@@ -264,6 +276,58 @@ type UserSessionRepository interface {
 	// CountByService counts sessions referencing a service.
 	// Used to enforce deletion protection (cannot delete service with active sessions).
 	CountByService(ctx context.Context, serviceID id.ServiceID) (int, error)
+}
+
+// PermissionSetRepository defines storage operations for permission set entities.
+// Permission sets are admin-defined bundles of OAuth2 scopes spanning one or more third-party services.
+// Following Interface Segregation Principle: focused interface for permission set operations.
+type PermissionSetRepository interface {
+	// Create stores a new permission set.
+	// Returns error if:
+	// - Permission set name already exists (StorageError with Kind=Conflict)
+	// - Storage connection fails (StorageError with Kind=Connection)
+	// - Operation timeout (StorageError with Kind=Timeout)
+	Create(ctx context.Context, ps *storage.PermissionSet) error
+
+	// Get retrieves a permission set by ID.
+	// Returns StorageError with Kind=NotFound if permission set not found.
+	// Returns StorageError for connection/timeout issues.
+	Get(ctx context.Context, id id.PermissionSetID) (*storage.PermissionSet, error)
+
+	// GetByIDs retrieves multiple permission sets by IDs in one round-trip.
+	// Returns all found sets; IDs not found are silently absent (caller validates).
+	// Returns StorageError for connection/timeout issues.
+	GetByIDs(ctx context.Context, ids []id.PermissionSetID) ([]*storage.PermissionSet, error)
+
+	// Update replaces a permission set's name, description, and service scopes.
+	// Returns NotFound if absent.
+	// Returns StorageError for connection/timeout issues.
+	Update(ctx context.Context, ps *storage.PermissionSet) error
+
+	// Delete removes a permission set by ID.
+	// Returns error if storage operation fails.
+	// Caller MUST check CountAgentsReferencingPermissionSet and
+	// UserGrantRepository.CountGrantsReferencingPermissionSet before calling Delete.
+	// It is safe to delete non-existent permission sets (idempotent).
+	Delete(ctx context.Context, id id.PermissionSetID) error
+
+	// List returns all permission sets, optionally filtered by service ID.
+	// If serviceID is zero-value, returns all permission sets.
+	// Returns empty slice if no permission sets match (not an error).
+	// Returns StorageError for connection/timeout issues.
+	List(ctx context.Context, serviceID id.ServiceID) ([]*storage.PermissionSet, error)
+
+	// CountAgentsReferencingPermissionSet counts agents whose permission_sets JSONB
+	// list contains the given permission set ID.
+	// Used for deletion protection — blocks deletion if count > 0.
+	// Returns the count of agents referencing this permission set.
+	CountAgentsReferencingPermissionSet(ctx context.Context, id id.PermissionSetID) (int, error)
+
+	// CountPermissionSetsForService counts permission sets that contain a ServiceScope
+	// for the given service ID.
+	// Used to block ThirdpartyOAuth2Service deletion via application-layer check.
+	// Returns the count of permission sets referencing this service.
+	CountPermissionSetsForService(ctx context.Context, serviceID id.ServiceID) (int, error)
 }
 
 // ClientCredentialRepository manages broker-issued OAuth2 client credentials.

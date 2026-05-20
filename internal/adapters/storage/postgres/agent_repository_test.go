@@ -806,3 +806,117 @@ func TestAgentRepository_List(t *testing.T) {
 		}
 	})
 }
+
+// TestAgentRepository_PermissionSets_RoundTrip verifies that permission_sets
+// are persisted and retrieved correctly through Create, Update, Get, List,
+// and GetByClientID. Create/Update call verifyPermissionSetExistenceInTx, so
+// permission_sets rows must be seeded before the test references their IDs.
+func TestAgentRepository_PermissionSets_RoundTrip(t *testing.T) {
+	adapter, cleanup := setupAgentTestDB(t)
+	defer cleanup()
+
+	repo := NewAgentRepository(adapter)
+	ctx := context.Background()
+
+	psID1 := id.NewPermissionSetID()
+	psID2 := id.NewPermissionSetID()
+
+	// Seed permission_sets rows so verifyPermissionSetExistenceInTx can find them.
+	_, err := adapter.db.ExecContext(ctx, `
+		INSERT INTO permission_sets (id, name, description, created_at, updated_at)
+		VALUES ($1, 'PS One', 'Test permission set one', NOW(), NOW()),
+		       ($2, 'PS Two', 'Test permission set two', NOW(), NOW())
+	`, psID1.String(), psID2.String())
+	require.NoError(t, err, "failed to seed permission_sets for round-trip test")
+
+	now := time.Now().UTC()
+	psRoundtripClientID := id.ClientID("ps-roundtrip-client")
+	agent := &storage.Agent{
+		ClientID:    &psRoundtripClientID,
+		DisplayName: "Permission Sets Round-trip",
+		Description: "Agent to verify permission_sets persistence",
+		PermissionSets: []storage.AgentPermissionSetEntry{
+			{PermissionSetID: psID1, RequirementType: storage.RequirementTypeMandatory},
+			{PermissionSetID: psID2, RequirementType: storage.RequirementTypeOptional},
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	t.Run("Create preserves permission_sets", func(t *testing.T) {
+		err := repo.Create(ctx, agent)
+		require.NoError(t, err)
+
+		retrieved, err := repo.Get(ctx, agent.ID)
+		require.NoError(t, err)
+		require.Len(t, retrieved.PermissionSets, 2)
+		assert.Equal(t, psID1, retrieved.PermissionSets[0].PermissionSetID)
+		assert.Equal(t, storage.RequirementTypeMandatory, retrieved.PermissionSets[0].RequirementType)
+		assert.Equal(t, psID2, retrieved.PermissionSets[1].PermissionSetID)
+		assert.Equal(t, storage.RequirementTypeOptional, retrieved.PermissionSets[1].RequirementType)
+	})
+
+	t.Run("List returns permission_sets", func(t *testing.T) {
+		agents, err := repo.List(ctx)
+		require.NoError(t, err)
+		var found *storage.Agent
+		for _, a := range agents {
+			if a.ID == agent.ID {
+				found = a
+				break
+			}
+		}
+		require.NotNil(t, found)
+		require.Len(t, found.PermissionSets, 2)
+		assert.Equal(t, psID1, found.PermissionSets[0].PermissionSetID)
+	})
+
+	t.Run("GetByClientID returns permission_sets", func(t *testing.T) {
+		retrieved, err := repo.GetByClientID(ctx, *agent.ClientID)
+		require.NoError(t, err)
+		require.Len(t, retrieved.PermissionSets, 2)
+		assert.Equal(t, psID1, retrieved.PermissionSets[0].PermissionSetID)
+	})
+
+	t.Run("Update replaces permission_sets", func(t *testing.T) {
+		psID3 := id.NewPermissionSetID()
+
+		_, err := adapter.db.ExecContext(ctx, `
+			INSERT INTO permission_sets (id, name, description, created_at, updated_at)
+			VALUES ($1, 'PS Three', 'Test permission set three', NOW(), NOW())
+		`, psID3.String())
+		require.NoError(t, err, "failed to seed psID3 for update subtest")
+
+		updated := agent.Copy()
+		updated.PermissionSets = []storage.AgentPermissionSetEntry{
+			{PermissionSetID: psID3, RequirementType: storage.RequirementTypeMandatory},
+		}
+		updated.UpdatedAt = time.Now().UTC()
+
+		err = repo.Update(ctx, updated)
+		require.NoError(t, err)
+
+		retrieved, err := repo.Get(ctx, agent.ID)
+		require.NoError(t, err)
+		require.Len(t, retrieved.PermissionSets, 1)
+		assert.Equal(t, psID3, retrieved.PermissionSets[0].PermissionSetID)
+
+		agents, err := repo.List(ctx)
+		require.NoError(t, err)
+		var foundInList *storage.Agent
+		for _, a := range agents {
+			if a.ID == agent.ID {
+				foundInList = a
+				break
+			}
+		}
+		require.NotNil(t, foundInList)
+		require.Len(t, foundInList.PermissionSets, 1)
+		assert.Equal(t, psID3, foundInList.PermissionSets[0].PermissionSetID)
+
+		byClientID, err := repo.GetByClientID(ctx, *agent.ClientID)
+		require.NoError(t, err)
+		require.Len(t, byClientID.PermissionSets, 1)
+		assert.Equal(t, psID3, byClientID.PermissionSets[0].PermissionSetID)
+	})
+}

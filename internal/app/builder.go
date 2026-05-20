@@ -41,6 +41,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/permissionset"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
@@ -60,6 +61,7 @@ type App struct {
 	// Domain services
 	ConsentService       *consentservice.Service
 	ProviderService      *thirdparty.ThirdpartyOAuth2ProviderService
+	PermissionSetService *permissionset.Service
 	OAuth2SessionService *oauth2session.OAuth2SessionService
 	OAuth2Service        ports.OAuth2Service
 	TokenExchangeService *tokenexchange.TokenExchangeService
@@ -74,10 +76,9 @@ type App struct {
 	// Logger
 	Logger *slog.Logger
 
-	// ShutdownTelemetry must be called on graceful shutdown to flush and close
-	// all OTel providers. It is always non-nil — when telemetry is disabled it
-	// is a no-op.
-	ShutdownTelemetry func(context.Context) error
+	// Shutdown must be called on graceful shutdown to release background resources
+	// (e.g. stop the PermissionSetService eviction goroutine).
+	Shutdown func(context.Context) error
 }
 
 // Builder is a chainable builder for constructing App instances.
@@ -213,7 +214,7 @@ func (b *Builder) Build() (*App, error) {
 			b3.New(b3.WithInjectEncoding(b3.B3MultipleHeader)),
 			propagation.Baggage{},
 		))
-		app.ShutdownTelemetry = func(ctx context.Context) error {
+		app.Shutdown = func(ctx context.Context) error {
 			return b.tracerProvider.Shutdown(ctx)
 		}
 	} else {
@@ -227,7 +228,7 @@ func (b *Builder) Build() (*App, error) {
 		if telErr != nil {
 			return nil, fmt.Errorf("failed to initialize telemetry: %w", telErr)
 		}
-		app.ShutdownTelemetry = shutdownTelemetry
+		app.Shutdown = shutdownTelemetry
 	}
 
 	// T038: Wire OTel slog bridge when telemetry and log export are both enabled.
@@ -284,6 +285,25 @@ func (b *Builder) Build() (*App, error) {
 	// Phase 2: Create domain services
 	// Constitution Principle VI: domain depends on ports (repository interfaces), not adapters
 
+	// Create PermissionSetService early so it can be wired into ProviderService, ConsentService, and AgentsHandler.
+	if b.storage.PermissionSets() != nil {
+		app.PermissionSetService = permissionset.NewPermissionSetService(
+			b.storage.PermissionSets(),
+			b.storage.UserGrants(),
+			b.logger,
+		)
+		// Stop the background eviction goroutine on graceful shutdown.
+		prevShutdown := app.Shutdown
+		ps := app.PermissionSetService
+		app.Shutdown = func(ctx context.Context) error {
+			ps.Close()
+			if prevShutdown != nil {
+				return prevShutdown(ctx)
+			}
+			return nil
+		}
+	}
+
 	// Create ThirdpartyOAuth2ProviderService (handles encryption, decryption, and branch key provisioning).
 	// This consolidated domain service replaces the previous ServiceManager + AuthProvider split.
 	// encryptor is guaranteed to be initialized from Phase 1.
@@ -292,6 +312,7 @@ func (b *Builder) Build() (*App, error) {
 			b.storage.Services(),
 			encryptor,
 			branchKeyManager, // May be nil if memory backend (no branch key store)
+			b.storage.PermissionSets(),
 			b.config.Security.SkipThirdpartyHTTPSValidation,
 			b.logger,
 		)
@@ -301,11 +322,18 @@ func (b *Builder) Build() (*App, error) {
 	// ConsentService depends on ProviderService (not raw repository) so all service access
 	// goes through the domain service layer including encryption/decryption.
 	if b.storage.Agents() != nil && app.ProviderService != nil && b.storage.UserGrants() != nil {
+		if b.storage.UserSessions() == nil {
+			return nil, fmt.Errorf("UserSessionRepository must be available: FR-020 enforcement requires session data")
+		}
+		if app.PermissionSetService == nil {
+			return nil, fmt.Errorf("PermissionSetService must be available for ConsentService")
+		}
 		app.ConsentService = consentservice.NewService(
 			b.storage.Agents(),
 			app.ProviderService,
 			b.storage.UserGrants(),
 			b.storage.UserSessions(),
+			app.PermissionSetService,
 			b.logger,
 		)
 	}
@@ -528,6 +556,7 @@ func (b *Builder) Build() (*App, error) {
 			app.ProviderService,
 			app.OAuth2SessionService,
 			app.ConsentService,
+			app.PermissionSetService,
 			b.storage.Agents(),
 			&b.config.TokenExchange,
 		)
@@ -582,10 +611,17 @@ func (b *Builder) Build() (*App, error) {
 
 	// Phase 3: Create handler instances
 
+	// Assert PermissionSetService is available — FR-006 and FR-019 require it.
+	// Both storage backends always wire PermissionSets(), so nil means a wiring bug.
+	if app.PermissionSetService == nil {
+		return nil, fmt.Errorf("permission set service is required: ensure storage.PermissionSets() is wired")
+	}
+
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
-		Agents:   admin.NewAgentsHandler(agentService, app.ProviderService, b.logger),
-		Services: admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
+		Agents:         admin.NewAgentsHandler(agentService, app.ProviderService, app.PermissionSetService, b.logger),
+		Services:       admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
+		PermissionSets: admin.NewPermissionSetsHandler(app.PermissionSetService, b.logger),
 	}
 
 	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger, jweTokenService)
@@ -729,9 +765,8 @@ func (b *Builder) Build() (*App, error) {
 		UserInfo:        consent.NewUserInfoHandler(b.logger),
 		Agents:          consent.NewAgentsHandler(app.ConsentService, b.logger),
 		AgentDetail:     agentDetailHandler,
-		AgentGrants:     consent.NewAgentGrantsHandler(app.ConsentService, b.logger),
 		Grants:          consent.NewGrantsHandler(app.ConsentService, b.logger, jweTokenService),
-		RevokeGrant:     consent.NewRevokeGrantHandler(app.ConsentService, b.logger),
+		AgentInfo:       consent.NewAgentInfoHandler(app.ConsentService, b.logger),
 		OAuth2Sessions:  oauth2_sessions.NewHandler(app.OAuth2SessionService),
 		OAuth2Authorize: oauth2AuthorizeHandler,
 		OAuth2Token: &enduser.OAuth2TokenHandler{

@@ -1,8 +1,6 @@
 package storage
 
 import (
-	"database/sql/driver"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -10,22 +8,23 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
+// GrantedPermissionSetEntry pairs a granted permission set with the explicit list of
+// service IDs the user included at consent time (positive-inclusion model).
+type GrantedPermissionSetEntry struct {
+	PermissionSetID    id.PermissionSetID `json:"permission_set_id"`
+	IncludedServiceIDs []id.ServiceID     `json:"included_service_ids"`
+}
+
 // UserGrant represents a user delegating specific permissions to an agent
 // for one or more third-party OAuth2 services.
 type UserGrant struct {
-	ID                    id.GrantID       `json:"id" db:"id"`
-	Principal             id.Principal     `json:"principal" db:"principal"`
-	AgentID               id.AgentID       `json:"agent_id" db:"agent_id"`
-	ValidUntil            *time.Time       `json:"valid_until,omitempty" db:"valid_until"`
-	DelegatedOAuth2Tokens []DelegatedToken `json:"delegated_oauth2_tokens" db:"delegated_oauth2_tokens"`
-	CreatedAt             time.Time        `json:"created_at" db:"created_at"`
-	UpdatedAt             time.Time        `json:"updated_at" db:"updated_at"`
-}
-
-// DelegatedToken represents delegation of specific scopes to a third-party service.
-type DelegatedToken struct {
-	ThirdpartyOAuth2ServiceID id.ServiceID `json:"thirdparty_oauth2_service_id"`
-	Scopes                    []string     `json:"scopes"`
+	ID                    id.GrantID                  `json:"id" db:"id"`
+	Principal             id.Principal                `json:"principal" db:"principal"`
+	AgentID               id.AgentID                  `json:"agent_id" db:"agent_id"`
+	ValidUntil            *time.Time                  `json:"valid_until,omitempty" db:"valid_until"`
+	GrantedPermissionSets []GrantedPermissionSetEntry `json:"granted_permission_sets" db:"granted_permission_sets"`
+	CreatedAt             time.Time                   `json:"created_at" db:"created_at"`
+	UpdatedAt             time.Time                   `json:"updated_at" db:"updated_at"`
 }
 
 // Validate performs validation on the UserGrant entity.
@@ -46,22 +45,18 @@ func (g *UserGrant) Validate() error {
 		return errors.New("valid_until must be in the future")
 	}
 
-	// Validate each delegation
-	for i, token := range g.DelegatedOAuth2Tokens {
-		if token.ThirdpartyOAuth2ServiceID.IsZero() {
-			return fmt.Errorf("delegation %d: thirdparty_oauth2_service_id is required", i)
+	// Validate each granted permission set entry
+	for i, entry := range g.GrantedPermissionSets {
+		if entry.PermissionSetID.IsZero() {
+			return fmt.Errorf("granted_permission_sets[%d]: permission_set_id is required", i)
 		}
-		if len(token.Scopes) == 0 {
-			return fmt.Errorf("delegation %d: at least one scope is required", i)
+		if len(entry.IncludedServiceIDs) == 0 {
+			return fmt.Errorf("granted_permission_sets[%d]: at least one included_service_id is required", i)
 		}
-
-		// Validate no duplicate scopes
-		scopeSet := make(map[string]bool)
-		for _, scope := range token.Scopes {
-			if scopeSet[scope] {
-				return fmt.Errorf("delegation %d: duplicate scope '%s'", i, scope)
+		for j, svcID := range entry.IncludedServiceIDs {
+			if svcID.IsZero() {
+				return fmt.Errorf("granted_permission_sets[%d].included_service_ids[%d]: service ID is required", i, j)
 			}
-			scopeSet[scope] = true
 		}
 	}
 
@@ -81,20 +76,17 @@ func (g *UserGrant) ValidateForCreate() error {
 		return errors.New("valid_until must be in the future")
 	}
 
-	for i, token := range g.DelegatedOAuth2Tokens {
-		if token.ThirdpartyOAuth2ServiceID.IsZero() {
-			return fmt.Errorf("delegation %d: thirdparty_oauth2_service_id is required", i)
+	for i, entry := range g.GrantedPermissionSets {
+		if entry.PermissionSetID.IsZero() {
+			return fmt.Errorf("granted_permission_sets[%d]: permission_set_id is required", i)
 		}
-		if len(token.Scopes) == 0 {
-			return fmt.Errorf("delegation %d: at least one scope is required", i)
+		if len(entry.IncludedServiceIDs) == 0 {
+			return fmt.Errorf("granted_permission_sets[%d]: at least one included_service_id is required", i)
 		}
-
-		scopeSet := make(map[string]bool)
-		for _, scope := range token.Scopes {
-			if scopeSet[scope] {
-				return fmt.Errorf("delegation %d: duplicate scope '%s'", i, scope)
+		for j, svcID := range entry.IncludedServiceIDs {
+			if svcID.IsZero() {
+				return fmt.Errorf("granted_permission_sets[%d].included_service_ids[%d]: service ID is required", i, j)
 			}
-			scopeSet[scope] = true
 		}
 	}
 
@@ -130,46 +122,16 @@ func (g *UserGrant) Copy() *UserGrant {
 		copy.ValidUntil = &validUntil
 	}
 
-	// Deep copy delegated tokens
-	copy.DelegatedOAuth2Tokens = make([]DelegatedToken, len(g.DelegatedOAuth2Tokens))
-	for i, token := range g.DelegatedOAuth2Tokens {
-		copy.DelegatedOAuth2Tokens[i] = DelegatedToken{
-			ThirdpartyOAuth2ServiceID: token.ThirdpartyOAuth2ServiceID,
-			Scopes:                    append([]string{}, token.Scopes...),
+	// Deep copy granted permission sets
+	if g.GrantedPermissionSets != nil {
+		copy.GrantedPermissionSets = make([]GrantedPermissionSetEntry, len(g.GrantedPermissionSets))
+		for i, entry := range g.GrantedPermissionSets {
+			copy.GrantedPermissionSets[i] = GrantedPermissionSetEntry{
+				PermissionSetID:    entry.PermissionSetID,
+				IncludedServiceIDs: append([]id.ServiceID(nil), entry.IncludedServiceIDs...),
+			}
 		}
 	}
 
 	return copy
 }
-
-// Scan implements sql.Scanner for JSONB deserialization of delegated tokens.
-func (d *DelegatedTokenArray) Scan(value interface{}) error {
-	if value == nil {
-		*d = []DelegatedToken{}
-		return nil
-	}
-
-	bytes, ok := value.([]byte)
-	if !ok {
-		return errors.New("failed to scan DelegatedTokenArray: expected []byte")
-	}
-
-	var tokens []DelegatedToken
-	if err := json.Unmarshal(bytes, &tokens); err != nil {
-		return fmt.Errorf("failed to unmarshal DelegatedTokenArray: %w", err)
-	}
-
-	*d = tokens
-	return nil
-}
-
-// Value implements driver.Valuer for JSONB serialization of delegated tokens.
-func (d DelegatedTokenArray) Value() (driver.Value, error) {
-	if d == nil {
-		return json.Marshal([]DelegatedToken{})
-	}
-	return json.Marshal(d)
-}
-
-// DelegatedTokenArray is a custom type for handling JSONB arrays in PostgreSQL.
-type DelegatedTokenArray []DelegatedToken

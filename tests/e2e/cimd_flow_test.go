@@ -125,7 +125,7 @@ var _ = Describe("CIMD Full Authorization Flow", func() {
 			// Step 2: Load consent context using the token produced by the authorize endpoint.
 			// This proves the token format from the authorize handler is decodable by the consent handler.
 			consentResp, err := server.AuthenticatedGET(
-				fmt.Sprintf("/api/consent/agent/%s?session_token=%s", agent.ID, sessionToken),
+				fmt.Sprintf("/api/consent/agents/%s?session_token=%s", agent.ID, sessionToken),
 				principal,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -144,7 +144,7 @@ var _ = Describe("CIMD Full Authorization Flow", func() {
 				"delegated_oauth2_tokens": []any{},
 			})
 			grantResp, err := server.AuthenticatedPOST(
-				fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s", agent.ID, sessionToken),
+				fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", agent.ID, sessionToken),
 				principal,
 				"application/json",
 				bytes.NewReader(grantBody),

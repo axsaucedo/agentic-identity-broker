@@ -193,13 +193,11 @@ func TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream(t *testing.T) {
 
 	// Create active grant for user
 	grant := &storage.UserGrant{
-		ID:         id.NewGrantID(),
-		Principal:  id.Principal("user@example.com"),
-		AgentID:    agentID,
-		ValidUntil: nil, // Indefinite grant
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: id.NewServiceID(), Scopes: []string{"openid"}},
-		},
+		ID:                    id.NewGrantID(),
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               agentID,
+		ValidUntil:            nil, // Indefinite grant
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
@@ -261,13 +259,11 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 	// Create expired grant
 	expiredTime := time.Now().Add(-1 * time.Hour)
 	grant := &storage.UserGrant{
-		ID:         id.NewGrantID(),
-		Principal:  id.Principal("user@example.com"),
-		AgentID:    agentID,
-		ValidUntil: &expiredTime,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: id.NewServiceID(), Scopes: []string{"openid"}},
-		},
+		ID:                    id.NewGrantID(),
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               agentID,
+		ValidUntil:            &expiredTime,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
@@ -318,13 +314,11 @@ func TestOAuth2AuthorizeEndpoint_WithMiddleware(t *testing.T) {
 	_ = agentRepo.Create(context.Background(), agent)
 
 	grant := &storage.UserGrant{
-		ID:         id.NewGrantID(),
-		Principal:  id.Principal("user@example.com"),
-		AgentID:    agentID,
-		ValidUntil: nil,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: id.NewServiceID(), Scopes: []string{"openid"}},
-		},
+		ID:                    id.NewGrantID(),
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               agentID,
+		ValidUntil:            nil,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
@@ -380,13 +374,11 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 	_ = agentRepo.Create(context.Background(), agent)
 
 	grant := &storage.UserGrant{
-		ID:         id.NewGrantID(),
-		Principal:  id.Principal("user@example.com"),
-		AgentID:    agentID,
-		ValidUntil: nil,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: id.NewServiceID(), Scopes: []string{"openid"}},
-		},
+		ID:                    id.NewGrantID(),
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               agentID,
+		ValidUntil:            nil,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
@@ -575,10 +567,12 @@ func (r *inMemoryGrantRepo) ListByPrincipal(ctx context.Context, principal id.Pr
 func (r *inMemoryGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	agents := make(map[id.AgentID]bool)
 	for _, grant := range r.grants {
-		for _, token := range grant.DelegatedOAuth2Tokens {
-			if token.ThirdpartyOAuth2ServiceID == serviceID {
-				agents[grant.AgentID] = true
-				break
+		for _, entry := range grant.GrantedPermissionSets {
+			for _, svcID := range entry.IncludedServiceIDs {
+				if svcID == serviceID {
+					agents[grant.AgentID] = true
+					break
+				}
 			}
 		}
 	}
@@ -588,10 +582,12 @@ func (r *inMemoryGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceI
 func (r *inMemoryGrantRepo) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
 	agents := make(map[id.AgentID]bool)
 	for _, grant := range r.grants {
-		for _, token := range grant.DelegatedOAuth2Tokens {
-			if token.ThirdpartyOAuth2ServiceID == serviceID {
-				agents[grant.AgentID] = true
-				break
+		for _, entry := range grant.GrantedPermissionSets {
+			for _, svcID := range entry.IncludedServiceIDs {
+				if svcID == serviceID {
+					agents[grant.AgentID] = true
+					break
+				}
 			}
 		}
 	}
@@ -610,4 +606,8 @@ func (r *inMemoryGrantRepo) DeleteByPrincipalAndAgentID(ctx context.Context, pri
 		}
 	}
 	return ports.ErrNotFound
+}
+
+func (r *inMemoryGrantRepo) CountGrantsReferencingPermissionSet(_ context.Context, _ id.PermissionSetID) (int, error) {
+	return 0, nil
 }

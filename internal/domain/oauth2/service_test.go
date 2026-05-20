@@ -164,10 +164,11 @@ func (m *MockGrantRepository) ListByPrincipal(ctx context.Context, principal id.
 func (m *MockGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	agents := make(map[id.AgentID]bool)
 	for _, grant := range m.grants {
-		for _, token := range grant.DelegatedOAuth2Tokens {
-			if token.ThirdpartyOAuth2ServiceID == serviceID {
-				agents[grant.AgentID] = true
-				break
+		for _, entry := range grant.GrantedPermissionSets {
+			for _, svcID := range entry.IncludedServiceIDs {
+				if svcID == serviceID {
+					agents[grant.AgentID] = true
+				}
 			}
 		}
 	}
@@ -177,10 +178,11 @@ func (m *MockGrantRepository) CountAgentsByServiceID(ctx context.Context, servic
 func (m *MockGrantRepository) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
 	agents := make(map[id.AgentID]bool)
 	for _, grant := range m.grants {
-		for _, token := range grant.DelegatedOAuth2Tokens {
-			if token.ThirdpartyOAuth2ServiceID == serviceID {
-				agents[grant.AgentID] = true
-				break
+		for _, entry := range grant.GrantedPermissionSets {
+			for _, svcID := range entry.IncludedServiceIDs {
+				if svcID == serviceID {
+					agents[grant.AgentID] = true
+				}
 			}
 		}
 	}
@@ -201,12 +203,17 @@ func (m *MockGrantRepository) DeleteByPrincipalAndAgentID(ctx context.Context, p
 	return ports.ErrNotFound
 }
 
+func (m *MockGrantRepository) CountGrantsReferencingPermissionSet(_ context.Context, _ id.PermissionSetID) (int, error) {
+	return 0, nil
+}
+
 // MockSessionRepository is a test double for UserSessionRepository.
-// Uses a configurable findFunc so each test case can define its own behaviour for
-// FindByPrincipalAndService — the only method exercised by the authorization flow.
+// Uses configurable findFunc and listFunc so each test case can define its own
+// behaviour for FindByPrincipalAndService and ListByPrincipal.
 // All other methods are intentionally no-op stubs.
 type MockSessionRepository struct {
 	findFunc func(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storage.UserSession, error)
+	listFunc func(ctx context.Context, principal id.Principal) ([]*storage.UserSession, error)
 }
 
 func NewMockSessionRepository() *MockSessionRepository {
@@ -229,9 +236,19 @@ func (m *MockSessionRepository) FindByPrincipalAndService(ctx context.Context, p
 	return nil, nil
 }
 
-// ListByPrincipal, Delete, DeleteByPrincipalAndService, and CountByService are not
-// exercised by the authorization flow; they are intentionally no-op stubs.
+// ListByPrincipal supports session expiry checks in the authorization flow.
+// Uses listFunc if set; returns empty slice otherwise.
 func (m *MockSessionRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]*storage.UserSession, error) {
+	if m.listFunc != nil {
+		return m.listFunc(ctx, principal)
+	}
+	return nil, nil
+}
+
+func (m *MockSessionRepository) ListActiveByPrincipal(ctx context.Context, principal id.Principal) ([]*storage.UserSession, error) {
+	if m.listFunc != nil {
+		return m.listFunc(ctx, principal)
+	}
 	return nil, nil
 }
 
@@ -250,7 +267,6 @@ func (m *MockSessionRepository) CountByService(ctx context.Context, serviceID id
 // TestService_HandleAuthorization tests the HandleAuthorization method with table-driven tests
 func TestService_HandleAuthorization(t *testing.T) {
 	testAgentID := id.NewAgentID()
-	testServiceID := id.NewServiceID()
 
 	tests := []struct {
 		name       string
@@ -308,13 +324,11 @@ func TestService_HandleAuthorization(t *testing.T) {
 			},
 			setupGrant: func(r *MockGrantRepository) {
 				grant := &storage.UserGrant{
-					ID:         id.NewGrantID(),
-					Principal:  id.Principal("user@example.com"),
-					AgentID:    testAgentID,
-					ValidUntil: nil,
-					DelegatedOAuth2Tokens: []storage.DelegatedToken{
-						{ThirdpartyOAuth2ServiceID: testServiceID, Scopes: []string{"openid"}},
-					},
+					ID:                    id.NewGrantID(),
+					Principal:             id.Principal("user@example.com"),
+					AgentID:               testAgentID,
+					ValidUntil:            nil,
+					GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 				}
 				_ = r.Create(context.Background(), grant)
 			},
@@ -342,13 +356,11 @@ func TestService_HandleAuthorization(t *testing.T) {
 			setupGrant: func(r *MockGrantRepository) {
 				expiredTime := time.Now().Add(-1 * time.Hour)
 				grant := &storage.UserGrant{
-					ID:         id.NewGrantID(),
-					Principal:  id.Principal("user@example.com"),
-					AgentID:    testAgentID,
-					ValidUntil: &expiredTime,
-					DelegatedOAuth2Tokens: []storage.DelegatedToken{
-						{ThirdpartyOAuth2ServiceID: testServiceID, Scopes: []string{"openid"}},
-					},
+					ID:                    id.NewGrantID(),
+					Principal:             id.Principal("user@example.com"),
+					AgentID:               testAgentID,
+					ValidUntil:            &expiredTime,
+					GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 				}
 				_ = r.Create(context.Background(), grant)
 			},
@@ -398,12 +410,10 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 
 	activeGrant := func(r *MockGrantRepository) {
 		grant := &storage.UserGrant{
-			ID:        id.NewGrantID(),
-			Principal: id.Principal("user@example.com"),
-			AgentID:   agentID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
-			},
+			ID:                    id.NewGrantID(),
+			Principal:             id.Principal("user@example.com"),
+			AgentID:               agentID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{serviceID}}},
 		}
 		_ = r.Create(context.Background(), grant)
 	}
@@ -498,7 +508,6 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	grantRepo := NewMockGrantRepository()
 
 	agentID := id.NewAgentID()
-	serviceID := id.NewServiceID()
 
 	// Add agent
 	agent := &storage.Agent{
@@ -510,13 +519,11 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 
 	// Add active grant
 	grant := &storage.UserGrant{
-		ID:         id.NewGrantID(),
-		Principal:  id.Principal("user@example.com"),
-		AgentID:    agentID,
-		ValidUntil: nil,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
-		},
+		ID:                    id.NewGrantID(),
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               agentID,
+		ValidUntil:            nil,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
@@ -572,8 +579,8 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 			ID:        id.NewGrantID(),
 			Principal: id.Principal("user@example.com"),
 			AgentID:   agentID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{
+				{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{serviceID}},
 			},
 		}
 		_ = r.Create(context.Background(), grant)
@@ -671,8 +678,8 @@ func TestService_HandleAuthorization_UUIDResolution_UpstreamClientID(t *testing.
 		ID:        id.NewGrantID(),
 		Principal: id.Principal("user@example.com"),
 		AgentID:   agentID,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{
+			{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{serviceID}},
 		},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
@@ -773,8 +780,8 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 			ID:        id.NewGrantID(),
 			Principal: id.Principal("user@example.com"),
 			AgentID:   agentID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{
+				{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{serviceID}},
 			},
 		}
 		_ = grantRepo.Create(context.Background(), grant)
@@ -1122,7 +1129,7 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 			ID:                    id.NewGrantID(),
 			Principal:             id.Principal("user@example.com"),
 			AgentID:               agentID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{},
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{},
 		})
 	}
 
@@ -1242,7 +1249,7 @@ func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
 		ID:                    id.NewGrantID(),
 		Principal:             id.Principal("user@example.com"),
 		AgentID:               agentID,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{},
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{},
 	}))
 
 	svc := NewService(agentRepo, grantRepo, &OAuth2Config{

@@ -2,7 +2,7 @@
  * useToggleGrant hook - Manages grant creation/modification state.
  *
  * Features:
- * - Track selected services and scopes
+ * - Track granted permission sets with per-PS included service IDs
  * - Submit grant requests with optimistic updates
  * - Rollback on error
  * - Loading state management
@@ -11,7 +11,6 @@
 import { useState, useCallback } from 'react';
 import { isAxiosError } from 'axios';
 import type {
-  DelegatedToken,
   CreateOrUpdateGrantRequest,
   GrantResult,
 } from '../types/consent';
@@ -19,8 +18,8 @@ import { consentApi } from '../services/api/consent';
 import { extractApiError } from '../utils/api';
 
 interface UseToggleGrantState {
-  /** Selected delegated tokens */
-  delegatedTokens: DelegatedToken[];
+  /** Granted permission sets: map of PS ID → included service IDs */
+  grantedPermissionSets: Record<string, string[]>;
   /** Whether submission is in progress */
   isSubmitting: boolean;
   /** Error message if submission failed */
@@ -30,12 +29,13 @@ interface UseToggleGrantState {
 }
 
 interface UseToggleGrantReturn extends UseToggleGrantState {
-  /** Update selected delegated tokens */
-  setDelegatedTokens: (tokens: DelegatedToken[]) => void;
+  /** Update granted permission sets */
+  setGrantedPermissionSets: (ps: Record<string, string[]>) => void;
   /** Submit grant request */
   submit: (
     validUntil?: string | null,
     submitOptions?: { redirectUri?: string; sessionToken?: string },
+    grantedPermissionSets?: Record<string, string[]>,
   ) => Promise<GrantResult | undefined>;
   /** Reset state */
   reset: () => void;
@@ -52,19 +52,19 @@ interface UseToggleGrantReturn extends UseToggleGrantState {
  */
 export function useToggleGrant(agentId: string): UseToggleGrantReturn {
   const [state, setState] = useState<UseToggleGrantState>({
-    delegatedTokens: [],
+    grantedPermissionSets: {},
     isSubmitting: false,
     error: null,
     isSuccess: false,
   });
 
   /**
-   * Update delegated tokens selection.
+   * Update granted permission sets selection.
    */
-  const setDelegatedTokens = useCallback((tokens: DelegatedToken[]) => {
+  const setGrantedPermissionSets = useCallback((ps: Record<string, string[]>) => {
     setState((prev) => ({
       ...prev,
-      delegatedTokens: tokens,
+      grantedPermissionSets: ps,
       isSuccess: false,
       error: null,
     }));
@@ -79,6 +79,7 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
     async (
       validUntil?: string | null,
       submitOptions?: { redirectUri?: string; sessionToken?: string },
+      grantedPermissionSets?: Record<string, string[]>,
     ): Promise<GrantResult | undefined> => {
       // Set submitting state
       setState((prev) => ({
@@ -89,12 +90,9 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
       }));
 
       try {
-        // Prepare request payload - already in snake_case format
+        // Prepare request payload — prefer the caller-supplied value to avoid stale closure
         const request: CreateOrUpdateGrantRequest = {
-          delegated_oauth2_tokens: state.delegatedTokens.map((token) => ({
-            thirdparty_oauth2_service_id: token.thirdparty_oauth2_service_id,
-            scopes: token.scopes,
-          })),
+          granted_permission_sets: grantedPermissionSets ?? state.grantedPermissionSets,
           valid_until: validUntil || undefined,
         };
 
@@ -125,7 +123,8 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
           errorMessage = `Validation error: ${details}`;
         }
 
-        // Update state with error
+        // Update state with error and throw so the caller can react without
+        // reading stale closed-over hook state.
         setState((prev) => ({
           ...prev,
           isSubmitting: false,
@@ -136,7 +135,7 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
         throw new Error(errorMessage);
       }
     },
-    [agentId, state.delegatedTokens],
+    [agentId, state.grantedPermissionSets],
   );
 
   /**
@@ -144,7 +143,7 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
    */
   const reset = useCallback(() => {
     setState({
-      delegatedTokens: [],
+      grantedPermissionSets: {},
       isSubmitting: false,
       error: null,
       isSuccess: false,
@@ -163,7 +162,7 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
 
   return {
     ...state,
-    setDelegatedTokens,
+    setGrantedPermissionSets,
     submit,
     reset,
     clearError,

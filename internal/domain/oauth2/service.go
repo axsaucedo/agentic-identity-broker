@@ -288,12 +288,9 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	}
 
 	// Step 4: Check that sessions for all delegated services are not expired.
-	// Even if the grant is active, a token exchange will fail when the underlying
-	// third-party session has expired. Redirect to the consent screen early so
-	// the user can re-authenticate with the affected service instead of getting
-	// a cryptic error later.
+	// Only sessions whose service ID is included in the grant's permission sets are checked.
 	if s.sessionRepo != nil {
-		expired, err := s.anyDelegatedSessionExpired(ctx, principal, grant.DelegatedOAuth2Tokens)
+		expired, err := s.anyDelegatedSessionExpired(ctx, principal, grant.GrantedPermissionSets)
 		if err != nil {
 			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
 			return &ports.AuthorizationDecision{
@@ -540,16 +537,31 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 	return metadata, nil
 }
 
-// anyDelegatedSessionExpired returns true if any existing session for a delegated service is
-// expired. A missing session (nil) is not treated as expired — absence means the user simply
-// has not logged into that service yet, which is handled separately by mandatory requirement
-// validation. Only an existing session whose refresh token has expired triggers a consent redirect.
-// Returns an error only on unexpected storage failures.
-func (s *Service) anyDelegatedSessionExpired(ctx context.Context, principal id.Principal, tokens []storage.DelegatedToken) (bool, error) {
-	for _, token := range tokens {
-		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, principal, token.ThirdpartyOAuth2ServiceID)
+// anyDelegatedSessionExpired returns true if any OAuth2 session relevant to the
+// grant's permission sets has expired. Only sessions whose service ID appears in
+// the IncludedServiceIDs of a granted permission set entry are checked, preventing
+// false-positive consent redirects caused by unrelated expired sessions.
+func (s *Service) anyDelegatedSessionExpired(ctx context.Context, principal id.Principal, grantEntries []storage.GrantedPermissionSetEntry) (bool, error) {
+	// Build the set of service IDs covered by the grant's permission sets.
+	relevantServices := make(map[id.ServiceID]bool)
+	for _, entry := range grantEntries {
+		for _, svcID := range entry.IncludedServiceIDs {
+			relevantServices[svcID] = true
+		}
+	}
+
+	// If no services are referenced, nothing can be expired.
+	if len(relevantServices) == 0 {
+		return false, nil
+	}
+
+	// Use per-service lookup so we see expired sessions. ListByPrincipal filters
+	// to active-only (for FR-020); FindByPrincipalAndService returns all sessions
+	// including expired ones, which is exactly what expiry detection requires.
+	for svcID := range relevantServices {
+		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, principal, svcID)
 		if err != nil {
-			return false, fmt.Errorf("failed to check session status: %w", err)
+			return false, fmt.Errorf("failed to find session for service %s: %w", svcID, err)
 		}
 		if session != nil && session.IsExpired() {
 			return true, nil

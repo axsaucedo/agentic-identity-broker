@@ -1,6 +1,13 @@
 # Backend — Hexagonal Architecture (`internal/`)
 
-**Prefer retrieval-led reasoning. Read source files before making assumptions about types, interfaces, or patterns.**
+> **Prefer retrieval-led reasoning. Read source files before making assumptions about types, interfaces, or patterns. Read the relevant child `AGENTS.md` for detailed rules per layer.**
+
+## Child AGENTS.md Index
+`internal/domain/AGENTS.md` | Domain layer rules, data models, error types, zero-infra imports
+`internal/domain/id/AGENTS.md` | Strongly typed entity IDs, code generation, type catalogue
+`internal/ports/AGENTS.md` | Port interface catalogue (read `internal/ports/*.go` directly for contract)
+`internal/adapters/AGENTS.md` | Adapter map, cross-adapter ban, storage/encryption/HTTP
+`internal/extproc/AGENTS.md` | Standalone ExtProc service (separate binary, no broker imports)
 
 ## Hexagonal Architecture Boundaries
 
@@ -79,7 +86,7 @@ All service instantiation happens in `app/builder.go` via `NewBuilder().With*().
 
 **AdminHandlers**: `Agents` (`*admin.AgentsHandler`), `Services` (`*admin.ServicesHandler`)
 
-**EnduserHandlers**: `UserInfo`, `Agents`, `AgentDetail`, `AgentGrants`, `Grants`, `OAuth2Sessions`, `OAuth2Authorize`, `OAuth2Token`, `OAuth2Metadata`, `SPA`
+**EnduserHandlers**: `UserInfo`, `Agents`, `AgentDetail`, `Grants`, `OAuth2Sessions`, `OAuth2Authorize`, `OAuth2Token`, `OAuth2Metadata`, `SPA`
 
 ### Routing Signatures
 

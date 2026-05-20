@@ -198,12 +198,7 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"access_token":      response.AccessToken,
-		"token_type":        response.TokenType,
-		"issued_token_type": response.IssuedTokenType,
-		"expires_in":        response.ExpiresIn,
-	}); err != nil {
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		if h.Logger != nil {
 			h.Logger.Error("failed to encode token exchange response", "error", err)
 		}

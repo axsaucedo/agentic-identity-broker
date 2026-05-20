@@ -4,14 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/agents"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -86,18 +89,18 @@ func (m *MockAgentRepository) ExistsOtherWithClientID(ctx context.Context, clien
 // MockProviderRepository and newTestEncryption are defined in services_handler_test.go
 // and are available here because both files share the same package admin.
 func newAgentsHandlerForTest(mockRepo *MockAgentRepository, mockServiceRepo *MockProviderRepository, logger *slog.Logger) *AgentsHandler {
-	providerSvc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, false, logger)
+	providerSvc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, nil, false, logger)
 	// Use multiAgentEnabled=true so existing CRUD tests don't need ExistsOtherWithClientID expectations.
 	// T033 tests use newAgentsHandlerForTestWithMultiAgent with explicit flags.
 	agentSvc := agents.NewService(mockRepo, providerSvc, logger, true)
-	return NewAgentsHandler(agentSvc, providerSvc, logger)
+	return NewAgentsHandler(agentSvc, providerSvc, nil, logger)
 }
 
 // newAgentsHandlerForTestWithMultiAgent creates an AgentsHandler with the given multiAgentEnabled flag.
 func newAgentsHandlerForTestWithMultiAgent(mockRepo *MockAgentRepository, mockServiceRepo *MockProviderRepository, logger *slog.Logger, multiAgentEnabled bool) *AgentsHandler {
-	providerSvc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, false, logger)
+	providerSvc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, nil, false, logger)
 	agentSvc := agents.NewService(mockRepo, providerSvc, logger, multiAgentEnabled)
-	return NewAgentsHandler(agentSvc, providerSvc, logger)
+	return NewAgentsHandler(agentSvc, providerSvc, nil, logger)
 }
 
 func TestAgentsHandler_CreateAgent(t *testing.T) {
@@ -920,6 +923,7 @@ func TestAgentsHandler_ClientIDUniqueness(t *testing.T) {
 		handler.UpdateAgent(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
+		mockRepo.AssertNotCalled(t, "GetByClientID")
 		mockRepo.AssertExpectations(t)
 	})
 }
@@ -1051,5 +1055,343 @@ func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
 		require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
 		assert.Equal(t, "conflict", resp.Error)
 		mockRepo.AssertExpectations(t)
+	})
+}
+
+// T043: Unit tests for agent permission_sets validation
+// These tests document the validation behavior is correct in the handler implementation.
+// Full integration testing happens in E2E tests (T045).
+func TestAgentsHandler_CreateAgent_PermissionSets_RedPhase(t *testing.T) {
+	logger := slog.Default()
+
+	// Note: These tests are placeholder documentation for T043 red phase.
+	// The actual PermissionSetService validation is tested via E2E tests (T045) which
+	// exercise the full flow with a real service instance.
+	// The handler implementation already includes the validation logic for:
+	// - Empty permission_sets list validation
+	// - Non-existent permission_set_id validation via psService.ValidateIDs
+	// - Preservation of declaration order in JSONB storage
+
+	t.Run("handler accepts permission_sets in request (red phase)", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
+
+		psID1 := id.NewPermissionSetID()
+		reqBody := AgentRequest{
+			ClientID:    ptr.To("test-client"),
+			DisplayName: "Test Agent",
+			Description: "Test description",
+			PermissionSets: []PermissionSetRequest{
+				{
+					PermissionSetID: psID1.String(),
+					RequirementType: "mandatory",
+				},
+			},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(a *storage.Agent) bool {
+			// Verify permission sets field is populated (even with nil psService, validation is skipped)
+			return a.ClientID != nil && string(*a.ClientID) == "test-client" && len(a.PermissionSets) == 1
+		})).Return(nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateAgent(w, req)
+
+		// With nil psService, handler skips validation but still parses and stores permission_sets
+		assert.Equal(t, http.StatusCreated, w.Code)
+		mockRepo.AssertExpectations(t)
+	})
+}
+
+// MockPermissionSetValidator is a mock implementation of PermissionSetValidator.
+type MockPermissionSetValidator struct {
+	mock.Mock
+}
+
+func (m *MockPermissionSetValidator) ValidateIDs(ctx context.Context, ids []id.PermissionSetID) error {
+	args := m.Called(ctx, ids)
+	return args.Error(0)
+}
+
+func (m *MockPermissionSetValidator) GetByIDs(ctx context.Context, ids []id.PermissionSetID) ([]*storage.PermissionSet, error) {
+	args := m.Called(ctx, ids)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*storage.PermissionSet), args.Error(1)
+}
+
+// newAgentsHandlerForFR019Test creates an AgentsHandler with a real domain service
+// and a non-nil MockPermissionSetValidator so FR-019 coverage checks are exercised.
+func newAgentsHandlerForFR019Test(
+	mockRepo *MockAgentRepository,
+	mockServiceRepo *MockProviderRepository,
+	mockPS *MockPermissionSetValidator,
+	logger *slog.Logger,
+) *AgentsHandler {
+	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, nil, false, logger)
+	agentSvc := agents.NewService(mockRepo, svc, logger, true)
+	return NewAgentsHandler(agentSvc, svc, mockPS, logger)
+}
+
+func TestAgentsHandler_FR019_CoverageInvariant(t *testing.T) {
+	logger := slog.Default()
+
+	// Shared IDs used across subtests
+	serviceAID := id.NewServiceID()
+	serviceBID := id.NewServiceID()
+	psID1 := id.NewPermissionSetID()
+
+	// Helper: entity returned by provider repo for ValidateServiceRequirements
+	serviceAEntity := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceAID,
+		DisplayName: "Service A",
+		Scopes:      []model.OAuthScope{{ScopeValue: "read"}},
+	}
+
+	t.Run("create agent with SR service not covered by any PS returns 400", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		mockPS := new(MockPermissionSetValidator)
+		handler := newAgentsHandlerForFR019Test(mockRepo, mockServiceRepo, mockPS, logger)
+
+		// providerService.ValidateServiceRequirements will look up serviceA
+		mockServiceRepo.On("Get", mock.Anything, serviceAID).Return(serviceAEntity, nil)
+
+		// convertPermissionSetRequests calls ValidateIDs
+		mockPS.On("ValidateIDs", mock.Anything, mock.Anything).Return(nil)
+
+		// validateServiceRequirementsCoverage calls GetByIDs — return PS covering serviceB only
+		mockPS.On("GetByIDs", mock.Anything, mock.Anything).Return([]*storage.PermissionSet{
+			{
+				ID:   psID1,
+				Name: "PS1",
+				ServiceScopes: []storage.ServiceScope{
+					{ServiceID: serviceBID, Scopes: []string{"write"}},
+				},
+			},
+		}, nil)
+
+		reqBody := AgentRequest{
+			ClientID:    ptr.To("test-fr019-uncovered"),
+			DisplayName: "FR019 Agent",
+			Description: "Test agent",
+			ServiceRequirements: []ServiceRequirementRequest{
+				{ServiceID: serviceAID.String(), RequirementType: "mandatory", RequiredScopes: []string{"read"}},
+			},
+			PermissionSets: []PermissionSetRequest{
+				{PermissionSetID: psID1.String(), RequirementType: "mandatory"},
+			},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateAgent(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var resp ErrorResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "validation failed", resp.Error)
+		assert.Contains(t, resp.Message, serviceAID.String())
+
+		mockPS.AssertExpectations(t)
+	})
+
+	t.Run("create agent with all SR services covered by PS returns 201", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		mockPS := new(MockPermissionSetValidator)
+		handler := newAgentsHandlerForFR019Test(mockRepo, mockServiceRepo, mockPS, logger)
+
+		// providerService.ValidateServiceRequirements looks up serviceA
+		mockServiceRepo.On("Get", mock.Anything, serviceAID).Return(serviceAEntity, nil)
+
+		mockPS.On("ValidateIDs", mock.Anything, mock.Anything).Return(nil)
+
+		// PS covers serviceA — invariant satisfied
+		mockPS.On("GetByIDs", mock.Anything, mock.Anything).Return([]*storage.PermissionSet{
+			{
+				ID:   psID1,
+				Name: "PS1",
+				ServiceScopes: []storage.ServiceScope{
+					{ServiceID: serviceAID, Scopes: []string{"read"}},
+				},
+			},
+		}, nil)
+
+		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(a *storage.Agent) bool {
+			return a.ClientID != nil && string(*a.ClientID) == "test-fr019-covered" && len(a.ServiceRequirements) == 1 && len(a.PermissionSets) == 1
+		})).Return(nil)
+
+		reqBody := AgentRequest{
+			ClientID:    ptr.To("test-fr019-covered"),
+			DisplayName: "FR019 Covered Agent",
+			Description: "Test agent",
+			ServiceRequirements: []ServiceRequirementRequest{
+				{ServiceID: serviceAID.String(), RequirementType: "mandatory", RequiredScopes: []string{"read"}},
+			},
+			PermissionSets: []PermissionSetRequest{
+				{PermissionSetID: psID1.String(), RequirementType: "mandatory"},
+			},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateAgent(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+
+		mockRepo.AssertExpectations(t)
+		mockPS.AssertExpectations(t)
+	})
+
+	t.Run("update agent with uncovered SR service returns 400", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		mockPS := new(MockPermissionSetValidator)
+		handler := newAgentsHandlerForFR019Test(mockRepo, mockServiceRepo, mockPS, logger)
+
+		agentID := id.NewAgentID()
+		now := time.Now().UTC()
+		existingAgent := &storage.Agent{
+			ID:          agentID,
+			ClientID:    ptr.To(id.ClientID("test-fr019-update")),
+			DisplayName: "Old Name",
+			Description: "Old description",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+
+		mockRepo.On("Get", mock.Anything, agentID).Return(existingAgent, nil)
+		mockServiceRepo.On("Get", mock.Anything, serviceAID).Return(serviceAEntity, nil)
+		mockPS.On("ValidateIDs", mock.Anything, mock.Anything).Return(nil)
+
+		// PS covers only serviceB, not serviceA
+		mockPS.On("GetByIDs", mock.Anything, mock.Anything).Return([]*storage.PermissionSet{
+			{
+				ID:   psID1,
+				Name: "PS1",
+				ServiceScopes: []storage.ServiceScope{
+					{ServiceID: serviceBID, Scopes: []string{"write"}},
+				},
+			},
+		}, nil)
+
+		reqBody := AgentRequest{
+			ClientID:    ptr.To("test-fr019-update"),
+			DisplayName: "Updated Name",
+			Description: "Updated description",
+			ServiceRequirements: []ServiceRequirementRequest{
+				{ServiceID: serviceAID.String(), RequirementType: "mandatory", RequiredScopes: []string{"read"}},
+			},
+			PermissionSets: []PermissionSetRequest{
+				{PermissionSetID: psID1.String(), RequirementType: "mandatory"},
+			},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/agents/"+agentID.String(), bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", agentID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		w := httptest.NewRecorder()
+
+		handler.UpdateAgent(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var resp ErrorResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "validation failed", resp.Error)
+		assert.Contains(t, resp.Message, serviceAID.String())
+
+		mockPS.AssertExpectations(t)
+	})
+
+	t.Run("agent with empty permission_sets returns 400 when psService is available", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		mockPS := new(MockPermissionSetValidator)
+		handler := newAgentsHandlerForFR019Test(mockRepo, mockServiceRepo, mockPS, logger)
+
+		// providerService.ValidateServiceRequirements looks up serviceA
+		mockServiceRepo.On("Get", mock.Anything, serviceAID).Return(serviceAEntity, nil)
+
+		// Use raw JSON with explicit empty permission_sets array — cannot use struct marshaling
+		// because omitempty omits nil/empty slices, and we need "permission_sets": [] explicitly.
+		rawBody := fmt.Sprintf(`{
+			"client_id": "test-fr019-empty-ps",
+			"display_name": "FR019 Empty PS Agent",
+			"description": "Test agent",
+			"service_requirements": [{"service_id": "%s", "requirement_type": "mandatory", "required_scopes": ["read"]}],
+			"permission_sets": []
+		}`, serviceAID.String())
+
+		req := httptest.NewRequest(http.MethodPost, "/api/agents", strings.NewReader(rawBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateAgent(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var resp ErrorResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "validation failed", resp.Error)
+		assert.Contains(t, resp.Message, "at least one permission set entry is required")
+
+		// Create should NOT be called when PS list is explicitly empty
+		mockRepo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+	})
+
+	t.Run("agent with omitted permission_sets (nil) returns 400 when psService is available", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		mockPS := new(MockPermissionSetValidator)
+		handler := newAgentsHandlerForFR019Test(mockRepo, mockServiceRepo, mockPS, logger)
+
+		// Use a struct body without permission_sets (omitted via omitempty → nil on decode).
+		// FR-006 requires at least one entry; both nil and explicit-empty are rejected.
+		rawBody := fmt.Sprintf(`{
+			"client_id": "test-fr006-nil-ps",
+			"display_name": "FR006 Nil PS Agent",
+			"description": "Test agent",
+			"service_requirements": [{"service_id": "%s", "requirement_type": "mandatory", "required_scopes": ["read"]}]
+		}`, serviceAID.String())
+
+		req := httptest.NewRequest(http.MethodPost, "/api/agents", strings.NewReader(rawBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateAgent(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var resp ErrorResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "validation failed", resp.Error)
+		// Rejected by FR-006: at least one permission set entry is required
+		assert.Contains(t, resp.Message, "at least one permission set entry is required")
+
+		// Create should NOT be called
+		mockRepo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
 	})
 }

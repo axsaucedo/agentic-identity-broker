@@ -30,6 +30,7 @@ type Adapter struct {
 	providers          ports.ThirdpartyOAuth2ProviderRepository
 	userGrants         ports.UserGrantRepository
 	userSessions       ports.UserSessionRepository
+	permissionSets     ports.PermissionSetRepository
 	brokerCredentials  ports.ClientCredentialRepository
 	signingKeys        ports.SigningKeyRepository
 	authorizationCodes ports.AuthorizationCodeRepository
@@ -64,13 +65,17 @@ func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 	if err := initializeAdapter(context.Background(), memAdapter, config); err != nil {
 		return nil, err
 	}
+	agentRepo := memory.NewAgentRepository()
+	permissionSets := memory.NewPermissionSetRepository().WithAgentRepository(agentRepo)
+	userGrants := memory.NewUserGrantRepository().WithPermissionSetRepository(permissionSets)
 	return &Adapter{
 		lifecycle:          memAdapter,
 		users:              memAdapter,
-		agents:             memory.NewAgentRepository(),
+		agents:             agentRepo,
 		providers:          memory.NewInMemoryThirdpartyOAuth2ProviderRepository(),
-		userGrants:         memory.NewUserGrantRepository(),
+		userGrants:         userGrants,
 		userSessions:       memory.NewInMemoryUserSessionRepository(),
+		permissionSets:     permissionSets,
 		brokerCredentials:  memory.NewClientCredentialStore(),
 		signingKeys:        memory.NewSigningKeyStore(),
 		authorizationCodes: memory.NewAuthorizationCodeStore(),
@@ -95,6 +100,7 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		providers:          postgres.NewPostgresThirdpartyOAuth2ProviderRepository(pgAdapter),
 		userGrants:         postgres.NewUserGrantRepository(pgAdapter),
 		userSessions:       postgres.NewUserSessionRepository(pgAdapter),
+		permissionSets:     postgres.NewPermissionSetRepository(pgAdapter),
 		brokerCredentials:  postgres.NewClientCredentialRepo(pgAdapter),
 		signingKeys:        postgres.NewSigningKeyRepo(pgAdapter),
 		authorizationCodes: postgres.NewAuthorizationCodeRepo(pgAdapter),
@@ -170,6 +176,12 @@ func (a *Adapter) UserGrants() ports.UserGrantRepository {
 // Used for user session CRUD operations.
 func (a *Adapter) UserSessions() ports.UserSessionRepository {
 	return a.userSessions
+}
+
+// PermissionSets returns the PermissionSetRepository interface implementation.
+// Used for permission set CRUD operations.
+func (a *Adapter) PermissionSets() ports.PermissionSetRepository {
+	return a.permissionSets
 }
 
 // BrokerCredentials returns the ClientCredentialRepository interface implementation.

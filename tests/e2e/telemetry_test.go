@@ -375,7 +375,7 @@ var _ = Describe("OpenTelemetry Instrumentation", func() {
 				// we still call Shutdown so resources are released promptly.
 				shutdownCtx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 				defer cancel()
-				_ = degradedApp.ShutdownTelemetry(shutdownCtx)
+				_ = degradedApp.Shutdown(shutdownCtx)
 			}
 			if degradedStorage != nil {
 				_ = storageFactory.CloseStorage(degradedStorage)

@@ -99,6 +99,11 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		err = testStorage.Agents().Create(ctx, agent)
 		Expect(err).NotTo(HaveOccurred())
 
+		// Seed placeholder PS/service rows so grant fixtures resolve correctly
+		// during permission set scope resolution in the token exchange path.
+		err = fixtures.SeedPlaceholderGrantData(ctx, testStorage)
+		Expect(err).NotTo(HaveOccurred())
+
 		// ============ PHASE 2: RFC 8693 TOKEN EXCHANGE DATA SETUP ============
 		// Generate real JWT tokens for testing RFC 8693 token exchange flows.
 		// All tokens are properly signed with the mock upstream's private key.

@@ -19,6 +19,9 @@ type AdminHandlers struct {
 	// Services handler for admin API - manages OAuth2 service CRUD operations
 	Services *admin.ServicesHandler
 
+	// PermissionSets handler for admin API - manages permission set CRUD operations
+	PermissionSets *admin.PermissionSetsHandler
+
 	// ClientCredentials handler for admin API - manages broker client credentials
 	ClientCredentials *admin.ClientCredentialsHandler
 
@@ -35,9 +38,8 @@ type EnduserHandlers struct {
 	// Consent handlers for /api/consent routes
 	Agents      *consent.AgentsHandler
 	AgentDetail *consent.AgentDetailHandler
-	AgentGrants *consent.AgentGrantsHandler
 	Grants      *consent.GrantsHandler
-	RevokeGrant *consent.RevokeGrantHandler
+	AgentInfo   *consent.AgentInfoHandler // Permission Sets (019): /api/consent/agents/{id}/consent-info
 
 	// OAuth2 sessions handler for /api/third-party routes
 	OAuth2Sessions *oauth2_sessions.Handler

@@ -159,7 +159,7 @@ class ApiCache {
    * @example
    * ```typescript
    * // Invalidate all agent-related caches
-   * apiCache.invalidatePattern('/consent/agent/*');
+   * apiCache.invalidatePattern('/consent/agents/*');
    * ```
    */
   invalidatePattern(pattern: string): void {
