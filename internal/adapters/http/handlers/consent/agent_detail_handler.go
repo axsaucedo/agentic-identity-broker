@@ -281,12 +281,12 @@ func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.A
 
 	u, err := url.Parse(claims.CIMDMetadata.ClientID)
 	if err != nil {
-		return nil, errors.New("invalid client_id in authorization session")
+		return nil, fmt.Errorf("%w: invalid client_id in sealed session token", errInternalSession)
 	}
 
 	orig, err := url.Parse(claims.OriginalURL)
 	if err != nil {
-		return nil, errors.New("invalid original_url in authorization session")
+		return nil, fmt.Errorf("%w: invalid original_url in sealed session token", errInternalSession)
 	}
 	q := orig.Query()
 
