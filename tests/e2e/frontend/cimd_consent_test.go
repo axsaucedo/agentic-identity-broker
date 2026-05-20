@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/pages"

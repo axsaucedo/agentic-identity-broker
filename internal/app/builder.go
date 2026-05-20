@@ -40,7 +40,7 @@ import (
 	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"

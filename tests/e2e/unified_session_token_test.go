@@ -19,7 +19,7 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"

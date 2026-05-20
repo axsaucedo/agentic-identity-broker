@@ -17,7 +17,7 @@ import (
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"

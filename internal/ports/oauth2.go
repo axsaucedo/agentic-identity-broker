@@ -5,7 +5,6 @@ import (
 	"context"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
 )
 
 // MultiAgentVerifier verifies agent ID claims in proxied upstream token responses.
@@ -143,7 +142,23 @@ type AuthorizationCodeIssuer interface {
 	IssueAuthorizationCode(ctx context.Context, req *AuthorizationRequest, principal id.Principal) (code string, err error)
 }
 
+// SessionCIMDMetadata carries CIMD-resolved client metadata from a validated session token.
+type SessionCIMDMetadata struct {
+	ClientID     string
+	ClientName   string
+	LogoURI      string
+	RedirectURIs []string
+}
+
+// AuthorizationSession is the port-local DTO returned by SessionTokenValidator.
+type AuthorizationSession struct {
+	AgentID      id.AgentID
+	Principal    id.Principal
+	OriginalURL  string
+	CIMDMetadata *SessionCIMDMetadata
+}
+
 // SessionTokenValidator validates JWE authorization session tokens.
 type SessionTokenValidator interface {
-	ValidateAuthorizationSessionToken(token string, agentID id.AgentID, principal id.Principal) (*sessiontoken.AuthorizationSessionClaims, error)
+	ValidateAuthorizationSessionToken(token string, agentID id.AgentID, principal id.Principal) (*AuthorizationSession, error)
 }

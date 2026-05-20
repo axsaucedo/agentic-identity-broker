@@ -16,7 +16,7 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"

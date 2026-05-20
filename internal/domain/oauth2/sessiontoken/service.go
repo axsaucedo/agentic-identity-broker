@@ -5,6 +5,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // Service handles creation and validation of JWE-sealed authorization session tokens.
@@ -26,8 +27,8 @@ func (s *Service) Create(claims *AuthorizationSessionClaims) (string, error) {
 }
 
 // ValidateAuthorizationSessionToken decrypts a JWE session token and validates
-// expiry, agent binding, and principal binding.
-func (s *Service) ValidateAuthorizationSessionToken(token string, agentID id.AgentID, principal id.Principal) (*AuthorizationSessionClaims, error) {
+// expiry, agent binding, and principal binding. Returns a port-local DTO.
+func (s *Service) ValidateAuthorizationSessionToken(token string, agentID id.AgentID, principal id.Principal) (*ports.AuthorizationSession, error) {
 	if s.jweTokenService == nil {
 		return nil, ErrSessionServiceNotConfigured
 	}
@@ -44,5 +45,5 @@ func (s *Service) ValidateAuthorizationSessionToken(token string, agentID id.Age
 	if claims.Principal != principal {
 		return nil, ErrSessionPrincipalMismatch
 	}
-	return &claims, nil
+	return claims.ToResult(), nil
 }

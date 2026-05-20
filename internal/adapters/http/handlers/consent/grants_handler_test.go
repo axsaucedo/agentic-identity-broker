@@ -17,7 +17,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
@@ -689,11 +689,11 @@ func TestCreateGrant_SessionToken_PrincipalMismatch(t *testing.T) {
 // mockTokenValidator is a configurable SessionTokenValidator for tests that need
 // to inject specific claims or errors without a real JWE round-trip.
 type mockTokenValidator struct {
-	claims *sessiontoken.AuthorizationSessionClaims
+	claims *ports.AuthorizationSession
 	err    error
 }
 
-func (m *mockTokenValidator) ValidateAuthorizationSessionToken(_ string, _ id.AgentID, _ id.Principal) (*sessiontoken.AuthorizationSessionClaims, error) {
+func (m *mockTokenValidator) ValidateAuthorizationSessionToken(_ string, _ id.AgentID, _ id.Principal) (*ports.AuthorizationSession, error) {
 	return m.claims, m.err
 }
 
@@ -753,7 +753,7 @@ func TestCreateGrant_ValidTokenWithEmptyOriginalURLReturns500(t *testing.T) {
 	testAgentID := id.NewAgentID()
 
 	validator := &mockTokenValidator{
-		claims: &sessiontoken.AuthorizationSessionClaims{OriginalURL: ""},
+		claims: &ports.AuthorizationSession{OriginalURL: ""},
 		err:    nil,
 	}
 	handler := NewGrantsHandler(&mockConsentService{}, nil, validator)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 const ttl = 10 * time.Minute
@@ -36,6 +37,24 @@ type AuthorizationSessionClaims struct {
 // IsExpired reports whether the session token TTL has elapsed.
 func (c *AuthorizationSessionClaims) IsExpired() bool {
 	return time.Now().After(c.ExpiresAt)
+}
+
+// ToResult maps internal claims to the port-local DTO.
+func (c *AuthorizationSessionClaims) ToResult() *ports.AuthorizationSession {
+	r := &ports.AuthorizationSession{
+		AgentID:     c.AgentID,
+		Principal:   c.Principal,
+		OriginalURL: c.OriginalURL,
+	}
+	if c.CIMDMetadata != nil {
+		r.CIMDMetadata = &ports.SessionCIMDMetadata{
+			ClientID:     c.CIMDMetadata.ClientID,
+			ClientName:   c.CIMDMetadata.ClientName,
+			LogoURI:      c.CIMDMetadata.LogoURI,
+			RedirectURIs: c.CIMDMetadata.RedirectURIs,
+		}
+	}
+	return r
 }
 
 // NewAuthorizationSessionClaims initialises claims with IssuedAt and ExpiresAt set from now.

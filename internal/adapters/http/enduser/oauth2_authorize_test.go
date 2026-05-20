@@ -18,7 +18,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
