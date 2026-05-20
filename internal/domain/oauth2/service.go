@@ -54,8 +54,7 @@ type AuthorizationService struct {
 	logger              *slog.Logger
 }
 
-// NewAuthorizationService creates an AuthorizationService. sessionTokenService is required;
-// passing nil causes buildConsentURL to return ErrSessionServiceNotConfigured.
+// NewAuthorizationService creates an AuthorizationService.
 func NewAuthorizationService(
 	grantRepo ports.UserGrantRepository,
 	sessionRepo ports.UserSessionRepository,
@@ -64,6 +63,9 @@ func NewAuthorizationService(
 	logger *slog.Logger,
 	sessionTokenService *sessiontoken.Service,
 ) *AuthorizationService {
+	if sessionTokenService == nil {
+		panic("oauth2.NewAuthorizationService: sessionTokenService must not be nil")
+	}
 	return &AuthorizationService{
 		grantRepo:           grantRepo,
 		sessionRepo:         sessionRepo,
@@ -403,9 +405,6 @@ func (s *AuthorizationService) buildUpstreamAuthorizeURL(req *ports.Authorizatio
 // authorization context (agent_id, principal, original_url, TTL). CIMD agents
 // additionally embed cimd_metadata; for local/proxy agents cimd_metadata is nil.
 func (s *AuthorizationService) buildConsentURL(_ context.Context, req *ports.AuthorizationRequest, principal id.Principal, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
-	if s.sessionTokenService == nil {
-		return "", fmt.Errorf("failed to create authorization session token: %w", sessiontoken.ErrSessionServiceNotConfigured)
-	}
 	var meta *ports.SessionCIMDMetadata
 	if cimdMeta != nil {
 		meta = &ports.SessionCIMDMetadata{

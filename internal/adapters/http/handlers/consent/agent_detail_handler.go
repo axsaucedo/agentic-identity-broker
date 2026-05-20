@@ -12,8 +12,8 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
@@ -270,8 +270,6 @@ func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.A
 			return nil, errors.New("authorization session does not belong to this user")
 		case errors.Is(err, sessiontoken.ErrSessionInvalidToken):
 			return nil, errInvalidToken
-		case errors.Is(err, sessiontoken.ErrSessionServiceNotConfigured):
-			return nil, fmt.Errorf("%w: %w", errInternalSession, err)
 		default:
 			return nil, fmt.Errorf("%w: unexpected error: %v", errInternalSession, err)
 		}

@@ -13,25 +13,24 @@ type Service struct {
 	jweTokenService *jwe.TokenService
 }
 
+var _ ports.SessionTokenValidator = (*Service)(nil)
+
 // NewService creates a SessionTokenService backed by the given JWE token service.
 func NewService(jweTokenService *jwe.TokenService) *Service {
+	if jweTokenService == nil {
+		panic("sessiontoken.NewService: jweTokenService must not be nil")
+	}
 	return &Service{jweTokenService: jweTokenService}
 }
 
 // Create seals claims into a compact JWE string.
 func (s *Service) Create(claims *AuthorizationSessionClaims) (string, error) {
-	if s.jweTokenService == nil {
-		return "", ErrSessionServiceNotConfigured
-	}
 	return s.jweTokenService.Encrypt(claims)
 }
 
 // ValidateAuthorizationSessionToken decrypts a JWE session token and validates
 // expiry, agent binding, and principal binding. Returns a port-local DTO.
 func (s *Service) ValidateAuthorizationSessionToken(token string, agentID id.AgentID, principal id.Principal) (*ports.AuthorizationSession, error) {
-	if s.jweTokenService == nil {
-		return nil, ErrSessionServiceNotConfigured
-	}
 	var claims AuthorizationSessionClaims
 	if err := s.jweTokenService.DecryptAndValidate(token, &claims); err != nil {
 		if errors.Is(err, jwe.ErrExpired) {

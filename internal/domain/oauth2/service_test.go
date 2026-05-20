@@ -559,7 +559,7 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
-	}, nil, nil)
+	}, nil, newTestSessionTokenService())
 
 	authReq := &ports.AuthorizationRequest{
 		ClientID:            id.ClientID(agentID.String()),
@@ -663,7 +663,7 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 				PublicURL:                 "https://broker.example.com",
 				SupportedResponseTypes:    []string{"code"},
-			}, nil, nil)
+			}, nil, newTestSessionTokenService())
 
 			req := &ports.AuthorizationRequest{
 				ClientID:     tt.clientID,
@@ -716,7 +716,7 @@ func TestService_HandleAuthorization_UUIDResolution_UpstreamClientID(t *testing.
 	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
-	}, nil, nil)
+	}, nil, newTestSessionTokenService())
 
 	req := &ports.AuthorizationRequest{
 		ClientID:     id.ClientID(agentID.String()),
@@ -750,7 +750,7 @@ func TestService_GenerateMetadata(t *testing.T) {
 		SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
 	}
 
-	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), config, nil, nil)
+	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), config, nil, newTestSessionTokenService())
 
 	tests := []struct {
 		name string
@@ -834,7 +834,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 				AgentIDParamName: "x_agent_id",
 				AgentIDClaimName: "x_agent_id",
 			},
-		}, nil, nil)
+		}, nil, newTestSessionTokenService())
 
 		decision, err := svc.HandleAuthorization(context.Background(), req, id.NewPrincipal("user@example.com"))
 		require.NoError(t, err)
@@ -849,7 +849,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 			MultiAgentClient:          ports.MultiAgentClientConfig{Enabled: false},
-		}, nil, nil)
+		}, nil, newTestSessionTokenService())
 
 		decision, err := svc.HandleAuthorization(context.Background(), req, id.NewPrincipal("user@example.com"))
 		require.NoError(t, err)
@@ -1051,7 +1051,7 @@ func TestService_GenerateMetadata_RFC8414Compliance(t *testing.T) {
 		SupportedGrantTypes:       []string{"authorization_code"},
 	}
 
-	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), config, nil, nil)
+	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), config, nil, newTestSessionTokenService())
 	metadata, err := svc.GenerateMetadata(context.Background())
 
 	require.NoError(t, err)
@@ -1104,7 +1104,7 @@ func TestService_HandleAuthorization_GrantLookupError(t *testing.T) {
 
 	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		PublicURL: "https://broker.example.com",
-	}, nil, nil)
+	}, nil, newTestSessionTokenService())
 
 	req := &ports.AuthorizationRequest{
 		ClientID:     id.ClientID(agentID.String()),
@@ -1296,7 +1296,7 @@ func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
 	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "%",
 		PublicURL:                 "https://broker.example.com",
-	}, nil, nil)
+	}, nil, newTestSessionTokenService())
 
 	decision, err := svc.HandleAuthorization(context.Background(), &ports.AuthorizationRequest{
 		ClientID:     id.ClientID(agentID.String()),

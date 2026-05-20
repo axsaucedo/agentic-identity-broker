@@ -27,7 +27,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_SuccessfulMetadata(t *testing.T) {
 			SupportedGrantTypes:       []string{"authorization_code"},
 		},
 		nil,
-		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2MetadataHandler{
@@ -68,7 +68,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_JSONEncoding(t *testing.T) {
 			SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
 		},
 		nil,
-		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2MetadataHandler{
@@ -108,7 +108,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_CacheHeaders(t *testing.T) {
 			PublicURL:                 "https://broker.example.com",
 		},
 		nil,
-		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2MetadataHandler{
@@ -136,7 +136,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_AllowGETOnly(t *testing.T) {
 			PublicURL:                 "https://broker.example.com",
 		},
 		nil,
-		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2MetadataHandler{
@@ -168,7 +168,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_PublicEndpoint(t *testing.T) {
 			PublicURL:                 "https://broker.example.com",
 		},
 		nil,
-		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2MetadataHandler{

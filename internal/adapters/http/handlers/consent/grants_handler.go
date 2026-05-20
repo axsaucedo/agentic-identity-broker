@@ -11,8 +11,8 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
@@ -124,9 +124,6 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			case errors.Is(err, sessiontoken.ErrSessionInvalidToken):
 				h.logger.Warn("authorization session token invalid", "agent_id", agentID, "principal", principalValue)
 				h.writeError(w, http.StatusBadRequest, "invalid_token", "authorization session token is invalid")
-			case errors.Is(err, sessiontoken.ErrSessionServiceNotConfigured):
-				h.logger.Error("session token service misconfigured", "agent_id", agentID, "error", err)
-				h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 			default:
 				h.logger.Error("unexpected error validating authorization session token", "agent_id", agentID, "principal", principalValue, "error", err)
 				h.writeError(w, http.StatusInternalServerError, "internal server error", "")

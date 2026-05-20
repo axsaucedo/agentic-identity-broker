@@ -13,7 +13,7 @@ func TestGenerateMetadata_ProxyMode(t *testing.T) {
 		PublicURL:              "https://broker.example.com",
 		SupportedResponseTypes: []string{"code"},
 		SupportedGrantTypes:    []string{"authorization_code", "refresh_token"},
-	}, nil, nil)
+	}, nil, newTestSessionTokenService())
 
 	metadata, err := svc.GenerateMetadata(context.Background())
 	require.NoError(t, err)
@@ -31,7 +31,7 @@ func TestGenerateMetadata_IssueTokenMode(t *testing.T) {
 		PublicURL:              "https://broker.example.com",
 		SupportedResponseTypes: []string{"code"},
 		SupportedGrantTypes:    []string{"authorization_code", "client_credentials"},
-	}, nil, nil)
+	}, nil, newTestSessionTokenService())
 
 	metadata, err := svc.GenerateMetadata(context.Background())
 	require.NoError(t, err)

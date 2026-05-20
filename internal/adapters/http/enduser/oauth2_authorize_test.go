@@ -16,9 +16,9 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
@@ -38,6 +38,10 @@ func newTestJWETokenService() *domjwe.TokenService {
 	return domjwe.New(jweKey)
 }
 
+func newTestSessionTokenSvc() *sessiontoken.Service {
+	return sessiontoken.NewService(newTestJWETokenService())
+}
+
 // TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal tests handler when principal is not provided
 func TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal(t *testing.T) {
 	// Setup
@@ -51,7 +55,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal(t *testing.T) {
 			PublicURL:                 "https://broker.example.com",
 		},
 		nil,
-		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2AuthorizeHandler{
@@ -86,7 +90,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
 			PublicURL:                 "https://broker.example.com",
 		},
 		nil,
-		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2AuthorizeHandler{
@@ -162,7 +166,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID(t *testing.T) {
 				PublicURL:                 "https://broker.example.com",
 			},
 			nil,
-			nil,
+			newTestSessionTokenSvc(),
 		),
 	}
 
@@ -196,7 +200,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_UnknownAgent(t *testing.T) {
 			PublicURL:                 "https://broker.example.com",
 		},
 		nil,
-		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2AuthorizeHandler{
@@ -304,7 +308,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 			PublicURL:                 "https://broker.example.com",
 		},
 		nil,
-		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2AuthorizeHandler{
@@ -368,7 +372,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 			PublicURL:                 "https://broker.example.com",
 		},
 		nil,
-		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2AuthorizeHandler{
@@ -416,7 +420,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_JSONResponseFormat(t *testing.T) {
 			PublicURL:                 "https://broker.example.com",
 		},
 		nil,
-		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2AuthorizeHandler{
@@ -743,7 +747,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_StorageErrorReturns500(t *testing.T) {
 			PublicURL:                 "https://broker.example.com",
 		},
 		nil,
-		nil,
+		newTestSessionTokenSvc(),
 	)
 	handler := &OAuth2AuthorizeHandler{Service: svc}
 
