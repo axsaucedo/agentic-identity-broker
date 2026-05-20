@@ -20,6 +20,20 @@ type CIMDMetadata struct {
 	RedirectURIs []string `json:"redirect_uris"`
 }
 
+// NewCIMDMetadataFromDTO converts a port-layer CIMDMetadataDTO to the minimal
+// session token representation. Returns nil for nil input.
+func NewCIMDMetadataFromDTO(dto *ports.CIMDMetadataDTO) *CIMDMetadata {
+	if dto == nil {
+		return nil
+	}
+	return &CIMDMetadata{
+		ClientID:     dto.ClientID,
+		ClientName:   dto.ClientName,
+		LogoURI:      dto.LogoURI,
+		RedirectURIs: dto.RedirectURIs,
+	}
+}
+
 // AuthorizationSessionClaims carries the full authorization context in a JWE token.
 // It replaces the DB-backed AuthorizationSession: the same tamper-proof, expiring,
 // principal-bound properties are achieved by sealing the claims in a JWE.
