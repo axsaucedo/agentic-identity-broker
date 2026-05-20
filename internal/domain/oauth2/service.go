@@ -172,22 +172,14 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 			code = clientErr.Code
 			desc = clientErr.Desc
 		}
-		return &ports.AuthorizationDecision{
-			Action:    "error",
-			ErrorCode: code,
-			ErrorDesc: desc,
-		}, nil
+		return ports.ErrorDecision(code, desc, ""), nil
 	}
 	agent = resolution.Agent
 	cimdMeta = resolution.CIMDMetadata
 
 	// Mode enforcement: reject agents whose ClientMode is not permitted in this server mode.
 	if s.config.ModeStrategy != nil && !s.config.ModeStrategy.AcceptsClientMode(agent.ClientMode()) {
-		return &ports.AuthorizationDecision{
-			Action:    "error",
-			ErrorCode: "unauthorized_client",
-			ErrorDesc: fmt.Sprintf("client mode not supported in %s mode", s.config.ModeStrategy.Mode()),
-		}, nil
+		return ports.ErrorDecision("unauthorized_client", fmt.Sprintf("client mode not supported in %s mode", s.config.ModeStrategy.Mode()), ""), nil
 	}
 
 	// Step 1b: Validate redirect_uri.
@@ -209,11 +201,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	}
 
 	if len(allowedRedirectURIs) == 0 {
-		return &ports.AuthorizationDecision{
-			Action:    "error",
-			ErrorCode: redirectURIErrCode,
-			ErrorDesc: "redirect_uri not registered for this client",
-		}, nil
+		return ports.ErrorDecision(redirectURIErrCode, "redirect_uri not registered for this client", ""), nil
 	}
 	uriAllowed := false
 	for _, allowed := range allowedRedirectURIs {
@@ -223,22 +211,14 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		}
 	}
 	if !uriAllowed {
-		return &ports.AuthorizationDecision{
-			Action:    "error",
-			ErrorCode: redirectURIErrCode,
-			ErrorDesc: "redirect_uri not registered for this client",
-		}, nil
+		return ports.ErrorDecision(redirectURIErrCode, "redirect_uri not registered for this client", ""), nil
 	}
 
 	// Step 1b-runtime: Enforce HTTPS for non-loopback hosts even on legacy data.
 	// Write-time validation (Agent.Validate/ValidateForCreate) prevents new non-HTTPS
 	// registrations, but this guard closes the gap for pre-existing stored URIs.
 	if !storage.IsValidRedirectURI(req.RedirectURI) {
-		return &ports.AuthorizationDecision{
-			Action:    "error",
-			ErrorCode: "invalid_redirect_uri",
-			ErrorDesc: "redirect_uri must use HTTPS for non-local hosts",
-		}, nil
+		return ports.ErrorDecision("invalid_redirect_uri", "redirect_uri must use HTTPS for non-local hosts", ""), nil
 	}
 
 	// Step 1c: Validate requested scopes against agent's allowed scopes.
@@ -251,12 +231,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		for _, s := range strings.Fields(req.Scope) {
 			if !allowedSet[s] {
 				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "invalid_scope", "requested scope is not permitted")
-				return &ports.AuthorizationDecision{
-					Action:      "error",
-					ErrorCode:   "invalid_scope",
-					ErrorDesc:   "requested scope is not permitted",
-					RedirectURL: errRedirect,
-				}, nil
+				return ports.ErrorDecision("invalid_scope", "requested scope is not permitted", errRedirect), nil
 			}
 		}
 	}
@@ -266,12 +241,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	if err != nil && !errors.Is(err, ports.ErrNotFound) {
 		// redirect_uri is validated above so a redirect-with-error is safe here.
 		errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
-		return &ports.AuthorizationDecision{
-			Action:      "error",
-			ErrorCode:   "server_error",
-			ErrorDesc:   "Failed to check grant",
-			RedirectURL: errRedirect,
-		}, nil
+		return ports.ErrorDecision("server_error", "Failed to check grant", errRedirect), nil
 	}
 
 	// Step 3: Determine action based on grant status
@@ -279,17 +249,9 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
 		if buildErr != nil {
 			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
-			return &ports.AuthorizationDecision{
-				Action:      "error",
-				ErrorCode:   "server_error",
-				ErrorDesc:   "Failed to initiate consent session",
-				RedirectURL: errRedirect,
-			}, nil
+			return ports.ErrorDecision("server_error", "Failed to initiate consent session", errRedirect), nil
 		}
-		return &ports.AuthorizationDecision{
-			Action:      "redirect_to_consent",
-			RedirectURL: consentURL,
-		}, nil
+		return ports.ConsentDecision(consentURL), nil
 	}
 
 	// Step 4: Check that sessions for all delegated services are not expired.
@@ -298,12 +260,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		expired, err := s.anyDelegatedSessionExpired(ctx, principal, grant.GrantedPermissionSets)
 		if err != nil {
 			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
-			return &ports.AuthorizationDecision{
-				Action:      "error",
-				ErrorCode:   "server_error",
-				ErrorDesc:   "Failed to check session status",
-				RedirectURL: errRedirect,
-			}, nil
+			return ports.ErrorDecision("server_error", "Failed to check session status", errRedirect), nil
 		}
 		if expired {
 			if s.logger != nil {
@@ -316,17 +273,9 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 			consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
 			if buildErr != nil {
 				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
-				return &ports.AuthorizationDecision{
-					Action:      "error",
-					ErrorCode:   "server_error",
-					ErrorDesc:   "Failed to initiate consent session",
-					RedirectURL: errRedirect,
-				}, nil
+				return ports.ErrorDecision("server_error", "Failed to initiate consent session", errRedirect), nil
 			}
-			return &ports.AuthorizationDecision{
-				Action:      "redirect_to_consent",
-				RedirectURL: consentURL,
-			}, nil
+			return ports.ConsentDecision(consentURL), nil
 		}
 	}
 
@@ -344,12 +293,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 					)
 				}
 				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
-				return &ports.AuthorizationDecision{
-					Action:      "error",
-					ErrorCode:   "server_error",
-					ErrorDesc:   "Failed to validate service requirements",
-					RedirectURL: errRedirect,
-				}, nil
+				return ports.ErrorDecision("server_error", "Failed to validate service requirements", errRedirect), nil
 			}
 			if s.logger != nil {
 				s.logger.Warn(
@@ -361,17 +305,9 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 			consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
 			if buildErr != nil {
 				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
-				return &ports.AuthorizationDecision{
-					Action:      "error",
-					ErrorCode:   "server_error",
-					ErrorDesc:   "Failed to initiate consent session",
-					RedirectURL: errRedirect,
-				}, nil
+				return ports.ErrorDecision("server_error", "Failed to initiate consent session", errRedirect), nil
 			}
-			return &ports.AuthorizationDecision{
-				Action:      "redirect_to_consent",
-				RedirectURL: consentURL,
-			}, nil
+			return ports.ConsentDecision(consentURL), nil
 		}
 	}
 
@@ -385,19 +321,10 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		upstreamURL, urlErr = s.buildUpstreamAuthorizeURL(req, agent)
 		if urlErr != nil {
 			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
-			return &ports.AuthorizationDecision{
-				Action:      "error",
-				ErrorCode:   "server_error",
-				ErrorDesc:   "Failed to build upstream authorize URL",
-				RedirectURL: errRedirect,
-			}, nil
+			return ports.ErrorDecision("server_error", "Failed to build upstream authorize URL", errRedirect), nil
 		}
 	}
-	return &ports.AuthorizationDecision{
-		Action:      "proceed",
-		RedirectURL: upstreamURL,
-		ClientMode:  agent.ClientMode(),
-	}, nil
+	return ports.ProceedDecision(upstreamURL, agent.ClientMode()), nil
 }
 
 // buildUpstreamAuthorizeURL constructs the upstream authorization endpoint URL

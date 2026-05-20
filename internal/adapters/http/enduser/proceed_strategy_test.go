@@ -36,10 +36,7 @@ func TestProxyProceedStrategy_RedirectsToDecisionURL(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := newProceedRequest(t)
 
-	decision := &ports.AuthorizationDecision{
-		Action:      "proceed",
-		RedirectURL: "https://auth.example.com/authorize?client_id=abc&response_type=code",
-	}
+	decision := ports.ProceedDecision("https://auth.example.com/authorize?client_id=abc&response_type=code", storage.ProxyClient)
 	req := &ports.AuthorizationRequest{RedirectURI: "https://client.example.com/callback"}
 
 	strategy.HandleProceed(w, r, decision, req, id.NewPrincipal("user@example.com"))
@@ -56,10 +53,7 @@ func TestProxyProceedStrategy_PassesThroughUpstreamURL(t *testing.T) {
 	r := newProceedRequest(t)
 
 	upstreamURL := "https://auth.upstream.example.com/authorize?client_id=upstream-abc&response_type=code&state=xyz&nonce=abc123&code_challenge=ABCDEF&code_challenge_method=S256"
-	decision := &ports.AuthorizationDecision{
-		Action:      "proceed",
-		RedirectURL: upstreamURL,
-	}
+	decision := ports.ProceedDecision(upstreamURL, storage.ProxyClient)
 	req := &ports.AuthorizationRequest{RedirectURI: "https://client.example.com/callback"}
 
 	strategy.HandleProceed(w, r, decision, req, id.NewPrincipal("user@example.com"))
@@ -78,7 +72,7 @@ func TestLocalProceedStrategy_Success_RedirectsWithCode(t *testing.T) {
 		State:       "xyz123",
 	}
 
-	strategy.HandleProceed(w, r, &ports.AuthorizationDecision{}, req, id.NewPrincipal("user@example.com"))
+	strategy.HandleProceed(w, r, ports.ProceedDecision("", storage.LocalClient), req, id.NewPrincipal("user@example.com"))
 
 	assert.Equal(t, http.StatusFound, w.Code)
 	loc := w.Header().Get("Location")
@@ -98,7 +92,7 @@ func TestLocalProceedStrategy_Success_OmitsStateWhenEmpty(t *testing.T) {
 		State:       "",
 	}
 
-	strategy.HandleProceed(w, r, &ports.AuthorizationDecision{}, req, id.NewPrincipal("user@example.com"))
+	strategy.HandleProceed(w, r, ports.ProceedDecision("", storage.LocalClient), req, id.NewPrincipal("user@example.com"))
 
 	assert.Equal(t, http.StatusFound, w.Code)
 	loc := w.Header().Get("Location")
@@ -145,7 +139,7 @@ func TestLocalProceedStrategy_Errors(t *testing.T) {
 				State:       "xyz",
 			}
 
-			strategy.HandleProceed(w, r, &ports.AuthorizationDecision{}, req, id.NewPrincipal("user@example.com"))
+			strategy.HandleProceed(w, r, ports.ProceedDecision("", storage.LocalClient), req, id.NewPrincipal("user@example.com"))
 
 			assert.Equal(t, tc.wantStatus, w.Code)
 			if tc.isRedirect {
@@ -179,7 +173,7 @@ func TestHybridProceedStrategy_DispatchesByClientMode(t *testing.T) {
 			localMock := &captureProceedStrategy{}
 			strategy := NewHybridProceedStrategy(proxyMock, localMock)
 
-			decision := &ports.AuthorizationDecision{Action: "proceed", ClientMode: tc.clientMode}
+			decision := ports.ProceedDecision("", tc.clientMode)
 			strategy.HandleProceed(httptest.NewRecorder(), newProceedRequest(t), decision, &ports.AuthorizationRequest{}, id.NewPrincipal("u@example.com"))
 
 			assert.Equal(t, tc.expectsProxy, proxyMock.called, "proxy strategy called")
@@ -199,7 +193,7 @@ func TestHybridProceedStrategy_RejectsAmbiguousClientMode(t *testing.T) {
 			strategy := NewHybridProceedStrategy(proxyMock, localMock)
 
 			w := httptest.NewRecorder()
-			decision := &ports.AuthorizationDecision{Action: "proceed", ClientMode: mode}
+			decision := ports.ProceedDecision("", mode)
 			strategy.HandleProceed(w, newProceedRequest(t), decision, &ports.AuthorizationRequest{}, id.NewPrincipal("u@example.com"))
 
 			assert.Equal(t, http.StatusInternalServerError, w.Code)

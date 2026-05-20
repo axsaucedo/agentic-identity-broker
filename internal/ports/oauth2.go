@@ -101,6 +101,23 @@ type AuthorizationDecision struct {
 	ErrorDesc string
 }
 
+// ProceedDecision returns a decision allowing the authorization request to proceed.
+// clientMode is required so the hybrid strategy can dispatch to the correct sub-strategy.
+func ProceedDecision(redirectURL string, clientMode storage.ClientMode) *AuthorizationDecision {
+	return &AuthorizationDecision{Action: "proceed", RedirectURL: redirectURL, ClientMode: clientMode}
+}
+
+// ConsentDecision returns a decision that redirects the user to the consent UI.
+func ConsentDecision(consentURL string) *AuthorizationDecision {
+	return &AuthorizationDecision{Action: "redirect_to_consent", RedirectURL: consentURL}
+}
+
+// ErrorDecision returns a decision that signals an OAuth2 error.
+// redirectURL may be empty when the redirect URI has not yet been verified (RFC 6749 §4.1.2.1).
+func ErrorDecision(code, desc, redirectURL string) *AuthorizationDecision {
+	return &AuthorizationDecision{Action: "error", ErrorCode: code, ErrorDesc: desc, RedirectURL: redirectURL}
+}
+
 // MetadataResponse represents OAuth2 Authorization Server Metadata (RFC 8414).
 // Enables OAuth2 clients to auto-discover the broker's endpoints and capabilities.
 type MetadataResponse struct {

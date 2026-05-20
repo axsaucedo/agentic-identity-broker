@@ -405,7 +405,7 @@ func (m *errCodeIssuer) IssueAuthorizationCode(_ context.Context, _ *ports.Autho
 type proceedOAuth2Service struct{}
 
 func (s *proceedOAuth2Service) HandleAuthorization(_ context.Context, _ *ports.AuthorizationRequest, _ id.Principal) (*ports.AuthorizationDecision, error) {
-	return &ports.AuthorizationDecision{Action: "proceed"}, nil
+	return ports.ProceedDecision("", storage.LocalClient), nil
 }
 
 func (s *proceedOAuth2Service) GenerateMetadata(_ context.Context) (*ports.MetadataResponse, error) {
