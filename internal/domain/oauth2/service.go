@@ -66,6 +66,9 @@ func NewAuthorizationService(
 	if sessionTokenService == nil {
 		panic("oauth2.NewAuthorizationService: sessionTokenService must not be nil")
 	}
+	if sessionRepo == nil {
+		panic("oauth2.NewAuthorizationService: sessionRepo must not be nil")
+	}
 	return &AuthorizationService{
 		grantRepo:           grantRepo,
 		sessionRepo:         sessionRepo,
@@ -220,9 +223,32 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 
 	// Step 4: Check that sessions for all delegated services are not expired.
 	// Only sessions whose service ID is included in the grant's permission sets are checked.
-	if s.sessionRepo != nil {
-		expired, err := s.anyDelegatedSessionExpired(ctx, principal, grant.GrantedPermissionSets)
-		if err != nil {
+	expired, err := s.anyDelegatedSessionExpired(ctx, principal, grant.GrantedPermissionSets)
+	if err != nil {
+		errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+		if buildURLErr != nil && s.logger != nil {
+			s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
+		}
+		return &ports.AuthorizationDecision{
+			Action:      "error",
+			ErrorCode:   "server_error",
+			ErrorDesc:   "Failed to check session status",
+			RedirectURL: errRedirect,
+		}, nil
+	}
+	if expired {
+		if s.logger != nil {
+			s.logger.Warn(
+				"DelegatedSessionExpired",
+				"agent_id", agent.ID,
+				"principal", principal,
+			)
+		}
+		consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
+		if buildErr != nil {
+			if s.logger != nil {
+				s.logger.Error("failed to build consent URL", "error", buildErr)
+			}
 			errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
 			if buildURLErr != nil && s.logger != nil {
 				s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
@@ -230,43 +256,18 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 			return &ports.AuthorizationDecision{
 				Action:      "error",
 				ErrorCode:   "server_error",
-				ErrorDesc:   "Failed to check session status",
+				ErrorDesc:   "Failed to initiate consent session",
 				RedirectURL: errRedirect,
 			}, nil
 		}
-		if expired {
-			if s.logger != nil {
-				s.logger.Warn(
-					"DelegatedSessionExpired",
-					"agent_id", agent.ID,
-					"principal", principal,
-				)
-			}
-			consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
-			if buildErr != nil {
-				if s.logger != nil {
-					s.logger.Error("failed to build consent URL", "error", buildErr)
-				}
-				errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
-				if buildURLErr != nil && s.logger != nil {
-					s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
-				}
-				return &ports.AuthorizationDecision{
-					Action:      "error",
-					ErrorCode:   "server_error",
-					ErrorDesc:   "Failed to initiate consent session",
-					RedirectURL: errRedirect,
-				}, nil
-			}
-			return &ports.AuthorizationDecision{
-				Action:      "redirect_to_consent",
-				RedirectURL: consentURL,
-			}, nil
-		}
+		return &ports.AuthorizationDecision{
+			Action:      "redirect_to_consent",
+			RedirectURL: consentURL,
+		}, nil
 	}
 
-	// Step 5: Validate mandatory service requirements (if session repo available)
-	if s.sessionRepo != nil && len(agent.ServiceRequirements) > 0 {
+	// Step 5: Validate mandatory service requirements.
+	if len(agent.ServiceRequirements) > 0 {
 		err := s.validateMandatoryRequirements(ctx, principal.String(), agent)
 		if err != nil {
 			var storageErr *storage.StorageError

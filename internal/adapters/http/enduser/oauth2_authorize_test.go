@@ -48,7 +48,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal(t *testing.T) {
 	agentRepo := newMockAgentRepo()
 	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
-		nil,
+		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
@@ -83,7 +83,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
 	agentRepo := newMockAgentRepo()
 	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
-		nil,
+		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
@@ -159,7 +159,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID(t *testing.T) {
 	handler := &OAuth2AuthorizeHandler{
 		Service: oauth2.NewAuthorizationService(
 			newMockGrantRepo(),
-			nil,
+			&noopSessionRepository{},
 			oauth2.NewAgentClientResolver(mockAgentRepo, nil),
 			&oauth2.OAuth2Config{
 				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
@@ -193,7 +193,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_UnknownAgent(t *testing.T) {
 	agentRepo := newMockAgentRepo()
 	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
-		nil,
+		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
@@ -243,7 +243,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 
 	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
-		nil,
+		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
@@ -298,7 +298,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 
 	svc := oauth2.NewAuthorizationService(
 		grantRepo,
-		nil,
+		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
@@ -359,7 +359,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 
 	svc := oauth2.NewAuthorizationService(
 		grantRepo,
-		nil,
+		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
@@ -407,7 +407,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_JSONResponseFormat(t *testing.T) {
 	agentRepo := newMockAgentRepo()
 	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
-		nil,
+		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
@@ -687,6 +687,29 @@ func (m *mockGrantRepository) CountAgentsByServiceID(ctx context.Context, servic
 	return len(agents), nil
 }
 
+type noopSessionRepository struct{}
+
+func (n *noopSessionRepository) Create(_ context.Context, _ *storage.UserSession) error { return nil }
+func (n *noopSessionRepository) Get(_ context.Context, _ id.SessionID) (*storage.UserSession, error) {
+	return nil, &storage.StorageError{Kind: storage.ErrorKindNotFound}
+}
+func (n *noopSessionRepository) FindByPrincipalAndService(_ context.Context, _ id.Principal, _ id.ServiceID) (*storage.UserSession, error) {
+	return nil, nil
+}
+func (n *noopSessionRepository) ListByPrincipal(_ context.Context, _ id.Principal) ([]*storage.UserSession, error) {
+	return nil, nil
+}
+func (n *noopSessionRepository) ListActiveByPrincipal(_ context.Context, _ id.Principal) ([]*storage.UserSession, error) {
+	return nil, nil
+}
+func (n *noopSessionRepository) Delete(_ context.Context, _ id.SessionID) error { return nil }
+func (n *noopSessionRepository) DeleteByPrincipalAndService(_ context.Context, _ id.Principal, _ id.ServiceID) error {
+	return nil
+}
+func (n *noopSessionRepository) CountByService(_ context.Context, _ id.ServiceID) (int, error) {
+	return 0, nil
+}
+
 func (m *mockGrantRepository) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
 	agents := make(map[id.AgentID]bool)
 	for _, grant := range m.grants {
@@ -740,7 +763,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_StorageErrorReturns500(t *testing.T) {
 
 	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
-		nil,
+		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",

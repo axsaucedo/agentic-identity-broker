@@ -17,7 +17,7 @@ import (
 func TestOAuth2MetadataHandler_ServeHTTP_SuccessfulMetadata(t *testing.T) {
 	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
-		nil,
+		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
@@ -58,7 +58,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_SuccessfulMetadata(t *testing.T) {
 func TestOAuth2MetadataHandler_ServeHTTP_JSONEncoding(t *testing.T) {
 	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
-		nil,
+		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
@@ -100,7 +100,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_JSONEncoding(t *testing.T) {
 func TestOAuth2MetadataHandler_ServeHTTP_CacheHeaders(t *testing.T) {
 	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
-		nil,
+		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
@@ -129,7 +129,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_CacheHeaders(t *testing.T) {
 func TestOAuth2MetadataHandler_ServeHTTP_AllowGETOnly(t *testing.T) {
 	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
-		nil,
+		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
@@ -160,7 +160,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_AllowGETOnly(t *testing.T) {
 func TestOAuth2MetadataHandler_ServeHTTP_PublicEndpoint(t *testing.T) {
 	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
-		nil,
+		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
