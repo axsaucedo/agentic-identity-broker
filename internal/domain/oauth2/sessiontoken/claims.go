@@ -62,14 +62,3 @@ func NewAuthorizationSessionClaims(
 	}, nil
 }
 
-// ErrSessionExpired indicates the authorization session token TTL has elapsed.
-var ErrSessionExpired = errors.New("authorization session expired")
-
-// ErrSessionInvalidToken indicates the token could not be decrypted or unmarshalled.
-var ErrSessionInvalidToken = errors.New("authorization session token invalid")
-
-// ErrSessionAgentMismatch indicates the token's agent_id does not match the requested agent.
-var ErrSessionAgentMismatch = errors.New("authorization session does not match requested agent")
-
-// ErrSessionPrincipalMismatch indicates the token's principal does not match the authenticated user.
-var ErrSessionPrincipalMismatch = errors.New("authorization session does not belong to this user")

@@ -12,7 +12,6 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
@@ -262,13 +261,13 @@ func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.A
 	claims, err := h.sessionTokenValidator.ValidateAuthorizationSessionToken(sessionToken, agentID, id.Principal(userID))
 	if err != nil {
 		switch {
-		case errors.Is(err, sessiontoken.ErrSessionExpired):
+		case errors.Is(err, ports.ErrSessionExpired):
 			return nil, errSessionExpired
-		case errors.Is(err, sessiontoken.ErrSessionAgentMismatch):
+		case errors.Is(err, ports.ErrSessionAgentMismatch):
 			return nil, errors.New("authorization session does not match requested agent")
-		case errors.Is(err, sessiontoken.ErrSessionPrincipalMismatch):
+		case errors.Is(err, ports.ErrSessionPrincipalMismatch):
 			return nil, errors.New("authorization session does not belong to this user")
-		case errors.Is(err, sessiontoken.ErrSessionInvalidToken):
+		case errors.Is(err, ports.ErrSessionInvalidToken):
 			return nil, errInvalidToken
 		default:
 			return nil, fmt.Errorf("%w: unexpected error: %v", errInternalSession, err)

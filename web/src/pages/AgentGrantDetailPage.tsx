@@ -46,7 +46,6 @@ export function AgentGrantDetailPage() {
 
   const searchParams = new URLSearchParams(location.search);
   const sessionToken = searchParams.get('session_token') || undefined;
-  const redirectUri = searchParams.get('redirect_uri') || undefined;
 
   const resolvedAgentId = agentId ?? '';
 
@@ -60,7 +59,7 @@ export function AgentGrantDetailPage() {
   );
 
   // Fetch agent data and grants
-  const { agent, services, cimdMeta, grants, loading, error, refetch } =
+  const { agent, services, cimdMeta, grants, loading, error, sessionExpired, refetch } =
     useAgentGrants(resolvedAgentId, agentGrantOptions);
 
   // Grant toggle hook for permission sets
@@ -165,11 +164,7 @@ export function AgentGrantDetailPage() {
     }
 
     const validUntil = getValidUntil();
-    const submitOptions = sessionToken
-      ? { sessionToken }
-      : redirectUri
-        ? { redirectUri }
-        : undefined;
+    const submitOptions = sessionToken ? { sessionToken } : undefined;
 
     let grant: Awaited<ReturnType<typeof submit>>;
     try {
@@ -367,6 +362,27 @@ export function AgentGrantDetailPage() {
               <Skeleton width="100%" height="200px" className="rounded-lg" />
             </div>
           </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // Session expired — token cannot be retried; user must restart the authorization flow
+  if (sessionExpired) {
+    return (
+      <AppLayout>
+        <div className="space-y-6">
+          <Breadcrumb
+            items={[
+              { label: 'Delegations', href: '/' },
+              { label: 'Agent Details' },
+            ]}
+          />
+          <InlineError
+            error="Your authorization session has expired. Please go back and restart the authorization flow."
+            onRetry={() => window.history.back()}
+            retryLabel="Go back"
+          />
         </div>
       </AppLayout>
     );

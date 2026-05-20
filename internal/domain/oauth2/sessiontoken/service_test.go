@@ -6,6 +6,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -140,6 +141,7 @@ func TestService_ValidateAuthorizationSessionToken_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, agentID, validated.AgentID)
 	assert.Equal(t, p, validated.Principal)
+	assert.Equal(t, "https://example.com/authorize?client_id=test", validated.OriginalURL)
 }
 
 func TestService_ValidateAuthorizationSessionToken_Expired(t *testing.T) {
@@ -159,7 +161,7 @@ func TestService_ValidateAuthorizationSessionToken_Expired(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = svc.ValidateAuthorizationSessionToken(token, agentID, p)
-	assert.ErrorIs(t, err, ErrSessionExpired)
+	assert.ErrorIs(t, err, ports.ErrSessionExpired)
 }
 
 func TestService_ValidateAuthorizationSessionToken_AgentMismatch(t *testing.T) {
@@ -173,7 +175,7 @@ func TestService_ValidateAuthorizationSessionToken_AgentMismatch(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = svc.ValidateAuthorizationSessionToken(token, otherAgent, p)
-	assert.ErrorIs(t, err, ErrSessionAgentMismatch)
+	assert.ErrorIs(t, err, ports.ErrSessionAgentMismatch)
 }
 
 func TestService_ValidateAuthorizationSessionToken_PrincipalMismatch(t *testing.T) {
@@ -187,11 +189,11 @@ func TestService_ValidateAuthorizationSessionToken_PrincipalMismatch(t *testing.
 	require.NoError(t, err)
 
 	_, err = svc.ValidateAuthorizationSessionToken(token, agentID, otherP)
-	assert.ErrorIs(t, err, ErrSessionPrincipalMismatch)
+	assert.ErrorIs(t, err, ports.ErrSessionPrincipalMismatch)
 }
 
 func TestService_ValidateAuthorizationSessionToken_InvalidToken(t *testing.T) {
 	svc := newTestService(t)
 	_, err := svc.ValidateAuthorizationSessionToken("garbage-token", id.NewAgentID(), id.NewPrincipal("x"))
-	assert.ErrorIs(t, err, ErrSessionInvalidToken)
+	assert.ErrorIs(t, err, ports.ErrSessionInvalidToken)
 }

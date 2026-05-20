@@ -410,6 +410,9 @@ func (s *AuthorizationService) buildConsentURL(_ context.Context, req *ports.Aut
 			LogoURI:      cimdMeta.LogoURI,
 			RedirectURIs: cimdMeta.RedirectURIs,
 		}
+		if err := meta.Validate(); err != nil {
+			return "", fmt.Errorf("invalid CIMD metadata: %w", err)
+		}
 	}
 	claims, err := sessiontoken.NewAuthorizationSessionClaims(agent.ID, principal, req.OriginalURL, meta)
 	if err != nil {

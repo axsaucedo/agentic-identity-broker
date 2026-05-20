@@ -12,7 +12,6 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -130,18 +129,18 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		claims, err := h.sessionTokenValidator.ValidateAuthorizationSessionToken(sessionToken, parsedAgentID, id.Principal(principalValue))
 		if err != nil {
 			switch {
-			case errors.Is(err, sessiontoken.ErrSessionExpired):
+			case errors.Is(err, ports.ErrSessionExpired):
 				h.logger.Warn("authorization session token expired", "agent_id", agentID, "principal", principalValue)
 				h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
-			case errors.Is(err, sessiontoken.ErrSessionAgentMismatch):
+			case errors.Is(err, ports.ErrSessionAgentMismatch):
 				h.logger.Warn("authorization session agent mismatch",
 					"expected_agent", parsedAgentID,
 					"principal", principalValue)
 				h.writeError(w, http.StatusBadRequest, "bad request", "authorization session does not match requested agent")
-			case errors.Is(err, sessiontoken.ErrSessionPrincipalMismatch):
+			case errors.Is(err, ports.ErrSessionPrincipalMismatch):
 				h.logger.Warn("authorization session principal mismatch", "principal", principalValue)
 				h.writeError(w, http.StatusForbidden, "forbidden", "authorization session does not belong to this user")
-			case errors.Is(err, sessiontoken.ErrSessionInvalidToken):
+			case errors.Is(err, ports.ErrSessionInvalidToken):
 				h.logger.Warn("authorization session token invalid", "agent_id", agentID, "principal", principalValue)
 				h.writeError(w, http.StatusBadRequest, "invalid_token", "authorization session token is invalid")
 			default:
@@ -156,17 +155,6 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 				"agent_id", agentID, "principal", principalValue)
 			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 			return
-		}
-	}
-
-	// FR-029 fallback: plain redirect_uri query param (no session_token).
-	// Only relative URIs are accepted. Absolute URIs are silently ignored
-	// to prevent open-redirect while supporting same-site consent management.
-	if sessionToken == "" {
-		if rawURI := r.URL.Query().Get("redirect_uri"); rawURI != "" {
-			if validateRedirectURI(rawURI) == nil {
-				sessionRedirectURI = rawURI
-			}
 		}
 	}
 

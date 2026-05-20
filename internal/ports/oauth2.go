@@ -3,8 +3,19 @@ package ports
 
 import (
 	"context"
+	"errors"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+)
+
+// Session token sentinel errors — returned by SessionTokenValidator implementations and
+// handled by adapters that consume the port. Defined here so adapters do not need to import
+// the concrete sessiontoken package to interpret errors from the interface.
+var (
+	ErrSessionExpired          = errors.New("authorization session expired")
+	ErrSessionInvalidToken     = errors.New("authorization session token invalid")
+	ErrSessionAgentMismatch    = errors.New("authorization session does not match requested agent")
+	ErrSessionPrincipalMismatch = errors.New("authorization session does not belong to this user")
 )
 
 // MultiAgentVerifier verifies agent ID claims in proxied upstream token responses.
@@ -148,6 +159,18 @@ type SessionCIMDMetadata struct {
 	ClientName   string   `json:"client_name,omitempty"`
 	LogoURI      string   `json:"logo_uri,omitempty"`
 	RedirectURIs []string `json:"redirect_uris"`
+}
+
+// Validate checks that required fields are present and normalises nil slices.
+// Must be called before sealing a SessionCIMDMetadata into a JWE session token.
+func (m *SessionCIMDMetadata) Validate() error {
+	if m.ClientID == "" {
+		return errors.New("SessionCIMDMetadata: ClientID must not be empty")
+	}
+	if m.RedirectURIs == nil {
+		m.RedirectURIs = []string{}
+	}
+	return nil
 }
 
 // AuthorizationSession is the port-local DTO returned by SessionTokenValidator.

@@ -2,6 +2,7 @@ package sessiontoken
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
@@ -25,6 +26,12 @@ func NewService(jweTokenService *jwe.TokenService) *Service {
 
 // Create seals claims into a compact JWE string.
 func (s *Service) Create(claims *AuthorizationSessionClaims) (string, error) {
+	if claims == nil {
+		return "", fmt.Errorf("claims must not be nil")
+	}
+	if claims.AgentID.IsZero() || claims.Principal.IsZero() || claims.OriginalURL == "" {
+		return "", fmt.Errorf("claims must have non-zero AgentID, Principal, and OriginalURL")
+	}
 	return s.jweTokenService.Encrypt(claims)
 }
 
@@ -34,15 +41,15 @@ func (s *Service) ValidateAuthorizationSessionToken(token string, agentID id.Age
 	var claims AuthorizationSessionClaims
 	if err := s.jweTokenService.DecryptAndValidate(token, &claims); err != nil {
 		if errors.Is(err, jwe.ErrExpired) {
-			return nil, ErrSessionExpired
+			return nil, ports.ErrSessionExpired
 		}
-		return nil, ErrSessionInvalidToken
+		return nil, ports.ErrSessionInvalidToken
 	}
 	if claims.AgentID != agentID {
-		return nil, ErrSessionAgentMismatch
+		return nil, ports.ErrSessionAgentMismatch
 	}
 	if claims.Principal != principal {
-		return nil, ErrSessionPrincipalMismatch
+		return nil, ports.ErrSessionPrincipalMismatch
 	}
 	return &ports.AuthorizationSession{
 		AgentID:      claims.AgentID,

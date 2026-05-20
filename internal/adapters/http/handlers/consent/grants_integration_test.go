@@ -432,8 +432,8 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 		assert.Empty(t, data["granted_permission_sets"])
 	})
 
-	// Empty permission sets with redirect_uri: creates grant and honours the redirect.
-	t.Run("empty_tokens_with_redirect_uri_creates_grant_and_redirects", func(t *testing.T) {
+	// redirect_uri without session_token must be ignored — no redirect_url in response (SR-004, ADR 016).
+	t.Run("redirect_uri_without_session_token_is_ignored", func(t *testing.T) {
 		reqBody := GrantRequest{
 			GrantedPermissionSets: map[string][]string{},
 		}
@@ -451,7 +451,7 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 		assert.Equal(t, http.StatusCreated, rr.Code)
 		var resp map[string]interface{}
 		require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-		assert.Equal(t, "/callback", resp["redirect_url"])
+		assert.NotContains(t, resp, "redirect_url", "redirect_uri fallback is removed per SR-004")
 	})
 }
 

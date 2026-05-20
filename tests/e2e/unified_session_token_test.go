@@ -423,5 +423,28 @@ var _ = Describe("Unified Session Token State Transport", func() {
 			Expect(body).ToNot(HaveKey("redirect_url"),
 				"no redirect_url in consent-management mode (session_token absent)")
 		})
+
+		// Scenario 3.3 from specs/031-unified-session-token/spec.md
+		// GET agent detail without session_token must return the resource normally —
+		// no session context required for standalone consent-management requests.
+		It("returns agent detail without session context when no session_token is present", func() {
+			principal := fixtures.DefaultPrincipal().String()
+			detailPath := fmt.Sprintf("/api/consent/agents/%s", agent.ID)
+
+			resp, err := server.AuthenticatedGET(detailPath, principal)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			var body map[string]any
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+
+			data, ok := body["data"].(map[string]any)
+			Expect(ok).To(BeTrue(), "response must have a data object")
+			agentData, ok := data["agent"].(map[string]any)
+			Expect(ok).To(BeTrue(), "data must contain an agent object")
+			Expect(agentData["id"]).To(Equal(agent.ID.String()), "returned agent must match requested ID")
+			Expect(data["cimd_metadata"]).To(BeNil(), "cimd_metadata must be absent when no session_token is present")
+		})
 	})
 })
