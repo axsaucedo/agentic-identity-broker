@@ -190,7 +190,7 @@ var _ = Describe("Unified Session Token State Transport", func() {
 			Expect(sessionToken).ToNot(BeEmpty())
 
 			// User B tries to use principalA's session_token on the consent page
-			consentPath := fmt.Sprintf("/api/consent/agent/%s?session_token=%s",
+			consentPath := fmt.Sprintf("/api/consent/agents/%s?session_token=%s",
 				agent.ID, url.QueryEscape(sessionToken))
 			consentResp, err := server.AuthenticatedGET(consentPath, principalB)
 			Expect(err).ToNot(HaveOccurred())
@@ -266,7 +266,7 @@ var _ = Describe("Unified Session Token State Transport", func() {
 			grantBody, _ := json.Marshal(map[string]any{
 				"delegated_oauth2_tokens": []any{},
 			})
-			grantPath := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s",
+			grantPath := fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s",
 				agent.ID, url.QueryEscape(expiredToken))
 
 			resp, err := proxyServer.AuthenticatedPOST(grantPath, principal, "application/json", bytes.NewReader(grantBody))
@@ -325,7 +325,7 @@ var _ = Describe("Unified Session Token State Transport", func() {
 			grantBody, _ := json.Marshal(map[string]any{
 				"delegated_oauth2_tokens": []any{},
 			})
-			grantPath := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s",
+			grantPath := fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s",
 				agent.ID, url.QueryEscape(sessionToken))
 
 			grantResp, err := server.AuthenticatedPOST(grantPath, principal, "application/json", bytes.NewReader(grantBody))
@@ -367,7 +367,7 @@ var _ = Describe("Unified Session Token State Transport", func() {
 			Expect(sessionToken).ToNot(BeEmpty())
 
 			// Step 2: consent page load — GET /api/consent/agent/{id}?session_token=...
-			consentPagePath := fmt.Sprintf("/api/consent/agent/%s?session_token=%s",
+			consentPagePath := fmt.Sprintf("/api/consent/agents/%s?session_token=%s",
 				agent.ID, url.QueryEscape(sessionToken))
 			consentPageResp, err := server.AuthenticatedGET(consentPagePath, principal)
 			Expect(err).ToNot(HaveOccurred())
@@ -377,7 +377,7 @@ var _ = Describe("Unified Session Token State Transport", func() {
 
 			// Step 3: submit grant with session_token
 			grantBody, _ := json.Marshal(map[string]any{"delegated_oauth2_tokens": []any{}})
-			grantPath := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s",
+			grantPath := fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s",
 				agent.ID, url.QueryEscape(sessionToken))
 			grantResp, err := server.AuthenticatedPOST(grantPath, principal, "application/json", bytes.NewReader(grantBody))
 			Expect(err).ToNot(HaveOccurred())
@@ -411,7 +411,7 @@ var _ = Describe("Unified Session Token State Transport", func() {
 		It("grant response omits redirect_url when no session_token is present", func() {
 			principal := fixtures.DefaultPrincipal().String()
 			grantBody, _ := json.Marshal(map[string]any{"delegated_oauth2_tokens": []any{}})
-			grantPath := fmt.Sprintf("/api/consent/agent/%s/grants", agent.ID)
+			grantPath := fmt.Sprintf("/api/consent/agents/%s/grants", agent.ID)
 
 			resp, err := server.AuthenticatedPOST(grantPath, principal, "application/json", bytes.NewReader(grantBody))
 			Expect(err).ToNot(HaveOccurred())
