@@ -5,6 +5,7 @@
  * Includes caching layer for GET requests to reduce network load.
  */
 
+import { isAxiosError } from 'axios';
 import { apiClient } from './client';
 import { apiCache } from './cache';
 import { isSafeRedirectUrl } from '../../utils/validation';
@@ -232,17 +233,8 @@ export class ConsentApiService {
     try {
       await apiClient.delete(`/consent/agent/${agentId}/grants`);
     } catch (err) {
-      // Give 404 a more user-friendly message
-      if (
-        err &&
-        typeof err === 'object' &&
-        'status' in err &&
-        (err as { status: number }).status === 404
-      ) {
-        throw {
-          ...(err as object),
-          message: 'Grant not found — it may have already been revoked',
-        };
+      if (isAxiosError(err) && err.response?.status === 404) {
+        throw new Error('Grant not found — it may have already been revoked');
       }
       throw err;
     }
