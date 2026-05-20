@@ -443,7 +443,7 @@ var _ = Describe("Unified Session Token State Transport", func() {
 			Expect(ok).To(BeTrue(), "response must have a data object")
 			agentData, ok := data["agent"].(map[string]any)
 			Expect(ok).To(BeTrue(), "data must contain an agent object")
-			Expect(agentData["id"]).To(Equal(agent.ID.String()), "returned agent must match requested ID")
+			Expect(agentData["agentId"]).To(Equal(agent.ID.String()), "returned agent must match requested ID")
 			Expect(data["cimd_metadata"]).To(BeNil(), "cimd_metadata must be absent when no session_token is present")
 		})
 	})
