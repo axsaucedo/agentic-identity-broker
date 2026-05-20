@@ -97,7 +97,7 @@ func NewAuthorizationSessionClaims(
 	return &AuthorizationSessionClaims{
 		AgentID:      agentID,
 		Principal:    principal,
-		OriginalURL:  originalURL,
+		OriginalURL:  normalized,
 		CIMDMetadata: cimdMetadata,
 		IssuedAt:     now,
 		ExpiresAt:    now.Add(ttl),
