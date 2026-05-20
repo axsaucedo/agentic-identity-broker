@@ -60,6 +60,16 @@ type OAuth2Config struct {
 	ModeStrategy ModeStrategy
 }
 
+// Validate checks that the config is self-consistent.
+// Mode and ModeStrategy must both be set or both be absent — a non-empty Mode without a
+// ModeStrategy silently disables agent client-mode enforcement.
+func (c *OAuth2Config) Validate() error {
+	if c.Mode != "" && c.ModeStrategy == nil {
+		return fmt.Errorf("OAuth2Config: Mode %q requires a non-nil ModeStrategy", c.Mode)
+	}
+	return nil
+}
+
 // Service implements the OAuth2Service port
 type Service struct {
 	grantRepo       ports.UserGrantRepository
@@ -100,20 +110,24 @@ func NewServiceWithSessions(
 // NewServiceWithClientResolver creates a new OAuth2Service with an explicit ClientResolver strategy.
 // Used when CIMD support is enabled (cimd.enabled: true) or when a custom resolver is required.
 // Returns *Service so callers can chain WithJWETokenService before assigning to the port interface.
+// Returns an error if config validation fails (e.g. Mode set without ModeStrategy).
 func NewServiceWithClientResolver(
 	grantRepo ports.UserGrantRepository,
 	sessionRepo ports.UserSessionRepository,
 	clientResolver ports.ClientResolver,
 	config *OAuth2Config,
 	logger *slog.Logger,
-) *Service {
+) (*Service, error) {
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
 	return &Service{
 		grantRepo:      grantRepo,
 		sessionRepo:    sessionRepo,
 		clientResolver: clientResolver,
 		config:         config,
 		logger:         logger,
-	}
+	}, nil
 }
 
 // WithJWETokenService sets the JWE token service on the service.
