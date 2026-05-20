@@ -2,7 +2,9 @@ package consent
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/url"
 )
 
 // ErrorResponse represents an error response.
@@ -10,6 +12,20 @@ import (
 type ErrorResponse struct {
 	Error   string `json:"error"`
 	Message string `json:"message,omitempty"`
+}
+
+// validateRedirectURI returns nil only for relative URIs (no scheme or host).
+// Absolute URIs are always rejected — callers should silently ignore the
+// redirect_uri rather than returning an error to the client.
+func validateRedirectURI(rawURI string) error {
+	u, err := url.Parse(rawURI)
+	if err != nil {
+		return errors.New("redirect_uri is not parseable")
+	}
+	if u.Scheme != "" || u.Host != "" {
+		return errors.New("redirect_uri must be a relative path, not an absolute URL")
+	}
+	return nil
 }
 
 // writeBufferedJSON marshals data, then writes headers and body atomically.

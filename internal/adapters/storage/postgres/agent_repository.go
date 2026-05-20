@@ -149,20 +149,42 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		}
 	}
 
+	var permissionSetsJSON []byte
+	if len(agent.PermissionSets) > 0 {
+		permissionSetsJSON, err = json.Marshal(agent.PermissionSets)
+		if err != nil {
+			return storage.NewStorageError(
+				"CreateAgent",
+				storage.ErrorKindValidation,
+				err,
+				"failed to marshal permission_sets to JSON",
+			)
+		}
+	}
+
 	tx, err := r.adapter.db.BeginTx(execCtx, nil)
 	if err != nil {
 		return storage.NewStorageError("CreateAgent", storage.ErrorKindConnection, err, "failed to begin transaction")
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if len(agent.PermissionSets) > 0 {
+		psIDs := make([]id.PermissionSetID, len(agent.PermissionSets))
+		for i, aps := range agent.PermissionSets {
+			psIDs[i] = aps.PermissionSetID
+		}
+		if err = verifyPermissionSetExistenceInTx(execCtx, tx, psIDs); err != nil {
+			return err
+		}
+	}
+
 	_, err = tx.ExecContext(
 		execCtx,
 		`INSERT INTO agents (
 			id, client_id, external_id, display_name, description,
 			governance_url, user_documentation_url, agent_interface_url,
-			service_requirements, redirect_uris, allowed_scopes,
-			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+			service_requirements, permission_sets, redirect_uris, allowed_scopes, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
 		agent.ID,
 		agent.ClientID,
 		agent.ExternalID,
@@ -172,6 +194,7 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		agent.UserDocumentationURL,
 		agent.AgentInterfaceURL,
 		serviceReqsJSON,
+		permissionSetsJSON,
 		pq.Array(emptyIfNil(agent.RedirectURIs)),
 		pq.Array(emptyIfNil(agent.AllowedScopes)),
 		agent.CreatedAt,
@@ -199,7 +222,6 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 	if err := tx.Commit(); err != nil {
 		return storage.NewStorageError("CreateAgent", storage.ErrorKindConnection, err, "failed to commit transaction")
 	}
-
 	return nil
 }
 
@@ -234,14 +256,14 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
 	defer cancel()
 
-	var serviceReqsJSON []byte
+	var serviceReqsJSON, permissionSetsJSON []byte
+
 	agent := &storage.Agent{}
 	err := r.adapter.db.QueryRowContext(
 		queryCtx,
 		`SELECT id, client_id, external_id, display_name, description,
 		        governance_url, user_documentation_url, agent_interface_url,
-		        service_requirements, redirect_uris, allowed_scopes,
-		        created_at, updated_at
+		        service_requirements, permission_sets, redirect_uris, allowed_scopes, created_at, updated_at
 		 FROM agents
 		 WHERE id = $1`,
 		agentID,
@@ -255,6 +277,7 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 		&agent.UserDocumentationURL,
 		&agent.AgentInterfaceURL,
 		&serviceReqsJSON,
+		&permissionSetsJSON,
 		pq.Array(&agent.RedirectURIs),
 		pq.Array(&agent.AllowedScopes),
 		&agent.CreatedAt,
@@ -272,7 +295,23 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 
 	if len(serviceReqsJSON) > 0 {
 		if err := json.Unmarshal(serviceReqsJSON, &agent.ServiceRequirements); err != nil {
-			return nil, storage.NewStorageError("GetAgent", storage.ErrorKindValidation, err, "failed to unmarshal service_requirements from JSON")
+			return nil, storage.NewStorageError(
+				"GetAgent",
+				storage.ErrorKindValidation,
+				err,
+				"failed to unmarshal service_requirements from JSON",
+			)
+		}
+	}
+
+	if len(permissionSetsJSON) > 0 {
+		if err := json.Unmarshal(permissionSetsJSON, &agent.PermissionSets); err != nil {
+			return nil, storage.NewStorageError(
+				"GetAgent",
+				storage.ErrorKindValidation,
+				err,
+				"failed to unmarshal permission_sets from JSON",
+			)
 		}
 	}
 
@@ -333,6 +372,19 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		}
 	}
 
+	var permissionSetsJSON []byte
+	if len(agent.PermissionSets) > 0 {
+		permissionSetsJSON, err = json.Marshal(agent.PermissionSets)
+		if err != nil {
+			return storage.NewStorageError(
+				"UpdateAgent",
+				storage.ErrorKindValidation,
+				err,
+				"failed to marshal permission_sets to JSON",
+			)
+		}
+	}
+
 	tx, err := r.adapter.db.BeginTx(execCtx, nil)
 	if err != nil {
 		return storage.NewStorageError("UpdateAgent", storage.ErrorKindConnection, err, "failed to begin transaction")
@@ -350,9 +402,10 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		     user_documentation_url = $7,
 		     agent_interface_url = $8,
 		     service_requirements = $9,
-		     redirect_uris = $10,
-		     allowed_scopes = $11,
-		     updated_at = $12
+		     permission_sets = $10,
+		     redirect_uris = $11,
+		     allowed_scopes = $12,
+		     updated_at = $13
 		 WHERE id = $1`,
 		agent.ID,
 		agent.ClientID,
@@ -363,6 +416,7 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		agent.UserDocumentationURL,
 		agent.AgentInterfaceURL,
 		serviceReqsJSON,
+		permissionSetsJSON,
 		pq.Array(emptyIfNil(agent.RedirectURIs)),
 		pq.Array(emptyIfNil(agent.AllowedScopes)),
 		agent.UpdatedAt,
@@ -396,10 +450,19 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		return err
 	}
 
-	if err := tx.Commit(); err != nil {
-		return storage.NewStorageError("UpdateAgent", storage.ErrorKindConnection, err, "failed to commit transaction")
+	if len(agent.PermissionSets) > 0 {
+		psIDs := make([]id.PermissionSetID, len(agent.PermissionSets))
+		for i, aps := range agent.PermissionSets {
+			psIDs[i] = aps.PermissionSetID
+		}
+		if err = verifyPermissionSetExistenceInTx(execCtx, tx, psIDs); err != nil {
+			return err
+		}
 	}
 
+	if err = tx.Commit(); err != nil {
+		return storage.NewStorageError("UpdateAgent", storage.ErrorKindConnection, err, "failed to commit transaction")
+	}
 	return nil
 }
 
@@ -458,8 +521,7 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 		queryCtx,
 		`SELECT id, client_id, external_id, display_name, description,
 		        governance_url, user_documentation_url, agent_interface_url,
-		        service_requirements, redirect_uris, allowed_scopes,
-		        created_at, updated_at
+		        service_requirements, permission_sets, redirect_uris, allowed_scopes, created_at, updated_at
 		 FROM agents
 		 ORDER BY created_at DESC`,
 	)
@@ -474,12 +536,12 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 	var agents []*storage.Agent
 	for rows.Next() {
 		agent := &storage.Agent{}
-		var serviceReqsJSON []byte
+		var serviceReqsJSON, permissionSetsJSON []byte
 		if err := rows.Scan(
 			&agent.ID, &agent.ClientID, &agent.ExternalID,
 			&agent.DisplayName, &agent.Description,
 			&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
-			&serviceReqsJSON,
+			&serviceReqsJSON, &permissionSetsJSON,
 			pq.Array(&agent.RedirectURIs), pq.Array(&agent.AllowedScopes),
 			&agent.CreatedAt, &agent.UpdatedAt,
 		); err != nil {
@@ -488,6 +550,11 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 		if len(serviceReqsJSON) > 0 {
 			if err := json.Unmarshal(serviceReqsJSON, &agent.ServiceRequirements); err != nil {
 				return nil, storage.NewStorageError("ListAgents", storage.ErrorKindValidation, err, "failed to unmarshal service_requirements from JSON")
+			}
+		}
+		if len(permissionSetsJSON) > 0 {
+			if err := json.Unmarshal(permissionSetsJSON, &agent.PermissionSets); err != nil {
+				return nil, storage.NewStorageError("ListAgents", storage.ErrorKindValidation, err, "failed to unmarshal permission_sets from JSON")
 			}
 		}
 		agents = append(agents, agent)
@@ -576,14 +643,13 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
 	defer cancel()
 
-	var serviceReqsJSON []byte
+	var serviceReqsJSON, permissionSetsJSON []byte
 	agent := &storage.Agent{}
 	err := r.adapter.db.QueryRowContext(
 		queryCtx,
 		`SELECT id, client_id, external_id, display_name, description,
 		        governance_url, user_documentation_url, agent_interface_url,
-		        service_requirements, redirect_uris, allowed_scopes,
-		        created_at, updated_at
+		        service_requirements, permission_sets, redirect_uris, allowed_scopes, created_at, updated_at
 		 FROM agents
 		 WHERE client_id = $1`,
 		clientID,
@@ -591,7 +657,7 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 		&agent.ID, &agent.ClientID, &agent.ExternalID,
 		&agent.DisplayName, &agent.Description,
 		&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
-		&serviceReqsJSON,
+		&serviceReqsJSON, &permissionSetsJSON,
 		pq.Array(&agent.RedirectURIs), pq.Array(&agent.AllowedScopes),
 		&agent.CreatedAt, &agent.UpdatedAt,
 	)
@@ -607,7 +673,23 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 
 	if len(serviceReqsJSON) > 0 {
 		if err := json.Unmarshal(serviceReqsJSON, &agent.ServiceRequirements); err != nil {
-			return nil, storage.NewStorageError("GetAgentByClientID", storage.ErrorKindValidation, err, "failed to unmarshal service_requirements from JSON")
+			return nil, storage.NewStorageError(
+				"GetAgentByClientID",
+				storage.ErrorKindValidation,
+				err,
+				"failed to unmarshal service_requirements from JSON",
+			)
+		}
+	}
+
+	if len(permissionSetsJSON) > 0 {
+		if err := json.Unmarshal(permissionSetsJSON, &agent.PermissionSets); err != nil {
+			return nil, storage.NewStorageError(
+				"GetAgentByClientID",
+				storage.ErrorKindValidation,
+				err,
+				"failed to unmarshal permission_sets from JSON",
+			)
 		}
 	}
 
@@ -667,13 +749,13 @@ func (r *AgentRepository) GetByClientURI(ctx context.Context, uri string) (*stor
 	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
 	defer cancel()
 
-	var serviceReqsJSON []byte
+	var serviceReqsJSON, permissionSetsJSON []byte
 	agent := &storage.Agent{}
 	err := r.adapter.db.QueryRowContext(
 		queryCtx,
 		`SELECT a.id, a.client_id, a.external_id, a.display_name, a.description,
 		        a.governance_url, a.user_documentation_url, a.agent_interface_url,
-		        a.service_requirements, a.redirect_uris, a.allowed_scopes,
+		        a.service_requirements, a.permission_sets, a.redirect_uris, a.allowed_scopes,
 		        a.created_at, a.updated_at
 		 FROM agents a
 		 JOIN agent_client_uris acu ON acu.agent_id = a.id
@@ -683,7 +765,7 @@ func (r *AgentRepository) GetByClientURI(ctx context.Context, uri string) (*stor
 		&agent.ID, &agent.ClientID, &agent.ExternalID,
 		&agent.DisplayName, &agent.Description,
 		&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
-		&serviceReqsJSON,
+		&serviceReqsJSON, &permissionSetsJSON,
 		pq.Array(&agent.RedirectURIs), pq.Array(&agent.AllowedScopes),
 		&agent.CreatedAt, &agent.UpdatedAt,
 	)
@@ -700,6 +782,12 @@ func (r *AgentRepository) GetByClientURI(ctx context.Context, uri string) (*stor
 	if len(serviceReqsJSON) > 0 {
 		if err := json.Unmarshal(serviceReqsJSON, &agent.ServiceRequirements); err != nil {
 			return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindValidation, err, "failed to unmarshal service_requirements from JSON")
+		}
+	}
+
+	if len(permissionSetsJSON) > 0 {
+		if err := json.Unmarshal(permissionSetsJSON, &agent.PermissionSets); err != nil {
+			return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindValidation, err, "failed to unmarshal permission_sets from JSON")
 		}
 	}
 

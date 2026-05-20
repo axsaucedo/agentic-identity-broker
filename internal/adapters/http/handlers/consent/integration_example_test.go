@@ -46,7 +46,7 @@ func newIntegrationSessionTokenValidator() ports.SessionTokenValidator {
 func newIntegrationProviderService(t *testing.T) *thirdparty.ThirdpartyOAuth2ProviderService {
 	t.Helper()
 	repo := memorystorage.NewInMemoryThirdpartyOAuth2ProviderRepository()
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, testutil.NewTestEncryptionAdapter(t), nil, false, slog.Default())
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, testutil.NewTestEncryptionAdapter(t), nil, nil, false, slog.Default())
 }
 
 func newGitHubServiceEntity() *model.ThirdpartyOAuth2ProviderEntity {
@@ -101,7 +101,7 @@ func TestIntegration_GetAgentDetail(t *testing.T) {
 		t.Fatalf("failed to create service: %v", err)
 	}
 
-	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, memorystorage.NewInMemoryUserSessionRepository(), slog.Default())
+	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, memorystorage.NewInMemoryUserSessionRepository(), nil, slog.Default())
 	handler := consent.NewAgentDetailHandler(consentSvc, nil, newIntegrationSessionTokenValidator())
 
 	reqCtx := principal.WithPrincipal(ctx, principalValue)
@@ -149,7 +149,7 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 	principalValue := "user@example.com"
 	testAgentID := id.NewAgentID()
 	testGrantID := id.NewGrantID()
-	githubServiceID := id.NewServiceID()
+	testPermissionSetID := id.NewPermissionSetID()
 
 	agent := &storage.Agent{
 		ID:          testAgentID,
@@ -165,25 +165,20 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 
 	validUntil := time.Now().Add(30 * 24 * time.Hour)
 	grant := &storage.UserGrant{
-		ID:         testGrantID,
-		Principal:  id.Principal(principalValue),
-		AgentID:    testAgentID,
-		ValidUntil: &validUntil,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: githubServiceID,
-				Scopes:                    []string{"read:user", "repo"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:                    testGrantID,
+		Principal:             id.Principal(principalValue),
+		AgentID:               testAgentID,
+		ValidUntil:            &validUntil,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: testPermissionSetID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 	if err := grantRepo.Create(ctx, grant); err != nil {
 		t.Fatalf("failed to create grant: %v", err)
 	}
 
-	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
-	handler := consent.NewAgentGrantsHandler(consentSvc, nil)
+	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, nil, nil, slog.Default())
+	handler := consent.NewGrantsHandler(consentSvc, nil, newIntegrationSessionTokenValidator())
 
 	reqCtx := principal.WithPrincipal(ctx, principalValue)
 	rctx := chi.NewRouteContext()
@@ -194,13 +189,15 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 	req = req.WithContext(reqCtx)
 
 	rr := httptest.NewRecorder()
-	handler.GetAgentGrants(rr, req)
+	handler.GetGrant(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var response consent.GetAgentGrantsResponse
+	var response struct {
+		Data *consent.GrantResponse `json:"data"`
+	}
 	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
@@ -214,11 +211,11 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 	if response.Data.Principal != principalValue {
 		t.Errorf("expected principal %q, got %q", principalValue, response.Data.Principal)
 	}
-	if len(response.Data.DelegatedOAuth2Tokens) != 1 {
-		t.Fatalf("expected 1 delegated token, got %d", len(response.Data.DelegatedOAuth2Tokens))
+	if len(response.Data.GrantedPermissionSets) != 1 {
+		t.Fatalf("expected 1 permission set, got %d", len(response.Data.GrantedPermissionSets))
 	}
-	if response.Data.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID != githubServiceID.String() {
-		t.Errorf("expected service ID %q, got %q", githubServiceID.String(), response.Data.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
+	if _, ok := response.Data.GrantedPermissionSets[testPermissionSetID.String()]; !ok {
+		t.Errorf("expected permission set ID %q to be present", testPermissionSetID.String())
 	}
 }
 
@@ -300,24 +297,19 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 
 	validUntil := time.Now().Add(30 * 24 * time.Hour)
 	existingGrant := &storage.UserGrant{
-		ID:         testGrantID,
-		Principal:  id.Principal(principalValue),
-		AgentID:    testAgentID,
-		ValidUntil: &validUntil,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: githubServiceID,
-				Scopes:                    []string{"read:user"},
-			},
-		},
-		CreatedAt: time.Now().Add(-7 * 24 * time.Hour),
-		UpdatedAt: time.Now().Add(-7 * 24 * time.Hour),
+		ID:                    testGrantID,
+		Principal:             id.Principal(principalValue),
+		AgentID:               testAgentID,
+		ValidUntil:            &validUntil,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now().Add(-7 * 24 * time.Hour),
+		UpdatedAt:             time.Now().Add(-7 * 24 * time.Hour),
 	}
 	if err := grantRepo.Create(ctx, existingGrant); err != nil {
 		t.Fatalf("failed to create grant: %v", err)
 	}
 
-	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, memorystorage.NewInMemoryUserSessionRepository(), slog.Default())
+	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, memorystorage.NewInMemoryUserSessionRepository(), nil, slog.Default())
 
 	t.Run("GetAgentDetail", func(t *testing.T) {
 		handler := consent.NewAgentDetailHandler(consentSvc, nil, newIntegrationSessionTokenValidator())
@@ -355,7 +347,7 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 	})
 
 	t.Run("GetAgentGrants", func(t *testing.T) {
-		handler := consent.NewAgentGrantsHandler(consentSvc, nil)
+		handler := consent.NewGrantsHandler(consentSvc, nil, newIntegrationSessionTokenValidator())
 
 		reqCtx := principal.WithPrincipal(context.Background(), principalValue)
 		rctx := chi.NewRouteContext()
@@ -366,13 +358,15 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 		req = req.WithContext(reqCtx)
 
 		rr := httptest.NewRecorder()
-		handler.GetAgentGrants(rr, req)
+		handler.GetGrant(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Fatalf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
 		}
 
-		var response consent.GetAgentGrantsResponse
+		var response struct {
+			Data *consent.GrantResponse `json:"data"`
+		}
 		if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
@@ -383,8 +377,8 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 		if response.Data.AgentID != testAgentID.String() {
 			t.Errorf("expected agent ID %q, got %q", testAgentID.String(), response.Data.AgentID)
 		}
-		if len(response.Data.DelegatedOAuth2Tokens) != 1 {
-			t.Fatalf("expected 1 delegated token, got %d", len(response.Data.DelegatedOAuth2Tokens))
+		if len(response.Data.GrantedPermissionSets) != 1 {
+			t.Fatalf("expected 1 delegated token, got %d", len(response.Data.GrantedPermissionSets))
 		}
 	})
 }

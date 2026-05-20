@@ -1595,6 +1595,7 @@ func createOAuth2SessionService(
 		serviceRepo,
 		encryption,
 		nil,
+		nil,
 		false,
 		slog.Default(),
 	)

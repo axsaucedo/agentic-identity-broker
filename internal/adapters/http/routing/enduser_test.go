@@ -80,7 +80,9 @@ func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
 		Build()
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		require.NoError(t, application.ShutdownTelemetry(context.Background()))
+		if application.Shutdown != nil {
+			require.NoError(t, application.Shutdown(context.Background()))
+		}
 	})
 
 	router := httpadapter.NewHandler(
@@ -105,7 +107,7 @@ func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
 func mintCSRFCookie(t *testing.T, router http.Handler, agentID, principal, remoteAddr string) *http.Cookie {
 	t.Helper()
 
-	getReq := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID+"/grants", nil)
+	getReq := httptest.NewRequest(http.MethodGet, "/api/consent/agents/"+agentID+"/grants", nil)
 	getReq.Header.Set("X-Remote-User", principal)
 	getReq.RemoteAddr = remoteAddr
 
@@ -129,13 +131,13 @@ func newGrantRequest(t *testing.T, agentID string) *http.Request {
 	t.Helper()
 
 	postBody, err := json.Marshal(map[string]any{
-		"delegated_oauth2_tokens": []any{},
+		"granted_permission_sets": map[string][]string{},
 	})
 	require.NoError(t, err)
 
 	return httptest.NewRequest(
 		http.MethodPost,
-		"/api/consent/agent/"+agentID+"/grants",
+		"/api/consent/agents/"+agentID+"/grants",
 		bytes.NewReader(postBody),
 	)
 }

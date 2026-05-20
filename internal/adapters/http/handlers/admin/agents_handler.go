@@ -20,21 +20,31 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// PermissionSetValidator is an interface for validating permission set IDs
+// and resolving permission sets for coverage invariant checks.
+// Implemented by *permissionset.Service.
+type PermissionSetValidator interface {
+	ValidateIDs(ctx context.Context, ids []id.PermissionSetID) error
+	GetByIDs(ctx context.Context, ids []id.PermissionSetID) ([]*storage.PermissionSet, error)
+}
+
 // AgentsHandler handles HTTP requests for agent CRUD operations.
 type AgentsHandler struct {
 	agentService    *agents.Service
 	providerService *thirdparty.ThirdpartyOAuth2ProviderService
+	psService       PermissionSetValidator
 	logger          *slog.Logger
 }
 
 // NewAgentsHandler creates a new agents handler.
-func NewAgentsHandler(agentService *agents.Service, providerService *thirdparty.ThirdpartyOAuth2ProviderService, logger *slog.Logger) *AgentsHandler {
+func NewAgentsHandler(agentService *agents.Service, providerService *thirdparty.ThirdpartyOAuth2ProviderService, psService PermissionSetValidator, logger *slog.Logger) *AgentsHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &AgentsHandler{
 		agentService:    agentService,
 		providerService: providerService,
+		psService:       psService,
 		logger:          logger,
 	}
 }
@@ -44,6 +54,12 @@ type ServiceRequirementRequest struct {
 	ServiceID       string   `json:"service_id"`
 	RequirementType string   `json:"requirement_type"`
 	RequiredScopes  []string `json:"required_scopes"`
+}
+
+// PermissionSetRequest represents a permission set declaration in the request.
+type PermissionSetRequest struct {
+	PermissionSetID string `json:"permission_set_id"`
+	RequirementType string `json:"requirement_type"`
 }
 
 // AgentRequest represents the request body for creating/updating an agent.
@@ -56,6 +72,7 @@ type AgentRequest struct {
 	UserDocumentationURL *string                     `json:"user_documentation_url,omitempty"`
 	AgentInterfaceURL    *string                     `json:"agent_interface_url,omitempty"`
 	ServiceRequirements  []ServiceRequirementRequest `json:"service_requirements,omitempty"`
+	PermissionSets       []PermissionSetRequest      `json:"permission_sets,omitempty"`
 	RedirectURIs         []string                    `json:"redirect_uris,omitempty"`
 	AllowedScopes        []string                    `json:"allowed_scopes,omitempty"`
 	ClientURIs           []string                    `json:"client_uris,omitempty"`
@@ -69,22 +86,29 @@ type ServiceRequirementResponse struct {
 	RequiredScopes  []string `json:"required_scopes"`
 }
 
+// PermissionSetDeclarationResponse represents a permission set declaration in the response.
+type PermissionSetDeclarationResponse struct {
+	PermissionSetID string `json:"permission_set_id"`
+	RequirementType string `json:"requirement_type"`
+}
+
 // AgentResponse represents the response body for agent operations.
 type AgentResponse struct {
-	ID                   string                       `json:"id"`
-	ClientID             *string                      `json:"client_id,omitempty"`
-	ExternalID           *string                      `json:"external_id,omitempty"`
-	DisplayName          string                       `json:"display_name"`
-	Description          string                       `json:"description"`
-	GovernanceURL        *string                      `json:"governance_url,omitempty"`
-	UserDocumentationURL *string                      `json:"user_documentation_url,omitempty"`
-	AgentInterfaceURL    *string                      `json:"agent_interface_url,omitempty"`
-	ServiceRequirements  []ServiceRequirementResponse `json:"service_requirements,omitempty"`
-	RedirectURIs         []string                     `json:"redirect_uris,omitempty"`
-	AllowedScopes        []string                     `json:"allowed_scopes,omitempty"`
-	ClientURIs           []string                     `json:"client_uris,omitempty"`
-	CreatedAt            string                       `json:"created_at"`
-	UpdatedAt            string                       `json:"updated_at"`
+	ID                   string                             `json:"id"`
+	ClientID             *string                            `json:"client_id,omitempty"`
+	ExternalID           *string                            `json:"external_id,omitempty"`
+	DisplayName          string                             `json:"display_name"`
+	Description          string                             `json:"description"`
+	GovernanceURL        *string                            `json:"governance_url,omitempty"`
+	UserDocumentationURL *string                            `json:"user_documentation_url,omitempty"`
+	AgentInterfaceURL    *string                            `json:"agent_interface_url,omitempty"`
+	ServiceRequirements  []ServiceRequirementResponse       `json:"service_requirements,omitempty"`
+	PermissionSets       []PermissionSetDeclarationResponse `json:"permission_sets,omitempty"`
+	RedirectURIs         []string                           `json:"redirect_uris,omitempty"`
+	AllowedScopes        []string                           `json:"allowed_scopes,omitempty"`
+	ClientURIs           []string                           `json:"client_uris,omitempty"`
+	CreatedAt            string                             `json:"created_at"`
+	UpdatedAt            string                             `json:"updated_at"`
 }
 
 // ErrorResponse represents an error response.
@@ -104,10 +128,25 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Convert and validate permission sets (FR-006: fail fast before any repository calls)
+	permissionSets, err := h.convertPermissionSetRequests(ctx, req.PermissionSets)
+	if err != nil {
+		h.logger.Warn("permission set validation failed", "error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
 	serviceReqs, err := h.convertServiceRequirements(req.ServiceRequirements)
 	if err != nil {
 		h.logger.Warn("invalid service requirements", "error", err)
 		h.writeError(w, http.StatusBadRequest, "invalid service requirements", err.Error())
+		return
+	}
+
+	// FR-019: Validate that every SR service_id is covered by at least one PS ServiceScope
+	if err := h.validateServiceRequirementsCoverage(ctx, serviceReqs, permissionSets); err != nil {
+		h.logger.Warn("FR-019 coverage invariant violated", "error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
 	}
 
@@ -127,6 +166,7 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		UserDocumentationURL: req.UserDocumentationURL,
 		AgentInterfaceURL:    req.AgentInterfaceURL,
 		ServiceRequirements:  serviceReqs,
+		PermissionSets:       permissionSets,
 		RedirectURIs:         req.RedirectURIs,
 		AllowedScopes:        req.AllowedScopes,
 		ClientURIs:           req.ClientURIs,
@@ -224,6 +264,24 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Convert and validate permission sets
+	permissionSets, err := h.convertPermissionSetRequests(ctx, req.PermissionSets)
+	if err != nil {
+		h.logger.Warn("permission set validation failed", "error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	// FR-019: Validate that every SR service_id is covered by at least one PS ServiceScope
+	if err := h.validateServiceRequirementsCoverage(ctx, serviceReqs, permissionSets); err != nil {
+		h.logger.Warn("FR-019 coverage invariant violated", "error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	// Enforce client URI cardinality on admin writes. Validate() (called by the storage
+	// adapter on Update) skips cardinality to allow CIMD snapshot refreshes — so this
+	// explicit check is required for admin mutations.
 	if err := storage.ValidateClientURIsForWrite(req.ClientURIs); err != nil {
 		h.logger.Warn("client_uris validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
@@ -239,6 +297,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		UserDocumentationURL: req.UserDocumentationURL,
 		AgentInterfaceURL:    req.AgentInterfaceURL,
 		ServiceRequirements:  serviceReqs,
+		PermissionSets:       permissionSets,
 		RedirectURIs:         req.RedirectURIs,
 		AllowedScopes:        req.AllowedScopes,
 		ClientURIs:           req.ClientURIs,
@@ -372,6 +431,17 @@ func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMa
 		}
 	}
 
+	// Convert permission sets
+	if len(agent.PermissionSets) > 0 {
+		resp.PermissionSets = make([]PermissionSetDeclarationResponse, len(agent.PermissionSets))
+		for i, ps := range agent.PermissionSets {
+			resp.PermissionSets[i] = PermissionSetDeclarationResponse{
+				PermissionSetID: ps.PermissionSetID.String(),
+				RequirementType: ps.RequirementType.String(),
+			}
+		}
+	}
+
 	return resp, nil
 }
 
@@ -401,6 +471,44 @@ func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRe
 	}
 
 	return result, nil
+}
+
+// convertPermissionSetRequests converts request DTOs to domain entries and validates all IDs exist.
+// When the permission set service is available (psService != nil), both an omitted field (nil)
+// and an explicit empty array are rejected per FR-006 — at least one entry is required.
+// Returns an error if any ID is invalid or not found.
+func (h *AgentsHandler) convertPermissionSetRequests(ctx context.Context, reqs []PermissionSetRequest) ([]storage.AgentPermissionSetEntry, error) {
+	if h.psService != nil && len(reqs) == 0 {
+		return nil, fmt.Errorf("at least one permission set entry is required")
+	}
+	if len(reqs) == 0 {
+		return nil, nil
+	}
+	entries := make([]storage.AgentPermissionSetEntry, len(reqs))
+	for i, ps := range reqs {
+		psID, err := id.ParsePermissionSetID(ps.PermissionSetID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid permission_set_id at index %d: %s", i, err.Error())
+		}
+		rt := storage.RequirementType(ps.RequirementType)
+		if !rt.Valid() {
+			return nil, fmt.Errorf("invalid requirement_type at index %d: %s", i, ps.RequirementType)
+		}
+		entries[i] = storage.AgentPermissionSetEntry{
+			PermissionSetID: psID,
+			RequirementType: rt,
+		}
+	}
+	if h.psService != nil && len(entries) > 0 {
+		ids := make([]id.PermissionSetID, len(entries))
+		for i, e := range entries {
+			ids[i] = e.PermissionSetID
+		}
+		if err := h.psService.ValidateIDs(ctx, ids); err != nil {
+			return nil, err
+		}
+	}
+	return entries, nil
 }
 
 // handleDomainError converts domain/storage errors to HTTP responses.
@@ -478,4 +586,46 @@ func clientIDToString(c *id.ClientID) *string {
 	}
 	s := c.String()
 	return &s
+}
+
+// validateServiceRequirementsCoverage enforces FR-019: every service_requirements[].service_id
+// must be covered by at least one permission set's ServiceScope.
+// Returns a descriptive error listing uncovered service IDs if the invariant is violated.
+func (h *AgentsHandler) validateServiceRequirementsCoverage(ctx context.Context, serviceReqs []storage.ServiceRequirement, psEntries []storage.AgentPermissionSetEntry) error {
+	if len(serviceReqs) == 0 || h.psService == nil {
+		return nil
+	}
+
+	// Resolve permission sets to get their ServiceScopes
+	psIDs := make([]id.PermissionSetID, len(psEntries))
+	for i, e := range psEntries {
+		psIDs[i] = e.PermissionSetID
+	}
+
+	resolvedSets, err := h.psService.GetByIDs(ctx, psIDs)
+	if err != nil {
+		return fmt.Errorf("failed to resolve permission sets for coverage check: %w", err)
+	}
+
+	// Collect all service IDs covered by any PS ServiceScope
+	coveredServiceIDs := make(map[id.ServiceID]bool)
+	for _, ps := range resolvedSets {
+		for _, ss := range ps.ServiceScopes {
+			coveredServiceIDs[ss.ServiceID] = true
+		}
+	}
+
+	// Check every SR service_id is covered
+	var uncoveredIDs []string
+	for _, sr := range serviceReqs {
+		if !coveredServiceIDs[sr.ServiceID] {
+			uncoveredIDs = append(uncoveredIDs, sr.ServiceID.String())
+		}
+	}
+
+	if len(uncoveredIDs) > 0 {
+		return fmt.Errorf("service_requirements reference services not covered by any permission set: %v", uncoveredIDs)
+	}
+
+	return nil
 }

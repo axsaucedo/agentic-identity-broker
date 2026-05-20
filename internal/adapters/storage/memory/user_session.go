@@ -84,7 +84,7 @@ func (r *InMemoryUserSessionRepository) FindByPrincipalAndService(ctx context.Co
 	return session, nil
 }
 
-// ListByPrincipal retrieves all sessions for a principal.
+// ListByPrincipal retrieves all sessions for a principal, including expired ones.
 func (r *InMemoryUserSessionRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]*storage.UserSession, error) {
 	if principal.IsZero() {
 		return nil, errors.New("principal required")
@@ -96,6 +96,24 @@ func (r *InMemoryUserSessionRepository) ListByPrincipal(ctx context.Context, pri
 	var sessions []*storage.UserSession
 	for _, session := range r.sessions {
 		if session.Principal == principal {
+			sessions = append(sessions, session)
+		}
+	}
+	return sessions, nil
+}
+
+// ListActiveByPrincipal retrieves only non-expired sessions for a principal.
+func (r *InMemoryUserSessionRepository) ListActiveByPrincipal(ctx context.Context, principal id.Principal) ([]*storage.UserSession, error) {
+	if principal.IsZero() {
+		return nil, errors.New("principal required")
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var sessions []*storage.UserSession
+	for _, session := range r.sessions {
+		if session.Principal == principal && !session.IsExpired() {
 			sessions = append(sessions, session)
 		}
 	}

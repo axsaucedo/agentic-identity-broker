@@ -19,15 +19,96 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/permissionset"
 	storagedomain "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 )
 
 // newTestProviderService wraps a repository in a ThirdpartyOAuth2ProviderService
 // with passthrough encryption for use in domain-layer tests.
 func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &MockEncryption{}, nil, false, nil)
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &MockEncryption{}, nil, nil, false, nil)
+}
+
+// newMockPermissionSetService creates a PermissionSetService with mock for testing
+// For basic tests, returns nil ValidateIDs error (all IDs valid)
+func newMockPermissionSetService() *permissionset.Service {
+	// Create an in-memory repository for permission sets
+	psRepo := &MockPermissionSetRepository{}
+	svc := permissionset.NewPermissionSetService(psRepo, &MockGrantRepository{}, slog.Default())
+	return svc
+}
+
+// MockPermissionSetRepository is a hand-rolled mock for testing
+type MockPermissionSetRepository struct {
+	psMap map[id.PermissionSetID]*storagedomain.PermissionSet
+}
+
+func (m *MockPermissionSetRepository) Get(ctx context.Context, psID id.PermissionSetID) (*storagedomain.PermissionSet, error) {
+	if m.psMap == nil {
+		return nil, ports.ErrNotFound
+	}
+	if ps, ok := m.psMap[psID]; ok {
+		return ps, nil
+	}
+	return nil, ports.ErrNotFound
+}
+
+// GetByIDs returns partial results: IDs not in psMap are silently absent.
+// Matches the ports.PermissionSetRepository contract: "IDs not found are silently absent (caller validates)."
+func (m *MockPermissionSetRepository) GetByIDs(ctx context.Context, ids []id.PermissionSetID) ([]*storagedomain.PermissionSet, error) {
+	if m.psMap == nil {
+		return []*storagedomain.PermissionSet{}, nil
+	}
+	var results []*storagedomain.PermissionSet
+	for _, id := range ids {
+		if ps, ok := m.psMap[id]; ok {
+			results = append(results, ps)
+		}
+	}
+	return results, nil
+}
+
+func (m *MockPermissionSetRepository) Create(ctx context.Context, ps *storagedomain.PermissionSet) error {
+	if m.psMap == nil {
+		m.psMap = make(map[id.PermissionSetID]*storagedomain.PermissionSet)
+	}
+	m.psMap[ps.ID] = ps
+	return nil
+}
+
+func (m *MockPermissionSetRepository) Update(ctx context.Context, ps *storagedomain.PermissionSet) error {
+	if m.psMap == nil {
+		return ports.ErrNotFound
+	}
+	m.psMap[ps.ID] = ps
+	return nil
+}
+
+func (m *MockPermissionSetRepository) Delete(ctx context.Context, psID id.PermissionSetID) error {
+	if m.psMap == nil {
+		return nil
+	}
+	delete(m.psMap, psID)
+	return nil
+}
+
+func (m *MockPermissionSetRepository) List(ctx context.Context, serviceID id.ServiceID) ([]*storagedomain.PermissionSet, error) {
+	return []*storagedomain.PermissionSet{}, nil
+}
+
+func (m *MockPermissionSetRepository) CountAgentsReferencingPermissionSet(ctx context.Context, psID id.PermissionSetID) (int, error) {
+	return 0, nil
+}
+
+func (m *MockPermissionSetRepository) CountGrantsReferencingPermissionSet(_ context.Context, _ id.PermissionSetID) (int, error) {
+	return 0, nil
+}
+
+func (m *MockPermissionSetRepository) CountPermissionSetsForService(ctx context.Context, serviceID id.ServiceID) (int, error) {
+	return 0, nil
 }
 
 // newMockConsentService creates a consent.Service with mock repositories for testing
@@ -45,6 +126,7 @@ func newMockConsentService() *consent.Service {
 				UpdatedAt:  time.Now(),
 			},
 		},
+		nil,
 		nil,
 		slog.Default(),
 	)
@@ -236,6 +318,10 @@ func (m *MockGrantRepository) DeleteByPrincipalAndAgentID(ctx context.Context, p
 	return m.err
 }
 
+func (m *MockGrantRepository) CountGrantsReferencingPermissionSet(_ context.Context, _ id.PermissionSetID) (int, error) {
+	return 0, nil
+}
+
 type MockSessionRepository struct {
 	session *storagedomain.UserSession
 	err     error
@@ -281,7 +367,12 @@ func (m *MockSessionRepository) ListByPrincipal(ctx context.Context, principal i
 	return nil, nil
 }
 
+func (m *MockSessionRepository) ListActiveByPrincipal(ctx context.Context, principal id.Principal) ([]*storagedomain.UserSession, error) {
+	return nil, nil
+}
+
 // NewTokenExchangeServiceForTest creates a TokenExchangeService for testing
+// permissionSetService will be created automatically if nil
 func NewTokenExchangeServiceForTest(
 	jwtValidator *JWTValidator,
 	celEvaluator *CELEvaluator,
@@ -291,12 +382,14 @@ func NewTokenExchangeServiceForTest(
 	agentRepository ports.AgentRepository,
 	config *ports.TokenExchangeConfig,
 ) (*TokenExchangeService, error) {
+	psService := newMockPermissionSetService()
 	return NewTokenExchangeService(
 		jwtValidator,
 		celEvaluator,
 		providerService,
 		oauth2SessionService,
 		consentService,
+		psService,
 		agentRepository,
 		config,
 	)
@@ -603,15 +696,10 @@ func TestGrantVerification_ExpiredGrant(t *testing.T) {
 	// Create an expired grant
 	expiredTime := time.Now().UTC().Add(-1 * time.Hour)
 	expiredGrant := &storagedomain.UserGrant{
-		Principal:  id.Principal("user@example.com"),
-		AgentID:    id.NewAgentID(),
-		ValidUntil: &expiredTime,
-		DelegatedOAuth2Tokens: []storagedomain.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: id.NewServiceID(),
-				Scopes:                    []string{"read", "write"},
-			},
-		},
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               id.NewAgentID(),
+		ValidUntil:            &expiredTime,
+		GrantedPermissionSets: []storagedomain.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 
 	_, err := NewTokenExchangeServiceForTest(
@@ -641,15 +729,10 @@ func TestGrantVerification_ActiveGrant(t *testing.T) {
 	// Create an active (non-expired) grant
 	futureTime := time.Now().UTC().Add(24 * time.Hour)
 	activeGrant := &storagedomain.UserGrant{
-		Principal:  id.Principal("user@example.com"),
-		AgentID:    id.NewAgentID(),
-		ValidUntil: &futureTime,
-		DelegatedOAuth2Tokens: []storagedomain.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: id.NewServiceID(),
-				Scopes:                    []string{"read", "write"},
-			},
-		},
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               id.NewAgentID(),
+		ValidUntil:            &futureTime,
+		GrantedPermissionSets: []storagedomain.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 
 	_, err := NewTokenExchangeServiceForTest(
@@ -733,6 +816,298 @@ func TestMockOAuth2SessionService_NewMethods(t *testing.T) {
 		assert.Equal(t, "custom-token", token)
 		assert.Equal(t, customSession, session)
 	})
+}
+
+// TestResolveEffectiveScopes_ScopeUnion tests T046: scope union for two PSets covering same service
+func TestResolveEffectiveScopes_ScopeUnion(t *testing.T) {
+	t.Parallel()
+
+	svcA := id.NewServiceID()
+	ps1ID := id.NewPermissionSetID()
+	ps2ID := id.NewPermissionSetID()
+
+	// Create permission sets: PS1 has {svcA: ["read"]}, PS2 has {svcA: ["write"]}
+	psRepo := &MockPermissionSetRepository{
+		psMap: map[id.PermissionSetID]*storagedomain.PermissionSet{
+			ps1ID: {
+				ID:   ps1ID,
+				Name: "PS1",
+				ServiceScopes: []storagedomain.ServiceScope{
+					{ServiceID: svcA, Scopes: []string{"read"}, RequirementType: storagedomain.RequirementTypeOptional},
+				},
+			},
+			ps2ID: {
+				ID:   ps2ID,
+				Name: "PS2",
+				ServiceScopes: []storagedomain.ServiceScope{
+					{ServiceID: svcA, Scopes: []string{"write"}, RequirementType: storagedomain.RequirementTypeOptional},
+				},
+			},
+		},
+	}
+	psService := permissionset.NewPermissionSetService(psRepo, &MockGrantRepository{}, slog.Default())
+
+	// Agent SR with svcA: ["read", "write"]
+	agent := &storagedomain.Agent{
+		ServiceRequirements: []storagedomain.ServiceRequirement{
+			{ServiceID: svcA, RequiredScopes: []string{"read", "write"}},
+		},
+	}
+
+	// Grant includes both PS, both with svcA included
+	grant := &storagedomain.UserGrant{
+		GrantedPermissionSets: []storagedomain.GrantedPermissionSetEntry{
+			{PermissionSetID: ps1ID, IncludedServiceIDs: []id.ServiceID{svcA}},
+			{PermissionSetID: ps2ID, IncludedServiceIDs: []id.ServiceID{svcA}},
+		},
+	}
+
+	svc := &TokenExchangeService{permissionSetService: psService}
+	scopes, err := svc.resolveEffectiveScopes(context.Background(), grant, agent)
+	require.NoError(t, err)
+
+	// Scope union: read + write
+	assert.Contains(t, scopes, svcA)
+	assert.Len(t, scopes[svcA], 2)
+	assert.Contains(t, scopes[svcA], "read")
+	assert.Contains(t, scopes[svcA], "write")
+}
+
+// TestResolveEffectiveScopes_SRCeiling tests T046: SR scope ceiling intersection (FR-013)
+func TestResolveEffectiveScopes_SRCeiling(t *testing.T) {
+	t.Parallel()
+
+	svcA := id.NewServiceID()
+	ps1ID := id.NewPermissionSetID()
+
+	// PS1 has {svcA: ["read", "write", "admin"]}
+	psRepo := &MockPermissionSetRepository{
+		psMap: map[id.PermissionSetID]*storagedomain.PermissionSet{
+			ps1ID: {
+				ID:   ps1ID,
+				Name: "PS1",
+				ServiceScopes: []storagedomain.ServiceScope{
+					{ServiceID: svcA, Scopes: []string{"read", "write", "admin"}, RequirementType: storagedomain.RequirementTypeOptional},
+				},
+			},
+		},
+	}
+	psService := permissionset.NewPermissionSetService(psRepo, &MockGrantRepository{}, slog.Default())
+
+	// Agent SR with svcA: only ["read", "write"] — "admin" not in ceiling
+	agent := &storagedomain.Agent{
+		ServiceRequirements: []storagedomain.ServiceRequirement{
+			{ServiceID: svcA, RequiredScopes: []string{"read", "write"}},
+		},
+	}
+
+	grant := &storagedomain.UserGrant{
+		GrantedPermissionSets: []storagedomain.GrantedPermissionSetEntry{
+			{PermissionSetID: ps1ID, IncludedServiceIDs: []id.ServiceID{svcA}},
+		},
+	}
+
+	svc := &TokenExchangeService{permissionSetService: psService}
+	scopes, err := svc.resolveEffectiveScopes(context.Background(), grant, agent)
+	require.NoError(t, err)
+
+	// "admin" should be excluded by SR ceiling
+	assert.Contains(t, scopes, svcA)
+	assert.Contains(t, scopes[svcA], "read")
+	assert.Contains(t, scopes[svcA], "write")
+	assert.NotContains(t, scopes[svcA], "admin")
+}
+
+// TestResolveEffectiveScopes_PerServiceInclusion tests T046: only included services contribute scopes
+func TestResolveEffectiveScopes_PerServiceInclusion(t *testing.T) {
+	t.Parallel()
+
+	svcA := id.NewServiceID()
+	svcB := id.NewServiceID()
+	ps1ID := id.NewPermissionSetID()
+
+	// PS1 covers both svcA and svcB
+	psRepo := &MockPermissionSetRepository{
+		psMap: map[id.PermissionSetID]*storagedomain.PermissionSet{
+			ps1ID: {
+				ID:   ps1ID,
+				Name: "PS1",
+				ServiceScopes: []storagedomain.ServiceScope{
+					{ServiceID: svcA, Scopes: []string{"read"}, RequirementType: storagedomain.RequirementTypeOptional},
+					{ServiceID: svcB, Scopes: []string{"write"}, RequirementType: storagedomain.RequirementTypeOptional},
+				},
+			},
+		},
+	}
+	psService := permissionset.NewPermissionSetService(psRepo, &MockGrantRepository{}, slog.Default())
+
+	agent := &storagedomain.Agent{
+		ServiceRequirements: []storagedomain.ServiceRequirement{
+			{ServiceID: svcA, RequiredScopes: []string{"read"}},
+			{ServiceID: svcB, RequiredScopes: []string{"write"}},
+		},
+	}
+
+	// Grant only includes svcA, NOT svcB
+	grant := &storagedomain.UserGrant{
+		GrantedPermissionSets: []storagedomain.GrantedPermissionSetEntry{
+			{PermissionSetID: ps1ID, IncludedServiceIDs: []id.ServiceID{svcA}},
+		},
+	}
+
+	svc := &TokenExchangeService{permissionSetService: psService}
+	scopes, err := svc.resolveEffectiveScopes(context.Background(), grant, agent)
+	require.NoError(t, err)
+
+	// Only svcA should have scopes; svcB was not included
+	assert.Contains(t, scopes, svcA)
+	assert.Equal(t, []string{"read"}, scopes[svcA])
+	assert.NotContains(t, scopes, svcB)
+}
+
+// TestResolveEffectiveScopes_MultiPSCrossScopeCeiling tests scope union with SR ceiling across multiple PSets
+func TestResolveEffectiveScopes_MultiPSCrossScopeCeiling(t *testing.T) {
+	t.Parallel()
+
+	svcA := id.NewServiceID()
+	ps1ID := id.NewPermissionSetID()
+	ps2ID := id.NewPermissionSetID()
+
+	// PS1: {svcA: ["read", "admin"]}, PS2: {svcA: ["write", "delete"]}
+	psRepo := &MockPermissionSetRepository{
+		psMap: map[id.PermissionSetID]*storagedomain.PermissionSet{
+			ps1ID: {
+				ID:   ps1ID,
+				Name: "PS1",
+				ServiceScopes: []storagedomain.ServiceScope{
+					{ServiceID: svcA, Scopes: []string{"read", "admin"}, RequirementType: storagedomain.RequirementTypeOptional},
+				},
+			},
+			ps2ID: {
+				ID:   ps2ID,
+				Name: "PS2",
+				ServiceScopes: []storagedomain.ServiceScope{
+					{ServiceID: svcA, Scopes: []string{"write", "delete"}, RequirementType: storagedomain.RequirementTypeOptional},
+				},
+			},
+		},
+	}
+	psService := permissionset.NewPermissionSetService(psRepo, &MockGrantRepository{}, slog.Default())
+
+	// SR ceiling only allows read and write (excludes admin and delete)
+	agent := &storagedomain.Agent{
+		ServiceRequirements: []storagedomain.ServiceRequirement{
+			{ServiceID: svcA, RequiredScopes: []string{"read", "write"}},
+		},
+	}
+
+	grant := &storagedomain.UserGrant{
+		GrantedPermissionSets: []storagedomain.GrantedPermissionSetEntry{
+			{PermissionSetID: ps1ID, IncludedServiceIDs: []id.ServiceID{svcA}},
+			{PermissionSetID: ps2ID, IncludedServiceIDs: []id.ServiceID{svcA}},
+		},
+	}
+
+	svc := &TokenExchangeService{permissionSetService: psService}
+	scopes, err := svc.resolveEffectiveScopes(context.Background(), grant, agent)
+	require.NoError(t, err)
+
+	// Union of PS scopes: {read, admin, write, delete}
+	// After SR ceiling intersection: {read, write}
+	assert.Contains(t, scopes, svcA)
+	assert.Len(t, scopes[svcA], 2)
+	assert.Contains(t, scopes[svcA], "read")
+	assert.Contains(t, scopes[svcA], "write")
+	assert.NotContains(t, scopes[svcA], "admin")
+	assert.NotContains(t, scopes[svcA], "delete")
+}
+
+// TestResolveEffectiveScopes_NonSRServiceExcluded verifies FR-013: services present in a
+// granted PS but absent from the agent's service_requirements are excluded from effective scopes.
+func TestResolveEffectiveScopes_NonSRServiceExcluded(t *testing.T) {
+	t.Parallel()
+
+	svcA := id.NewServiceID()
+	svcB := id.NewServiceID() // in PS but NOT in agent SRs
+	ps1ID := id.NewPermissionSetID()
+
+	psRepo := &MockPermissionSetRepository{
+		psMap: map[id.PermissionSetID]*storagedomain.PermissionSet{
+			ps1ID: {
+				ID:   ps1ID,
+				Name: "PS1",
+				ServiceScopes: []storagedomain.ServiceScope{
+					{ServiceID: svcA, Scopes: []string{"read"}, RequirementType: storagedomain.RequirementTypeOptional},
+					{ServiceID: svcB, Scopes: []string{"admin"}, RequirementType: storagedomain.RequirementTypeOptional},
+				},
+			},
+		},
+	}
+	psService := permissionset.NewPermissionSetService(psRepo, &MockGrantRepository{}, slog.Default())
+
+	// Agent only declares svcA as a service requirement — svcB is not declared
+	agent := &storagedomain.Agent{
+		ServiceRequirements: []storagedomain.ServiceRequirement{
+			{ServiceID: svcA, RequiredScopes: []string{"read"}},
+		},
+	}
+
+	grant := &storagedomain.UserGrant{
+		GrantedPermissionSets: []storagedomain.GrantedPermissionSetEntry{
+			{PermissionSetID: ps1ID, IncludedServiceIDs: []id.ServiceID{svcA, svcB}},
+		},
+	}
+
+	svc := &TokenExchangeService{permissionSetService: psService}
+	scopes, err := svc.resolveEffectiveScopes(context.Background(), grant, agent)
+	require.NoError(t, err)
+
+	assert.Contains(t, scopes, svcA)
+	assert.Equal(t, []string{"read"}, scopes[svcA])
+	assert.NotContains(t, scopes, svcB)
+}
+
+func TestResolveEffectiveScopes_EmptySRCeiling_UsesPS(t *testing.T) {
+	t.Parallel()
+
+	// Agent with no service requirements — srCeiling will be empty.
+	// Consent validation treats all PS ServiceScopes as valid when SR is empty
+	// (see consent/service.go:415), so token exchange must be consistent: PS-derived
+	// scopes are used directly without SR-ceiling filtering.
+	ps1ID := id.NewPermissionSetID()
+	svcA := id.NewServiceID()
+
+	psRepo := &MockPermissionSetRepository{
+		psMap: map[id.PermissionSetID]*storagedomain.PermissionSet{
+			ps1ID: {
+				ID:   ps1ID,
+				Name: "PS1",
+				ServiceScopes: []storagedomain.ServiceScope{
+					{ServiceID: svcA, Scopes: []string{"read"}, RequirementType: storagedomain.RequirementTypeOptional},
+				},
+			},
+		},
+	}
+	psService := permissionset.NewPermissionSetService(psRepo, &MockGrantRepository{}, slog.Default())
+
+	agent := &storagedomain.Agent{
+		ServiceRequirements: nil, // no SRs — PS scopes used directly as effective scopes
+		PermissionSets: []storagedomain.AgentPermissionSetEntry{
+			{PermissionSetID: ps1ID, RequirementType: storagedomain.RequirementTypeMandatory},
+		},
+	}
+
+	grant := &storagedomain.UserGrant{
+		GrantedPermissionSets: []storagedomain.GrantedPermissionSetEntry{
+			{PermissionSetID: ps1ID, IncludedServiceIDs: []id.ServiceID{svcA}},
+		},
+	}
+
+	svc := &TokenExchangeService{permissionSetService: psService}
+	scopes, err := svc.resolveEffectiveScopes(context.Background(), grant, agent)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"read"}, scopes[svcA],
+		"PS scopes should flow through directly when agent has no service_requirements")
 }
 
 // --- T029: Agent lookup unit tests (Feature 021 US2) ---
@@ -843,6 +1218,7 @@ func newServiceForStep9Test(t *testing.T, keySet jwk.Set, agentRepo ports.AgentR
 		&MockAgentRepository{},
 		newTestProviderService(&MockServiceRepository{}),
 		&MockGrantRepository{err: ports.ErrNotFound},
+		nil,
 		nil,
 		slog.Default(),
 	)
@@ -960,4 +1336,293 @@ func TestExchange_AgentLookup_InvalidUUIDReturnsInvalidRequest(t *testing.T) {
 	require.True(t, ok, "error must be a *TokenExchangeError, got %T: %v", err, err)
 	assert.Equal(t, "invalid_request", tokenErr.Code(),
 		"non-UUID agentClientID must return invalid_request (not access_denied)")
+}
+
+// singleAgentRepo is a minimal ports.AgentRepository that returns one fixed agent.
+type singleAgentRepo struct {
+	agentID id.AgentID
+	agent   *storagedomain.Agent
+}
+
+func (r *singleAgentRepo) Get(_ context.Context, agentID id.AgentID) (*storagedomain.Agent, error) {
+	if agentID == r.agentID {
+		return r.agent, nil
+	}
+	return nil, ports.ErrNotFound
+}
+
+func (r *singleAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storagedomain.Agent, error) {
+	return nil, ports.ErrNotFound
+}
+
+func (r *singleAgentRepo) GetByClientURI(_ context.Context, _ string) (*storagedomain.Agent, error) {
+	return nil, ports.ErrNotFound
+}
+func (r *singleAgentRepo) Create(_ context.Context, _ *storagedomain.Agent) error { return nil }
+func (r *singleAgentRepo) Update(_ context.Context, _ *storagedomain.Agent) error { return nil }
+func (r *singleAgentRepo) Delete(_ context.Context, _ id.AgentID) error           { return nil }
+func (r *singleAgentRepo) List(_ context.Context) ([]*storagedomain.Agent, error) { return nil, nil }
+func (r *singleAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {
+	return false, nil
+}
+
+// TestExchange_EmptyGrantGuard_FiresBeforeSessionLookup is a regression test for the guard
+// that rejects a legacy grant with no GrantedPermissionSets when the agent has SRs. It
+// verifies the error is invalid_grant and that the guard fires before GetValidAccessToken —
+// if the guard position were moved after the session call, the Exchange would fail with a
+// session-related error (not invalid_grant) because the empty OAuth2SessionService would
+// return an error first.
+func TestExchange_EmptyGrantGuard_FiresBeforeSessionLookup(t *testing.T) {
+	t.Parallel()
+
+	privateKey, keySet := generateTestRSAKeySet(t)
+	agentUUID := id.NewAgentID()
+	svcID := id.NewServiceID()
+
+	agent := &storagedomain.Agent{
+		ID:          agentUUID,
+		ClientID:    ptr.To(id.ClientID("test-agent-client")),
+		DisplayName: "Test Agent",
+		ServiceRequirements: []storagedomain.ServiceRequirement{
+			{ServiceID: svcID, RequirementType: storagedomain.RequirementTypeMandatory, RequiredScopes: []string{"read"}},
+		},
+		PermissionSets: []storagedomain.AgentPermissionSetEntry{
+			{PermissionSetID: id.NewPermissionSetID(), RequirementType: storagedomain.RequirementTypeMandatory},
+		},
+	}
+
+	futureTime := time.Now().Add(time.Hour)
+	grant := &storagedomain.UserGrant{
+		ID:                    id.NewGrantID(),
+		AgentID:               agentUUID,
+		Principal:             id.Principal("user@example.com"),
+		ValidUntil:            &futureTime,
+		GrantedPermissionSets: nil, // no PS entries — legacy/migrated grant
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
+	}
+
+	agentRepo := &singleAgentRepo{agentID: agentUUID, agent: agent}
+	grantRepo := &MockGrantRepository{grant: grant}
+	psRepo := &MockPermissionSetRepository{psMap: map[id.PermissionSetID]*storagedomain.PermissionSet{}}
+	psService := permissionset.NewPermissionSetService(psRepo, grantRepo, slog.Default())
+
+	providerEntity := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:                 svcID,
+		DisplayName:        "Test Service",
+		ClientID:           id.ClientID("svc-client"),
+		Secret:             model.NewEncryptedSecret([]byte("placeholder")),
+		ProtectedResources: []string{"https://api.example.com/resource"},
+	}
+
+	consentSvc := consent.NewService(
+		agentRepo,
+		newTestProviderService(&MockServiceRepository{}),
+		grantRepo,
+		nil,
+		nil,
+		slog.Default(),
+	)
+
+	jwtValidator, err := NewJWTValidator(
+		&MockJWKSProvider{keySet: keySet},
+		"https://auth.example.com",
+		"agentic-identity-broker",
+		60,
+	)
+	require.NoError(t, err)
+
+	celEvaluator, err := NewCELEvaluator(CELEvaluatorConfig{
+		PrincipalExpression:     "subject_token.sub",
+		AgentIDExpression:       "subject_token.azp",
+		AuthorizationExpression: "true",
+		EvaluationTimeout:       100 * time.Millisecond,
+	})
+	require.NoError(t, err)
+
+	svc := &TokenExchangeService{
+		jwtValidator:         jwtValidator,
+		celEvaluator:         celEvaluator,
+		providerService:      newTestProviderService(&MockServiceRepository{service: providerEntity}),
+		oauth2SessionService: &oauth2session.OAuth2SessionService{}, // nil internals — panics if called
+		consentService:       consentSvc,
+		agentRepository:      agentRepo,
+		permissionSetService: psService,
+		config: &ports.TokenExchangeConfig{
+			ClaimExtraction: ports.ClaimExtractionConfig{
+				PrincipalExpression: "subject_token.sub",
+				AgentIDExpression:   "subject_token.azp",
+			},
+			Authorization: ports.AuthorizationConfig{
+				Type: "cel",
+				CEL:  ports.CELAuthorizationConfig{Expression: "true"},
+			},
+		},
+	}
+
+	now := time.Now()
+	commonClaims := map[string]interface{}{
+		"iss": "https://auth.example.com",
+		"aud": "agentic-identity-broker",
+		"sub": "user@example.com",
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+	subjectClaims := map[string]interface{}{}
+	for k, v := range commonClaims {
+		subjectClaims[k] = v
+	}
+	subjectClaims["azp"] = agentUUID.String()
+
+	subjectToken := signServiceTestJWT(t, privateKey, subjectClaims)
+	clientAssertion := signServiceTestJWT(t, privateKey, commonClaims)
+
+	req := NewTokenExchangeRequest(
+		TokenExchangeGrantType,
+		subjectToken,
+		AccessTokenType,
+		clientAssertion,
+		JWTBearerType,
+		"https://api.example.com/resource",
+		"",
+	)
+
+	_, exchErr := svc.Exchange(context.Background(), req)
+
+	require.Error(t, exchErr)
+	tokenErr, ok := exchErr.(*TokenExchangeError)
+	require.True(t, ok, "error must be *TokenExchangeError, got %T: %v", exchErr, exchErr)
+	assert.Equal(t, "invalid_grant", tokenErr.Code(),
+		"empty-grant guard must fire before GetValidAccessToken and return invalid_grant")
+	assert.Contains(t, tokenErr.Description(), "re-consent",
+		"error description must mention re-consent")
+}
+
+// TestExchange_PSAgentNoSRs_EmptyGrantGuard checks that the empty-grant guard also fires
+// when the agent declares PermissionSets but has no ServiceRequirements and the grant has
+// no GrantedPermissionSets entries. This is the same post-consent-edit scenario but via
+// the PermissionSets declaration path rather than the ServiceRequirements path.
+func TestExchange_PSAgentNoSRs_EmptyGrantGuard(t *testing.T) {
+	t.Parallel()
+
+	privateKey, keySet := generateTestRSAKeySet(t)
+	agentUUID := id.NewAgentID()
+	svcID := id.NewServiceID()
+
+	agent := &storagedomain.Agent{
+		ID:          agentUUID,
+		ClientID:    ptr.To(id.ClientID("test-agent-client")),
+		DisplayName: "Test Agent",
+		// No ServiceRequirements — agent was edited after consent was granted
+		ServiceRequirements: nil,
+		PermissionSets: []storagedomain.AgentPermissionSetEntry{
+			{PermissionSetID: id.NewPermissionSetID(), RequirementType: storagedomain.RequirementTypeMandatory},
+		},
+	}
+
+	futureTime := time.Now().Add(time.Hour)
+	grant := &storagedomain.UserGrant{
+		ID:                    id.NewGrantID(),
+		AgentID:               agentUUID,
+		Principal:             id.Principal("user@example.com"),
+		ValidUntil:            &futureTime,
+		GrantedPermissionSets: nil,
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
+	}
+
+	agentRepo := &singleAgentRepo{agentID: agentUUID, agent: agent}
+	grantRepo := &MockGrantRepository{grant: grant}
+	psRepo := &MockPermissionSetRepository{psMap: map[id.PermissionSetID]*storagedomain.PermissionSet{}}
+	psService := permissionset.NewPermissionSetService(psRepo, grantRepo, slog.Default())
+
+	providerEntity := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:                 svcID,
+		DisplayName:        "Test Service",
+		ClientID:           id.ClientID("svc-client"),
+		Secret:             model.NewEncryptedSecret([]byte("placeholder")),
+		ProtectedResources: []string{"https://api.example.com/resource"},
+	}
+
+	consentSvc := consent.NewService(
+		agentRepo,
+		newTestProviderService(&MockServiceRepository{}),
+		grantRepo,
+		nil,
+		nil,
+		slog.Default(),
+	)
+
+	jwtValidator, err := NewJWTValidator(
+		&MockJWKSProvider{keySet: keySet},
+		"https://auth.example.com",
+		"agentic-identity-broker",
+		60,
+	)
+	require.NoError(t, err)
+
+	celEvaluator, err := NewCELEvaluator(CELEvaluatorConfig{
+		PrincipalExpression:     "subject_token.sub",
+		AgentIDExpression:       "subject_token.azp",
+		AuthorizationExpression: "true",
+		EvaluationTimeout:       100 * time.Millisecond,
+	})
+	require.NoError(t, err)
+
+	svc := &TokenExchangeService{
+		jwtValidator:         jwtValidator,
+		celEvaluator:         celEvaluator,
+		providerService:      newTestProviderService(&MockServiceRepository{service: providerEntity}),
+		oauth2SessionService: &oauth2session.OAuth2SessionService{},
+		consentService:       consentSvc,
+		agentRepository:      agentRepo,
+		permissionSetService: psService,
+		config: &ports.TokenExchangeConfig{
+			ClaimExtraction: ports.ClaimExtractionConfig{
+				PrincipalExpression: "subject_token.sub",
+				AgentIDExpression:   "subject_token.azp",
+			},
+			Authorization: ports.AuthorizationConfig{
+				Type: "cel",
+				CEL:  ports.CELAuthorizationConfig{Expression: "true"},
+			},
+		},
+	}
+
+	now := time.Now()
+	commonClaims := map[string]interface{}{
+		"iss": "https://auth.example.com",
+		"aud": "agentic-identity-broker",
+		"sub": "user@example.com",
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+	subjectClaims := map[string]interface{}{}
+	for k, v := range commonClaims {
+		subjectClaims[k] = v
+	}
+	subjectClaims["azp"] = agentUUID.String()
+
+	subjectToken := signServiceTestJWT(t, privateKey, subjectClaims)
+	clientAssertion := signServiceTestJWT(t, privateKey, commonClaims)
+
+	req := NewTokenExchangeRequest(
+		TokenExchangeGrantType,
+		subjectToken,
+		AccessTokenType,
+		clientAssertion,
+		JWTBearerType,
+		"https://api.example.com/resource",
+		"",
+	)
+
+	_, exchErr := svc.Exchange(context.Background(), req)
+
+	require.Error(t, exchErr)
+	tokenErr, ok := exchErr.(*TokenExchangeError)
+	require.True(t, ok, "error must be *TokenExchangeError, got %T: %v", exchErr, exchErr)
+	assert.Equal(t, "invalid_grant", tokenErr.Code(),
+		"empty-grant guard must fire for PS-backed agent with no SRs and empty grant")
+	assert.Contains(t, tokenErr.Description(), "re-consent",
+		"error description must mention re-consent")
 }

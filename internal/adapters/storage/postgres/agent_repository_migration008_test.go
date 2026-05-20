@@ -55,6 +55,9 @@ func setupAgentTestDBWithMigrations(t *testing.T, upToMigration int) (*Adapter, 
 	}
 
 	// Always apply additional migrations so application-layer repo queries work.
+	// Includes all migrations through the current schema so repo INSERT/SELECT
+	// statements referencing columns added in later migrations (e.g. permission_sets
+	// on agents from migration 017) do not fail with "column does not exist".
 	additionalMigrations := []struct {
 		file    string
 		version int64
@@ -63,6 +66,13 @@ func setupAgentTestDBWithMigrations(t *testing.T, upToMigration int) (*Adapter, 
 		{"010_create_client_credentials.up.sql", 10},
 		{"011_create_signing_keys.up.sql", 11},
 		{"012_create_authorization_codes.up.sql", 12},
+		{"013_add_client_id_to_auth_codes.up.sql", 13},
+		{"014_create_pkce_sessions.up.sql", 14},
+		{"015_add_cimd_support.up.sql", 15},
+		{"017_add_permission_sets.up.sql", 17},
+		{"018_add_agent_permission_sets.up.sql", 18},
+		{"019_migrate_user_grants_to_permission_sets.up.sql", 19},
+		{"020_add_service_scope_requirement_type.up.sql", 20},
 	}
 	for _, m := range additionalMigrations {
 		applyOneMigration(t, ctx, container, migrationsDir, m.file, m.version)

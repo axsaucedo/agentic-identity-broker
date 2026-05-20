@@ -30,7 +30,7 @@ func newTestEncryption() ports.EncryptionPort {
 // newTestProviderService wraps a ThirdpartyOAuth2ProviderRepository in a domain service
 // with test encryption. Used in tests across the consent handler package.
 func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, newTestEncryption(), nil, false, slog.Default())
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, newTestEncryption(), nil, nil, false, slog.Default())
 }
 
 // mockAgentDetailService is a configurable mock implementation of ConsentService for testing.
@@ -38,7 +38,7 @@ type mockAgentDetailService struct {
 	getAgentWithServiceRequirementsFunc func(ctx context.Context, userPrincipal id.Principal, agentID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error)
 }
 
-func (m *mockAgentDetailService) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error) {
+func (m *mockAgentDetailService) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID, principal id.Principal) (*consent.AgentConsentInfo, error) {
 	return nil, errors.New("not implemented")
 }
 

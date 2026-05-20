@@ -56,6 +56,11 @@ type TokenExchangeResponse struct {
 	// Optional in RFC 8693 - only included if different from requested scope.
 	// Space-separated list of scope values.
 	Scope string `json:"scope,omitempty"`
+
+	// GrantedPermissionSets maps permission set IDs to their included service IDs (Phase 6 - US4).
+	// Optional - included in the response per FR-012 for grant provenance.
+	// Keys are permission set UUID strings, values are arrays of service UUID strings.
+	GrantedPermissionSets map[string][]string `json:"granted_permission_sets,omitempty"`
 }
 
 // NewTokenExchangeResponse creates a new token exchange response.

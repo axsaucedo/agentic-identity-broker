@@ -12,7 +12,8 @@
         "/^bash \\.specify/scripts/bash/check-prerequisites\\.sh --json --require-tasks --include-tasks 2>&1$/": {
             "approve": true,
             "matchCommandLine": true
-        }
+        },
+        "just": true
     }
 }
 

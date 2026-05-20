@@ -6,8 +6,8 @@ FROM golang:1.25.6-alpine
 
 WORKDIR /app
 
-# Install build dependencies, bash for wrapper scripts, and curl for health checks
-RUN apk add --no-cache bash git ca-certificates curl
+# Install build dependencies, bash for wrapper scripts, curl for health checks, jq for seed script JSON parsing
+RUN apk add --no-cache bash git ca-certificates curl jq
 
 # Install Air for hot-reload development
 RUN go install github.com/air-verse/air@latest

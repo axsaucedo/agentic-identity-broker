@@ -93,7 +93,7 @@ var _ = Describe("Revoke Agent Grant", func() {
 		err = testStorage.UserGrants().Create(ctx, grant)
 		Expect(err).ToNot(HaveOccurred(), "Failed to create test grant")
 
-		agentPath = "/api/consent/agent/" + agent.ID.String() + "/grants"
+		agentPath = "/api/consent/agents/" + agent.ID.String() + "/grants"
 	})
 
 	AfterEach(func() {
@@ -125,7 +125,7 @@ var _ = Describe("Revoke Agent Grant", func() {
 	It("returns 404 when no grant exists for the principal+agent", func() {
 		// Given: anotherAgent has no grant for this principal
 		// When: Principal sends DELETE for a non-existent grant
-		path := "/api/consent/agent/" + anotherAgent.ID.String() + "/grants"
+		path := "/api/consent/agents/" + anotherAgent.ID.String() + "/grants"
 		resp, err := enduserServer.DirectRequest("DELETE", path, principal, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		defer func() { _ = resp.Body.Close() }()
@@ -165,7 +165,7 @@ var _ = Describe("Revoke Agent Grant", func() {
 		// Given: An authenticated principal
 		// When: DELETE request is sent with a non-UUID agent-id
 		// Principal check happens before UUID parse, but 400 returned for bad format
-		path := "/api/consent/agent/not-a-valid-uuid/grants"
+		path := "/api/consent/agents/not-a-valid-uuid/grants"
 		resp, err := enduserServer.DirectRequest("DELETE", path, principal, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		defer func() { _ = resp.Body.Close() }()
@@ -188,7 +188,7 @@ var _ = Describe("Revoke Agent Grant", func() {
 
 		// Then: GET /api/consent/agent/{agent-id}/grants returns {"data": null}
 		// The endpoint returns 200 with a null data field (not 404) because the agent
-		// still exists — only the grant was deleted. Response shape is {"data": UserGrantDTO|null}.
+		// still exists — only the grant was deleted. Response shape is {"data": GrantResponse|null}.
 		listResp, err := enduserServer.AuthenticatedGET(agentPath, principal)
 		Expect(err).NotTo(HaveOccurred())
 		defer func() { _ = listResp.Body.Close() }()

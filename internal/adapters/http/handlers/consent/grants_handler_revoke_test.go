@@ -14,12 +14,11 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// TestRevokeGrantHandler_Success tests 204 No Content on successful revocation.
-func TestRevokeGrantHandler_Success(t *testing.T) {
+func TestRevokeGrant_Success(t *testing.T) {
 	t.Parallel()
+
 	testAgentID := id.NewAgentID()
 	revokeCalled := false
-
 	mockService := &mockConsentService{
 		revokeConsentForPrincipalFunc: func(ctx context.Context, p id.Principal, agentID id.AgentID) error {
 			revokeCalled = true
@@ -32,9 +31,9 @@ func TestRevokeGrantHandler_Success(t *testing.T) {
 			return nil
 		},
 	}
-	handler := NewRevokeGrantHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
-	req := newRequestWithPrincipal("DELETE", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
+	req := newRequestWithPrincipal(http.MethodDelete, "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", testAgentID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -50,14 +49,13 @@ func TestRevokeGrantHandler_Success(t *testing.T) {
 	}
 }
 
-// TestRevokeGrantHandler_NoPrincipal tests 401 when principal is missing.
-// Principal check must happen BEFORE UUID parse (AGENTS.md rule: 401 before 400).
-func TestRevokeGrantHandler_NoPrincipal(t *testing.T) {
+func TestRevokeGrant_NoPrincipal(t *testing.T) {
 	t.Parallel()
-	testAgentID := id.NewAgentID()
-	handler := NewRevokeGrantHandler(nil, nil)
 
-	req := httptest.NewRequest("DELETE", "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
+	testAgentID := id.NewAgentID()
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", testAgentID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -77,13 +75,11 @@ func TestRevokeGrantHandler_NoPrincipal(t *testing.T) {
 	}
 }
 
-// TestRevokeGrantHandler_NoPrincipal_InvalidUUID tests that 401 is returned even when
-// the agent-id is also invalid — principal check is first (SR-001).
-func TestRevokeGrantHandler_NoPrincipal_InvalidUUID(t *testing.T) {
+func TestRevokeGrant_NoPrincipal_InvalidUUID(t *testing.T) {
 	t.Parallel()
-	handler := NewRevokeGrantHandler(nil, nil)
 
-	req := httptest.NewRequest("DELETE", "/api/consent/agent/not-a-uuid/grants", nil)
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
+	req := httptest.NewRequest(http.MethodDelete, "/api/consent/agent/not-a-uuid/grants", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", "not-a-uuid")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -91,18 +87,16 @@ func TestRevokeGrantHandler_NoPrincipal_InvalidUUID(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.RevokeGrant(rr, req)
 
-	// Must be 401, NOT 400 — principal check is before UUID parse
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("expected status %d (principal checked first), got %d", http.StatusUnauthorized, rr.Code)
 	}
 }
 
-// TestRevokeGrantHandler_InvalidAgentID tests 400 when agent-id is not a valid UUID.
-func TestRevokeGrantHandler_InvalidAgentID(t *testing.T) {
+func TestRevokeGrant_InvalidAgentID(t *testing.T) {
 	t.Parallel()
-	handler := NewRevokeGrantHandler(nil, nil)
 
-	req := newRequestWithPrincipal("DELETE", "/api/consent/agent/not-a-uuid/grants", "user@example.com", nil)
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
+	req := newRequestWithPrincipal(http.MethodDelete, "/api/consent/agent/not-a-uuid/grants", "user@example.com", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", "not-a-uuid")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -115,19 +109,18 @@ func TestRevokeGrantHandler_InvalidAgentID(t *testing.T) {
 	}
 }
 
-// TestRevokeGrantHandler_NotFound tests 404 when ErrGrantNotFound is returned (SR-001).
-func TestRevokeGrantHandler_NotFound(t *testing.T) {
+func TestRevokeGrant_NotFound(t *testing.T) {
 	t.Parallel()
-	testAgentID := id.NewAgentID()
 
+	testAgentID := id.NewAgentID()
 	mockService := &mockConsentService{
 		revokeConsentForPrincipalFunc: func(ctx context.Context, p id.Principal, agentID id.AgentID) error {
 			return fmt.Errorf("wrapped: %w", consent.ErrGrantNotFound)
 		},
 	}
-	handler := NewRevokeGrantHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
-	req := newRequestWithPrincipal("DELETE", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
+	req := newRequestWithPrincipal(http.MethodDelete, "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", testAgentID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -147,19 +140,18 @@ func TestRevokeGrantHandler_NotFound(t *testing.T) {
 	}
 }
 
-// TestRevokeGrantHandler_ServiceError tests 500 on unexpected service errors (fail-closed SR-003).
-func TestRevokeGrantHandler_ServiceError(t *testing.T) {
+func TestRevokeGrant_ServiceError(t *testing.T) {
 	t.Parallel()
-	testAgentID := id.NewAgentID()
 
+	testAgentID := id.NewAgentID()
 	mockService := &mockConsentService{
 		revokeConsentForPrincipalFunc: func(ctx context.Context, p id.Principal, agentID id.AgentID) error {
 			return errors.New("database connection lost")
 		},
 	}
-	handler := NewRevokeGrantHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
-	req := newRequestWithPrincipal("DELETE", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
+	req := newRequestWithPrincipal(http.MethodDelete, "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", testAgentID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -172,14 +164,11 @@ func TestRevokeGrantHandler_ServiceError(t *testing.T) {
 	}
 }
 
-// TestRevokeGrantHandler_NoPrincipalWithInvalidAgentID_PrincipalCheckedFirst tests
-// that principal validation error takes precedence over agent ID validation error.
-func TestRevokeGrantHandler_PrincipalCheckedFirst(t *testing.T) {
+func TestRevokeGrant_PrincipalCheckedFirst(t *testing.T) {
 	t.Parallel()
-	handler := NewRevokeGrantHandler(nil, nil)
 
-	// No principal in context AND invalid UUID
-	req := httptest.NewRequest("DELETE", "/api/consent/agent/bad-uuid/grants", nil)
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
+	req := httptest.NewRequest(http.MethodDelete, "/api/consent/agent/bad-uuid/grants", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", "bad-uuid")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))

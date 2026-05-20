@@ -29,10 +29,23 @@ var (
 	// ErrGrantNotFound is returned by RevokeConsentForPrincipal when no active grant exists
 	// for the (principal, agent) pair. The handler maps this to HTTP 404.
 	ErrGrantNotFound = errors.New("grant not found")
+	// ErrUnconnectedServices is returned when the submission includes services without active sessions.
+	ErrUnconnectedServices = errors.New("unconnected services")
+	// ErrMissingMandatoryPS is returned when a mandatory permission set is not present in the grant.
+	ErrMissingMandatoryPS = errors.New("missing mandatory permission set")
+	// ErrInvalidServiceInclusion is returned when included_service_ids contains invalid service IDs.
+	ErrInvalidServiceInclusion = errors.New("invalid service inclusion")
 	// ErrGrantValidation is returned when a UserGrant fails domain validation (e.g. empty
 	// scope list, duplicate scopes). The handler maps this to HTTP 400.
 	ErrGrantValidation = errors.New("grant validation failed")
 )
+
+// PermissionSetQuerier is the minimal interface of permissionset.Service used by consent.
+// Defined here to allow test doubles without coupling to the concrete type.
+type PermissionSetQuerier interface {
+	ValidateIDs(ctx context.Context, ids []id.PermissionSetID) error
+	GetByIDs(ctx context.Context, ids []id.PermissionSetID) ([]*storage.PermissionSet, error)
+}
 
 // Service provides consent management business logic.
 // This service orchestrates between agent, service, and grant repositories
@@ -41,6 +54,7 @@ type Service struct {
 	agentRepo       ports.AgentRepository
 	providerService *thirdparty.ThirdpartyOAuth2ProviderService
 	grantRepo       ports.UserGrantRepository
+	psService       PermissionSetQuerier
 	sessionRepo     ports.UserSessionRepository
 	logger          *slog.Logger
 }
@@ -51,6 +65,7 @@ func NewService(
 	providerService *thirdparty.ThirdpartyOAuth2ProviderService,
 	grantRepo ports.UserGrantRepository,
 	sessionRepo ports.UserSessionRepository,
+	psService PermissionSetQuerier,
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
@@ -58,6 +73,7 @@ func NewService(
 		providerService: providerService,
 		grantRepo:       grantRepo,
 		sessionRepo:     sessionRepo,
+		psService:       psService,
 		logger:          logger,
 	}
 }
@@ -152,16 +168,27 @@ func (s *Service) GetAgentWithServiceRequirements(
 	return agent, requirements, nil
 }
 
+// ResolvedPermissionSetEntry represents a permission set that has been resolved from the agent's
+// PermissionSets array, paired with its requirement type (mandatory or optional).
+type ResolvedPermissionSetEntry struct {
+	PermissionSet   *storage.PermissionSet
+	RequirementType storage.RequirementType
+}
+
 // AgentConsentInfo contains all information needed for a user to make a consent decision.
+// Phase 4 US2: Extended to include resolved permission sets and active sessions.
 type AgentConsentInfo struct {
 	Agent                       *storage.Agent
 	AvailableThirdpartyServices []*model.ThirdpartyOAuth2ProviderEntity
+	ResolvedPermissionSets      []ResolvedPermissionSetEntry // NEW: Phase 4 US2
+	ActiveSessionServiceIDs     []id.ServiceID               // NEW: Phase 4 US2
 }
 
 // GetAgentConsentInfo retrieves agent metadata and all available third-party services.
 // This provides the information a user needs to make an informed consent decision (FR-009, FR-010, FR-025).
+// Phase 4 US2: Extended to include resolved permission sets, active sessions, and available services.
 // Returns ErrAgentNotFound if the agent doesn't exist.
-func (s *Service) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID) (*AgentConsentInfo, error) {
+func (s *Service) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID, principal id.Principal) (*AgentConsentInfo, error) {
 	// Fetch agent
 	agent, err := s.agentRepo.Get(ctx, agentID)
 	if err != nil {
@@ -183,9 +210,54 @@ func (s *Service) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID) (
 		redactedServices[i] = svc.RedactedCopy()
 	}
 
+	// Resolve permission sets from agent.PermissionSets
+	resolvedPermissionSets := make([]ResolvedPermissionSetEntry, 0)
+	activeSessionServiceIDs := make([]id.ServiceID, 0)
+
+	// Extract permission set IDs from agent.PermissionSets
+	psIDs := make([]id.PermissionSetID, len(agent.PermissionSets))
+	for i, entry := range agent.PermissionSets {
+		psIDs[i] = entry.PermissionSetID
+	}
+
+	// Resolve permission sets via service (includes caching).
+	// Failure is fatal: users must not consent without full permission information.
+	if len(psIDs) > 0 {
+		resolvedSets, err := s.psService.GetByIDs(ctx, psIDs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve permission sets for consent: %w", err)
+		}
+
+		// Match resolved permission sets with requirement types from agent.PermissionSets
+		requiredByID := make(map[id.PermissionSetID]storage.RequirementType)
+		for _, entry := range agent.PermissionSets {
+			requiredByID[entry.PermissionSetID] = entry.RequirementType
+		}
+
+		for _, ps := range resolvedSets {
+			if requirementType, exists := requiredByID[ps.ID]; exists {
+				resolvedPermissionSets = append(resolvedPermissionSets, ResolvedPermissionSetEntry{
+					PermissionSet:   ps,
+					RequirementType: requirementType,
+				})
+			}
+		}
+	}
+
+	// Get active session service IDs for the principal
+	sessions, err := s.sessionRepo.ListActiveByPrincipal(ctx, principal)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sessions for principal: %w", err)
+	}
+	for _, session := range sessions {
+		activeSessionServiceIDs = append(activeSessionServiceIDs, session.ServiceID)
+	}
+
 	return &AgentConsentInfo{
 		Agent:                       agent.Copy(),
 		AvailableThirdpartyServices: redactedServices,
+		ResolvedPermissionSets:      resolvedPermissionSets,
+		ActiveSessionServiceIDs:     activeSessionServiceIDs,
 	}, nil
 }
 
@@ -194,28 +266,7 @@ type GrantRequest struct {
 	Principal             id.Principal
 	AgentID               id.AgentID
 	ValidUntil            *time.Time
-	DelegatedOAuth2Tokens []storage.DelegatedToken
-}
-
-func (s *Service) validateGrantRequest(ctx context.Context, req *GrantRequest) error {
-	// Validate agent exists
-	agent, err := s.agentRepo.Get(ctx, req.AgentID)
-	if err != nil {
-		if errors.Is(err, ports.ErrNotFound) {
-			return fmt.Errorf("%w: agent_id=%s", ErrAgentNotFound, req.AgentID)
-		}
-		return fmt.Errorf("failed to get agent: %w", err)
-	}
-	if agent == nil {
-		return fmt.Errorf("%w: agent_id=%s", ErrAgentNotFound, req.AgentID)
-	}
-
-	// Validate all scopes exist in their respective services (FR-018)
-	if err := s.validateScopes(ctx, req.DelegatedOAuth2Tokens); err != nil {
-		return err
-	}
-
-	return nil
+	GrantedPermissionSets []storage.GrantedPermissionSetEntry
 }
 
 // GrantConsent creates or updates a user grant (upsert semantics per FR-013, FR-015).
@@ -225,8 +276,62 @@ func (s *Service) validateGrantRequest(ctx context.Context, req *GrantRequest) e
 // - ValidUntil is in the future if provided (FR-016)
 // Returns the created/updated grant or an error.
 func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage.UserGrant, error) {
-	if err := s.validateGrantRequest(ctx, req); err != nil {
+	agent, err := s.agentRepo.Get(ctx, req.AgentID)
+	if err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return nil, fmt.Errorf("%w: agent_id=%s", ErrAgentNotFound, req.AgentID)
+		}
+		return nil, fmt.Errorf("failed to get agent: %w", err)
+	}
+	if agent == nil {
+		return nil, fmt.Errorf("%w: agent_id=%s", ErrAgentNotFound, req.AgentID)
+	}
+
+	// Validate permission sets
+	psIDs := make([]id.PermissionSetID, len(req.GrantedPermissionSets))
+	for i, entry := range req.GrantedPermissionSets {
+		psIDs[i] = entry.PermissionSetID
+	}
+	if len(psIDs) > 0 {
+		if err := s.psService.ValidateIDs(ctx, psIDs); err != nil {
+			return nil, fmt.Errorf("invalid permission set IDs: %w", err)
+		}
+	}
+
+	// Resolve permission sets once; pass into both validators to avoid double GetByIDs.
+	var resolvedPS []*storage.PermissionSet
+	if len(psIDs) > 0 {
+		var resolveErr error
+		resolvedPS, resolveErr = s.psService.GetByIDs(ctx, psIDs)
+		if resolveErr != nil {
+			return nil, fmt.Errorf("failed to resolve permission sets: %w", resolveErr)
+		}
+	}
+
+	// FR-018: Validate that every IncludedServiceID is declared in the referenced
+	// permission set's ServiceScopes.
+	if err := s.validateScopeInclusionWithResolved(ctx, req.GrantedPermissionSets, resolvedPS); err != nil {
 		return nil, err
+	}
+
+	// T047: Validate mandatory PS presence and service ID subset.
+	if err := s.validateGrantStructureWithResolved(ctx, agent, req.GrantedPermissionSets, resolvedPS); err != nil {
+		return nil, err
+	}
+
+	// FR-020: Validate every included service has an active OAuth2 session.
+	if len(req.GrantedPermissionSets) > 0 {
+		sessions, sessErr := s.sessionRepo.ListActiveByPrincipal(ctx, req.Principal)
+		if sessErr != nil {
+			return nil, fmt.Errorf("failed to list sessions for submission validation: %w", sessErr)
+		}
+		activeIDs := make([]id.ServiceID, len(sessions))
+		for i, sess := range sessions {
+			activeIDs[i] = sess.ServiceID
+		}
+		if err := s.ValidateSubmission(ctx, agent, req.GrantedPermissionSets, activeIDs); err != nil {
+			return nil, err
+		}
 	}
 
 	// Check for existing grant (upsert semantics)
@@ -243,7 +348,7 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 
 		// Update existing grant (FR-013)
 		existingGrant.ValidUntil = req.ValidUntil
-		existingGrant.DelegatedOAuth2Tokens = req.DelegatedOAuth2Tokens
+		existingGrant.GrantedPermissionSets = req.GrantedPermissionSets
 		existingGrant.UpdatedAt = time.Now()
 
 		if err := existingGrant.Validate(); err != nil {
@@ -261,7 +366,7 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 			Principal:             req.Principal,
 			AgentID:               req.AgentID,
 			ValidUntil:            req.ValidUntil,
-			DelegatedOAuth2Tokens: req.DelegatedOAuth2Tokens,
+			GrantedPermissionSets: req.GrantedPermissionSets,
 			CreatedAt:             time.Now(),
 			UpdatedAt:             time.Now(),
 		}
@@ -278,13 +383,161 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 	return grant.Copy(), nil
 }
 
+// ValidateSubmission validates that every service in the grant's included_service_ids
+// has an active session (FR-020). Returns a descriptive error listing unconnected services if not.
+func (s *Service) ValidateSubmission(ctx context.Context, agent *storage.Agent, grantedPS []storage.GrantedPermissionSetEntry, activeSessionServiceIDs []id.ServiceID) error {
+	if len(grantedPS) == 0 {
+		return nil
+	}
+
+	// Build set of active session service IDs for O(1) lookup
+	activeSet := make(map[id.ServiceID]bool, len(activeSessionServiceIDs))
+	for _, svcID := range activeSessionServiceIDs {
+		activeSet[svcID] = true
+	}
+
+	// Collect all unique included service IDs from the grant
+	includedServices := make(map[id.ServiceID]bool)
+	for _, entry := range grantedPS {
+		for _, svcID := range entry.IncludedServiceIDs {
+			includedServices[svcID] = true
+		}
+	}
+
+	// Check each included service has an active session
+	var unconnected []string
+	for svcID := range includedServices {
+		if !activeSet[svcID] {
+			unconnected = append(unconnected, svcID.String())
+		}
+	}
+
+	if len(unconnected) > 0 {
+		return fmt.Errorf("%w: services without active sessions: %v", ErrUnconnectedServices, unconnected)
+	}
+
+	return nil
+}
+
+// validateGrantStructureWithResolved validates the structure of granted permission sets
+// against the agent's declaration (T047). Accepts pre-resolved permission sets.
+// Checks:
+// 1. All mandatory permission_set_ids for the agent are present
+// 2. Mandatory PS entries must have len(IncludedServiceIDs) >= 1
+// 3. For each PS entry, included_service_ids is a subset of PS ServiceScope ∩ agent SR
+func (s *Service) validateGrantStructureWithResolved(_ context.Context, agent *storage.Agent, entries []storage.GrantedPermissionSetEntry, resolvedSets []*storage.PermissionSet) error {
+	if len(agent.PermissionSets) == 0 {
+		// Agents without permission set declarations skip mandatory PS validation.
+		// Grant entries are still validated at the domain level (ValidateForCreate).
+		return nil
+	}
+
+	// FR-014: empty granted_permission_sets is never valid for PS-using agents
+	if len(entries) == 0 {
+		return fmt.Errorf("%w: at least one permission set must be granted for agents that use permission sets",
+			ErrMissingMandatoryPS)
+	}
+
+	// Build set of granted PS IDs
+	grantedPSSet := make(map[id.PermissionSetID]bool, len(entries))
+	for _, entry := range entries {
+		grantedPSSet[entry.PermissionSetID] = true
+	}
+
+	// Check all mandatory PSes are present
+	var missingMandatory []string
+	for _, aps := range agent.PermissionSets {
+		if aps.RequirementType == storage.RequirementTypeMandatory {
+			if !grantedPSSet[aps.PermissionSetID] {
+				missingMandatory = append(missingMandatory, aps.PermissionSetID.String())
+			}
+		}
+	}
+	if len(missingMandatory) > 0 {
+		return fmt.Errorf("%w: %v", ErrMissingMandatoryPS, missingMandatory)
+	}
+
+	// Mandatory PS entries must include at least one service.
+	// An empty IncludedServiceIDs on a mandatory PS is a no-op grant and must be rejected.
+	mandatoryPSIDs := make(map[id.PermissionSetID]bool, len(agent.PermissionSets))
+	for _, aps := range agent.PermissionSets {
+		if aps.RequirementType == storage.RequirementTypeMandatory {
+			mandatoryPSIDs[aps.PermissionSetID] = true
+		}
+	}
+	for _, entry := range entries {
+		if mandatoryPSIDs[entry.PermissionSetID] && len(entry.IncludedServiceIDs) == 0 {
+			return fmt.Errorf("%w: mandatory permission set %s must include at least one service",
+				ErrInvalidServiceInclusion, entry.PermissionSetID)
+		}
+	}
+
+	// Build indexes: SR mandatory services and PS-level effective mandatory services
+	agentSRServiceIDs := make(map[id.ServiceID]bool, len(agent.ServiceRequirements))
+	srMandatoryServiceIDs := make(map[id.ServiceID]bool, len(agent.ServiceRequirements))
+	for _, sr := range agent.ServiceRequirements {
+		agentSRServiceIDs[sr.ServiceID] = true
+		if sr.RequirementType == storage.RequirementTypeMandatory {
+			srMandatoryServiceIDs[sr.ServiceID] = true
+		}
+	}
+
+	psValidServices := make(map[id.PermissionSetID]map[id.ServiceID]bool, len(resolvedSets))
+	// psMandatoryServices: services that must always be in included_service_ids for a selected PS
+	// (SR mandatory OR ServiceScope.requirement_type=mandatory, intersected with agent SR)
+	psMandatoryServices := make(map[id.PermissionSetID][]id.ServiceID, len(resolvedSets))
+	for _, ps := range resolvedSets {
+		validServices := make(map[id.ServiceID]bool)
+		for _, ss := range ps.ServiceScopes {
+			// When the agent has no service_requirements, all PS ServiceScopes are valid.
+			// When the agent has SR, only services in the intersection (PS ∩ SR) are valid.
+			if len(agentSRServiceIDs) == 0 || agentSRServiceIDs[ss.ServiceID] {
+				validServices[ss.ServiceID] = true
+				if srMandatoryServiceIDs[ss.ServiceID] || ss.RequirementType == storage.RequirementTypeMandatory {
+					psMandatoryServices[ps.ID] = append(psMandatoryServices[ps.ID], ss.ServiceID)
+				}
+			}
+		}
+		psValidServices[ps.ID] = validServices
+	}
+
+	// Validate each grant entry's included_service_ids
+	for _, entry := range entries {
+		validServices, ok := psValidServices[entry.PermissionSetID]
+		if !ok {
+			continue // already rejected by validateScopeInclusionWithResolved
+		}
+
+		for _, svcID := range entry.IncludedServiceIDs {
+			if !validServices[svcID] {
+				return fmt.Errorf("%w: service %s is not in the valid set for permission set %s (must be in PS ServiceScope ∩ agent ServiceRequirements)",
+					ErrInvalidServiceInclusion, svcID, entry.PermissionSetID)
+			}
+		}
+
+		// Enforce effective-mandatory services are always included (FR-014)
+		includedSet := make(map[id.ServiceID]bool, len(entry.IncludedServiceIDs))
+		for _, svcID := range entry.IncludedServiceIDs {
+			includedSet[svcID] = true
+		}
+		for _, mandatorySvcID := range psMandatoryServices[entry.PermissionSetID] {
+			if !includedSet[mandatorySvcID] {
+				return fmt.Errorf("%w: effectively mandatory service %s must be included in permission set %s",
+					ErrInvalidServiceInclusion, mandatorySvcID, entry.PermissionSetID)
+			}
+		}
+	}
+
+	return nil
+}
+
 func grantMatchesRequest(grant *storage.UserGrant, req *GrantRequest) bool {
 	if grant == nil || req == nil {
 		return false
 	}
 
 	return validUntilMatches(grant.ValidUntil, req.ValidUntil) &&
-		delegatedTokensMatch(grant.DelegatedOAuth2Tokens, req.DelegatedOAuth2Tokens)
+		permissionSetsMatch(grant.GrantedPermissionSets, req.GrantedPermissionSets)
 }
 
 func validUntilMatches(left, right *time.Time) bool {
@@ -298,10 +551,10 @@ func validUntilMatches(left, right *time.Time) bool {
 	}
 }
 
-func delegatedTokensMatch(left, right []storage.DelegatedToken) bool {
-	return slices.EqualFunc(left, right, func(leftToken, rightToken storage.DelegatedToken) bool {
-		return leftToken.ThirdpartyOAuth2ServiceID == rightToken.ThirdpartyOAuth2ServiceID &&
-			slices.Equal(leftToken.Scopes, rightToken.Scopes)
+func permissionSetsMatch(left, right []storage.GrantedPermissionSetEntry) bool {
+	return slices.EqualFunc(left, right, func(l, r storage.GrantedPermissionSetEntry) bool {
+		return l.PermissionSetID == r.PermissionSetID &&
+			slices.Equal(l.IncludedServiceIDs, r.IncludedServiceIDs)
 	})
 }
 
@@ -415,36 +668,38 @@ func (s *Service) VerifyAgentAccess(ctx context.Context, principal id.Principal,
 	return grant.Copy(), nil
 }
 
-// validateScopes validates that all requested scopes exist in their respective service configurations.
-// Returns ErrInvalidScopes with details if any scope doesn't exist (FR-018).
-func (s *Service) validateScopes(ctx context.Context, delegations []storage.DelegatedToken) error {
-	for i, delegation := range delegations {
-		// Fetch service
-		service, err := s.providerService.Get(ctx, delegation.ThirdpartyOAuth2ServiceID)
-		if err != nil {
-			return fmt.Errorf("failed to get service %s: %w", delegation.ThirdpartyOAuth2ServiceID, err)
-		}
-		if service == nil {
-			return fmt.Errorf("%w: service_id=%s", ErrServiceNotFound, delegation.ThirdpartyOAuth2ServiceID)
-		}
+// validateScopeInclusionWithResolved checks that every IncludedServiceID in each
+// grant entry is present in the referenced permission set's ServiceScopes (FR-018).
+// Accepts pre-resolved permission sets to avoid a redundant GetByIDs call.
+// Returns ErrInvalidScopes if any included service is not declared in the PS.
+func (s *Service) validateScopeInclusionWithResolved(_ context.Context, entries []storage.GrantedPermissionSetEntry, resolvedSets []*storage.PermissionSet) error {
+	if len(entries) == 0 {
+		return nil
+	}
 
-		// Build map of valid scopes for this service
-		validScopes := make(map[string]bool)
-		for _, scope := range service.Scopes {
-			validScopes[scope.ScopeValue] = true
+	psServiceIDs := make(map[id.PermissionSetID]map[id.ServiceID]bool, len(resolvedSets))
+	for _, ps := range resolvedSets {
+		svcSet := make(map[id.ServiceID]bool, len(ps.ServiceScopes))
+		for _, ss := range ps.ServiceScopes {
+			svcSet[ss.ServiceID] = true
 		}
+		psServiceIDs[ps.ID] = svcSet
+	}
 
-		// Validate each requested scope exists
-		invalidScopes := []string{}
-		for _, requestedScope := range delegation.Scopes {
-			if !validScopes[requestedScope] {
-				invalidScopes = append(invalidScopes, requestedScope)
+	for _, entry := range entries {
+		validServices, ok := psServiceIDs[entry.PermissionSetID]
+		if !ok {
+			// PS was not resolved — it may have been deleted concurrently between
+			// the earlier existence check and this GetByIDs call. Reject to avoid
+			// persisting a grant that references a non-existent permission set.
+			return fmt.Errorf("%w: permission set %s no longer exists",
+				ErrInvalidServiceInclusion, entry.PermissionSetID)
+		}
+		for _, svcID := range entry.IncludedServiceIDs {
+			if !validServices[svcID] {
+				return fmt.Errorf("%w: service %s is not declared in permission set %s",
+					ErrInvalidScopes, svcID, entry.PermissionSetID)
 			}
-		}
-
-		if len(invalidScopes) > 0 {
-			return fmt.Errorf("%w: delegation %d (service=%s) has invalid scopes: %v",
-				ErrInvalidScopes, i, delegation.ThirdpartyOAuth2ServiceID, invalidScopes)
 		}
 	}
 

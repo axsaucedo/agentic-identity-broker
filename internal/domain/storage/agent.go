@@ -11,20 +11,28 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 )
 
+// AgentPermissionSetEntry is one element of Agent.PermissionSets.
+// Pairs a permission set reference with its requirement type.
+type AgentPermissionSetEntry struct {
+	PermissionSetID id.PermissionSetID `json:"permission_set_id"`
+	RequirementType RequirementType    `json:"requirement_type"`
+}
+
 // Agent represents an AI agent registered in the identity broker.
 // An agent can request delegated permissions from users to access third-party services.
 type Agent struct {
-	ID                   id.AgentID           `json:"id" db:"id"`
-	ClientID             *id.ClientID         `json:"client_id,omitempty" db:"client_id"`
-	ExternalID           *id.ExternalID       `json:"external_id,omitempty" db:"external_id"`
-	DisplayName          string               `json:"display_name" db:"display_name"`
-	Description          string               `json:"description" db:"description"`
-	GovernanceURL        *string              `json:"governance_url,omitempty" db:"governance_url"`
-	UserDocumentationURL *string              `json:"user_documentation_url,omitempty" db:"user_documentation_url"`
-	AgentInterfaceURL    *string              `json:"agent_interface_url,omitempty" db:"agent_interface_url"`
-	ServiceRequirements  []ServiceRequirement `json:"service_requirements,omitempty" db:"service_requirements"`
-	RedirectURIs         []string             `json:"redirect_uris" db:"redirect_uris"`
-	AllowedScopes        []string             `json:"allowed_scopes" db:"allowed_scopes"`
+	ID                   id.AgentID                `json:"id" db:"id"`
+	ClientID             *id.ClientID              `json:"client_id,omitempty" db:"client_id"`
+	ExternalID           *id.ExternalID            `json:"external_id,omitempty" db:"external_id"`
+	DisplayName          string                    `json:"display_name" db:"display_name"`
+	Description          string                    `json:"description" db:"description"`
+	GovernanceURL        *string                   `json:"governance_url,omitempty" db:"governance_url"`
+	UserDocumentationURL *string                   `json:"user_documentation_url,omitempty" db:"user_documentation_url"`
+	AgentInterfaceURL    *string                   `json:"agent_interface_url,omitempty" db:"agent_interface_url"`
+	ServiceRequirements  []ServiceRequirement      `json:"service_requirements,omitempty" db:"service_requirements"`
+	PermissionSets       []AgentPermissionSetEntry `json:"permission_sets,omitempty" db:"permission_sets"`
+	RedirectURIs         []string                  `json:"redirect_uris" db:"redirect_uris"`
+	AllowedScopes        []string                  `json:"allowed_scopes" db:"allowed_scopes"`
 	// ClientURIs holds pre-registered Client ID Metadata Document URLs.
 	// Each entry must be a valid HTTPS URL, globally unique across all agents.
 	ClientURIs []string  `json:"client_uris,omitempty" db:"-"`
@@ -80,6 +88,11 @@ func (a *Agent) Validate() error {
 	// Service requirements validation
 	if err := a.ValidateServiceRequirements(); err != nil {
 		return fmt.Errorf("service_requirements validation failed: %w", err)
+	}
+
+	// Permission sets validation
+	if err := a.ValidatePermissionSets(); err != nil {
+		return fmt.Errorf("permission_sets validation failed: %w", err)
 	}
 
 	return nil
@@ -191,6 +204,17 @@ func (a *Agent) Copy() *Agent {
 		copy.AgentInterfaceURL = &agentURL
 	}
 
+	// Deep copy permission sets
+	if a.PermissionSets != nil {
+		copy.PermissionSets = make([]AgentPermissionSetEntry, len(a.PermissionSets))
+		for i, ps := range a.PermissionSets {
+			copy.PermissionSets[i] = AgentPermissionSetEntry{
+				PermissionSetID: ps.PermissionSetID,
+				RequirementType: ps.RequirementType,
+			}
+		}
+	}
+
 	// Deep copy service requirements
 	if a.ServiceRequirements != nil {
 		copy.ServiceRequirements = make([]ServiceRequirement, len(a.ServiceRequirements))
@@ -264,6 +288,11 @@ func (a *Agent) ValidateForCreate() error {
 		return fmt.Errorf("service_requirements validation failed: %w", err)
 	}
 
+	// Permission sets validation
+	if err := a.ValidatePermissionSets(); err != nil {
+		return fmt.Errorf("permission_sets validation failed: %w", err)
+	}
+
 	return nil
 }
 
@@ -290,6 +319,36 @@ func (a *Agent) ValidateServiceRequirements() error {
 			return fmt.Errorf("duplicate service_id %q found at indices %d and %d", sr.ServiceID, prevIdx, i)
 		}
 		seen[sr.ServiceID] = i
+	}
+
+	return nil
+}
+
+// ValidatePermissionSets validates the permission sets array.
+// Returns error if:
+// - Any entry has a zero PermissionSetID
+// - Any entry has an invalid RequirementType
+// - Duplicate PermissionSetID exists in the array
+//
+// Note: Empty arrays are allowed at the domain level for backward compatibility.
+// The HTTP handler enforces the "at least one entry" constraint per FR-006.
+func (a *Agent) ValidatePermissionSets() error {
+	if len(a.PermissionSets) == 0 {
+		return nil
+	}
+
+	seen := make(map[id.PermissionSetID]int)
+	for i, ps := range a.PermissionSets {
+		if ps.PermissionSetID.IsZero() {
+			return fmt.Errorf("permission_sets[%d]: permission_set_id is required", i)
+		}
+		if !ps.RequirementType.Valid() {
+			return fmt.Errorf("permission_sets[%d]: invalid requirement_type %q", i, ps.RequirementType)
+		}
+		if prevIdx, exists := seen[ps.PermissionSetID]; exists {
+			return fmt.Errorf("duplicate permission_set_id %q found at indices %d and %d", ps.PermissionSetID, prevIdx, i)
+		}
+		seen[ps.PermissionSetID] = i
 	}
 
 	return nil

@@ -244,8 +244,8 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// Flush and close telemetry providers (after HTTP drain, before process exit)
 	// Satisfies FR-009: pending spans/metrics flushed on graceful shutdown (T043)
-	if application.ShutdownTelemetry != nil {
-		if err := application.ShutdownTelemetry(shutdownCtx); err != nil {
+	if application.Shutdown != nil {
+		if err := application.Shutdown(shutdownCtx); err != nil {
 			logger.Error("Telemetry shutdown error", "error", err)
 			// Non-fatal: log and continue
 		} else {

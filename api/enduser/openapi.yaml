@@ -282,7 +282,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
-  /api/consent/agent/{agent-id}:
+  /api/consent/agents/{agent-id}:
     get:
       summary: Get agent detail and available services
       description: |
@@ -374,7 +374,36 @@ paths:
           $ref: '#/components/responses/AgentNotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
-  /api/consent/agent/{agent-id}/grants:
+  /api/consent/agents/{agent-id}/consent-info:
+    get:
+      summary: Get extended agent consent information with permission sets
+      description: 'Returns extended agent consent information including resolved permission sets,
+        active session service IDs, available services, and per-service requirement types.
+
+        Used by the consent UI to render the permission grant screen (Phase 4 US2).
+
+        '
+      operationId: getAgentConsentInfo
+      tags:
+      - Consent
+      parameters:
+      - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Agent consent info retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentConsentInfoResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/AgentNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/consent/agents/{agent-id}/grants:
     get:
       summary: Get user's grants for an agent
       description: |
@@ -418,20 +447,18 @@ paths:
                   summary: User has existing grant
                   value:
                     data:
-                      - id: 770e8400-e29b-41d4-a716-446655440002
-                        principal: user@example.com
-                        agent_id: 550e8400-e29b-41d4-a716-446655440000
-                        valid_until: '2026-06-01T00:00:00Z'
-                        delegated_oauth2_tokens:
-                          - thirdparty_oauth2_service_id: google-drive-service-id
-                            scopes:
-                              - read:files
-                              - write:files
-                          - thirdparty_oauth2_service_id: github-service-id
-                            scopes:
-                              - read:repos
-                        created_at: '2025-12-18T10:00:00Z'
-                        updated_at: '2025-12-18T10:00:00Z'
+                    - id: 770e8400-e29b-41d4-a716-446655440002
+                      principal: user@example.com
+                      agent_id: 550e8400-e29b-41d4-a716-446655440000
+                      valid_until: '2026-06-01T00:00:00Z'
+                      granted_permission_sets:
+                        770e8400-e29b-41d4-a716-446655440001:
+                        - 880e8400-e29b-41d4-a716-446655440010
+                        - 880e8400-e29b-41d4-a716-446655440011
+                        770e8400-e29b-41d4-a716-446655440002:
+                        - 880e8400-e29b-41d4-a716-446655440012
+                      created_at: '2025-12-18T10:00:00Z'
+                      updated_at: '2025-12-18T10:00:00Z'
                 noGrants:
                   summary: No existing grants
                   value:
@@ -453,7 +480,8 @@ paths:
 
         - One grant per user-agent pair
         - Subsequent POSTs update the existing grant
-        - Previous delegated tokens are replaced (not merged)
+
+        - Previous granted permission sets are replaced (not merged)
 
         **Grant Expiration**:
 
@@ -463,7 +491,8 @@ paths:
 
         **Revocation (Special Case)**:
 
-        - Submit empty `delegated_oauth2_tokens` array to revoke
+        - Submit empty `granted_permission_sets` object to revoke
+
         - Returns `204 No Content` on successful revocation
         - Deletes the grant entirely
 
@@ -519,34 +548,29 @@ paths:
               createIndefiniteGrant:
                 summary: Create indefinite grant
                 value:
-                  delegated_oauth2_tokens:
-                    - thirdparty_oauth2_service_id: google-drive-service-id
-                      scopes:
-                        - read:files
-                        - write:files
-                    - thirdparty_oauth2_service_id: github-service-id
-                      scopes:
-                        - read:repos
-                        - write:repos
+                  granted_permission_sets:
+                    770e8400-e29b-41d4-a716-446655440001:
+                    - 880e8400-e29b-41d4-a716-446655440010
+                    - 880e8400-e29b-41d4-a716-446655440011
+                    770e8400-e29b-41d4-a716-446655440002:
+                    - 880e8400-e29b-41d4-a716-446655440012
               createExpiringGrant:
                 summary: Create grant with expiration
                 value:
-                  delegated_oauth2_tokens:
-                    - thirdparty_oauth2_service_id: google-drive-service-id
-                      scopes:
-                        - read:files
+                  granted_permission_sets:
+                    770e8400-e29b-41d4-a716-446655440001:
+                    - 880e8400-e29b-41d4-a716-446655440010
                   valid_until: '2026-06-01T00:00:00Z'
               updateGrant:
-                summary: Update existing grant (replace services)
+                summary: Update existing grant (replace permission sets)
                 value:
-                  delegated_oauth2_tokens:
-                    - thirdparty_oauth2_service_id: github-service-id
-                      scopes:
-                        - read:repos
+                  granted_permission_sets:
+                    770e8400-e29b-41d4-a716-446655440002:
+                    - 880e8400-e29b-41d4-a716-446655440012
               revokeGrant:
-                summary: Revoke grant (empty delegations)
+                summary: Revoke grant (empty permission sets)
                 value:
-                  delegated_oauth2_tokens: [ ]
+                  granted_permission_sets: {}
       responses:
         '201':
           description: Grant created or updated. When session_token was provided, response includes redirect_url containing the original authorization URL for flow resumption.
@@ -563,15 +587,12 @@ paths:
                       principal: user@example.com
                       agent_id: 550e8400-e29b-41d4-a716-446655440000
                       valid_until: null
-                      delegated_oauth2_tokens:
-                        - thirdparty_oauth2_service_id: google-drive-service-id
-                          scopes:
-                            - read:files
-                            - write:files
-                        - thirdparty_oauth2_service_id: github-service-id
-                          scopes:
-                            - read:repos
-                            - write:repos
+                      granted_permission_sets:
+                        770e8400-e29b-41d4-a716-446655440001:
+                        - 880e8400-e29b-41d4-a716-446655440010
+                        - 880e8400-e29b-41d4-a716-446655440011
+                        770e8400-e29b-41d4-a716-446655440002:
+                        - 880e8400-e29b-41d4-a716-446655440012
                       created_at: '2025-12-19T10:00:00Z'
                       updated_at: '2025-12-19T10:00:00Z'
                 grantCreatedWithSessionToken:
@@ -582,16 +603,14 @@ paths:
                       principal: user@example.com
                       agent_id: 550e8400-e29b-41d4-a716-446655440000
                       valid_until: null
-                      delegated_oauth2_tokens:
-                        - thirdparty_oauth2_service_id: google-drive-service-id
-                          scopes:
-                            - read:files
-                            - write:files
+                      granted_permission_sets:
+                        770e8400-e29b-41d4-a716-446655440001:
+                        - 880e8400-e29b-41d4-a716-446655440010
                       created_at: '2025-12-19T10:00:00Z'
                       updated_at: '2025-12-19T10:00:00Z'
                     redirect_url: /oauth2/authorize?client_id=550e8400-e29b-41d4-a716-446655440000&redirect_uri=https%3A%2F%2Fagent.example.com%2Fcb&response_type=code&state=abc123
         '204':
-          description: Grant revoked successfully (empty delegated_oauth2_tokens)
+          description: Grant revoked successfully (empty granted_permission_sets)
         '400':
           description: Bad Request - Expired or invalid session token, or invalid grant data.
           content:
@@ -607,8 +626,8 @@ paths:
                 invalidGrant:
                   summary: Invalid grant data
                   value:
-                    error: invalid_scopes
-                    message: 'invalid scopes requested: delegation 0 (service=example-service) has invalid scopes: [invalid:scope]'
+                    error: invalid_permission_set
+                    message: 'invalid permission set: permission set <permission_set_id> is not assigned to this agent'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -640,8 +659,8 @@ paths:
         action. Users may manage OAuth2 sessions separately.
 
         **Idempotency**: Non-idempotent — returns 404 if no grant exists. To silently
-        revoke if a grant exists, use `POST /api/consent/agent/{agent-id}/grants` with
-        an empty `delegated_oauth2_tokens` array (backward-compatible path).
+        revoke if a grant exists, use `POST /api/consent/agents/{agent-id}/grants` with
+        an empty `granted_permission_sets` object (backward-compatible path).
 
         **Security**: Only the grant owner may revoke. The principal is derived from the
         `X-Remote-User` authentication header. Cross-user revocation is not possible —
@@ -1660,9 +1679,11 @@ components:
         activeGrantCount:
           type: integer
           minimum: 0
-          description: |
-            Number of third-party services currently delegated to this agent.
-            Reflects the count of delegated_oauth2_tokens in the active grant.
+          description: 'Number of permission sets currently granted to this agent.
+
+            Reflects the count of granted_permission_sets in the active grant.
+
+            '
           example: 3
         lastModifiedAt:
           type: string
@@ -1862,6 +1883,36 @@ components:
                 Array of service requirements for this agent with user connection status.
                 Includes mandatory and optional third-party services the agent needs,
                 sorted mandatory-first. Empty array if the agent has no service requirements.
+
+                '
+            permission_sets:
+              type: array
+              items:
+                $ref: '#/components/schemas/PermissionSetWithRequirement'
+              description: 'Phase 4 US2: Array of permission sets assigned to this agent with requirement types.
+
+                Empty array if no permission sets are assigned.
+
+                '
+            active_session_service_ids:
+              type: array
+              items:
+                type: string
+                format: uuid
+              description: 'Phase 4 US2: Array of service IDs for which the authenticated user has active sessions.
+
+                Empty array if no active sessions.
+
+                '
+            available_services:
+              type: array
+              items:
+                $ref: '#/components/schemas/AvailableService'
+              description: 'Phase 4 US2: Array of all available third-party services (redacted).
+
+                Same as services field but with reduced detail.
+
+                '
             cimd_metadata:
               $ref: '#/components/schemas/CIMDMetadata'
               nullable: true
@@ -1903,6 +1954,116 @@ components:
           nullable: true
           description: Logo URL from the CIMD document, if present. Always an absolute HTTPS URL.
           example: https://agent.example.com/logo.png
+    AgentConsentInfoResponse:
+      type: object
+      required:
+      - agent
+      - requested_services
+      - permission_sets
+      - active_session_service_ids
+      - available_services
+      - service_requirements
+      properties:
+        agent:
+          type: object
+          description: Agent metadata as emitted by the consent info handler (snake_case).
+          required:
+          - id
+          - client_id
+          - display_name
+          - description
+          - created_at
+          - updated_at
+          properties:
+            id:
+              type: string
+              format: uuid
+            client_id:
+              type: string
+            display_name:
+              type: string
+            description:
+              type: string
+            governance_url:
+              type: string
+              format: uri
+              nullable: true
+            user_documentation_url:
+              type: string
+              format: uri
+              nullable: true
+            agent_interface_url:
+              type: string
+              format: uri
+              nullable: true
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+        requested_services:
+          type: array
+          items:
+            type: object
+            required:
+            - id
+            - display_name
+            - scopes
+            properties:
+              id:
+                type: string
+                format: uuid
+              display_name:
+                type: string
+              scopes:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - scope_value
+                  - description
+                  properties:
+                    scope_value:
+                      type: string
+                    description:
+                      type: string
+          description: All available third-party services with scopes.
+        permission_sets:
+          type: array
+          items:
+            $ref: '#/components/schemas/PermissionSetWithRequirement'
+          description: Resolved permission sets declared by the agent with requirement types.
+        active_session_service_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Service IDs for which the authenticated user has active sessions.
+        available_services:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvailableService'
+          description: All available third-party services (redacted, ID + display name only).
+        service_requirements:
+          type: array
+          items:
+            type: object
+            required:
+            - service_id
+            - requirement_type
+            properties:
+              service_id:
+                type: string
+                format: uuid
+                description: OAuth2 service identifier
+              requirement_type:
+                type: string
+                enum:
+                - mandatory
+                - optional
+                description: Whether this service is required or optional for the agent
+          description: Per-service requirement types from the agent's service_requirements declaration.
     DelegatedToken:
       type: object
       required:
@@ -1925,17 +2086,85 @@ components:
             Array of OAuth2 scope values to delegate.
             Each scope must be valid for the specified service.
           example:
-            - read:files
-            - write:files
+          - read:files
+          - write:files
+    PermissionSetWithRequirement:
+      type: object
+      required:
+      - permission_set
+      - requirement_type
+      properties:
+        permission_set:
+          type: object
+          required:
+          - id
+          - name
+          - description
+          - service_scopes
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: Permission set identifier
+              example: 770e8400-e29b-41d4-a716-446655440001
+            name:
+              type: string
+              description: Permission set display name
+              example: GitHub Read Access
+            description:
+              type: string
+              description: Permission set description
+              example: Read repository contents and user profile
+            service_scopes:
+              type: array
+              items:
+                type: object
+                required:
+                - service_id
+                - requirement_type
+                properties:
+                  service_id:
+                    type: string
+                    format: uuid
+                    description: OAuth2 service identifier
+                  requirement_type:
+                    type: string
+                    enum:
+                    - mandatory
+                    - optional
+                    default: optional
+                    description: Whether this service is mandatory or optional within the permission set. Raw scopes are intentionally omitted; the frontend uses this field to determine lock status (FR-007).
+        requirement_type:
+          type: string
+          enum:
+          - mandatory
+          - optional
+          description: Whether this permission set is mandatory or optional for the agent
+          example: mandatory
+    AvailableService:
+      type: object
+      required:
+      - id
+      - display_name
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Service identifier
+          example: 770e8400-e29b-41d4-a716-446655440001
+        display_name:
+          type: string
+          description: Service display name
+          example: GitHub
     UserGrant:
       type: object
       required:
-        - id
-        - principal
-        - agent_id
-        - delegated_oauth2_tokens
-        - created_at
-        - updated_at
+      - id
+      - principal
+      - agent_id
+      - granted_permission_sets
+      - created_at
+      - updated_at
       properties:
         id:
           type: string
@@ -1960,14 +2189,25 @@ components:
             Null indicates indefinite grant (no expiration).
             Expired grants are filtered out automatically.
           example: '2026-06-01T00:00:00Z'
-        delegated_oauth2_tokens:
-          type: array
-          items:
-            $ref: '#/components/schemas/DelegatedToken'
-          minItems: 0
-          description: |
-            Array of delegated service tokens.
-            Empty array is only allowed when revoking (POST endpoint).
+        granted_permission_sets:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+              format: uuid
+          description: 'Map of granted permission sets. Keys are permission set UUIDs,
+            values are arrays of service UUIDs included in that permission set grant.
+
+            Empty object `{}` is only allowed when revoking (POST endpoint).
+
+            '
+          example:
+            770e8400-e29b-41d4-a716-446655440001:
+            - 880e8400-e29b-41d4-a716-446655440010
+            - 880e8400-e29b-41d4-a716-446655440011
+            770e8400-e29b-41d4-a716-446655440002:
+            - 880e8400-e29b-41d4-a716-446655440012
         created_at:
           type: string
           format: date-time
@@ -1994,31 +2234,38 @@ components:
     CreateOrUpdateGrantRequest:
       type: object
       required:
-        - delegated_oauth2_tokens
+      - granted_permission_sets
       properties:
-        delegated_oauth2_tokens:
-          type: array
-          items:
-            $ref: '#/components/schemas/DelegatedToken'
-          minItems: 0
-          description: |
-            Array of service delegations to grant to the agent.
+        granted_permission_sets:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+              format: uuid
+          description: 'Map of permission sets to grant to the agent. Keys are permission
+            set UUIDs, values are arrays of service UUIDs included in each permission set grant.
+
+
+            **Special Case**: Empty object `{}` revokes the grant entirely
+
+            and returns `204 No Content`.
 
             **Special Case**: Empty array `[]` revokes the grant entirely and returns `204 No Content`.
 
             **Validation**:
 
-            - Each service ID must exist and be available to the agent
-            - Each scope must be valid for the specified service
-            - At least one scope required per service (minItems: 1 on scopes array)
+            - Each permission set ID must exist and be assigned to the agent
+
+            - Each service ID must be valid for the specified permission set
+
+            '
           example:
-            - thirdparty_oauth2_service_id: google-drive-service-id
-              scopes:
-                - read:files
-                - write:files
-            - thirdparty_oauth2_service_id: github-service-id
-              scopes:
-                - read:repos
+            770e8400-e29b-41d4-a716-446655440001:
+            - 880e8400-e29b-41d4-a716-446655440010
+            - 880e8400-e29b-41d4-a716-446655440011
+            770e8400-e29b-41d4-a716-446655440002:
+            - 880e8400-e29b-41d4-a716-446655440012
         valid_until:
           type: string
           format: date-time
@@ -2592,6 +2839,17 @@ components:
           description: |
             Refresh token (typically not returned in token exchange as
             tokens are managed by the broker).
+        granted_permission_sets:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+              format: uuid
+          description: |
+            Map of granted permission sets associated with the token exchange.
+            Keys are permission set UUIDs, values are arrays of service UUIDs.
+            Only present when the token exchange is scoped to specific permission sets.
     OAuth2Error:
       type: object
       required:
@@ -2683,7 +2941,8 @@ components:
 
         **Resolution**:
 
-        - Use GET `/api/consent/agent/{agent-id}` to see available services and scopes
+        - Use GET `/api/consent/agents/{agent-id}` to see available services and scopes
+
         - Ensure valid_until is in ISO 8601 format and in the future
         - Provide at least one scope per service
         - Verify service IDs match available services

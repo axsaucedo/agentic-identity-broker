@@ -72,6 +72,17 @@ func SetupAdminRoutes(r chi.Router, h *app.AdminHandlers, cfg AdminRouteConfig) 
 			r.Delete("/{service-id}", h.Services.DeleteService) // DELETE /api/services/:service-id
 		})
 
+		// Permission sets management routes
+		r.Route("/permission-sets", func(r chi.Router) {
+			r.Post("/", h.PermissionSets.Create) // POST /api/permission-sets
+			r.Get("/", h.PermissionSets.List)    // GET /api/permission-sets
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", h.PermissionSets.Get)       // GET /api/permission-sets/:id
+				r.Put("/", h.PermissionSets.Update)    // PUT /api/permission-sets/:id
+				r.Delete("/", h.PermissionSets.Delete) // DELETE /api/permission-sets/:id
+			})
+		})
+
 		// Client credential management routes (per-agent)
 		if h.ClientCredentials != nil {
 			r.Route("/agents/{agent-id}/client-credentials", func(r chi.Router) {

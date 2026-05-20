@@ -11,7 +11,6 @@ import {
   formatValidationErrors,
   isSafeRedirectUrl,
 } from './validation';
-import type { DelegatedToken } from '../types/consent';
 
 describe('isSafeRedirectUrl', () => {
   const originalLocation = window.location;
@@ -145,52 +144,56 @@ describe('isSafeRedirectUrl', () => {
 describe('validateGrantRequest', () => {
   it('should accept valid grant request', () => {
     const request = {
-      delegatedTokens: [
-        {
-          thirdparty_oauth2_service_id: 'service-1',
-          scopes: ['read', 'write'],
-        },
-      ],
+      grantedPermissionSets: { 'ps-id-1': ['svc-1'], 'ps-id-2': ['svc-2'] },
     };
 
     const errors = validateGrantRequest(request);
     expect(errors).toEqual([]);
   });
 
-  it('should require delegatedTokens field', () => {
-    const request = {} as { delegatedTokens: DelegatedToken[] };
+  it('should require grantedPermissionSets field', () => {
+    const request = {} as { grantedPermissionSets: Record<string, string[]> };
     const errors = validateGrantRequest(request);
-    expect(errors).toContain('delegatedTokens field is required');
+    expect(errors).toContain('grantedPermissionSets field is required');
   });
 
-  it('should require at least one delegated token when mandatory requirements exist', () => {
+  it('should require at least one permission set when mandatory requirements exist', () => {
     const request = {
-      delegatedTokens: [],
+      grantedPermissionSets: {},
       requireAtLeastOneService: true,
     };
 
     const errors = validateGrantRequest(request);
-    expect(errors).toContain('Please select at least one service with scopes');
+    expect(errors).toContain('Please select at least one permission set');
   });
 
-  it('should not require a delegated token when only optional requirements exist', () => {
+  it('should not require a permission set when only optional requirements exist', () => {
     const request = {
-      delegatedTokens: [],
+      grantedPermissionSets: {},
       requireAtLeastOneService: false,
     };
 
     const errors = validateGrantRequest(request);
-    expect(errors).not.toContain('Please select at least one service with scopes');
+    expect(errors).not.toContain('Please select at least one permission set');
     expect(errors).toHaveLength(0);
   });
 
-  it('should require at least one delegated token by default (no requireAtLeastOneService flag)', () => {
+  it('should require at least one permission set by default (no requireAtLeastOneService flag)', () => {
     const request = {
-      delegatedTokens: [],
+      grantedPermissionSets: {},
     };
 
     const errors = validateGrantRequest(request);
-    expect(errors).toContain('Please select at least one service with scopes');
+    expect(errors).toContain('Please select at least one permission set');
+  });
+
+  it('should require at least one service per permission set', () => {
+    const request = {
+      grantedPermissionSets: { 'ps-id-1': [] },
+    };
+
+    const errors = validateGrantRequest(request);
+    expect(errors.length).toBeGreaterThan(0);
   });
 });
 

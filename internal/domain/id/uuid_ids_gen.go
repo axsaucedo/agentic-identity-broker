@@ -138,6 +138,35 @@ func (id *UserID) Scan(src interface{}) error   { return (*uuid.UUID)(id).Scan(s
 func (id UserID) MarshalText() ([]byte, error)  { return uuid.UUID(id).MarshalText() }
 func (id *UserID) UnmarshalText(b []byte) error { return (*uuid.UUID)(id).UnmarshalText(b) }
 
+// PermissionSetID uniquely identifies a permission_set entity.
+type PermissionSetID uuid.UUID
+
+func NewPermissionSetID() PermissionSetID { return PermissionSetID(uuid.New()) }
+func ParsePermissionSetID(s string) (PermissionSetID, error) {
+	id, err := uuid.Parse(s)
+	return PermissionSetID(id), err
+}
+func MustParsePermissionSetID(s string) PermissionSetID { return PermissionSetID(uuid.MustParse(s)) }
+func (id PermissionSetID) String() string               { return uuid.UUID(id).String() }
+func (id PermissionSetID) IsZero() bool                 { return uuid.UUID(id) == uuid.Nil }
+func (id PermissionSetID) MarshalJSON() ([]byte, error) { return json.Marshal(uuid.UUID(id).String()) }
+func (id *PermissionSetID) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	parsed, err := uuid.Parse(s)
+	if err != nil {
+		return err
+	}
+	*id = PermissionSetID(parsed)
+	return nil
+}
+func (id PermissionSetID) Value() (driver.Value, error)  { return uuid.UUID(id).String(), nil }
+func (id *PermissionSetID) Scan(src interface{}) error   { return (*uuid.UUID)(id).Scan(src) }
+func (id PermissionSetID) MarshalText() ([]byte, error)  { return uuid.UUID(id).MarshalText() }
+func (id *PermissionSetID) UnmarshalText(b []byte) error { return (*uuid.UUID)(id).UnmarshalText(b) }
+
 // CredentialID uniquely identifies a broker client credential entity.
 type CredentialID uuid.UUID
 

@@ -26,27 +26,25 @@ describe('useToggleGrant', () => {
   it('should initialize with empty state', () => {
     const { result } = renderHook(() => useToggleGrant(agentId));
 
-    expect(result.current.delegatedTokens).toEqual([]);
+    expect(result.current.grantedPermissionSets).toEqual({});
     expect(result.current.isSubmitting).toBe(false);
     expect(result.current.error).toBeNull();
     expect(result.current.isSuccess).toBe(false);
   });
 
-  it('should update delegated tokens', () => {
+  it('should update granted permission sets', () => {
     const { result } = renderHook(() => useToggleGrant(agentId));
 
-    const tokens = [
-      {
-        thirdparty_oauth2_service_id: 'service-1',
-        scopes: ['read', 'write'],
-      },
-    ];
+    const ps: Record<string, string[]> = {
+      'ps-id-1': ['svc-1', 'svc-2'],
+      'ps-id-2': ['svc-1'],
+    };
 
     act(() => {
-      result.current.setDelegatedTokens(tokens);
+      result.current.setGrantedPermissionSets(ps);
     });
 
-    expect(result.current.delegatedTokens).toEqual(tokens);
+    expect(result.current.grantedPermissionSets).toEqual(ps);
   });
 
   it('should submit grant successfully', async () => {
@@ -54,12 +52,7 @@ describe('useToggleGrant', () => {
       id: 'grant-123',
       agent_id: agentId,
       principal: 'user@example.com',
-      delegated_oauth2_tokens: [
-        {
-          thirdparty_oauth2_service_id: 'service-1',
-          scopes: ['read'],
-        },
-      ],
+      granted_permission_sets: { 'ps-id-1': ['svc-1'] },
       valid_until: null,
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
@@ -70,9 +63,11 @@ describe('useToggleGrant', () => {
 
     const { result } = renderHook(() => useToggleGrant(agentId));
 
-    // Set tokens
+    // Set permission sets
     act(() => {
-      result.current.setDelegatedTokens(mockGrant.delegated_oauth2_tokens);
+      result.current.setGrantedPermissionSets(
+        mockGrant.granted_permission_sets,
+      );
     });
 
     // Submit
@@ -95,14 +90,8 @@ describe('useToggleGrant', () => {
 
     const { result } = renderHook(() => useToggleGrant(agentId));
 
-    // Set tokens
     act(() => {
-      result.current.setDelegatedTokens([
-        {
-          thirdparty_oauth2_service_id: 'service-1',
-          scopes: ['read'],
-        },
-      ]);
+      result.current.setGrantedPermissionSets({ 'ps-id-1': ['svc-1'] });
     });
 
     // Submit — expect a throw since submit() now re-throws on API errors.
@@ -129,7 +118,7 @@ describe('useToggleGrant', () => {
       data: {
         message: 'Validation failed',
         details: {
-          'delegated_oauth2_tokens[0].scopes': ['At least one scope required'],
+          granted_permission_sets: ['At least one entry required'],
         },
       },
     } as never;
@@ -138,27 +127,52 @@ describe('useToggleGrant', () => {
 
     const { result } = renderHook(() => useToggleGrant(agentId));
 
-    // Set tokens
     act(() => {
-      result.current.setDelegatedTokens([
-        {
-          thirdparty_oauth2_service_id: 'service-1',
-          scopes: [],
-        },
-      ]);
+      result.current.setGrantedPermissionSets({ 'ps-id-1': ['svc-1'] });
     });
 
-    // Submit — expect a throw since submit() now re-throws on API errors.
+    let thrownError: Error | null = null;
     await act(async () => {
       try {
         await result.current.submit();
-      } catch {
-        // error is expected; assertions below check the resulting hook state
+      } catch (err) {
+        thrownError = err as Error;
       }
     });
 
+    expect(thrownError).not.toBeNull();
     expect(result.current.error).toContain('Validation error');
-    expect(result.current.error).toContain('delegated_oauth2_tokens[0].scopes');
+    expect(result.current.error).toContain('granted_permission_sets');
+  });
+
+  it('uses caller-supplied grantedPermissionSets without prior state update', async () => {
+    const mockGrant: UserGrant = {
+      id: 'grant-123',
+      agent_id: agentId,
+      principal: 'user@example.com',
+      granted_permission_sets: { 'ps-direct': ['svc-x'] },
+      valid_until: null,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    };
+
+    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue({ kind: 'created', grant: mockGrant });
+
+    const { result } = renderHook(() => useToggleGrant(agentId));
+
+    // Do NOT call setGrantedPermissionSets — pass directly to submit
+    await act(async () => {
+      await result.current.submit(null, undefined, { 'ps-direct': ['svc-x'] });
+    });
+
+    expect(consentApi.createOrUpdateGrant).toHaveBeenCalledWith(
+      agentId,
+      expect.objectContaining({
+        granted_permission_sets: { 'ps-direct': ['svc-x'] },
+      }),
+      undefined,
+    );
+    expect(result.current.isSuccess).toBe(true);
   });
 
   it('should reset state', () => {
@@ -166,12 +180,7 @@ describe('useToggleGrant', () => {
 
     // Set some state
     act(() => {
-      result.current.setDelegatedTokens([
-        {
-          thirdparty_oauth2_service_id: 'service-1',
-          scopes: ['read'],
-        },
-      ]);
+      result.current.setGrantedPermissionSets({ 'ps-id-1': ['svc-1'] });
     });
 
     // Reset
@@ -179,7 +188,7 @@ describe('useToggleGrant', () => {
       result.current.reset();
     });
 
-    expect(result.current.delegatedTokens).toEqual([]);
+    expect(result.current.grantedPermissionSets).toEqual({});
     expect(result.current.error).toBeNull();
     expect(result.current.isSuccess).toBe(false);
   });
@@ -187,14 +196,9 @@ describe('useToggleGrant', () => {
   it('should clear error', () => {
     const { result } = renderHook(() => useToggleGrant(agentId));
 
-    // Manually set error (in real scenario, would come from failed submit)
+    // Set some state
     act(() => {
-      result.current.setDelegatedTokens([
-        {
-          thirdparty_oauth2_service_id: 'service-1',
-          scopes: ['read'],
-        },
-      ]);
+      result.current.setGrantedPermissionSets({ 'ps-id-1': ['svc-1'] });
     });
 
     // Clear error
@@ -210,12 +214,7 @@ describe('useToggleGrant', () => {
       id: 'grant-123',
       agent_id: agentId,
       principal: 'user@example.com',
-      delegated_oauth2_tokens: [
-        {
-          thirdparty_oauth2_service_id: 'service-1',
-          scopes: ['read'],
-        },
-      ],
+      granted_permission_sets: { 'ps-id-1': ['svc-1'] },
       valid_until: '2025-01-01T00:00:00Z',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
@@ -225,9 +224,11 @@ describe('useToggleGrant', () => {
 
     const { result } = renderHook(() => useToggleGrant(agentId));
 
-    // Set tokens
+    // Set permission sets
     act(() => {
-      result.current.setDelegatedTokens(mockGrant.delegated_oauth2_tokens);
+      result.current.setGrantedPermissionSets(
+        mockGrant.granted_permission_sets,
+      );
     });
 
     // Submit with expiration

@@ -12,13 +12,11 @@ import (
 )
 
 var (
-	testAgentID1    = id.MustParseAgentID("b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a01")
-	testAgentID2    = id.MustParseAgentID("b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a02")
-	testPrincipal1  = id.Principal("user@example.com")
-	testPrincipal2  = id.Principal("user1@example.com")
-	testPrincipal3  = id.Principal("user2@example.com")
-	testServiceGH   = id.MustParseServiceID("c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a01")
-	testServiceGoog = id.MustParseServiceID("c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a02")
+	testAgentID1   = id.MustParseAgentID("b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a01")
+	testAgentID2   = id.MustParseAgentID("b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a02")
+	testPrincipal1 = id.Principal("user@example.com")
+	testPrincipal2 = id.Principal("user1@example.com")
+	testPrincipal3 = id.Principal("user2@example.com")
 )
 
 func TestUserGrantRepository_Create(t *testing.T) {
@@ -27,17 +25,12 @@ func TestUserGrantRepository_Create(t *testing.T) {
 
 	validUntil := time.Now().Add(24 * time.Hour)
 	grant := &storage.UserGrant{
-		Principal:  testPrincipal1,
-		AgentID:    testAgentID1,
-		ValidUntil: &validUntil,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGH,
-				Scopes:                    []string{"repo", "user:email"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		ValidUntil:            &validUntil,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err := repo.Create(ctx, grant)
@@ -57,19 +50,17 @@ func TestUserGrantRepository_UpsertSemantics(t *testing.T) {
 
 	validUntil1 := time.Now().Add(24 * time.Hour)
 
+	psID1 := id.NewPermissionSetID()
+	psID2 := id.NewPermissionSetID()
+
 	// Create first grant
 	grant1 := &storage.UserGrant{
-		Principal:  testPrincipal1,
-		AgentID:    testAgentID1,
-		ValidUntil: &validUntil1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGH,
-				Scopes:                    []string{"repo"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		ValidUntil:            &validUntil1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID1, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err := repo.Create(ctx, grant1)
@@ -79,17 +70,12 @@ func TestUserGrantRepository_UpsertSemantics(t *testing.T) {
 	// Create second grant for same principal+agent (should update, not create new)
 	validUntil2 := time.Now().Add(48 * time.Hour)
 	grant2 := &storage.UserGrant{
-		Principal:  testPrincipal1,
-		AgentID:    testAgentID1,
-		ValidUntil: &validUntil2,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGoog,
-				Scopes:                    []string{"openid", "email"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		ValidUntil:            &validUntil2,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID2, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err = repo.Create(ctx, grant2)
@@ -103,9 +89,9 @@ func TestUserGrantRepository_UpsertSemantics(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, grants, 1, "should have exactly one grant after upsert")
 
-	// Verify the grant was updated with new tokens
-	assert.Len(t, grants[0].DelegatedOAuth2Tokens, 1)
-	assert.Equal(t, testServiceGoog, grants[0].DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
+	// Verify the grant was updated with new permission set IDs
+	assert.Len(t, grants[0].GrantedPermissionSets, 1)
+	assert.Equal(t, psID2, grants[0].GrantedPermissionSets[0].PermissionSetID)
 }
 
 func TestUserGrantRepository_Get(t *testing.T) {
@@ -121,16 +107,11 @@ func TestUserGrantRepository_Get(t *testing.T) {
 
 	// Create and get grant
 	grant := &storage.UserGrant{
-		Principal: testPrincipal1,
-		AgentID:   testAgentID1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGH,
-				Scopes:                    []string{"repo"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err = repo.Create(ctx, grant)
@@ -146,18 +127,16 @@ func TestUserGrantRepository_Update(t *testing.T) {
 	repo := NewUserGrantRepository()
 	ctx := context.Background()
 
+	psID1 := id.NewPermissionSetID()
+	psID2 := id.NewPermissionSetID()
+
 	// Create grant
 	grant := &storage.UserGrant{
-		Principal: testPrincipal1,
-		AgentID:   testAgentID1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGH,
-				Scopes:                    []string{"repo"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID1, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err := repo.Create(ctx, grant)
@@ -166,12 +145,7 @@ func TestUserGrantRepository_Update(t *testing.T) {
 	// Update grant
 	validUntil := time.Now().Add(48 * time.Hour)
 	grant.ValidUntil = &validUntil
-	grant.DelegatedOAuth2Tokens = []storage.DelegatedToken{
-		{
-			ThirdpartyOAuth2ServiceID: testServiceGoog,
-			Scopes:                    []string{"openid"},
-		},
-	}
+	grant.GrantedPermissionSets = []storage.GrantedPermissionSetEntry{{PermissionSetID: psID2, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}}
 
 	err = repo.Update(ctx, grant)
 	require.NoError(t, err)
@@ -180,8 +154,8 @@ func TestUserGrantRepository_Update(t *testing.T) {
 	retrieved, err := repo.Get(ctx, grant.ID)
 	require.NoError(t, err)
 	assert.NotNil(t, retrieved.ValidUntil)
-	assert.Len(t, retrieved.DelegatedOAuth2Tokens, 1)
-	assert.Equal(t, testServiceGoog, retrieved.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
+	assert.Len(t, retrieved.GrantedPermissionSets, 1)
+	assert.Equal(t, psID2, retrieved.GrantedPermissionSets[0].PermissionSetID)
 }
 
 func TestUserGrantRepository_Update_NotFound(t *testing.T) {
@@ -189,17 +163,12 @@ func TestUserGrantRepository_Update_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	grant := &storage.UserGrant{
-		ID:        id.MustParseGrantID("d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99"),
-		Principal: testPrincipal1,
-		AgentID:   testAgentID1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGH,
-				Scopes:                    []string{"repo"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:                    id.MustParseGrantID("d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99"),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err := repo.Update(ctx, grant)
@@ -215,16 +184,11 @@ func TestUserGrantRepository_Delete(t *testing.T) {
 
 	// Create grant
 	grant := &storage.UserGrant{
-		Principal: testPrincipal1,
-		AgentID:   testAgentID1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGH,
-				Scopes:                    []string{"repo"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err := repo.Create(ctx, grant)
@@ -262,16 +226,11 @@ func TestUserGrantRepository_ListByPrincipalAndAgent(t *testing.T) {
 
 	// Create grant
 	grant := &storage.UserGrant{
-		Principal: testPrincipal1,
-		AgentID:   testAgentID1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGH,
-				Scopes:                    []string{"repo"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err = repo.Create(ctx, grant)
@@ -291,17 +250,12 @@ func TestUserGrantRepository_ListByPrincipalAndAgent_IncludesExpired(t *testing.
 	// Create grant with very short validity (1 millisecond in future)
 	validUntil := time.Now().Add(1 * time.Millisecond)
 	grant := &storage.UserGrant{
-		Principal:  testPrincipal1,
-		AgentID:    testAgentID1,
-		ValidUntil: &validUntil,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGH,
-				Scopes:                    []string{"repo"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		ValidUntil:            &validUntil,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err := repo.Create(ctx, grant)
@@ -329,16 +283,11 @@ func TestUserGrantRepository_FindByPrincipalAndAgent(t *testing.T) {
 
 	// Create grant
 	grant := &storage.UserGrant{
-		Principal: testPrincipal1,
-		AgentID:   testAgentID1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGH,
-				Scopes:                    []string{"repo"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err = repo.Create(ctx, grant)
@@ -358,43 +307,28 @@ func TestUserGrantRepository_DeleteByAgent(t *testing.T) {
 
 	// Create multiple grants for same agent with different principals
 	grant1 := &storage.UserGrant{
-		Principal: testPrincipal2,
-		AgentID:   testAgentID1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGH,
-				Scopes:                    []string{"repo"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal2,
+		AgentID:               testAgentID1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	grant2 := &storage.UserGrant{
-		Principal: testPrincipal3,
-		AgentID:   testAgentID1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGoog,
-				Scopes:                    []string{"openid"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal3,
+		AgentID:               testAgentID1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	// Create grant for different agent
 	grant3 := &storage.UserGrant{
-		Principal: testPrincipal2,
-		AgentID:   testAgentID2,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGH,
-				Scopes:                    []string{"repo"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal2,
+		AgentID:               testAgentID2,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err := repo.Create(ctx, grant1)
@@ -437,16 +371,11 @@ func TestUserGrantRepository_ConcurrentAccess(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(idx int) {
 			grant := &storage.UserGrant{
-				Principal: testPrincipal1,
-				AgentID:   testAgentID1,
-				DelegatedOAuth2Tokens: []storage.DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: testServiceGH,
-						Scopes:                    []string{"repo"},
-					},
-				},
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Now(),
+				Principal:             testPrincipal1,
+				AgentID:               testAgentID1,
+				GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+				CreatedAt:             time.Now(),
+				UpdatedAt:             time.Now(),
 			}
 			_ = repo.Create(ctx, grant)
 			done <- true
@@ -470,16 +399,11 @@ func TestUserGrantRepository_DeleteByPrincipalAndAgentID(t *testing.T) {
 
 	// Create a grant for testPrincipal1 + testAgentID1
 	grant := &storage.UserGrant{
-		Principal: testPrincipal1,
-		AgentID:   testAgentID1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGH,
-				Scopes:                    []string{"repo"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err := repo.Create(ctx, grant)
@@ -522,22 +446,18 @@ func TestUserGrantRepository_DeleteByPrincipalAndAgentID_CrossPrincipalIsolation
 
 	// Create grants for two different principals, same agent
 	grant1 := &storage.UserGrant{
-		Principal: testPrincipal1,
-		AgentID:   testAgentID1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: testServiceGH, Scopes: []string{"repo"}},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 	grant2 := &storage.UserGrant{
-		Principal: testPrincipal2,
-		AgentID:   testAgentID1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: testServiceGH, Scopes: []string{"repo"}},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal2,
+		AgentID:               testAgentID1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err := repo.Create(ctx, grant1)
@@ -568,22 +488,18 @@ func TestUserGrantRepository_DeleteByPrincipalAndAgentID_AgentIndexCleanup(t *te
 
 	// Create grant for agent1 and agent2 under same principal
 	grantA1 := &storage.UserGrant{
-		Principal: testPrincipal1,
-		AgentID:   testAgentID1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: testServiceGH, Scopes: []string{"repo"}},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 	grantA2 := &storage.UserGrant{
-		Principal: testPrincipal1,
-		AgentID:   testAgentID2,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: testServiceGoog, Scopes: []string{"openid"}},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID2,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err := repo.Create(ctx, grantA1)
@@ -611,16 +527,11 @@ func TestUserGrantRepository_DeepCopy(t *testing.T) {
 
 	// Create grant
 	grant := &storage.UserGrant{
-		Principal: testPrincipal1,
-		AgentID:   testAgentID1,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGH,
-				Scopes:                    []string{"repo"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Principal:             testPrincipal1,
+		AgentID:               testAgentID1,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
 	err := repo.Create(ctx, grant)
@@ -630,11 +541,100 @@ func TestUserGrantRepository_DeepCopy(t *testing.T) {
 	retrieved, err := repo.Get(ctx, grant.ID)
 	require.NoError(t, err)
 
-	// Modify retrieved grant
-	retrieved.DelegatedOAuth2Tokens[0].Scopes = append(retrieved.DelegatedOAuth2Tokens[0].Scopes, "user:email")
+	// Modify the retrieved slice to verify deep copy prevents mutation of stored data
+	retrieved.GrantedPermissionSets = append(retrieved.GrantedPermissionSets, storage.GrantedPermissionSetEntry{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}})
 
 	// Get again and verify original wasn't mutated
 	retrieved2, err := repo.Get(ctx, grant.ID)
 	require.NoError(t, err)
-	assert.Len(t, retrieved2.DelegatedOAuth2Tokens[0].Scopes, 1, "deep copy should prevent mutation")
+	assert.Len(t, retrieved2.GrantedPermissionSets, 1, "deep copy should prevent mutation")
+}
+
+func TestUserGrantRepository_CountGrantsReferencingPermissionSet(t *testing.T) {
+	ctx := context.Background()
+	psID := id.NewPermissionSetID()
+	svcID := id.NewServiceID()
+
+	t.Run("counts active grants referencing the permission set", func(t *testing.T) {
+		repo := NewUserGrantRepository()
+		grant := &storage.UserGrant{
+			Principal: testPrincipal1,
+			AgentID:   testAgentID1,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{
+				{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{svcID}},
+			},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		require.NoError(t, repo.Create(ctx, grant))
+
+		count, err := repo.CountGrantsReferencingPermissionSet(ctx, psID)
+		require.NoError(t, err)
+		assert.Equal(t, 1, count)
+	})
+
+	t.Run("excludes expired grants", func(t *testing.T) {
+		repo := NewUserGrantRepository()
+		past := time.Now().Add(-time.Hour)
+		grant := &storage.UserGrant{
+			Principal:  testPrincipal1,
+			AgentID:    testAgentID1,
+			ValidUntil: &past,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{
+				{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{svcID}},
+			},
+			CreatedAt: time.Now().Add(-2 * time.Hour),
+			UpdatedAt: time.Now().Add(-2 * time.Hour),
+		}
+		repo.grants[id.NewGrantID()] = grant
+
+		count, err := repo.CountGrantsReferencingPermissionSet(ctx, psID)
+		require.NoError(t, err)
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("counts indefinite grants (no valid_until)", func(t *testing.T) {
+		repo := NewUserGrantRepository()
+		grant := &storage.UserGrant{
+			Principal: testPrincipal1,
+			AgentID:   testAgentID1,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{
+				{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{svcID}},
+			},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		require.NoError(t, repo.Create(ctx, grant))
+
+		count, err := repo.CountGrantsReferencingPermissionSet(ctx, psID)
+		require.NoError(t, err)
+		assert.Equal(t, 1, count)
+	})
+
+	t.Run("counts grants with future valid_until as active", func(t *testing.T) {
+		repo := NewUserGrantRepository()
+		future := time.Now().Add(time.Hour)
+		grant := &storage.UserGrant{
+			Principal:  testPrincipal1,
+			AgentID:    testAgentID1,
+			ValidUntil: &future,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{
+				{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{svcID}},
+			},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		require.NoError(t, repo.Create(ctx, grant))
+
+		count, err := repo.CountGrantsReferencingPermissionSet(ctx, psID)
+		require.NoError(t, err)
+		assert.Equal(t, 1, count)
+	})
+
+	t.Run("returns zero when no grants reference the permission set", func(t *testing.T) {
+		repo := NewUserGrantRepository()
+		count, err := repo.CountGrantsReferencingPermissionSet(ctx, psID)
+		require.NoError(t, err)
+		assert.Equal(t, 0, count)
+	})
 }

@@ -14,7 +14,7 @@
  * - Smooth scroll to errors on validation failure
  */
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@components/layout/AppLayout';
 import { PageTransition } from '@components/ui/PageTransition';
@@ -29,10 +29,10 @@ import { ServiceCard } from '@components/consent/ServiceCard';
 import { RevokeGrantButton } from '@components/consent/RevokeGrantButton';
 import { CIMDSection } from '@components/consent/CIMDSection';
 import { GrantValidityControl } from '@components/consent/GrantValidityControl';
+import { PermissionSetsList } from '@components/consent/PermissionSetsList';
 import { useAgentGrants, useToggleGrant, useUpdateValidity } from '@hooks';
 import { validateGrantRequest, isSafeRedirectUrl } from '../utils/validation';
 import { scrollToError } from '../utils/scrollToError';
-import type { DelegatedToken } from '../types/consent';
 
 /**
  * AgentGrantDetailPage displays detailed agent information and service grants.
@@ -46,6 +46,7 @@ export function AgentGrantDetailPage() {
 
   const searchParams = new URLSearchParams(location.search);
   const sessionToken = searchParams.get('session_token') || undefined;
+  const redirectUri = searchParams.get('redirect_uri') || undefined;
 
   const resolvedAgentId = agentId ?? '';
 
@@ -62,26 +63,13 @@ export function AgentGrantDetailPage() {
   const { agent, services, cimdMeta, grants, loading, error, refetch } =
     useAgentGrants(resolvedAgentId, agentGrantOptions);
 
-  // Grant toggle hook
+  // Grant toggle hook for permission sets
   const {
-    delegatedTokens,
-    setDelegatedTokens,
     isSubmitting,
     error: submitError,
     submit,
     clearError,
   } = useToggleGrant(resolvedAgentId);
-
-  // Initialize delegatedTokens from loaded grant on mount or when grant changes
-  useEffect(() => {
-    if (grants) {
-      // Extract delegated tokens from grant to populate the form state
-      const initialTokens = grants.delegated_oauth2_tokens || [];
-      if (initialTokens.length > 0) {
-        setDelegatedTokens(initialTokens);
-      }
-    }
-  }, [grants, setDelegatedTokens]);
 
   // Validity hook (initialized from grant if exists)
   const {
@@ -91,13 +79,13 @@ export function AgentGrantDetailPage() {
     validate: validateValidity,
   } = useUpdateValidity(grants || null);
 
-  // Track if form has changes
+  // Track per-PS per-service inclusion from PermissionSetsList (FR-008, FR-011)
+  const [perPsIncludedServiceIds, setPerPsIncludedServiceIds] = useState<Record<string, string[]>>(
+    {},
+  );
+
   // Validation errors
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
-
-  // Track unmet mandatory requirements (FR-024: disable Approve button until satisfied)
-  const [hasUnmetMandatoryRequirements, setHasUnmetMandatoryRequirements] =
-    useState(false);
 
   // Handle grants change
   // Handle validity change
@@ -107,19 +95,17 @@ export function AgentGrantDetailPage() {
   };
 
   // Validate form
-  const validateForm = (): boolean => {
+  const validateForm = (grantedPS: Record<string, string[]>): boolean => {
     const errors: string[] = [];
 
-    // Require at least one service only when the agent has mandatory service requirements.
-    // Optional services are never required — the user may approve without delegating any.
-    const hasMandatoryRequirements = services.some(
-      (s) => s.kind === 'requirement' && s.requirementType === 'mandatory',
-    );
-    const requireAtLeastOneService = hasMandatoryRequirements;
+    // Require at least one PS for agents that declare permission sets (FR-014).
+    // An empty granted_permission_sets list is never valid for PS-using agents,
+    // even when all PSes are optional.
+    const requireAtLeastOneService = (agent?.permission_sets?.length ?? 0) > 0;
 
     // Validate grant request
     const grantErrors = validateGrantRequest({
-      delegatedTokens,
+      grantedPermissionSets: grantedPS,
       validUntil: getValidUntil(),
       requireAtLeastOneService,
     });
@@ -143,44 +129,75 @@ export function AgentGrantDetailPage() {
     return errors.length === 0;
   };
 
+  // Build structured granted_permission_sets from current selection.
+  // Uses perPsIncludedServiceIds from PermissionSetsList for per-service inclusion (FR-011).
+  const buildGrantedPermissionSets = (): Record<string, string[]> => {
+    // perPsIncludedServiceIds is populated by PermissionSetsList on mount (including initial
+    // grant hydration), so it is the single authoritative source for submission.
+    if (Object.keys(perPsIncludedServiceIds).length > 0) {
+      return { ...perPsIncludedServiceIds };
+    }
+
+    // Fallback before PermissionSetsList has mounted and emitted:
+    // include mandatory PSes with service_scopes intersected with agent's SR (FR-011)
+    const srServiceIds = new Set(agent?.service_requirements?.map((sr) => sr.service_id) ?? []);
+    const result: Record<string, string[]> = {};
+    agent?.permission_sets
+      ?.filter((ps) => ps.requirement_type === 'mandatory')
+      .forEach((ps) => {
+        const serviceIds = ps.permission_set.service_scopes
+          .filter((ss) => srServiceIds.size === 0 || srServiceIds.has(ss.service_id))
+          .map((ss) => ss.service_id);
+        result[ps.permission_set.id] = serviceIds;
+      });
+    return result;
+  };
+
   // Handle form submission
   const handleSubmit = async () => {
+    const grantedPS = buildGrantedPermissionSets();
+
     clearError();
     setValidationErrors([]);
 
-    if (!validateForm()) {
+    if (!validateForm(grantedPS)) {
       return;
     }
 
+    const validUntil = getValidUntil();
+    const submitOptions = sessionToken
+      ? { sessionToken }
+      : redirectUri
+        ? { redirectUri }
+        : undefined;
+
+    let grant: Awaited<ReturnType<typeof submit>>;
     try {
-      const result = await submit(
-        getValidUntil(),
-        sessionToken ? { sessionToken } : undefined,
-      );
-
-      if (!result) {
-        showToast('An unexpected error occurred. Please try again.', 'error');
-        return;
-      }
-
-      if (result.kind === 'redirect') {
-        if (!isSafeRedirectUrl(result.redirectUrl)) {
-          showToast('Invalid redirect URL', 'error');
-          return;
-        }
-        window.location.href = result.redirectUrl;
-        return;
-      }
-
-      if (result.kind === 'created') {
-        await refetch();
-        showToast('Grant updated successfully!', 'success');
-      }
-      // 'noContent' — grant revoked, no further action
+      grant = await submit(validUntil, submitOptions, grantedPS);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update grant';
-      showToast(message, 'error');
+      showToast(err instanceof Error ? err.message : 'Failed to update grant', 'error');
+      return;
     }
+
+    if (!grant) {
+      showToast('An unexpected error occurred. Please try again.', 'error');
+      return;
+    }
+
+    if (grant.kind === 'redirect') {
+      if (!isSafeRedirectUrl(grant.redirectUrl)) {
+        showToast('Invalid redirect URL', 'error');
+        return;
+      }
+      window.location.href = grant.redirectUrl;
+      return;
+    }
+
+    if (grant.kind === 'created') {
+      await refetch();
+      showToast('Grant updated successfully!', 'success');
+    }
+    // 'noContent' — grant revoked, no further action
   };
 
   // Handle service login (FR-020a: redirect to third-party OAuth2 flow)
@@ -198,82 +215,110 @@ export function AgentGrantDetailPage() {
     [buildServiceLoginUrl],
   );
 
-  // Handle service delegation (select service for grant)
-  const handleDelegate = useCallback(
-    (serviceId: string) => {
-      const service = services.find((s) => s.serviceId === serviceId);
-      if (!service) return;
-
-      // If service is not connected, initiate login first
-      if (service.kind === 'requirement' && service.connectionStatus !== 'connected') {
-        handleServiceLogin(serviceId);
-        return;
-      }
-
-      // Otherwise, add to delegated tokens with all required scopes
-      const scopesToDelegate =
-        service.kind === 'requirement'
-          ? service.requiredScopes.map((s) => s.name)
-          : (service.scopes ?? []).map((s) => s.value);
-
-      const newToken = {
-        thirdparty_oauth2_service_id: serviceId,
-        scopes: scopesToDelegate,
-      };
-
-      // Add or update this service in delegated tokens
-      const existingIndex = delegatedTokens.findIndex(
-        (t) => t.thirdparty_oauth2_service_id === serviceId,
-      );
-
-      const updated = [...delegatedTokens];
-      if (existingIndex >= 0) {
-        updated[existingIndex] = newToken;
-      } else {
-        updated.push(newToken);
-      }
-
-      setDelegatedTokens(updated);
-    showToast('Service selected for delegation', 'success');
-  },
-    [services, delegatedTokens, handleServiceLogin, setDelegatedTokens, showToast],
-  );
-
   // Handle full grant deletion (Revoke All Access button)
   const handleGrantRevoked = useCallback(() => {
     navigate('/');
     showToast('All access for this agent has been revoked.', 'success');
   }, [navigate, showToast]);
 
-  // Handle service revocation (deselect service from grant)
-  const handleRevoke = useCallback(
+  // Handle service login (service without active session)
+  const handleServiceConnect = useCallback(
     (serviceId: string) => {
-      const updated = delegatedTokens.filter(
-        (t) => t.thirdparty_oauth2_service_id !== serviceId,
-      );
-      setDelegatedTokens(updated);
-      showToast('Service removed from delegation', 'success');
+      handleServiceLogin(serviceId);
     },
-    [delegatedTokens, setDelegatedTokens, showToast],
+    [handleServiceLogin],
   );
 
-  // Update hasUnmetMandatoryRequirements whenever agent or services change
-  useEffect(() => {
-    if (!agent || !services) {
-      setHasUnmetMandatoryRequirements(false);
-      return;
+  // Compute dynamic service connections based on selected PSes
+  // When permission sets exist: union of (1) all services from mandatory PSes + (2) selected optional PS services
+  // When no permission sets: null (show all services — backward compatible)
+  const dynamicServiceIds = useMemo((): Set<string> | null => {
+    if (!agent?.permission_sets || agent.permission_sets.length === 0) {
+      return null; // No PS filtering — show all services
     }
 
-    const mandatoryRequirements = services.filter(
-      (s) =>
-        s.kind === 'requirement' &&
-        s.requirementType === 'mandatory' &&
-        s.connectionStatus === 'not_connected',
-    );
+    // Use perPsIncludedServiceIds as the authoritative source when available (FR-009, FR-010)
+    // This reflects per-service toggle state from PermissionSetsList.
+    if (Object.keys(perPsIncludedServiceIds).length > 0) {
+      const serviceIds = new Set<string>();
+      Object.values(perPsIncludedServiceIds).forEach((ids) =>
+        ids.forEach((id) => serviceIds.add(id)),
+      );
+      return serviceIds;
+    }
 
-    const hasUnmet = mandatoryRequirements.length > 0;
-    setHasUnmetMandatoryRequirements(hasUnmet);
-  }, [agent, services]);
+    // Fallback before PermissionSetsList has reported state:
+    // include services from mandatory PSes intersected with agent's SR (FR-009)
+    const srServiceIds = new Set(agent.service_requirements?.map((sr) => sr.service_id) ?? []);
+    const serviceIds = new Set<string>();
+    agent.permission_sets
+      .filter((ps) => ps.requirement_type === 'mandatory')
+      .forEach((ps) => {
+        ps.permission_set.service_scopes.forEach((ss) => {
+          if (srServiceIds.size === 0 || srServiceIds.has(ss.service_id)) {
+            serviceIds.add(ss.service_id);
+          }
+        });
+      });
+    return serviceIds;
+  }, [agent, perPsIncludedServiceIds]);
+
+  // Filter services: show only those without active sessions
+  // When dynamicServiceIds is null (no PSes), show ALL services without active sessions
+  // When dynamicServiceIds is set, only show services in the dynamic set
+  const servicesWithoutActiveSessions = useMemo(() => {
+    return services.filter(
+      (service) =>
+        (dynamicServiceIds === null || dynamicServiceIds.has(service.serviceId)) &&
+        !agent?.active_session_service_ids?.includes(service.serviceId),
+    );
+  }, [services, dynamicServiceIds, agent]);
+
+  // Compute effective requirement types for service connections badges.
+  // A service is effectively mandatory if SR.requirement_type=mandatory OR any currently-active PS
+  // has it as ServiceScope.requirement_type=mandatory (FR-009, FR-014).
+  const effectiveRequirementTypes = useMemo(() => {
+    const result = new Map<string, 'mandatory' | 'optional'>();
+    for (const service of services) {
+      result.set(service.serviceId, service.requirementType ?? 'optional');
+    }
+    // Use perPsIncludedServiceIds as authoritative source; fall back to mandatory PS IDs
+    // before PermissionSetsList has mounted and emitted.
+    const activePsIds =
+      Object.keys(perPsIncludedServiceIds).length > 0
+        ? Object.keys(perPsIncludedServiceIds)
+        : (agent?.permission_sets
+            ?.filter((p) => p.requirement_type === 'mandatory')
+            .map((p) => p.permission_set.id) ?? []);
+    for (const psId of activePsIds) {
+      const psEntry = agent?.permission_sets?.find((p) => p.permission_set.id === psId);
+      if (!psEntry) continue;
+      for (const ss of psEntry.permission_set.service_scopes) {
+        if (ss.requirement_type === 'mandatory') {
+          result.set(ss.service_id, 'mandatory');
+        }
+      }
+    }
+    return result;
+  }, [services, agent, perPsIncludedServiceIds]);
+
+  // FR-020: Approve button disabled until all displayed dynamic services have active sessions
+  const isApproveDisabled = useMemo(() => {
+    if (dynamicServiceIds === null) {
+      return false; // No permission sets on agent — don't gate on services
+    }
+    if (dynamicServiceIds.size === 0) {
+      return false; // No services in selection (e.g., all optional PSes unselected with no mandatory PSes covering services)
+    }
+    // Check every service in the dynamic set has an active session
+    const activeSet = new Set(agent?.active_session_service_ids || []);
+    for (const svcId of dynamicServiceIds) {
+      if (!activeSet.has(svcId)) {
+        return true;
+      }
+    }
+    return false;
+  }, [agent, dynamicServiceIds]);
 
   // Validate agentId parameter (after hooks to keep hook order stable)
   if (!agentId) {
@@ -357,25 +402,6 @@ export function AgentGrantDetailPage() {
     );
   }
 
-  // Get delegated tokens for a specific service from the current grant
-  const getDelegatedTokensForService = (
-    serviceId: string,
-  ): DelegatedToken[] => {
-    if (!grants) {
-      return [];
-    }
-    return (grants.delegated_oauth2_tokens || []).filter(
-      (token) =>
-        token != null && token.thirdparty_oauth2_service_id === serviceId,
-    );
-  };
-
-  // Check if service is currently selected for delegation in this session
-  const isServiceCurrentlyDelegated = (serviceId: string): boolean => {
-    return delegatedTokens.some(
-      (token) => token.thirdparty_oauth2_service_id === serviceId,
-    );
-  };
 
   return (
     <AppLayout>
@@ -543,102 +569,81 @@ export function AgentGrantDetailPage() {
             />
           </Card>
 
-          {/* Services section - Flattened layout with mandatory services first */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
+          {/* Permission Sets section */}
+          {agent?.permission_sets && agent.permission_sets.length > 0 && (
+            <PermissionSetsList
+              permissionSets={agent.permission_sets}
+              availableServices={agent.available_services}
+              serviceRequirements={agent.service_requirements}
+              initialGrantedPermissionSets={grants?.granted_permission_sets ?? {}}
+              onSelectionChange={(_optionalIds, perPsIncluded) => {
+                setPerPsIncludedServiceIds(perPsIncluded);
+              }}
+            />
+          )}
+
+          {/* Services section - Services without active sessions */}
+          {servicesWithoutActiveSessions.length > 0 && (
+            <div className="space-y-4">
               <div>
-                <h2 className="text-xl font-display font-semibold text-trust-deep">
-                  Services
-                  <span className="ml-2 text-sm font-sans font-normal text-neutral-500">
-                    ({services.length})
+                <h2 className="text-xl font-semibold text-trust-deep">
+                  Connect Your Accounts
+                  <span className="ml-2 text-sm font-normal text-neutral-500">
+                    ({servicesWithoutActiveSessions.length})
                   </span>
                 </h2>
-                <p className="mt-2 text-sm text-neutral-600">
-                  Delegate your permissions in these services to{' '}
-                  {agent.displayName}. The agent will use these services on your
-                  behalf.
+                <p className="mt-1 text-sm text-neutral-600">
+                  {agent.displayName} needs access to the following services. Click{' '}
+                  <strong>Login</strong> to authorise each one before approving.
                 </p>
               </div>
-            </div>
 
-            {services.length === 0 ? (
-              <Card padding="default">
-                <div className="text-center">
-                  <svg
-                    className="mx-auto h-12 w-12 text-neutral-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-                    />
-                  </svg>
-                  <h3 className="mt-4 text-lg font-display font-medium text-trust-deep">
-                    No services available
-                  </h3>
-                  <p className="mt-2 text-neutral-600">
-                    This agent has no services configured yet.
-                  </p>
-                </div>
-              </Card>
-            ) : (
-              <div className="space-y-4">
-                {/* Sort services: mandatory first, then optional, then others */}
-                {[...services]
-                  .sort((a, b) => {
-                    const aMandatory = a.kind === 'requirement' && a.requirementType === 'mandatory';
-                    const bMandatory = b.kind === 'requirement' && b.requirementType === 'mandatory';
-                    const aOptional = a.kind === 'requirement' && a.requirementType === 'optional';
-                    const bOptional = b.kind === 'requirement' && b.requirementType === 'optional';
-                    if (aMandatory && !bMandatory) return -1;
-                    if (!aMandatory && bMandatory) return 1;
-                    if (aOptional && !bOptional) return -1;
-                    if (!aOptional && bOptional) return 1;
-                    return 0;
-                  })
-                  .map((service) => (
+              {/* Single stacked card matching the Agent Permissions layout */}
+              <Card padding="none" border="subtle" hover="none">
+                {servicesWithoutActiveSessions.map((service, index) => (
+                  <React.Fragment key={service.serviceId}>
+                    {index > 0 && <hr className="border-neutral-200" />}
                     <ServiceCard
-                      key={service.serviceId}
-                      service={service}
-                      grants={getDelegatedTokensForService(service.serviceId)}
-                      isDelegated={isServiceCurrentlyDelegated(
-                        service.serviceId,
-                      )}
-                      onDelegate={handleDelegate}
-                      onRevoke={handleRevoke}
+                      service={{
+                        ...service,
+                        requirementType:
+                          effectiveRequirementTypes.get(service.serviceId) ??
+                          service.requirementType ??
+                          'optional',
+                      }}
+                      grants={[]}
+                      isDelegated={false}
+                      onDelegate={() => handleServiceConnect(service.serviceId)}
+                      onRevoke={() => {}}
+                      inStack
+                      isFirst={index === 0}
+                      isLast={index === servicesWithoutActiveSessions.length - 1}
                     />
-                  ))}
-              </div>
-            )}
-          </div>
+                  </React.Fragment>
+                ))}
+              </Card>
+            </div>
+          )}
 
-          {/* Action buttons - Always visible (FR-023), Approve disabled until mandatory requirements met (FR-024) */}
+          {/* Action buttons */}
           <div className="flex items-center justify-between gap-3 pt-4">
             {/* Revoke All Access — only visible when user has an active grant */}
-            {grants !== null &&
-              grants.delegated_oauth2_tokens &&
-              grants.delegated_oauth2_tokens.length > 0 && (
-                <RevokeGrantButton
-                  agentId={resolvedAgentId}
-                  agentName={agent.displayName}
-                  onRevoked={handleGrantRevoked}
-                />
-              )}
+            {grants !== null && grants.granted_permission_sets && Object.keys(grants.granted_permission_sets).length > 0 && (
+              <RevokeGrantButton
+                agentId={resolvedAgentId}
+                agentName={agent.displayName}
+                onRevoked={handleGrantRevoked}
+              />
+            )}
 
             <Button
               variant="primary"
               onClick={handleSubmit}
               isLoading={isSubmitting}
-              disabled={hasUnmetMandatoryRequirements || isSubmitting}
-              title={
-                hasUnmetMandatoryRequirements
-                  ? 'Please connect all required services first'
-                  : 'Approve and delegate'
-              }
+              disabled={isApproveDisabled}
+              title={isApproveDisabled
+                ? "Connect all required services before approving"
+                : "Approve and delegate these permissions"}
             >
               Approve & Delegate
             </Button>

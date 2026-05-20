@@ -5,6 +5,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -35,7 +36,7 @@ func setupUserGrantTestDB(t *testing.T) (*Adapter, *AgentRepository, *UserGrantR
 }
 
 func TestUserGrantRepository_Create(t *testing.T) {
-	_, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
+	adapter, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -53,18 +54,15 @@ func TestUserGrantRepository_Create(t *testing.T) {
 
 	t.Run("successful creation", func(t *testing.T) {
 		validUntil := time.Now().Add(24 * time.Hour)
+		psID := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID)
 		grant := &storage.UserGrant{
-			Principal:  id.Principal("user@example.com"),
-			AgentID:    agent.ID,
-			ValidUntil: &validUntil,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGitHub,
-					Scopes:                    []string{"repo", "user:email"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             id.Principal("user@example.com"),
+			AgentID:               agent.ID,
+			ValidUntil:            &validUntil,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 
 		err := grantRepo.Create(ctx, grant)
@@ -76,25 +74,22 @@ func TestUserGrantRepository_Create(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, grant.Principal, retrieved.Principal)
 		assert.Equal(t, grant.AgentID, retrieved.AgentID)
-		assert.Len(t, retrieved.DelegatedOAuth2Tokens, 1)
+		assert.Len(t, retrieved.GrantedPermissionSets, 1)
 	})
 
 	t.Run("upsert semantics", func(t *testing.T) {
 		principal := id.Principal("user2@example.com")
 		validUntil1 := time.Now().Add(24 * time.Hour)
 
+		psID1 := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID1)
 		grant1 := &storage.UserGrant{
-			Principal:  principal,
-			AgentID:    agent.ID,
-			ValidUntil: &validUntil1,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGitHub,
-					Scopes:                    []string{"repo"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             principal,
+			AgentID:               agent.ID,
+			ValidUntil:            &validUntil1,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID1, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 
 		err := grantRepo.Create(ctx, grant1)
@@ -103,18 +98,15 @@ func TestUserGrantRepository_Create(t *testing.T) {
 
 		// Create second grant for same principal+agent (should update)
 		validUntil2 := time.Now().Add(48 * time.Hour)
+		psID2 := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID2)
 		grant2 := &storage.UserGrant{
-			Principal:  principal,
-			AgentID:    agent.ID,
-			ValidUntil: &validUntil2,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGoogle,
-					Scopes:                    []string{"openid"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             principal,
+			AgentID:               agent.ID,
+			ValidUntil:            &validUntil2,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID2, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 
 		err = grantRepo.Create(ctx, grant2)
@@ -125,8 +117,9 @@ func TestUserGrantRepository_Create(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, grants, 1)
 
-		// Verify the grant was updated
-		assert.Equal(t, testServiceGoogle, grants[0].DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
+		// Verify the grant was updated with the new permission set ID
+		assert.Len(t, grants[0].GrantedPermissionSets, 1)
+		assert.Equal(t, psID2, grants[0].GrantedPermissionSets[0].PermissionSetID)
 
 		// The returned ID should be the first one (ON CONFLICT UPDATE keeps original ID)
 		assert.Equal(t, firstID, grants[0].ID)
@@ -134,7 +127,7 @@ func TestUserGrantRepository_Create(t *testing.T) {
 }
 
 func TestUserGrantRepository_Get(t *testing.T) {
-	_, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
+	adapter, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -159,17 +152,14 @@ func TestUserGrantRepository_Get(t *testing.T) {
 	})
 
 	t.Run("get existing grant", func(t *testing.T) {
+		psID := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID)
 		grant := &storage.UserGrant{
-			Principal: id.Principal("user@example.com"),
-			AgentID:   agent.ID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGitHub,
-					Scopes:                    []string{"repo"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             id.Principal("user@example.com"),
+			AgentID:               agent.ID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 
 		err := grantRepo.Create(ctx, grant)
@@ -183,7 +173,7 @@ func TestUserGrantRepository_Get(t *testing.T) {
 }
 
 func TestUserGrantRepository_Update(t *testing.T) {
-	_, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
+	adapter, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -200,17 +190,14 @@ func TestUserGrantRepository_Update(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("update existing grant", func(t *testing.T) {
+		psID1 := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID1)
 		grant := &storage.UserGrant{
-			Principal: id.Principal("user@example.com"),
-			AgentID:   agent.ID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGitHub,
-					Scopes:                    []string{"repo"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             id.Principal("user@example.com"),
+			AgentID:               agent.ID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID1, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 
 		err := grantRepo.Create(ctx, grant)
@@ -219,12 +206,9 @@ func TestUserGrantRepository_Update(t *testing.T) {
 		// Update grant
 		validUntil := time.Now().Add(48 * time.Hour)
 		grant.ValidUntil = &validUntil
-		grant.DelegatedOAuth2Tokens = []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGoogle,
-				Scopes:                    []string{"openid"},
-			},
-		}
+		psID2 := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID2)
+		grant.GrantedPermissionSets = []storage.GrantedPermissionSetEntry{{PermissionSetID: psID2, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}}
 		grant.UpdatedAt = time.Now().UTC()
 
 		err = grantRepo.Update(ctx, grant)
@@ -234,23 +218,21 @@ func TestUserGrantRepository_Update(t *testing.T) {
 		retrieved, err := grantRepo.Get(ctx, grant.ID)
 		require.NoError(t, err)
 		assert.NotNil(t, retrieved.ValidUntil)
-		assert.Len(t, retrieved.DelegatedOAuth2Tokens, 1)
-		assert.Equal(t, testServiceGoogle, retrieved.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
+		assert.Len(t, retrieved.GrantedPermissionSets, 1)
+		assert.Equal(t, psID2, retrieved.GrantedPermissionSets[0].PermissionSetID)
 	})
 
-	t.Run("update non-existent grant", func(t *testing.T) {
+	// This subtest also verifies error-ordering: the grant references a nonexistent PS,
+	// so if verifyPermissionSetExistenceInTx ran before the UPDATE it would return a PS
+	// conflict. ErrorKindNotFound must win, confirming the UPDATE runs first.
+	t.Run("update non-existent grant returns NotFound before PS conflict", func(t *testing.T) {
 		grant := &storage.UserGrant{
-			ID:        testGrantNotFound,
-			Principal: id.Principal("user@example.com"),
-			AgentID:   agent.ID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGitHub,
-					Scopes:                    []string{"repo"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			ID:                    testGrantNotFound,
+			Principal:             id.Principal("user@example.com"),
+			AgentID:               agent.ID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 
 		err := grantRepo.Update(ctx, grant)
@@ -262,7 +244,7 @@ func TestUserGrantRepository_Update(t *testing.T) {
 }
 
 func TestUserGrantRepository_Delete(t *testing.T) {
-	_, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
+	adapter, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -279,17 +261,14 @@ func TestUserGrantRepository_Delete(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("delete existing grant", func(t *testing.T) {
+		psID := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID)
 		grant := &storage.UserGrant{
-			Principal: id.Principal("user@example.com"),
-			AgentID:   agent.ID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGitHub,
-					Scopes:                    []string{"repo"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             id.Principal("user@example.com"),
+			AgentID:               agent.ID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 
 		err := grantRepo.Create(ctx, grant)
@@ -311,7 +290,7 @@ func TestUserGrantRepository_Delete(t *testing.T) {
 }
 
 func TestUserGrantRepository_ListByPrincipalAndAgent(t *testing.T) {
-	_, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
+	adapter, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -336,17 +315,14 @@ func TestUserGrantRepository_ListByPrincipalAndAgent(t *testing.T) {
 	})
 
 	t.Run("list existing grants", func(t *testing.T) {
+		psID := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID)
 		grant := &storage.UserGrant{
-			Principal: principal,
-			AgentID:   agent.ID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGitHub,
-					Scopes:                    []string{"repo"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             principal,
+			AgentID:               agent.ID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 
 		err := grantRepo.Create(ctx, grant)
@@ -361,29 +337,22 @@ func TestUserGrantRepository_ListByPrincipalAndAgent(t *testing.T) {
 	t.Run("includes expired grants", func(t *testing.T) {
 		principal2 := id.Principal("user2@example.com")
 
-		// Create grant with short validity
-		validUntil := time.Now().Add(1 * time.Millisecond)
-		grant := &storage.UserGrant{
-			Principal:  principal2,
-			AgentID:    agent.ID,
-			ValidUntil: &validUntil,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGitHub,
-					Scopes:                    []string{"repo"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
-		}
+		// Insert an already-expired grant directly, bypassing domain validation
+		// which rejects past valid_until values.
+		pastTime := time.Now().Add(-time.Hour).UTC()
+		expiredGrantID := id.NewGrantID()
+		psID := id.NewPermissionSetID()
+		grantedPS := fmt.Sprintf(`[{"permission_set_id":"%s","included_service_ids":[]}]`, psID.String())
 
-		err := grantRepo.Create(ctx, grant)
+		_, err := adapter.db.ExecContext(ctx,
+			`INSERT INTO user_grants (id, principal, agent_id, valid_until, granted_permission_sets, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+			expiredGrantID.String(), string(principal2), agent.ID.String(),
+			pastTime, grantedPS, pastTime, pastTime,
+		)
 		require.NoError(t, err)
 
-		// Wait for expiration
-		time.Sleep(10 * time.Millisecond)
-
-		// Should still be included in list
+		// Expired grant must still appear in ListByPrincipalAndAgent
 		grants, err := grantRepo.ListByPrincipalAndAgent(ctx, principal2, agent.ID)
 		require.NoError(t, err)
 		assert.Len(t, grants, 1)
@@ -391,7 +360,7 @@ func TestUserGrantRepository_ListByPrincipalAndAgent(t *testing.T) {
 }
 
 func TestUserGrantRepository_FindByPrincipalAndAgent(t *testing.T) {
-	_, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
+	adapter, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -418,17 +387,14 @@ func TestUserGrantRepository_FindByPrincipalAndAgent(t *testing.T) {
 	})
 
 	t.Run("find existing grant", func(t *testing.T) {
+		psID := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID)
 		grant := &storage.UserGrant{
-			Principal: principal,
-			AgentID:   agent.ID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGitHub,
-					Scopes:                    []string{"repo"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             principal,
+			AgentID:               agent.ID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 
 		err := grantRepo.Create(ctx, grant)
@@ -441,7 +407,7 @@ func TestUserGrantRepository_FindByPrincipalAndAgent(t *testing.T) {
 }
 
 func TestUserGrantRepository_DeleteByAgent(t *testing.T) {
-	_, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
+	adapter, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -469,48 +435,39 @@ func TestUserGrantRepository_DeleteByAgent(t *testing.T) {
 
 	t.Run("cascade delete all grants for agent", func(t *testing.T) {
 		// Create multiple grants for agent1
+		psID1 := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID1)
 		grant1 := &storage.UserGrant{
-			Principal: id.Principal("user1@example.com"),
-			AgentID:   agent1.ID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGitHub,
-					Scopes:                    []string{"repo"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             id.Principal("user1@example.com"),
+			AgentID:               agent1.ID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID1, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 		err := grantRepo.Create(ctx, grant1)
 		require.NoError(t, err)
 
+		psID2 := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID2)
 		grant2 := &storage.UserGrant{
-			Principal: id.Principal("user2@example.com"),
-			AgentID:   agent1.ID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGoogle,
-					Scopes:                    []string{"openid"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             id.Principal("user2@example.com"),
+			AgentID:               agent1.ID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID2, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 		err = grantRepo.Create(ctx, grant2)
 		require.NoError(t, err)
 
 		// Create grant for agent2
+		psID3 := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID3)
 		grant3 := &storage.UserGrant{
-			Principal: id.Principal("user1@example.com"),
-			AgentID:   agent2.ID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGitHub,
-					Scopes:                    []string{"repo"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             id.Principal("user1@example.com"),
+			AgentID:               agent2.ID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID3, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 		err = grantRepo.Create(ctx, grant3)
 		require.NoError(t, err)
@@ -536,8 +493,8 @@ func TestUserGrantRepository_DeleteByAgent(t *testing.T) {
 	})
 }
 
-func TestUserGrantRepository_JSONBMarshaling(t *testing.T) {
-	_, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
+func TestUserGrantRepository_PermissionSetIDMarshaling(t *testing.T) {
+	adapter, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -553,22 +510,17 @@ func TestUserGrantRepository_JSONBMarshaling(t *testing.T) {
 	err := agentRepo.Create(ctx, agent)
 	require.NoError(t, err)
 
-	t.Run("marshal and unmarshal complex tokens", func(t *testing.T) {
+	t.Run("marshal and unmarshal multiple permission set IDs", func(t *testing.T) {
+		psID1 := id.NewPermissionSetID()
+		psID2 := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID1)
+		seedPermissionSet(t, adapter, psID2)
 		grant := &storage.UserGrant{
-			Principal: id.Principal("user@example.com"),
-			AgentID:   agent.ID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGitHub,
-					Scopes:                    []string{"repo", "user:email", "read:org"},
-				},
-				{
-					ThirdpartyOAuth2ServiceID: testServiceGoogle,
-					Scopes:                    []string{"openid", "email", "profile"},
-				},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             id.Principal("user@example.com"),
+			AgentID:               agent.ID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID1, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}, {PermissionSetID: psID2, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 
 		err := grantRepo.Create(ctx, grant)
@@ -577,15 +529,12 @@ func TestUserGrantRepository_JSONBMarshaling(t *testing.T) {
 		// Retrieve and verify
 		retrieved, err := grantRepo.Get(ctx, grant.ID)
 		require.NoError(t, err)
-		assert.Len(t, retrieved.DelegatedOAuth2Tokens, 2)
-		assert.Len(t, retrieved.DelegatedOAuth2Tokens[0].Scopes, 3)
-		assert.Len(t, retrieved.DelegatedOAuth2Tokens[1].Scopes, 3)
-		assert.Equal(t, "repo", retrieved.DelegatedOAuth2Tokens[0].Scopes[0])
+		assert.Len(t, retrieved.GrantedPermissionSets, 2)
 	})
 }
 
 func TestUserGrantRepository_DeepCopy(t *testing.T) {
-	_, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
+	adapter, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -601,17 +550,14 @@ func TestUserGrantRepository_DeepCopy(t *testing.T) {
 	err := agentRepo.Create(ctx, agent)
 	require.NoError(t, err)
 
+	psID := id.NewPermissionSetID()
+	seedPermissionSet(t, adapter, psID)
 	grant := &storage.UserGrant{
-		Principal: id.Principal("user@example.com"),
-		AgentID:   agent.ID,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceGitHub,
-				Scopes:                    []string{"repo"},
-			},
-		},
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               agent.ID,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             time.Now().UTC(),
+		UpdatedAt:             time.Now().UTC(),
 	}
 
 	err = grantRepo.Create(ctx, grant)
@@ -621,17 +567,17 @@ func TestUserGrantRepository_DeepCopy(t *testing.T) {
 	retrieved, err := grantRepo.Get(ctx, grant.ID)
 	require.NoError(t, err)
 
-	// Modify retrieved grant
-	retrieved.DelegatedOAuth2Tokens[0].Scopes = append(retrieved.DelegatedOAuth2Tokens[0].Scopes, "user:email")
+	// Modify retrieved grant (in-memory only — no Create/Update, so no seed needed)
+	retrieved.GrantedPermissionSets = append(retrieved.GrantedPermissionSets, storage.GrantedPermissionSetEntry{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}})
 
 	// Get again and verify original wasn't mutated
 	retrieved2, err := grantRepo.Get(ctx, grant.ID)
 	require.NoError(t, err)
-	assert.Len(t, retrieved2.DelegatedOAuth2Tokens[0].Scopes, 1)
+	assert.Len(t, retrieved2.GrantedPermissionSets, 1)
 }
 
 func TestUserGrantRepository_DeleteByPrincipalAndAgentID(t *testing.T) {
-	_, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
+	adapter, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -658,14 +604,14 @@ func TestUserGrantRepository_DeleteByPrincipalAndAgentID(t *testing.T) {
 
 	t.Run("success: deletes grant and cleans up indexes", func(t *testing.T) {
 		principal := id.Principal("revoke-user@example.com")
+		psID := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID)
 		grant := &storage.UserGrant{
-			Principal: principal,
-			AgentID:   agent1.ID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{ThirdpartyOAuth2ServiceID: testServiceGitHub, Scopes: []string{"repo"}},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             principal,
+			AgentID:               agent1.ID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 
 		err := grantRepo.Create(ctx, grant)
@@ -697,27 +643,109 @@ func TestUserGrantRepository_DeleteByPrincipalAndAgentID(t *testing.T) {
 		assert.Equal(t, storage.ErrorKindNotFound, storageErr.Kind)
 	})
 
-	t.Run("cross-principal isolation: only deletes the specified principal's grant (SR-001)", func(t *testing.T) {
-		principalA := id.Principal("isolation-user-a@example.com")
-		principalB := id.Principal("isolation-user-b@example.com")
+	t.Run("CountGrantsReferencingPermissionSet returns correct count", func(t *testing.T) {
+		psID := id.NewPermissionSetID()
+		otherPSID := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psID)
 
-		grantA := &storage.UserGrant{
-			Principal: principalA,
+		// No grants yet — count should be 0
+		count, err := grantRepo.CountGrantsReferencingPermissionSet(ctx, psID)
+		require.NoError(t, err)
+		assert.Equal(t, 0, count)
+
+		// Create a grant referencing psID
+		grant := &storage.UserGrant{
+			Principal: id.Principal("ps-count-user@example.com"),
 			AgentID:   agent2.ID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{ThirdpartyOAuth2ServiceID: testServiceGitHub, Scopes: []string{"repo"}},
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{
+				{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}},
 			},
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		}
+		err = grantRepo.Create(ctx, grant)
+		require.NoError(t, err)
+
+		// Count for psID should now be 1
+		count, err = grantRepo.CountGrantsReferencingPermissionSet(ctx, psID)
+		require.NoError(t, err)
+		assert.Equal(t, 1, count)
+
+		// otherPSID has no grants
+		count, err = grantRepo.CountGrantsReferencingPermissionSet(ctx, otherPSID)
+		require.NoError(t, err)
+		assert.Equal(t, 0, count)
+
+		// Delete the grant — count should drop back to 0
+		err = grantRepo.Delete(ctx, grant.ID)
+		require.NoError(t, err)
+
+		count, err = grantRepo.CountGrantsReferencingPermissionSet(ctx, psID)
+		require.NoError(t, err)
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("expired grant is excluded from count", func(t *testing.T) {
+		expiredPSID := id.NewPermissionSetID()
+		pastTime := time.Now().Add(-time.Hour).UTC()
+		expiredGrantID := id.NewGrantID()
+		grantedPS := fmt.Sprintf(`[{"permission_set_id":"%s","included_service_ids":[]}]`, expiredPSID.String())
+
+		// Insert an expired grant directly, bypassing domain validation which rejects past valid_until.
+		_, execErr := adapter.db.ExecContext(ctx,
+			`INSERT INTO user_grants (id, principal, agent_id, valid_until, granted_permission_sets, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+			expiredGrantID.String(), "expired-ps-user@example.com", agent2.ID.String(),
+			pastTime, grantedPS, pastTime, pastTime,
+		)
+		require.NoError(t, execErr)
+
+		count, err := grantRepo.CountGrantsReferencingPermissionSet(ctx, expiredPSID)
+		require.NoError(t, err)
+		assert.Equal(t, 0, count, "expired grant must not be counted")
+	})
+
+	t.Run("future valid_until grant is included in count", func(t *testing.T) {
+		futurePSID := id.NewPermissionSetID()
+		futureTime := time.Now().Add(time.Hour).UTC()
+		futureGrantID := id.NewGrantID()
+		grantedPS := fmt.Sprintf(`[{"permission_set_id":"%s","included_service_ids":[]}]`, futurePSID.String())
+		now := time.Now().UTC()
+
+		_, execErr := adapter.db.ExecContext(ctx,
+			`INSERT INTO user_grants (id, principal, agent_id, valid_until, granted_permission_sets, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+			futureGrantID.String(), "future-ps-user@example.com", agent2.ID.String(),
+			futureTime, grantedPS, now, now,
+		)
+		require.NoError(t, execErr)
+
+		count, err := grantRepo.CountGrantsReferencingPermissionSet(ctx, futurePSID)
+		require.NoError(t, err)
+		assert.Equal(t, 1, count, "grant with future valid_until must be counted")
+	})
+
+	t.Run("cross-principal isolation: only deletes the specified principal's grant (SR-001)", func(t *testing.T) {
+		principalA := id.Principal("isolation-user-a@example.com")
+		principalB := id.Principal("isolation-user-b@example.com")
+
+		psIDA := id.NewPermissionSetID()
+		psIDB := id.NewPermissionSetID()
+		seedPermissionSet(t, adapter, psIDA)
+		seedPermissionSet(t, adapter, psIDB)
+		grantA := &storage.UserGrant{
+			Principal:             principalA,
+			AgentID:               agent2.ID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psIDA, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
+		}
 		grantB := &storage.UserGrant{
-			Principal: principalB,
-			AgentID:   agent2.ID,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{ThirdpartyOAuth2ServiceID: testServiceGoogle, Scopes: []string{"openid"}},
-			},
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Principal:             principalB,
+			AgentID:               agent2.ID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psIDB, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+			CreatedAt:             time.Now().UTC(),
+			UpdatedAt:             time.Now().UTC(),
 		}
 
 		err := grantRepo.Create(ctx, grantA)

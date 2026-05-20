@@ -90,7 +90,7 @@ func newTestEncryption() ports.EncryptionPort {
 // setupHandler creates a handler backed by a mock repository and test encryption.
 func setupHandler(t *testing.T, mockRepo *MockProviderRepository) *ServicesHandler {
 	t.Helper()
-	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockRepo, newTestEncryption(), nil, false, slog.Default())
+	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockRepo, newTestEncryption(), nil, nil, false, slog.Default())
 	return NewServicesHandler(svc, testConfig(), slog.Default())
 }
 

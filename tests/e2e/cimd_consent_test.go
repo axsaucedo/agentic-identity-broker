@@ -122,7 +122,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 				},
 			)
 
-			path := fmt.Sprintf("/api/consent/agent/%s?session_token=%s", agent.ID, token)
+			path := fmt.Sprintf("/api/consent/agents/%s?session_token=%s", agent.ID, token)
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -166,7 +166,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 				},
 			)
 
-			path := fmt.Sprintf("/api/consent/agent/%s?session_token=%s", agent.ID, token)
+			path := fmt.Sprintf("/api/consent/agents/%s?session_token=%s", agent.ID, token)
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -219,7 +219,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			token, err := svc.Create(claims)
 			Expect(err).ToNot(HaveOccurred())
 
-			path := fmt.Sprintf("/api/consent/agent/%s?session_token=%s", agent.ID, token)
+			path := fmt.Sprintf("/api/consent/agents/%s?session_token=%s", agent.ID, token)
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -258,7 +258,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			}
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
-			path := fmt.Sprintf("/api/consent/agent/%s", agent.ID)
+			path := fmt.Sprintf("/api/consent/agents/%s", agent.ID)
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -302,7 +302,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 				},
 			)
 
-			path := fmt.Sprintf("/api/consent/agent/%s?session_token=%s", agent.ID, token)
+			path := fmt.Sprintf("/api/consent/agents/%s?session_token=%s", agent.ID, token)
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -326,7 +326,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			}
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
-			path := fmt.Sprintf("/api/consent/agent/%s?session_token=not-a-valid-jwe-token", agent.ID)
+			path := fmt.Sprintf("/api/consent/agents/%s?session_token=not-a-valid-jwe-token", agent.ID)
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -362,7 +362,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 				},
 			)
 
-			path := fmt.Sprintf("/api/consent/agent/%s?session_token=%s", agent.ID, token)
+			path := fmt.Sprintf("/api/consent/agents/%s?session_token=%s", agent.ID, token)
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -397,7 +397,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 				},
 			)
 
-			path := fmt.Sprintf("/api/consent/agent/%s?session_token=%s", agent.ID, token)
+			path := fmt.Sprintf("/api/consent/agents/%s?session_token=%s", agent.ID, token)
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()

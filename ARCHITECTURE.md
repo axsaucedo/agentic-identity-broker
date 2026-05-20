@@ -1053,6 +1053,14 @@ Define any project-specific terms or acronyms.)
 
 **Cascade Delete**: When an agent is deleted, all user grants referencing that agent are automatically deleted (FR-020). This maintains referential integrity and prevents orphaned grants. Implemented at the repository layer.
 
+**PermissionSet**: Admin-defined bundle of OAuth2 scopes spanning one or more third-party services. Has a stable UUID, display name, description, and `ServiceScope` list. Grouped for human-readable display in the consent screen. Deletion is blocked (409) if any agent references the set.
+
+**ServiceScope**: Value object within a `PermissionSet` pairing a `ThirdpartyOAuth2Service` reference with a list of OAuth2 scopes. Immutable within its containing `PermissionSet`. Deleted when the parent `PermissionSet` is deleted (CASCADE). Cannot reference a deleted service (RESTRICT FK).
+
+**AgentPermissionSetEntry**: One element of `Agent.PermissionSets` — pairs a `PermissionSetID` with a `RequirementType` ("mandatory" or "optional"). Stored as JSONB in the `agents.permission_sets` column; ordering reflects declaration order and is preserved in storage.
+
+**granted_permission_set_ids**: Flat `UUID[]` stored in `UserGrant`; contains all mandatory + user-selected optional permission set IDs submitted during consent. OAuth2 scopes are derived at token exchange time from the referenced `PermissionSet` definitions via `PermissionSetService.GetByIDs()`.
+
 **Service Protection**: Business rule preventing deletion of an OAuth2 service if any active grants reference it (returns 409 Conflict). Ensures grants don't reference non-existent services. Requires revocation of all referencing grants before service deletion.
 
 **OAuth2Flavor**: Named enumeration on `ThirdpartyOAuth2Service` identifying the credential format and future token acquisition mechanism. Current values: `standard` (plain client secret string), `google` (Google service account JSON key). Designed for extension. Stored in the `oauth2_flavor` column of `thirdparty_oauth2_services`. Defaults to `standard` for backward compatibility.

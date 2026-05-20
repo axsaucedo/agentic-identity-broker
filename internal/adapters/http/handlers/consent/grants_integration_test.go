@@ -17,11 +17,60 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type permissivePermissionSetQuerier struct {
+	serviceIDs []id.ServiceID
+}
+
+func newPermissivePermissionSetQuerier(serviceIDs ...id.ServiceID) *permissivePermissionSetQuerier {
+	return &permissivePermissionSetQuerier{serviceIDs: serviceIDs}
+}
+
+func (q *permissivePermissionSetQuerier) ValidateIDs(context.Context, []id.PermissionSetID) error {
+	return nil
+}
+
+func (q *permissivePermissionSetQuerier) GetByIDs(_ context.Context, ids []id.PermissionSetID) ([]*storage.PermissionSet, error) {
+	permissionSets := make([]*storage.PermissionSet, 0, len(ids))
+	for _, permissionSetID := range ids {
+		serviceScopes := make([]storage.ServiceScope, 0, len(q.serviceIDs))
+		for _, serviceID := range q.serviceIDs {
+			serviceScopes = append(serviceScopes, storage.ServiceScope{
+				ServiceID:       serviceID,
+				Scopes:          []string{"test-scope"},
+				RequirementType: storage.RequirementTypeOptional,
+			})
+		}
+		permissionSets = append(permissionSets, &storage.PermissionSet{
+			ID:            permissionSetID,
+			Name:          "Test Permission Set",
+			Description:   "Test Permission Set",
+			ServiceScopes: serviceScopes,
+		})
+	}
+	return permissionSets, nil
+}
+
+func seedActiveSession(t *testing.T, repo ports.UserSessionRepository, principal id.Principal, serviceID id.ServiceID) {
+	t.Helper()
+	require.NoError(t, repo.Create(context.Background(), &storage.UserSession{
+		ID:                   id.NewSessionID(),
+		Principal:            principal,
+		ServiceID:            serviceID,
+		EncryptedAccessToken: []byte("encrypted-token"),
+		TokenType:            "Bearer",
+		EncryptionContext:    storage.EncryptionContext{ServiceID: serviceID},
+		InitiatedAt:          time.Now(),
+		CreatedAt:            time.Now(),
+		UpdatedAt:            time.Now(),
+	}))
+}
 
 // TestGrantsIntegration_CreateUpdateRevoke tests the full lifecycle of a grant
 // with real in-memory repositories. This verifies:
@@ -36,7 +85,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create providerService to handle encryption context binding (simulates domain layer)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, nil, false, slog.Default())
 
 	// Seed test data
 	ctx := context.Background()
@@ -97,8 +146,13 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	err = providerService.Create(ctx, googleService)
 	require.NoError(t, err)
 
+	sessionRepo := memory.NewInMemoryUserSessionRepository()
+	psService := newPermissivePermissionSetQuerier(githubServiceID, googleServiceID)
+	seedActiveSession(t, sessionRepo, id.Principal("alice@example.com"), githubServiceID)
+	seedActiveSession(t, sessionRepo, id.Principal("alice@example.com"), googleServiceID)
+
 	// Create consent service
-	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, sessionRepo, psService, slog.Default())
 
 	// Create handler
 	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
@@ -106,14 +160,10 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	// Test 1: Create initial grant
 	t.Run("create_grant", func(t *testing.T) {
 		futureTime := time.Now().Add(30 * 24 * time.Hour) // 30 days
+		psID := id.NewPermissionSetID()
 		reqBody := GrantRequest{
-			ValidUntil: &futureTime,
-			DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-				{
-					ThirdpartyOAuth2ServiceID: githubServiceID.String(),
-					Scopes:                    []string{"repo", "user:email"},
-				},
-			},
+			ValidUntil:            &futureTime,
+			GrantedPermissionSets: map[string][]string{psID.String(): {githubServiceID.String()}},
 		}
 
 		jsonBody, _ := json.Marshal(reqBody)
@@ -140,26 +190,18 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		assert.Equal(t, "alice@example.com", response.Principal)
 		assert.Equal(t, testAgentID.String(), response.AgentID)
 		assert.NotNil(t, response.ValidUntil)
-		assert.Len(t, response.DelegatedOAuth2Tokens, 1)
-		assert.Equal(t, githubServiceID.String(), response.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
-		assert.ElementsMatch(t, []string{"repo", "user:email"}, response.DelegatedOAuth2Tokens[0].Scopes)
+		assert.Len(t, response.GrantedPermissionSets, 1)
+		if _, ok := response.GrantedPermissionSets[psID.String()]; !ok {
+			t.Errorf("expected permission set ID '%s' to be present", psID.String())
+		}
 	})
 
 	// Test 2: Update grant (upsert semantics)
 	t.Run("update_grant", func(t *testing.T) {
 		futureTime := time.Now().Add(60 * 24 * time.Hour) // 60 days
 		reqBody := GrantRequest{
-			ValidUntil: &futureTime,
-			DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-				{
-					ThirdpartyOAuth2ServiceID: githubServiceID.String(),
-					Scopes:                    []string{"repo", "user:email", "read:user"},
-				},
-				{
-					ThirdpartyOAuth2ServiceID: googleServiceID.String(),
-					Scopes:                    []string{"openid", "email"},
-				},
-			},
+			ValidUntil:            &futureTime,
+			GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {githubServiceID.String()}, id.NewPermissionSetID().String(): {googleServiceID.String()}},
 		}
 
 		jsonBody, _ := json.Marshal(reqBody)
@@ -186,12 +228,41 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		// Grant was updated, not created (same principal+agent)
 		assert.Equal(t, "alice@example.com", response.Principal)
 		assert.Equal(t, testAgentID.String(), response.AgentID)
-		assert.Len(t, response.DelegatedOAuth2Tokens, 2)
+		assert.Len(t, response.GrantedPermissionSets, 2)
+	})
+
+	// Test 3: Retrieve grants
+	t.Run("get_grants", func(t *testing.T) {
+		agentGrantsHandler := NewGrantsHandler(consentService, slog.Default(), newTestSessionTokenValidator())
+
+		req := httptest.NewRequest("GET", "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
+		//nolint:staticcheck // Using string key for test simplicity
+		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", testAgentID.String())
+		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
+
+		rr := httptest.NewRecorder()
+		agentGrantsHandler.GetGrant(rr, req)
+
+		// Verify response
+		assert.Equal(t, http.StatusOK, rr.Code)
+
+		var envelope struct {
+			Data *GrantResponse `json:"data"`
+		}
+		err := json.NewDecoder(rr.Body).Decode(&envelope)
+		require.NoError(t, err)
+		require.NotNil(t, envelope.Data, "expected grant in response")
+
+		assert.Equal(t, "alice@example.com", envelope.Data.Principal)
+		assert.Equal(t, testAgentID.String(), envelope.Data.AgentID)
+		assert.Len(t, envelope.Data.GrantedPermissionSets, 2)
 	})
 
 	// Test 4: Revoke grant via DELETE /grants
 	t.Run("revoke_grant", func(t *testing.T) {
-		revokeHandler := NewRevokeGrantHandler(consentService, nil)
+		revokeHandler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
 		req := httptest.NewRequest("DELETE", "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
 		//nolint:staticcheck // Using string key for test simplicity
@@ -213,7 +284,7 @@ func TestGrantsIntegration_SessionToken_CreateGrantWithRedirect(t *testing.T) {
 	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, nil, false, slog.Default())
 
 	ctx := context.Background()
 	agentID := id.NewAgentID()
@@ -251,19 +322,14 @@ func TestGrantsIntegration_SessionToken_CreateGrantWithRedirect(t *testing.T) {
 	ts := newTestJWETokenService()
 	sessionToken := newTestSessionToken(ts, agentID, principalValue.String(), originalURL)
 
-	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, nil, slog.Default())
 	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
 	validUntil := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
 
 	reqBody := GrantRequest{
-		ValidUntil: &validUntil,
-		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-			{
-				ThirdpartyOAuth2ServiceID: serviceID.String(),
-				Scopes:                    []string{"repo"},
-			},
-		},
+		ValidUntil:            &validUntil,
+		GrantedPermissionSets: map[string][]string{},
 	}
 	jsonBody, marshalErr := json.Marshal(reqBody)
 	require.NoError(t, marshalErr)
@@ -286,8 +352,7 @@ func TestGrantsIntegration_SessionToken_CreateGrantWithRedirect(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, storedGrant)
 	assert.Equal(t, &validUntil, storedGrant.ValidUntil)
-	require.Len(t, storedGrant.DelegatedOAuth2Tokens, 1)
-	assert.Equal(t, []string{"repo"}, storedGrant.DelegatedOAuth2Tokens[0].Scopes)
+	assert.Empty(t, storedGrant.GrantedPermissionSets)
 }
 
 // TestGrantsIntegration_OptionalOnlyAgent verifies that agents with only optional service
@@ -298,7 +363,7 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, nil, false, slog.Default())
 	ctx := context.Background()
 
 	// Agent with only optional service requirements
@@ -340,13 +405,13 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 	err = providerService.Create(ctx, optionalService)
 	require.NoError(t, err)
 
-	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, nil, slog.Default())
 	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
-	// Approval with no selected services creates a grant with empty delegations (201).
+	// Approval with no selected services creates a grant with empty permission sets (201).
 	t.Run("approve_with_no_services_optional_only_agent", func(t *testing.T) {
 		reqBody := GrantRequest{
-			DelegatedOAuth2Tokens: []DelegatedTokenRequest{},
+			GrantedPermissionSets: map[string][]string{},
 		}
 
 		jsonBody, _ := json.Marshal(reqBody)
@@ -364,9 +429,30 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 		require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 		data := resp["data"].(map[string]interface{})
 		assert.Equal(t, optionalAgentID.String(), data["agent_id"])
-		assert.Empty(t, data["delegated_oauth2_tokens"])
+		assert.Empty(t, data["granted_permission_sets"])
 	})
 
+	// Empty permission sets with redirect_uri: creates grant and honours the redirect.
+	t.Run("empty_tokens_with_redirect_uri_creates_grant_and_redirects", func(t *testing.T) {
+		reqBody := GrantRequest{
+			GrantedPermissionSets: map[string][]string{},
+		}
+
+		jsonBody, _ := json.Marshal(reqBody)
+		req := httptest.NewRequest("POST", "/api/consent/agent/"+optionalAgentID.String()+"/grants?redirect_uri=%2Fcallback", bytes.NewBuffer(jsonBody))
+		ctx := principal.WithPrincipal(req.Context(), "bob@example.com")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", optionalAgentID.String())
+		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
+
+		rr := httptest.NewRecorder()
+		handler.CreateGrant(rr, req)
+
+		assert.Equal(t, http.StatusCreated, rr.Code)
+		var resp map[string]interface{}
+		require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+		assert.Equal(t, "/callback", resp["redirect_url"])
+	})
 }
 
 // TestGrantsIntegration_Validation tests validation logic (T077)
@@ -377,7 +463,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create providerService to handle encryption context binding (simulates domain layer)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, nil, false, slog.Default())
 
 	ctx := context.Background()
 
@@ -415,7 +501,11 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	err = providerService.Create(ctx, service)
 	require.NoError(t, err)
 
-	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
+	sessionRepo := memory.NewInMemoryUserSessionRepository()
+	psService := newPermissivePermissionSetQuerier(service.ID)
+	seedActiveSession(t, sessionRepo, id.Principal("test@example.com"), service.ID)
+
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, sessionRepo, psService, slog.Default())
 	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
 	tests := []struct {
@@ -426,43 +516,19 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 		expectedError  string
 	}{
 		{
-			name:    "invalid_scope",
+			name:    "invalid_permission_set_id",
 			agentID: testAgentID.String(),
 			reqBody: GrantRequest{
-				DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-					{
-						ThirdpartyOAuth2ServiceID: testServiceID.String(),
-						Scopes:                    []string{"invalid-scope"},
-					},
-				},
+				GrantedPermissionSets: map[string][]string{"not-a-valid-uuid": {id.NewServiceID().String()}},
 			},
 			expectedStatus: http.StatusBadRequest,
-			expectedError:  "invalid scopes",
-		},
-		{
-			name:    "nonexistent_service",
-			agentID: testAgentID.String(),
-			reqBody: GrantRequest{
-				DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-					{
-						ThirdpartyOAuth2ServiceID: id.NewServiceID().String(),
-						Scopes:                    []string{"read"},
-					},
-				},
-			},
-			expectedStatus: http.StatusInternalServerError,
-			expectedError:  "internal server error",
+			expectedError:  "invalid request",
 		},
 		{
 			name:    "nonexistent_agent",
 			agentID: id.NewAgentID().String(),
 			reqBody: GrantRequest{
-				DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-					{
-						ThirdpartyOAuth2ServiceID: testServiceID.String(),
-						Scopes:                    []string{"read"},
-					},
-				},
+				GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {service.ID.String()}},
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedError:  "agent not found",
@@ -471,12 +537,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 			name:    "valid_request",
 			agentID: testAgentID.String(),
 			reqBody: GrantRequest{
-				DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-					{
-						ThirdpartyOAuth2ServiceID: testServiceID.String(),
-						Scopes:                    []string{"read", "write"},
-					},
-				},
+				GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {service.ID.String()}},
 			},
 			expectedStatus: http.StatusCreated,
 			expectedError:  "",
@@ -506,4 +567,53 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGrantsIntegration_FR020_UnconnectedServices tests that submitting a grant
+// with included services that have no active OAuth2 session returns HTTP 400 (FR-020).
+func TestGrantsIntegration_FR020_UnconnectedServices(t *testing.T) {
+	agentRepo := memory.NewAgentRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
+	grantRepo := memory.NewUserGrantRepository()
+	sessionRepo := memory.NewInMemoryUserSessionRepository()
+	unconnectedServiceID := id.NewServiceID()
+
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, nil, false, slog.Default())
+	ctx := context.Background()
+
+	agentID := id.NewAgentID()
+	agent := &storage.Agent{
+		ID:          agentID,
+		ClientID:    ptr.To(id.ClientID("client-fr020")),
+		DisplayName: "FR-020 Test Agent",
+		Description: "Agent for FR-020 unconnected services test",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	require.NoError(t, agentRepo.Create(ctx, agent))
+
+	// Wire session repo so FR-020 validation is active; no sessions are seeded.
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, sessionRepo, newPermissivePermissionSetQuerier(unconnectedServiceID), slog.Default())
+	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
+
+	t.Run("returns_400_when_included_service_has_no_active_session", func(t *testing.T) {
+		psID := id.NewPermissionSetID()
+		reqBody := GrantRequest{
+			GrantedPermissionSets: map[string][]string{psID.String(): {unconnectedServiceID.String()}},
+		}
+		jsonBody, _ := json.Marshal(reqBody)
+		req := httptest.NewRequest("POST", "/api/consent/agent/"+agentID.String()+"/grants", bytes.NewBuffer(jsonBody))
+		ctx := principal.WithPrincipal(req.Context(), "carol@example.com")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", agentID.String())
+		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
+
+		rr := httptest.NewRecorder()
+		handler.CreateGrant(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		var errResp ErrorResponse
+		require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+		assert.Equal(t, "unconnected services", errResp.Error)
+	})
 }

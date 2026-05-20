@@ -25,7 +25,7 @@ func TestOAuth2MetadataEndpoint_ReturnsValidJSON(t *testing.T) {
 		PublicURL:                 "https://broker.example.com",
 		SupportedResponseTypes:    []string{"code"},
 		SupportedGrantTypes:       []string{"authorization_code"},
-	}, nil, nil)
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2MetadataHandler{
 		Service: svc,
@@ -57,7 +57,7 @@ func TestOAuth2MetadataEndpoint_RFC8414Schema(t *testing.T) {
 		PublicURL:                 "https://broker.example.com",
 		SupportedResponseTypes:    []string{"code"},
 		SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
-	}, nil, nil)
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2MetadataHandler{
 		Service: svc,
@@ -96,7 +96,7 @@ func TestOAuth2MetadataEndpoint_HTTPStatus(t *testing.T) {
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		PublicURL:                 "https://broker.example.com",
-	}, nil, nil)
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2MetadataHandler{
 		Service: svc,
@@ -119,7 +119,7 @@ func TestOAuth2MetadataEndpoint_ContentType(t *testing.T) {
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		PublicURL:                 "https://broker.example.com",
-	}, nil, nil)
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2MetadataHandler{
 		Service: svc,
@@ -143,7 +143,7 @@ func TestOAuth2MetadataEndpoint_IsPublic(t *testing.T) {
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		PublicURL:                 "https://broker.example.com",
-	}, nil, nil)
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2MetadataHandler{
 		Service: svc,
@@ -170,7 +170,7 @@ func TestOAuth2MetadataEndpoint_MultipleRequests(t *testing.T) {
 		PublicURL:                 "https://broker.example.com",
 		SupportedResponseTypes:    []string{"code"},
 		SupportedGrantTypes:       []string{"authorization_code"},
-	}, nil, nil)
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2MetadataHandler{
 		Service: svc,

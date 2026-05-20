@@ -12,6 +12,8 @@ import (
 func TestUserGrant_Validate(t *testing.T) {
 	future := time.Now().Add(24 * time.Hour)
 	past := time.Now().Add(-24 * time.Hour)
+	psID := id.NewPermissionSetID()
+	svcID := id.NewServiceID()
 
 	tests := []struct {
 		name    string
@@ -25,11 +27,8 @@ func TestUserGrant_Validate(t *testing.T) {
 				Principal:  id.Principal("user123@example.com"),
 				AgentID:    id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				ValidUntil: &future,
-				DelegatedOAuth2Tokens: []DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
-						Scopes:                    []string{"repo", "user:email"},
-					},
+				GrantedPermissionSets: []GrantedPermissionSetEntry{
+					{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{svcID}},
 				},
 			},
 			wantErr: "",
@@ -41,30 +40,21 @@ func TestUserGrant_Validate(t *testing.T) {
 				Principal:  id.Principal("user123@example.com"),
 				AgentID:    id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				ValidUntil: nil,
-				DelegatedOAuth2Tokens: []DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
-						Scopes:                    []string{"repo"},
-					},
+				GrantedPermissionSets: []GrantedPermissionSetEntry{
+					{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{svcID}},
 				},
 			},
 			wantErr: "",
 		},
 		{
-			name: "multiple delegations",
+			name: "multiple permission sets with multiple services",
 			grant: &UserGrant{
 				ID:        id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
 				Principal: id.Principal("user123@example.com"),
 				AgentID:   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				DelegatedOAuth2Tokens: []DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
-						Scopes:                    []string{"repo"},
-					},
-					{
-						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440003"),
-						Scopes:                    []string{"read:user", "read:org"},
-					},
+				GrantedPermissionSets: []GrantedPermissionSetEntry{
+					{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID(), id.NewServiceID()}},
+					{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}},
 				},
 			},
 			wantErr: "",
@@ -74,11 +64,8 @@ func TestUserGrant_Validate(t *testing.T) {
 			grant: &UserGrant{
 				Principal: id.Principal("user123@example.com"),
 				AgentID:   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				DelegatedOAuth2Tokens: []DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
-						Scopes:                    []string{"repo"},
-					},
+				GrantedPermissionSets: []GrantedPermissionSetEntry{
+					{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{svcID}},
 				},
 			},
 			wantErr: "grant ID cannot be empty",
@@ -88,11 +75,8 @@ func TestUserGrant_Validate(t *testing.T) {
 			grant: &UserGrant{
 				ID:      id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
 				AgentID: id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				DelegatedOAuth2Tokens: []DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
-						Scopes:                    []string{"repo"},
-					},
+				GrantedPermissionSets: []GrantedPermissionSetEntry{
+					{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{svcID}},
 				},
 			},
 			wantErr: "principal is required",
@@ -102,11 +86,8 @@ func TestUserGrant_Validate(t *testing.T) {
 			grant: &UserGrant{
 				ID:        id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
 				Principal: id.Principal("user123@example.com"),
-				DelegatedOAuth2Tokens: []DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
-						Scopes:                    []string{"repo"},
-					},
+				GrantedPermissionSets: []GrantedPermissionSetEntry{
+					{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{svcID}},
 				},
 			},
 			wantErr: "agent_id is required",
@@ -118,68 +99,33 @@ func TestUserGrant_Validate(t *testing.T) {
 				Principal:  id.Principal("user123@example.com"),
 				AgentID:    id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				ValidUntil: &past,
-				DelegatedOAuth2Tokens: []DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
-						Scopes:                    []string{"repo"},
-					},
+				GrantedPermissionSets: []GrantedPermissionSetEntry{
+					{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{svcID}},
 				},
 			},
 			wantErr: "valid_until must be in the future",
 		},
 		{
-			name: "no delegations (allowed - agent may have only optional requirements)",
+			name: "no permission sets (allowed - agent may have only optional requirements)",
 			grant: &UserGrant{
 				ID:                    id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
 				Principal:             id.Principal("user123@example.com"),
 				AgentID:               id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				DelegatedOAuth2Tokens: []DelegatedToken{},
+				GrantedPermissionSets: []GrantedPermissionSetEntry{},
 			},
 			wantErr: "",
 		},
 		{
-			name: "delegation missing service_id",
+			name: "entry with empty included_service_ids",
 			grant: &UserGrant{
 				ID:        id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
 				Principal: id.Principal("user123@example.com"),
 				AgentID:   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				DelegatedOAuth2Tokens: []DelegatedToken{
-					{
-						Scopes: []string{"repo"},
-					},
+				GrantedPermissionSets: []GrantedPermissionSetEntry{
+					{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{}},
 				},
 			},
-			wantErr: "delegation 0: thirdparty_oauth2_service_id is required",
-		},
-		{
-			name: "delegation with no scopes",
-			grant: &UserGrant{
-				ID:        id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
-				Principal: id.Principal("user123@example.com"),
-				AgentID:   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				DelegatedOAuth2Tokens: []DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
-						Scopes:                    []string{},
-					},
-				},
-			},
-			wantErr: "delegation 0: at least one scope is required",
-		},
-		{
-			name: "delegation with duplicate scopes",
-			grant: &UserGrant{
-				ID:        id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
-				Principal: id.Principal("user123@example.com"),
-				AgentID:   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				DelegatedOAuth2Tokens: []DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
-						Scopes:                    []string{"repo", "user:email", "repo"},
-					},
-				},
-			},
-			wantErr: "delegation 0: duplicate scope 'repo'",
+			wantErr: "at least one included_service_id is required",
 		},
 	}
 
@@ -237,50 +183,49 @@ func TestUserGrant_IsActive(t *testing.T) {
 
 func TestUserGrant_Copy(t *testing.T) {
 	future := time.Now().Add(24 * time.Hour)
+	ps1 := id.NewPermissionSetID()
+	ps2 := id.NewPermissionSetID()
+	svc1 := id.NewServiceID()
+	svc2 := id.NewServiceID()
 
 	original := &UserGrant{
 		ID:         id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
 		Principal:  id.Principal("user123@example.com"),
 		AgentID:    id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 		ValidUntil: &future,
-		DelegatedOAuth2Tokens: []DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
-				Scopes:                    []string{"repo", "user:email"},
-			},
-			{
-				ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440003"),
-				Scopes:                    []string{"read:user"},
-			},
+		GrantedPermissionSets: []GrantedPermissionSetEntry{
+			{PermissionSetID: ps1, IncludedServiceIDs: []id.ServiceID{svc1}},
+			{PermissionSetID: ps2, IncludedServiceIDs: []id.ServiceID{svc1, svc2}},
 		},
 	}
 
-	copy := original.Copy()
+	cp := original.Copy()
 
 	// Verify equality
-	assert.Equal(t, original.ID, copy.ID)
-	assert.Equal(t, original.Principal, copy.Principal)
-	assert.Equal(t, original.AgentID, copy.AgentID)
-	assert.Equal(t, len(original.DelegatedOAuth2Tokens), len(copy.DelegatedOAuth2Tokens))
-
-	// Verify deep copy of scopes
-	copy.DelegatedOAuth2Tokens[0].Scopes[0] = "modified"
-	assert.Equal(t, "repo", original.DelegatedOAuth2Tokens[0].Scopes[0])
-	assert.Equal(t, "modified", copy.DelegatedOAuth2Tokens[0].Scopes[0])
+	assert.Equal(t, original.ID, cp.ID)
+	assert.Equal(t, original.Principal, cp.Principal)
+	assert.Equal(t, original.AgentID, cp.AgentID)
+	assert.Equal(t, len(original.GrantedPermissionSets), len(cp.GrantedPermissionSets))
 
 	// Verify deep copy of ValidUntil
-	*copy.ValidUntil = time.Now().Add(48 * time.Hour)
-	assert.NotEqual(t, original.ValidUntil.Unix(), copy.ValidUntil.Unix())
+	*cp.ValidUntil = time.Now().Add(48 * time.Hour)
+	assert.NotEqual(t, original.ValidUntil.Unix(), cp.ValidUntil.Unix())
+
+	// Verify slice independence
+	assert.Equal(t, original.GrantedPermissionSets[0].PermissionSetID, cp.GrantedPermissionSets[0].PermissionSetID)
+	assert.Equal(t, original.GrantedPermissionSets[1].IncludedServiceIDs, cp.GrantedPermissionSets[1].IncludedServiceIDs)
 }
 
 func TestUserGrant_Copy_Nil(t *testing.T) {
 	var grant *UserGrant
-	copy := grant.Copy()
-	assert.Nil(t, copy)
+	cp := grant.Copy()
+	assert.Nil(t, cp)
 }
 
 func TestUserGrant_ValidateForCreate(t *testing.T) {
 	future := time.Now().Add(24 * time.Hour)
+	psID := id.NewPermissionSetID()
+	svcID := id.NewServiceID()
 
 	tests := []struct {
 		name    string
@@ -293,11 +238,8 @@ func TestUserGrant_ValidateForCreate(t *testing.T) {
 				Principal:  id.Principal("user123@example.com"),
 				AgentID:    id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				ValidUntil: &future,
-				DelegatedOAuth2Tokens: []DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
-						Scopes:                    []string{"repo"},
-					},
+				GrantedPermissionSets: []GrantedPermissionSetEntry{
+					{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{svcID}},
 				},
 			},
 			wantErr: "",
@@ -306,11 +248,8 @@ func TestUserGrant_ValidateForCreate(t *testing.T) {
 			name: "missing principal",
 			grant: &UserGrant{
 				AgentID: id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				DelegatedOAuth2Tokens: []DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
-						Scopes:                    []string{"repo"},
-					},
+				GrantedPermissionSets: []GrantedPermissionSetEntry{
+					{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{svcID}},
 				},
 			},
 			wantErr: "principal is required",

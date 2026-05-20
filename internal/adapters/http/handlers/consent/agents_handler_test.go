@@ -214,7 +214,7 @@ func (m *mockAgentsService) asService() *consent.Service {
 		err:         m.err,
 	}
 
-	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo, nil, slog.Default())
+	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo, nil, nil, slog.Default())
 }
 
 // Mock repository implementations for agents handler tests
@@ -341,17 +341,12 @@ func (m *mockGrantRepoForAgents) ListByPrincipal(ctx context.Context, principal 
 	var grants []storage.UserGrant
 	for _, delegation := range m.delegations {
 		grant := storage.UserGrant{
-			ID:         id.NewGrantID(),
-			Principal:  principal,
-			AgentID:    delegation.AgentID,
-			ValidUntil: delegation.ExpiresAt,
-			UpdatedAt:  delegation.LastModifiedAt,
-			DelegatedOAuth2Tokens: []storage.DelegatedToken{
-				{
-					ThirdpartyOAuth2ServiceID: id.MustParseServiceID("00000000-0000-0000-0000-ddd000000001"),
-					Scopes:                    []string{"scope1"},
-				},
-			},
+			ID:                    id.NewGrantID(),
+			Principal:             principal,
+			AgentID:               delegation.AgentID,
+			ValidUntil:            delegation.ExpiresAt,
+			UpdatedAt:             delegation.LastModifiedAt,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 		}
 		// Add multiple grants if ActiveGrantCount > 1 to simulate aggregation
 		for i := 0; i < delegation.ActiveGrantCount; i++ {
@@ -372,4 +367,8 @@ func (m *mockGrantRepoForAgents) ListByServiceID(ctx context.Context, serviceID 
 
 func (m *mockGrantRepoForAgents) DeleteByPrincipalAndAgentID(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
 	return m.err
+}
+
+func (m *mockGrantRepoForAgents) CountGrantsReferencingPermissionSet(_ context.Context, _ id.PermissionSetID) (int, error) {
+	return 0, nil
 }

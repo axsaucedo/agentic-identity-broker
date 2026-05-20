@@ -123,7 +123,7 @@ var _ = Describe("Session Token Grant Submission", func() {
 			originalURL := "/oauth2/authorize?client_id=" + agent.ID.String() + "&redirect_uri=https://agent.example.com/callback&scope=repo&response_type=code&state=xyz"
 			token := buildToken(agent.ID, principalStr, originalURL)
 
-			path := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s", agent.ID, token)
+			path := fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", agent.ID, token)
 			resp, err := server.AuthenticatedPOST(path, principalStr, "application/json", emptyGrantBody())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -145,7 +145,7 @@ var _ = Describe("Session Token Grant Submission", func() {
 			agent := createAgent()
 			token := buildExpiredToken(agent.ID, principalStr)
 
-			path := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s", agent.ID, token)
+			path := fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", agent.ID, token)
 			resp, err := server.AuthenticatedPOST(path, principalStr, "application/json", emptyGrantBody())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -159,7 +159,7 @@ var _ = Describe("Session Token Grant Submission", func() {
 		It("rejects with 400 Bad Request", func() {
 			agent := createAgent()
 
-			path := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=not-a-valid-jwe", agent.ID)
+			path := fmt.Sprintf("/api/consent/agents/%s/grants?session_token=not-a-valid-jwe", agent.ID)
 			resp, err := server.AuthenticatedPOST(path, principalStr, "application/json", emptyGrantBody())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -176,7 +176,7 @@ var _ = Describe("Session Token Grant Submission", func() {
 				"/oauth2/authorize?client_id="+agent.ID.String(),
 			)
 
-			path := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s", agent.ID, token)
+			path := fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", agent.ID, token)
 			resp, err := server.AuthenticatedPOST(path, principalStr, "application/json", emptyGrantBody())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -194,7 +194,7 @@ var _ = Describe("Session Token Grant Submission", func() {
 				"/oauth2/authorize?client_id="+differentAgentID.String(),
 			)
 
-			path := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s", agent.ID, token)
+			path := fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", agent.ID, token)
 			resp, err := server.AuthenticatedPOST(path, principalStr, "application/json", emptyGrantBody())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
