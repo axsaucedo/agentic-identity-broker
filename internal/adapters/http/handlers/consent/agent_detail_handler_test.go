@@ -297,7 +297,7 @@ func TestResolveCIMDMetadata_SessionAgentMismatch(t *testing.T) {
 	var resp ErrorResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	assert.Equal(t, "bad request", resp.Error)
-	assert.Contains(t, resp.Message, "does not match")
+	assert.Equal(t, "invalid authorization session", resp.Message)
 }
 
 func TestResolveCIMDMetadata_SessionPrincipalMismatch(t *testing.T) {
@@ -330,7 +330,7 @@ func TestResolveCIMDMetadata_SessionPrincipalMismatch(t *testing.T) {
 	var resp ErrorResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	assert.Equal(t, "bad request", resp.Error)
-	assert.Contains(t, resp.Message, "does not belong")
+	assert.Equal(t, "invalid authorization session", resp.Message)
 }
 
 func TestGetAgentDetail_ExpiredSessionToken(t *testing.T) {

@@ -170,7 +170,7 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		h.logger.Warn("authorization session error", "agent_id", agentID, "error", err)
-		h.writeError(w, http.StatusBadRequest, "bad request", err.Error())
+		h.writeError(w, http.StatusBadRequest, "bad request", "invalid authorization session")
 		return
 	}
 
