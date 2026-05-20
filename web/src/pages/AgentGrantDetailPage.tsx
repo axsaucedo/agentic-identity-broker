@@ -158,7 +158,10 @@ export function AgentGrantDetailPage() {
         sessionToken ? { sessionToken } : undefined,
       );
 
-      if (!result) return;
+      if (!result) {
+        showToast('An unexpected error occurred. Please try again.', 'error');
+        return;
+      }
 
       if (result.kind === 'redirect') {
         if (!isSafeRedirectUrl(result.redirectUrl)) {
