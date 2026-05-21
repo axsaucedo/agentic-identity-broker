@@ -847,29 +847,6 @@
             "skipThirdpartyHttpsValidation": {
               "type": "boolean",
               "description": "Skip HTTPS validation for third-party services (dev/test only)"
-            },
-            "csrfKey": {
-              "type": "string",
-              "description": "Raw 32-byte CSRF HMAC key (will be base64-encoded by chart)"
-            },
-            "csrfKeyBase64": {
-              "type": "string",
-              "description": "Base64-encoded 32-byte CSRF HMAC key (used directly)"
-            },
-            "csrfKeySecret": {
-              "type": "object",
-              "additionalProperties": false,
-              "description": "External secret reference for CSRF key",
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "description": "Secret name"
-                },
-                "key": {
-                  "type": "string",
-                  "description": "Key within the secret"
-                }
-              }
             }
           }
         },
