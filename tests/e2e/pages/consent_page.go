@@ -1512,3 +1512,55 @@ func (cp *ConsentPage) HasCIMDClientIDInDetails(ctx context.Context, clientID st
 	}
 	return visible, nil
 }
+
+// WaitForGrantSuccess waits for the "Grant updated successfully!" toast to appear.
+// Returns an error if the toast does not appear within the timeout or if an error toast appears instead.
+func (cp *ConsentPage) WaitForGrantSuccess(ctx context.Context, timeoutMs int) error {
+	if timeoutMs <= 0 {
+		timeoutMs = 5000
+	}
+
+	successToast := cp.page().GetByRole("alert").Filter(playwright.LocatorFilterOptions{
+		HasText: "Grant updated successfully",
+	})
+
+	err := successToast.WaitFor(playwright.LocatorWaitForOptions{
+		State:   playwright.WaitForSelectorStateVisible,
+		Timeout: playwright.Float(float64(timeoutMs)),
+	})
+	if err != nil {
+		// Check if an error toast appeared instead
+		errorToast := cp.page().GetByRole("alert")
+		if count, _ := errorToast.Count(); count > 0 {
+			text, _ := errorToast.First().TextContent()
+			return fmt.Errorf("expected success toast but got: %s", text)
+		}
+		return fmt.Errorf("grant success toast did not appear within %dms", timeoutMs)
+	}
+
+	return nil
+}
+
+// WaitForGrantError waits for an error toast (role="alert") to appear after grant submission.
+// Returns the error message text, or an error if no error toast appears within the timeout.
+func (cp *ConsentPage) WaitForGrantError(ctx context.Context, timeoutMs int) (string, error) {
+	if timeoutMs <= 0 {
+		timeoutMs = 5000
+	}
+
+	alert := cp.page().GetByRole("alert")
+	err := alert.WaitFor(playwright.LocatorWaitForOptions{
+		State:   playwright.WaitForSelectorStateVisible,
+		Timeout: playwright.Float(float64(timeoutMs)),
+	})
+	if err != nil {
+		return "", fmt.Errorf("no error toast appeared within %dms", timeoutMs)
+	}
+
+	text, err := alert.First().TextContent()
+	if err != nil {
+		return "", fmt.Errorf("failed to read error toast text: %w", err)
+	}
+
+	return strings.TrimSpace(text), nil
+}

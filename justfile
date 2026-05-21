@@ -140,7 +140,7 @@ test-e2e-full:
     #!/usr/bin/env bash
     set -e
     just web-build
-    ginkgo -v --procs={{GINKGO_PROCS}} ./tests/e2e/ --skip="Frontend"
+    ginkgo -v --procs={{GINKGO_PROCS}} --skip="Frontend" ./tests/e2e/
     just test-frontend-e2e
 
 # Build and run the application
