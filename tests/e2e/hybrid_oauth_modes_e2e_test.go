@@ -364,9 +364,9 @@ var _ = Describe("US2: Hybrid Mode — Local Agent Full Authorization Code Journ
 		Expect(originalAuthorizeURL).ToNot(BeEmpty())
 
 		// Step 2: Submit grant — no service delegations required for this local agent.
-		grantBodyBytes, _ := json.Marshal(map[string]any{"delegated_oauth2_tokens": []any{}})
+		grantBodyBytes, _ := json.Marshal(map[string]any{"granted_permission_sets": map[string]any{}})
 		grantResp, err := enduserServer.AuthenticatedPOST(
-			fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", agent.ID, url.QueryEscape(originalAuthorizeURL)),
+			fmt.Sprintf("/api/consent/agents/%s/grants?redirect_uri=%s", agent.ID, url.QueryEscape(originalAuthorizeURL)),
 			principal, "application/json", bytes.NewReader(grantBodyBytes),
 		)
 		Expect(err).ToNot(HaveOccurred())
@@ -487,9 +487,9 @@ var _ = Describe("US2: Hybrid Mode — Proxy Agent Full Authorization Code Journ
 		Expect(originalAuthorizeURL).ToNot(BeEmpty())
 
 		// Step 2: Submit grant.
-		grantBodyBytes, _ := json.Marshal(map[string]any{"delegated_oauth2_tokens": []any{}})
+		grantBodyBytes, _ := json.Marshal(map[string]any{"granted_permission_sets": map[string]any{}})
 		grantResp, err := server.AuthenticatedPOST(
-			fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", proxyAgent.ID, url.QueryEscape(originalAuthorizeURL)),
+			fmt.Sprintf("/api/consent/agents/%s/grants?redirect_uri=%s", proxyAgent.ID, url.QueryEscape(originalAuthorizeURL)),
 			principal, "application/json", bytes.NewReader(grantBodyBytes),
 		)
 		Expect(err).ToNot(HaveOccurred())
