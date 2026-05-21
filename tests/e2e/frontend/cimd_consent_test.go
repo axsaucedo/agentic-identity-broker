@@ -7,28 +7,21 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/pages"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-// oauth2ServiceFromApp extracts the concrete *domotp2.Service via type assertion so tests
-// can call CreateAuthorizationSessionToken (which is not on the ports.OAuth2Service interface).
-func oauth2ServiceFromApp() *domotp2.Service {
-	svc, ok := GetTestServer().App().OAuth2Service.(*domotp2.Service)
-	Expect(ok).To(BeTrue(), "OAuth2Service must be *oauth2.Service")
-	return svc
-}
-
 // newCIMDSessionToken builds a JWE authorization session token for use in CIMD consent UI tests.
-func newCIMDSessionToken(agentID id.AgentID, redirectURI string, meta *cimd.ClientIDMetadataDocument) string {
+func newCIMDSessionToken(agentID id.AgentID, redirectURI string, meta *ports.SessionCIMDMetadata) string {
 	originalURL := "https://cimd-example.com/authorize?client_id=https://cimd-example.com/client_metadata.json&redirect_uri=" + redirectURI + "&scope=read"
-	claims, err := domotp2.NewAuthorizationSessionClaims(agentID, id.Principal("user@example.com"), originalURL, meta)
+	claims, err := sessiontoken.NewAuthorizationSessionClaims(agentID, id.Principal("user@example.com"), originalURL, meta)
 	Expect(err).NotTo(HaveOccurred(), "Failed to create authorization session claims")
-	token, err := oauth2ServiceFromApp().CreateAuthorizationSessionToken(claims)
+	token, err := GetTestServer().App().SessionTokenService.Create(claims)
 	Expect(err).NotTo(HaveOccurred(), "Failed to create authorization session token")
 	return token
 }
@@ -62,7 +55,7 @@ var _ = Describe("CIMD Consent UI", func() {
 		sessionToken = newCIMDSessionToken(
 			cimdAgent.ID,
 			"https://cimd-example.com/callback",
-			&cimd.ClientIDMetadataDocument{
+			&ports.SessionCIMDMetadata{
 				ClientID:     "https://cimd-example.com/client_metadata.json",
 				ClientName:   "CIMD Test Client",
 				RedirectURIs: []string{"https://cimd-example.com/callback"},
@@ -122,7 +115,7 @@ var _ = Describe("CIMD Consent UI", func() {
 			localhostSessionToken = newCIMDSessionToken(
 				cimdAgent.ID,
 				"http://localhost:8080/callback",
-				&cimd.ClientIDMetadataDocument{
+				&ports.SessionCIMDMetadata{
 					ClientID:     "https://cimd-example.com/client_metadata.json",
 					ClientName:   "CIMD Test Client",
 					RedirectURIs: []string{"http://localhost:8080/callback"},

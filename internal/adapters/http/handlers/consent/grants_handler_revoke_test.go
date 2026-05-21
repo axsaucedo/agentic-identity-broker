@@ -31,7 +31,7 @@ func TestRevokeGrant_Success(t *testing.T) {
 			return nil
 		},
 	}
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 	req := newRequestWithPrincipal(http.MethodDelete, "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
 	rctx := chi.NewRouteContext()
@@ -53,7 +53,7 @@ func TestRevokeGrant_NoPrincipal(t *testing.T) {
 	t.Parallel()
 
 	testAgentID := id.NewAgentID()
-	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
 	rctx := chi.NewRouteContext()
@@ -78,7 +78,7 @@ func TestRevokeGrant_NoPrincipal(t *testing.T) {
 func TestRevokeGrant_NoPrincipal_InvalidUUID(t *testing.T) {
 	t.Parallel()
 
-	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
 	req := httptest.NewRequest(http.MethodDelete, "/api/consent/agent/not-a-uuid/grants", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", "not-a-uuid")
@@ -95,7 +95,7 @@ func TestRevokeGrant_NoPrincipal_InvalidUUID(t *testing.T) {
 func TestRevokeGrant_InvalidAgentID(t *testing.T) {
 	t.Parallel()
 
-	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
 	req := newRequestWithPrincipal(http.MethodDelete, "/api/consent/agent/not-a-uuid/grants", "user@example.com", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", "not-a-uuid")
@@ -118,7 +118,7 @@ func TestRevokeGrant_NotFound(t *testing.T) {
 			return fmt.Errorf("wrapped: %w", consent.ErrGrantNotFound)
 		},
 	}
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 	req := newRequestWithPrincipal(http.MethodDelete, "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
 	rctx := chi.NewRouteContext()
@@ -149,7 +149,7 @@ func TestRevokeGrant_ServiceError(t *testing.T) {
 			return errors.New("database connection lost")
 		},
 	}
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 	req := newRequestWithPrincipal(http.MethodDelete, "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
 	rctx := chi.NewRouteContext()
@@ -167,7 +167,7 @@ func TestRevokeGrant_ServiceError(t *testing.T) {
 func TestRevokeGrant_PrincipalCheckedFirst(t *testing.T) {
 	t.Parallel()
 
-	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
 	req := httptest.NewRequest(http.MethodDelete, "/api/consent/agent/bad-uuid/grants", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", "bad-uuid")

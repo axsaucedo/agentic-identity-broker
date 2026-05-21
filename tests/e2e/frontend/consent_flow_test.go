@@ -116,11 +116,8 @@ var _ = Describe("Consent Flow", func() {
 			// "Given optional service requirements, When the authorization endpoint processes the
 			// request, Then optional services do not block the authorization flow."
 
-			// Navigate with redirect_uri to exercise the code path that previously triggered
-			// a spurious "Please select at least one service" validation error for optional-only
-			// agents.
-			err := consentPage.NavigateToAgentWithRedirectURI(ctx, testAgentID, "/some-callback")
-			Expect(err).NotTo(HaveOccurred(), "Failed to navigate to consent page with redirect_uri")
+			err := consentPage.NavigateToAgent(ctx, testAgentID)
+			Expect(err).NotTo(HaveOccurred(), "Failed to navigate to consent page")
 
 			// Verify the "Approve & Delegate" button is enabled:
 			// optional-only agents must never disable the button

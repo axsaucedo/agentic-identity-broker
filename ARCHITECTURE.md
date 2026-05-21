@@ -638,13 +638,13 @@ OAuth2 /authorize request
   ↓  │         ↓ Cache store with HTTP-header-derived TTL (clamped to operator bounds)
   ↓  │    ↓ Return ClientResolution{Agent, CIMDDocument}
   ↓  └─ UUID detected → AgentClientResolver (opaque path, cimdService may be nil)
-  ↓ HandleAuthorization: CIMD metadata present → create AuthorizationSession
-  ↓ Redirect to consent with ?session_id= (no CIMD params in URL)
-  ↓ Consent handler loads AuthorizationSession (trusted server-side state)
+  ↓ HandleAuthorization: ALL agent modes create a JWE session token (cimd_metadata nil for non-CIMD)
+  ↓ Redirect to consent with ?session_token= (JWE seals agent_id, principal, original_url, TTL)
+  ↓ Consent handler decrypts and validates session token (expiry, principal, agent ID binding)
   ↓ User grants → grants endpoint consumes session → authorization code redirect
 ```
 
-**Security Properties**: SSRF blocked at TCP-connect time (TOCTOU-safe); CIMD params never relay through browser URL (AuthorizationSession binds context server-side, SR-013/SR-014).
+**Security Properties**: SSRF blocked at TCP-connect time (TOCTOU-safe); authorization context never relay through browser URL as plain params (JWE session_token seals context server-side, SR-013/SR-014). All agent modes (local, proxy, CIMD) use session_token — no redirect_uri fallback.
 
 **See Also**: ADR 015 — CIMD Fetcher Architecture (SSRF hardening, caching, strategy pattern)
 
@@ -1088,6 +1088,8 @@ Define any project-specific terms or acronyms.)
 **UserSession**: An authenticated OAuth2 session between a user (principal) and a third-party service. Contains encrypted access/refresh tokens, scope, and expiration metadata. One session per (principal, service_id) pair enforced by database unique constraint. Aggregate root that owns the encrypted tokens and manages session lifecycle.
 
 **OAuth2StateToken**: A JWE-encrypted ephemeral token that binds an OAuth2 callback to the initiating request. Contains principal, PKCE verifier, service_id, and redirect_uri claims. Short-lived (10 min TTL, max 15 min per spec) to limit CSRF exposure. Uses authenticated encryption (A256GCMKW + A256GCM) for tamper detection.
+
+**AuthorizationSessionToken**: A JWE-encrypted ephemeral token that binds a consent session to the initiating authorization request (ADR 016). Contains agent_id, principal, original authorize URL, and optional CIMD metadata snapshot. Short-lived (10 min TTL). Prevents consent screen spoofing by ensuring all displayed metadata originates from server-attested claims. Used for all authorization modes (local, proxy, CIMD).
 
 **PKCE**: Proof Key for Code Exchange (RFC 7636). Security extension for OAuth2 that prevents authorization code interception attacks. Uses code_verifier (random 32-128 byte secret, base64url-encoded) and code_challenge (SHA256 hash of verifier). Mandatory for all OAuth2 flows with no bypass allowed.
 

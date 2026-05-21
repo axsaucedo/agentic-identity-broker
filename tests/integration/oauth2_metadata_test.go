@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
@@ -19,17 +20,13 @@ func TestOAuth2MetadataEndpoint_ReturnsValidJSON(t *testing.T) {
 	agentRepo := newInMemoryAgentRepo()
 	grantRepo := newInMemoryGrantRepo()
 
-	svc := oauth2.NewService(
-		agentRepo,
-		grantRepo,
-		&oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:                 "https://broker.example.com",
-			SupportedResponseTypes:    []string{"code"},
-			SupportedGrantTypes:       []string{"authorization_code"},
-		},
-	)
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		UpstreamTokenEndpoint:     "https://auth.example.com/token",
+		PublicURL:                 "https://broker.example.com",
+		SupportedResponseTypes:    []string{"code"},
+		SupportedGrantTypes:       []string{"authorization_code"},
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2MetadataHandler{
 		Service: svc,
@@ -55,17 +52,13 @@ func TestOAuth2MetadataEndpoint_RFC8414Schema(t *testing.T) {
 	agentRepo := newInMemoryAgentRepo()
 	grantRepo := newInMemoryGrantRepo()
 
-	svc := oauth2.NewService(
-		agentRepo,
-		grantRepo,
-		&oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:                 "https://broker.example.com",
-			SupportedResponseTypes:    []string{"code"},
-			SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
-		},
-	)
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		UpstreamTokenEndpoint:     "https://auth.example.com/token",
+		PublicURL:                 "https://broker.example.com",
+		SupportedResponseTypes:    []string{"code"},
+		SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2MetadataHandler{
 		Service: svc,
@@ -100,15 +93,11 @@ func TestOAuth2MetadataEndpoint_HTTPStatus(t *testing.T) {
 	agentRepo := newInMemoryAgentRepo()
 	grantRepo := newInMemoryGrantRepo()
 
-	svc := oauth2.NewService(
-		agentRepo,
-		grantRepo,
-		&oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:                 "https://broker.example.com",
-		},
-	)
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		UpstreamTokenEndpoint:     "https://auth.example.com/token",
+		PublicURL:                 "https://broker.example.com",
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2MetadataHandler{
 		Service: svc,
@@ -127,15 +116,11 @@ func TestOAuth2MetadataEndpoint_ContentType(t *testing.T) {
 	agentRepo := newInMemoryAgentRepo()
 	grantRepo := newInMemoryGrantRepo()
 
-	svc := oauth2.NewService(
-		agentRepo,
-		grantRepo,
-		&oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:                 "https://broker.example.com",
-		},
-	)
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		UpstreamTokenEndpoint:     "https://auth.example.com/token",
+		PublicURL:                 "https://broker.example.com",
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2MetadataHandler{
 		Service: svc,
@@ -155,15 +140,11 @@ func TestOAuth2MetadataEndpoint_IsPublic(t *testing.T) {
 	agentRepo := newInMemoryAgentRepo()
 	grantRepo := newInMemoryGrantRepo()
 
-	svc := oauth2.NewService(
-		agentRepo,
-		grantRepo,
-		&oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:                 "https://broker.example.com",
-		},
-	)
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		UpstreamTokenEndpoint:     "https://auth.example.com/token",
+		PublicURL:                 "https://broker.example.com",
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2MetadataHandler{
 		Service: svc,
@@ -184,17 +165,13 @@ func TestOAuth2MetadataEndpoint_MultipleRequests(t *testing.T) {
 	agentRepo := newInMemoryAgentRepo()
 	grantRepo := newInMemoryGrantRepo()
 
-	svc := oauth2.NewService(
-		agentRepo,
-		grantRepo,
-		&oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:                 "https://broker.example.com",
-			SupportedResponseTypes:    []string{"code"},
-			SupportedGrantTypes:       []string{"authorization_code"},
-		},
-	)
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		UpstreamTokenEndpoint:     "https://auth.example.com/token",
+		PublicURL:                 "https://broker.example.com",
+		SupportedResponseTypes:    []string{"code"},
+		SupportedGrantTypes:       []string{"authorization_code"},
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2MetadataHandler{
 		Service: svc,

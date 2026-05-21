@@ -206,7 +206,7 @@ function Toast({ toast, onDismiss }: ToastProps) {
         pointer-events-auto
         relative
       `}
-      role="alert"
+      role={variant === 'error' || variant === 'warning' ? 'alert' : 'status'}
     >
       <div className="flex items-start gap-3">
         {/* Icon */}

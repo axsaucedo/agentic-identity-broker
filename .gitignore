@@ -74,3 +74,4 @@ extproc-token-exchange
 mocks/mcp-server/mcp-server
 imgdiff
 .githooks/
+.pi/

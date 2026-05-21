@@ -16,45 +16,37 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
-	domcimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 )
 
-// cimdOAuth2Service extracts the concrete *domotp2.Service from an app instance
-// so tests can call CreateAuthorizationSessionToken.
-func cimdOAuth2Service(appInstance *app.App) *domotp2.Service {
-	svc, ok := appInstance.OAuth2Service.(*domotp2.Service)
-	Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.Service")
-	return svc
-}
-
 // createCIMDSessionToken builds a JWE authorization session token for use in CIMD tests.
-func createCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal string, redirectURI string, meta *domcimd.ClientIDMetadataDocument) string {
+func createCIMDSessionToken(svc *sessiontoken.Service, agentID id.AgentID, principal string, redirectURI string, meta *ports.SessionCIMDMetadata) string {
 	q := url.Values{}
 	q.Set("client_id", "https://agent.example.com/client")
 	q.Set("redirect_uri", redirectURI)
 	q.Set("scope", "repo")
-	claims, err := domotp2.NewAuthorizationSessionClaims(
+	claims, err := sessiontoken.NewAuthorizationSessionClaims(
 		agentID,
 		id.Principal(principal),
 		"/oauth2/authorize?"+q.Encode(),
 		meta,
 	)
 	Expect(err).ToNot(HaveOccurred())
-	token, err := svc.CreateAuthorizationSessionToken(claims)
+	token, err := svc.Create(claims)
 	Expect(err).ToNot(HaveOccurred())
 	return token
 }
 
 // createExpiredCIMDSessionToken builds a JWE token with a past ExpiresAt.
-func createExpiredCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal string, meta *domcimd.ClientIDMetadataDocument) string {
+func createExpiredCIMDSessionToken(svc *sessiontoken.Service, agentID id.AgentID, principal string, meta *ports.SessionCIMDMetadata) string {
 	past := time.Now().Add(-1 * time.Hour)
-	claims := &domotp2.AuthorizationSessionClaims{
+	claims := &sessiontoken.AuthorizationSessionClaims{
 		AgentID:      agentID,
 		Principal:    id.Principal(principal),
 		OriginalURL:  "/oauth2/authorize?client_id=https://agent.example.com/client",
@@ -62,7 +54,7 @@ func createExpiredCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, pri
 		IssuedAt:     past,
 		ExpiresAt:    past,
 	}
-	token, err := svc.CreateAuthorizationSessionToken(claims)
+	token, err := svc.Create(claims)
 	Expect(err).ToNot(HaveOccurred())
 	return token
 }
@@ -119,10 +111,10 @@ var _ = Describe("CIMD Consent Screen", func() {
 			}
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
-			token := createCIMDSessionToken(cimdOAuth2Service(appInstance), agent.ID,
+			token := createCIMDSessionToken(appInstance.SessionTokenService, agent.ID,
 				fixtures.DefaultPrincipal().String(),
 				"https://agent.example.com/callback",
-				&domcimd.ClientIDMetadataDocument{
+				&ports.SessionCIMDMetadata{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},
@@ -162,10 +154,10 @@ var _ = Describe("CIMD Consent Screen", func() {
 			}
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
-			token := createCIMDSessionToken(cimdOAuth2Service(appInstance), agent.ID,
+			token := createCIMDSessionToken(appInstance.SessionTokenService, agent.ID,
 				fixtures.DefaultPrincipal().String(),
 				"http://localhost:3000/callback",
-				&domcimd.ClientIDMetadataDocument{
+				&ports.SessionCIMDMetadata{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"http://localhost:3000/callback"},
@@ -205,23 +197,23 @@ var _ = Describe("CIMD Consent Screen", func() {
 			}
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
-			svc := cimdOAuth2Service(appInstance)
+			svc := appInstance.SessionTokenService
 			origQ := url.Values{}
 			origQ.Set("client_id", "https://agent.example.com/client")
 			origQ.Set("redirect_uri", "https://agent.example.com/callback")
 			origQ.Set("scope", "repo read:user")
-			claims, err := domotp2.NewAuthorizationSessionClaims(
+			claims, err := sessiontoken.NewAuthorizationSessionClaims(
 				agent.ID,
 				id.Principal(fixtures.DefaultPrincipal().String()),
 				"/oauth2/authorize?"+origQ.Encode(),
-				&domcimd.ClientIDMetadataDocument{
+				&ports.SessionCIMDMetadata{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			token, err := svc.CreateAuthorizationSessionToken(claims)
+			token, err := svc.Create(claims)
 			Expect(err).ToNot(HaveOccurred())
 
 			path := fmt.Sprintf("/api/consent/agents/%s?session_token=%s", agent.ID, token)
@@ -297,9 +289,9 @@ var _ = Describe("CIMD Consent Screen", func() {
 			}
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
-			token := createExpiredCIMDSessionToken(cimdOAuth2Service(appInstance), agent.ID,
+			token := createExpiredCIMDSessionToken(appInstance.SessionTokenService, agent.ID,
 				fixtures.DefaultPrincipal().String(),
-				&domcimd.ClientIDMetadataDocument{
+				&ports.SessionCIMDMetadata{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},
@@ -354,10 +346,10 @@ var _ = Describe("CIMD Consent Screen", func() {
 
 			// Create token for a different (non-existent) agent ID
 			differentAgentID := id.NewAgentID()
-			token := createCIMDSessionToken(cimdOAuth2Service(appInstance), differentAgentID,
+			token := createCIMDSessionToken(appInstance.SessionTokenService, differentAgentID,
 				fixtures.DefaultPrincipal().String(),
 				"https://agent.example.com/callback",
-				&domcimd.ClientIDMetadataDocument{
+				&ports.SessionCIMDMetadata{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},
@@ -388,10 +380,10 @@ var _ = Describe("CIMD Consent Screen", func() {
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
 			// Token issued for a different user
-			token := createCIMDSessionToken(cimdOAuth2Service(appInstance), agent.ID,
+			token := createCIMDSessionToken(appInstance.SessionTokenService, agent.ID,
 				"other-user@example.com",
 				"https://agent.example.com/callback",
-				&domcimd.ClientIDMetadataDocument{
+				&ports.SessionCIMDMetadata{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},
