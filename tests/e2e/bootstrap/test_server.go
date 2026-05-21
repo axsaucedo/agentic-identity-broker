@@ -187,7 +187,7 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 		spaSaved := app.EnduserHandlers.SPA
 		app.EnduserHandlers.SPA = nil
 		defer func() { app.EnduserHandlers.SPA = spaSaved }()
-		csrfKey := decodeCSRFKey(app.Config.Security.CSRFKey)
+		csrfKey := decodeCSRFKey(app.Config.Security.CSRF.Key)
 		routeSetup = func(r chi.Router) {
 			routing.SetupEnduserRoutes(r, app.EnduserHandlers, routing.EnduserRouteConfig{
 				Authentication:   app.Config.Server.EndUser.Authentication,
@@ -739,7 +739,7 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 
 	// Step 6: Register production routes on the existing mux
 	// This adds all the actual endpoints while keeping the same httptest server
-	csrfKey := decodeCSRFKey(appInstance.Config.Security.CSRFKey)
+	csrfKey := decodeCSRFKey(appInstance.Config.Security.CSRF.Key)
 	routing.SetupEnduserRoutes(router, appInstance.EnduserHandlers, routing.EnduserRouteConfig{
 		Authentication:   appInstance.Config.Server.EndUser.Authentication,
 		JWTAuthenticator: appInstance.JWTAuthenticator,

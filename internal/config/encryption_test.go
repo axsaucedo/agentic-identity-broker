@@ -773,6 +773,8 @@ func createValidStorageConfig() ports.StorageConfig {
 
 func createValidSecurityConfig() ports.SecurityConfig {
 	return ports.SecurityConfig{
-		CSRFKey: base64.StdEncoding.EncodeToString([]byte("csrf0123456789abcdef0123456789ab")),
+		CSRF: ports.CSRFConfig{
+			Key: base64.StdEncoding.EncodeToString([]byte("csrf0123456789abcdef0123456789ab")),
+		},
 	}
 }

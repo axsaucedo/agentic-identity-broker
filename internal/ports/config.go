@@ -608,11 +608,17 @@ type SecurityConfig struct {
 	// NEVER enable this in production.
 	SkipThirdpartyHTTPSValidation bool `mapstructure:"skip_thirdparty_https_validation"`
 
-	// CSRFKey is the base64-encoded 32-byte key used for CSRF token HMAC signing.
+	// CSRF contains CSRF protection configuration.
+	CSRF CSRFConfig `mapstructure:"csrf"`
+}
+
+// CSRFConfig contains CSRF protection configuration.
+type CSRFConfig struct {
+	// Key is the base64-encoded 32-byte key used for CSRF token HMAC signing.
 	// Required for all deployments (all instances must share the same key).
 	// Generate with: openssl rand -base64 32
 	// Env var: IDENTITY_BROKER_SECURITY_CSRF_KEY
-	CSRFKey string `mapstructure:"csrf_key"`
+	Key string `mapstructure:"key"`
 }
 
 // EncryptionConfig contains configuration for encryption operations.

@@ -77,7 +77,9 @@ func DefaultOAuth2Config() *ports.Config {
 			},
 		},
 		Security: ports.SecurityConfig{
-			CSRFKey: base64.StdEncoding.EncodeToString([]byte("test-csrf-key-32-bytes-exactly!!")),
+			CSRF: ports.CSRFConfig{
+				Key: base64.StdEncoding.EncodeToString([]byte("test-csrf-key-32-bytes-exactly!!")),
+			},
 		},
 	}
 }

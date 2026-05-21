@@ -181,7 +181,6 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 	}
 }
 
-// csrfTokenCookie is a middleware that exposes the gorilla/csrf masked token in a
 // csrfPlaintextMiddleware marks requests as plaintext HTTP so gorilla/csrf
 // skips Referer-based origin checks (only applicable for non-TLS environments).
 func csrfPlaintextMiddleware(next http.Handler) http.Handler {

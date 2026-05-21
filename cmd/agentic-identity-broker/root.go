@@ -92,7 +92,11 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create route setup function for enduser server
-	csrfKey, _ := base64.StdEncoding.DecodeString(cfg.Security.CSRFKey)
+	csrfKey, err := base64.StdEncoding.DecodeString(cfg.Security.CSRF.Key)
+	if err != nil || len(csrfKey) != 32 {
+		logger.Error("invalid security.csrf.key: must be base64-encoded 32 bytes")
+		os.Exit(1)
+	}
 	enduserRouteSetup := func(r chi.Router) {
 		routing.SetupEnduserRoutes(r, application.EnduserHandlers, routing.EnduserRouteConfig{
 			Authentication:   cfg.Server.EndUser.Authentication,
