@@ -238,3 +238,141 @@ func TestGenerateToken(t *testing.T) {
 		t.Errorf("token length seems too short: %d", len(token1))
 	}
 }
+
+func TestCSRFStore_GetOrCreate_Atomic(t *testing.T) {
+	store := NewCSRFStore(slog.Default())
+	sessionID := "concurrent-session"
+
+	// Launch multiple goroutines calling GetOrCreate simultaneously
+	// to verify they all return the same token (no race condition).
+	const goroutines = 50
+	results := make(chan string, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			token, err := store.GetOrCreate(sessionID)
+			if err != nil {
+				t.Errorf("GetOrCreate failed: %v", err)
+				results <- ""
+				return
+			}
+			results <- token
+		}()
+	}
+
+	// Collect all results
+	var firstToken string
+	for i := 0; i < goroutines; i++ {
+		token := <-results
+		if token == "" {
+			continue
+		}
+		if firstToken == "" {
+			firstToken = token
+		}
+		if token != firstToken {
+			t.Errorf("GetOrCreate returned different tokens: got %q, want %q", token, firstToken)
+		}
+	}
+
+	if firstToken == "" {
+		t.Fatal("no tokens were generated")
+	}
+}
+
+func TestCSRFProtection_ConcurrentGetsProduceSameCookie(t *testing.T) {
+	store := NewCSRFStore(slog.Default())
+	handler := CSRFProtection(store)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	sessionID := "user@concurrent.com"
+	const requests = 10
+	cookies := make(chan string, requests)
+
+	// Simulate concurrent GET requests (like the frontend's Promise.all)
+	for i := 0; i < requests; i++ {
+		go func() {
+			req := httptest.NewRequest("GET", "/api/consent/agents/123", nil)
+			req = req.WithContext(principal.WithPrincipal(req.Context(), sessionID))
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			for _, cookie := range rr.Result().Cookies() {
+				if cookie.Name == CSRFCookieName {
+					cookies <- cookie.Value
+					return
+				}
+			}
+			cookies <- ""
+		}()
+	}
+
+	// All responses must have the same CSRF cookie value
+	var firstCookie string
+	for i := 0; i < requests; i++ {
+		cookie := <-cookies
+		if cookie == "" {
+			t.Error("CSRF cookie should be set on GET response")
+			continue
+		}
+		if firstCookie == "" {
+			firstCookie = cookie
+		}
+		if cookie != firstCookie {
+			t.Errorf("concurrent GET requests produced different CSRF cookies: %q vs %q", cookie, firstCookie)
+		}
+	}
+
+	// Verify the stored token matches the cookie
+	storedToken, exists := store.Get(sessionID)
+	if !exists {
+		t.Fatal("token should exist in store")
+	}
+	if storedToken != firstCookie {
+		t.Errorf("stored token %q does not match cookie %q", storedToken, firstCookie)
+	}
+}
+
+func TestCSRFProtection_GetThenPostFlow(t *testing.T) {
+	store := NewCSRFStore(slog.Default())
+	handler := CSRFProtection(store)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+	}))
+
+	sessionID := "flow-test@example.com"
+
+	// Step 1: GET request sets the CSRF cookie
+	getReq := httptest.NewRequest("GET", "/api/consent/agents/123", nil)
+	getReq = getReq.WithContext(principal.WithPrincipal(getReq.Context(), sessionID))
+	getRR := httptest.NewRecorder()
+	handler.ServeHTTP(getRR, getReq)
+
+	if getRR.Code != http.StatusOK {
+		t.Fatalf("GET request failed: %d", getRR.Code)
+	}
+
+	// Extract CSRF cookie
+	var csrfToken string
+	for _, cookie := range getRR.Result().Cookies() {
+		if cookie.Name == CSRFCookieName {
+			csrfToken = cookie.Value
+			break
+		}
+	}
+	if csrfToken == "" {
+		t.Fatal("CSRF cookie not set after GET request")
+	}
+
+	// Step 2: POST request with CSRF token header should succeed
+	postReq := httptest.NewRequest("POST", "/api/consent/agents/123/grants", nil)
+	postReq = postReq.WithContext(principal.WithPrincipal(postReq.Context(), sessionID))
+	postReq.Header.Set(CSRFTokenHeader, csrfToken)
+	postRR := httptest.NewRecorder()
+	handler.ServeHTTP(postRR, postReq)
+
+	if postRR.Code != http.StatusOK {
+		t.Errorf("POST with valid CSRF token should succeed, got status %d", postRR.Code)
+	}
+}

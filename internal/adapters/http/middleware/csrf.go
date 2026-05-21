@@ -75,6 +75,29 @@ func (s *CSRFStore) Get(sessionID string) (string, bool) {
 	return token.Value, true
 }
 
+// GetOrCreate atomically retrieves an existing token or generates a new one.
+// This eliminates the race condition when parallel GET requests arrive simultaneously.
+func (s *CSRFStore) GetOrCreate(sessionID string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if token, exists := s.tokens[sessionID]; exists && time.Now().Before(token.ExpiresAt) {
+		return token.Value, nil
+	}
+
+	tokenValue, err := generateToken()
+	if err != nil {
+		return "", err
+	}
+
+	s.tokens[sessionID] = &csrfToken{
+		Value:     tokenValue,
+		ExpiresAt: time.Now().Add(CSRFTokenTTL),
+	}
+
+	return tokenValue, nil
+}
+
 // Set stores a CSRF token for a session
 func (s *CSRFStore) Set(sessionID, tokenValue string) {
 	s.mu.Lock()
@@ -121,33 +144,25 @@ func CSRFProtection(store *CSRFStore) func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Skip CSRF for safe methods (GET, HEAD, OPTIONS)
 			if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
-				// Generate and set CSRF token for future requests
+				// Ensure CSRF token exists and set cookie for future mutating requests
 				sessionID := getSessionID(r)
 				if sessionID != "" {
-					// Check if token exists
-					if _, exists := store.Get(sessionID); !exists {
-						// Generate new token
-						token, err := generateToken()
-						if err != nil {
-							store.logger.Error("failed to generate CSRF token", "error", err)
-							http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-							return
-						}
-
-						// Store token
-						store.Set(sessionID, token)
-
-						// Set cookie
-						http.SetCookie(w, &http.Cookie{
-							Name:     CSRFCookieName,
-							Value:    token,
-							Path:     "/",
-							HttpOnly: false, // JavaScript needs to read this
-							Secure:   r.TLS != nil,
-							SameSite: http.SameSiteStrictMode,
-							MaxAge:   int(CSRFTokenTTL.Seconds()),
-						})
+					token, err := store.GetOrCreate(sessionID)
+					if err != nil {
+						store.logger.Error("failed to generate CSRF token", "error", err)
+						http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+						return
 					}
+
+					http.SetCookie(w, &http.Cookie{
+						Name:     CSRFCookieName,
+						Value:    token,
+						Path:     "/",
+						HttpOnly: false, // JavaScript needs to read this
+						Secure:   r.TLS != nil,
+						SameSite: http.SameSiteStrictMode,
+						MaxAge:   int(CSRFTokenTTL.Seconds()),
+					})
 				}
 
 				next.ServeHTTP(w, r)

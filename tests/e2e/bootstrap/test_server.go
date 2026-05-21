@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"time"
 
 	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
@@ -35,9 +36,10 @@ import (
 // - Provides convenience methods for authenticated requests
 // - Handles principal injection via X-Remote-User header
 type TestServer struct {
-	app    *app.App
-	server *httptest.Server
-	logger *slog.Logger
+	app       *app.App
+	server    *httptest.Server
+	logger    *slog.Logger
+	csrfStore *httpMiddleware.CSRFStore
 }
 
 // TestServerConfig holds parameters for building a TestServer that needs URL alignment.
@@ -173,6 +175,7 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 	// Determine route setup and server config based on server type.
 	// Use production NewHandler to align bootstrap with production server path.
 	var routeSetup func(chi.Router)
+	var csrfStore *httpMiddleware.CSRFStore
 	serverCfg := httpAdapter.ServerConfig{
 		Authentication:   app.Config.Server.EndUser.Authentication,
 		JWTAuthenticator: app.JWTAuthenticator,
@@ -185,12 +188,14 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 		spaSaved := app.EnduserHandlers.SPA
 		app.EnduserHandlers.SPA = nil
 		defer func() { app.EnduserHandlers.SPA = spaSaved }()
+		csrfStore = httpMiddleware.NewCSRFStore(logger)
 		routeSetup = func(r chi.Router) {
 			routing.SetupEnduserRoutes(r, app.EnduserHandlers, routing.EnduserRouteConfig{
 				Authentication:   app.Config.Server.EndUser.Authentication,
 				JWTAuthenticator: app.JWTAuthenticator,
 				Logger:           logger,
 				CORS:             app.Config.Server.EndUser.CORS,
+				CSRFStore:        csrfStore,
 				Telemetry:        app.Config.Telemetry,
 			})
 			if spaSaved != nil {
@@ -249,9 +254,10 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 	}
 
 	return &TestServer{
-		app:    app,
-		server: server,
-		logger: logger,
+		app:       app,
+		server:    server,
+		logger:    logger,
+		csrfStore: csrfStore,
 	}, nil
 }
 
@@ -325,6 +331,30 @@ func (ts *TestServer) BaseURL() string {
 		return ""
 	}
 	return ts.server.URL
+}
+
+// injectCSRFIfNeeded sets the X-CSRF-Token header on mutating requests to consent routes.
+// The CSRF middleware (enabled in production and tests) rejects POST/PUT/DELETE/PATCH to
+// /api/consent/… without a matching token, so test helpers must supply one transparently.
+func (ts *TestServer) injectCSRFIfNeeded(req *http.Request, principal string) {
+	if ts.csrfStore == nil {
+		return
+	}
+	if principal == "" {
+		return
+	}
+	method := req.Method
+	if method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions {
+		return
+	}
+	if !strings.Contains(req.URL.Path, "/consent/") {
+		return
+	}
+	token, err := ts.csrfStore.GetOrCreate(principal)
+	if err != nil {
+		return
+	}
+	req.Header.Set(httpMiddleware.CSRFTokenHeader, token)
 }
 
 // AuthenticatedGET makes an authenticated GET request with Principal injection.
@@ -420,6 +450,9 @@ func (ts *TestServer) AuthenticatedPOST(path string, principal string, contentTy
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
+
+	// Inject CSRF token for mutating consent requests (mirrors browser cookie flow)
+	ts.injectCSRFIfNeeded(req, principal)
 
 	// Make request using HTTP client that does NOT follow redirects
 	// E2E tests need to verify redirect responses themselves
@@ -555,6 +588,9 @@ func (ts *TestServer) DirectRequest(method string, path string, principal string
 		req.Header.Set(key, value)
 	}
 
+	// Inject CSRF token for mutating consent requests (mirrors browser cookie flow)
+	ts.injectCSRFIfNeeded(req, principal)
+
 	// Make request using HTTP client that does NOT follow redirects
 	// E2E tests need to verify redirect responses themselves
 	client := &http.Client{
@@ -688,10 +724,12 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 
 	// Step 6: Register production routes on the existing mux
 	// This adds all the actual endpoints while keeping the same httptest server
+	csrfStore := httpMiddleware.NewCSRFStore(b.logger)
 	routing.SetupEnduserRoutes(router, appInstance.EnduserHandlers, routing.EnduserRouteConfig{
 		Authentication:   appInstance.Config.Server.EndUser.Authentication,
 		JWTAuthenticator: appInstance.JWTAuthenticator,
 		Logger:           b.logger,
+		CSRFStore:        csrfStore,
 		Telemetry:        appInstance.Config.Telemetry,
 	})
 
@@ -699,8 +737,9 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 
 	// Step 7: Return the TestServer with aligned URL
 	return &TestServer{
-		app:    appInstance,
-		server: testServer,
-		logger: b.logger,
+		app:       appInstance,
+		server:    testServer,
+		logger:    b.logger,
+		csrfStore: csrfStore,
 	}, nil
 }
