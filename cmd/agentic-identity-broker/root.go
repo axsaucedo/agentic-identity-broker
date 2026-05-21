@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -14,7 +15,6 @@ import (
 	"time"
 
 	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/routing"
 	storageAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
@@ -92,13 +92,15 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create route setup function for enduser server
+	csrfKey, _ := base64.StdEncoding.DecodeString(cfg.Security.CSRFKey)
 	enduserRouteSetup := func(r chi.Router) {
 		routing.SetupEnduserRoutes(r, application.EnduserHandlers, routing.EnduserRouteConfig{
 			Authentication:   cfg.Server.EndUser.Authentication,
 			JWTAuthenticator: application.JWTAuthenticator,
 			Logger:           logger,
 			CORS:             cfg.Server.EndUser.CORS,
-			CSRFStore:        middleware.NewCSRFStore(logger),
+			CSRFKey:          csrfKey,
+			CSRFSecure:       true,
 			Telemetry:        cfg.Telemetry,
 		})
 	}

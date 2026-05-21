@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	gorillacsrf "github.com/gorilla/csrf"
 	"github.com/riandyrn/otelchi"
 	"go.opentelemetry.io/otel"
 
@@ -31,9 +32,13 @@ type EnduserRouteConfig struct {
 	// CORS configuration for API routes
 	CORS ports.CORSConfig
 
-	// CSRFStore provides CSRF token storage for state-mutating consent endpoints.
+	// CSRFKey is the 32-byte HMAC signing key for stateless CSRF protection.
 	// When nil, CSRF protection is not applied.
-	CSRFStore *middleware.CSRFStore
+	CSRFKey []byte
+
+	// CSRFSecure controls the Secure flag on the CSRF cookie.
+	// Set to false in tests (httptest has no TLS).
+	CSRFSecure bool
 
 	// Telemetry contains observability configuration. When Telemetry.Enabled and
 	// Telemetry.Traces.Enabled are both true, otelchi HTTP tracing middleware is registered.
@@ -103,8 +108,19 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 			// Register consent routes if handlers are available
 			if h.Agents != nil && h.AgentDetail != nil && h.Grants != nil {
 				authRouter.Route("/consent", func(consentRouter chi.Router) {
-					if cfg.CSRFStore != nil {
-						consentRouter.Use(middleware.CSRFProtection(cfg.CSRFStore))
+					if cfg.CSRFKey != nil {
+						if !cfg.CSRFSecure {
+							consentRouter.Use(csrfPlaintextMiddleware)
+						}
+						consentRouter.Use(gorillacsrf.Protect(cfg.CSRFKey,
+							gorillacsrf.RequestHeader("X-CSRF-Token"),
+							gorillacsrf.CookieName("_csrf"),
+							gorillacsrf.HttpOnly(true),
+							gorillacsrf.Secure(cfg.CSRFSecure),
+							gorillacsrf.SameSite(gorillacsrf.SameSiteStrictMode),
+							gorillacsrf.Path("/"),
+						))
+						consentRouter.Use(csrfTokenCookie(cfg.CSRFSecure))
 					}
 
 					// Agents list endpoint
@@ -162,5 +178,37 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 			http.Redirect(w, r, "/consent/", http.StatusMovedPermanently)
 		})
 		r.Handle("/consent/*", h.SPA)
+	}
+}
+
+// csrfTokenCookie is a middleware that exposes the gorilla/csrf masked token in a
+// csrfPlaintextMiddleware marks requests as plaintext HTTP so gorilla/csrf
+// skips Referer-based origin checks (only applicable for non-TLS environments).
+func csrfPlaintextMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, gorillacsrf.PlaintextHTTPRequest(r))
+	})
+}
+
+// csrfTokenCookie is a middleware that exposes the masked CSRF token in a
+// JS-readable cookie named "csrf_token". The frontend reads this cookie and sends
+// its value back in the X-CSRF-Token header on mutating requests.
+// Must run after gorilla/csrf middleware (which populates the token in context).
+func csrfTokenCookie(secure bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token := gorillacsrf.Token(r)
+			if token != "" {
+				http.SetCookie(w, &http.Cookie{
+					Name:     "csrf_token",
+					Value:    token,
+					Path:     "/",
+					HttpOnly: false,
+					Secure:   secure,
+					SameSite: http.SameSiteStrictMode,
+				})
+			}
+			next.ServeHTTP(w, r)
+		})
 	}
 }

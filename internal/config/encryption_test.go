@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
@@ -141,9 +142,10 @@ func TestEncryptionConfigFieldTypes(t *testing.T) {
 // TestEncryptionConfigBackend_AWSKMSBackend verifies AWS KMS backend configuration parses correctly
 func TestEncryptionConfigBackend_AWSKMSBackend(t *testing.T) {
 	cfg := &ports.Config{
-		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
-		Server:  createValidServerConfig(),
-		Storage: createValidStorageConfig(),
+		Log:      ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:   createValidServerConfig(),
+		Storage:  createValidStorageConfig(),
+		Security: createValidSecurityConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
@@ -177,9 +179,10 @@ func TestEncryptionConfigBackend_AWSKMSBackend(t *testing.T) {
 // TestEncryptionConfigBackend_MemoryBackend verifies Memory backend configuration parses correctly
 func TestEncryptionConfigBackend_MemoryBackend(t *testing.T) {
 	cfg := &ports.Config{
-		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
-		Server:  createValidServerConfig(),
-		Storage: createValidStorageConfig(),
+		Log:      ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:   createValidServerConfig(),
+		Storage:  createValidStorageConfig(),
+		Security: createValidSecurityConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
@@ -208,9 +211,10 @@ func TestEncryptionConfigBackend_MemoryBackend(t *testing.T) {
 // TestEncryptionConfigBackend_BothBackends verifies validation fails when both backends are specified
 func TestEncryptionConfigBackend_BothBackends(t *testing.T) {
 	cfg := &ports.Config{
-		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
-		Server:  createValidServerConfig(),
-		Storage: createValidStorageConfig(),
+		Log:      ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:   createValidServerConfig(),
+		Storage:  createValidStorageConfig(),
+		Security: createValidSecurityConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
@@ -242,9 +246,10 @@ func TestEncryptionConfigBackend_BothBackends(t *testing.T) {
 // TestEncryptionConfigBackend_NoBackends verifies validation fails when neither backend is specified
 func TestEncryptionConfigBackend_NoBackends(t *testing.T) {
 	cfg := &ports.Config{
-		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
-		Server:  createValidServerConfig(),
-		Storage: createValidStorageConfig(),
+		Log:      ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:   createValidServerConfig(),
+		Storage:  createValidStorageConfig(),
+		Security: createValidSecurityConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
@@ -322,9 +327,10 @@ func TestEncryptionConfigValidation_AWSKMSValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &ports.Config{
-				Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
-				Server:  createValidServerConfig(),
-				Storage: createValidStorageConfig(),
+				Log:      ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+				Server:   createValidServerConfig(),
+				Storage:  createValidStorageConfig(),
+				Security: createValidSecurityConfig(),
 				ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 					JWESigningKey: generateBase64EncodedString(t, 32),
 				},
@@ -399,9 +405,10 @@ func TestEncryptionConfigValidation_MemoryValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &ports.Config{
-				Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
-				Server:  createValidServerConfig(),
-				Storage: createValidStorageConfig(),
+				Log:      ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+				Server:   createValidServerConfig(),
+				Storage:  createValidStorageConfig(),
+				Security: createValidSecurityConfig(),
 				ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 					JWESigningKey: generateBase64EncodedString(t, 32),
 				},
@@ -577,9 +584,10 @@ func TestEncryptionConfigFactory_AdapterFactory(t *testing.T) {
 // TestValidateEncryptionConfigMissingBackend verifies validation fails when no backend is configured
 func TestValidateEncryptionConfigMissingBackend(t *testing.T) {
 	cfg := &ports.Config{
-		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
-		Server:  createValidServerConfig(),
-		Storage: createValidStorageConfig(),
+		Log:      ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:   createValidServerConfig(),
+		Storage:  createValidStorageConfig(),
+		Security: createValidSecurityConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
@@ -603,9 +611,10 @@ func TestValidateEncryptionConfigMissingBackend(t *testing.T) {
 // TestValidateEncryptionConfigValidAWSKMSARN verifies validation passes for valid AWS KMS backend
 func TestValidateEncryptionConfigValidAWSKMSARN(t *testing.T) {
 	cfg := &ports.Config{
-		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
-		Server:  createValidServerConfig(),
-		Storage: createValidStorageConfig(),
+		Log:      ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:   createValidServerConfig(),
+		Storage:  createValidStorageConfig(),
+		Security: createValidSecurityConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
@@ -626,9 +635,10 @@ func TestValidateEncryptionConfigValidAWSKMSARN(t *testing.T) {
 // TestValidateEncryptionConfigValidMemoryBackend verifies validation passes for valid Memory backend
 func TestValidateEncryptionConfigValidMemoryBackend(t *testing.T) {
 	cfg := &ports.Config{
-		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
-		Server:  createValidServerConfig(),
-		Storage: createValidStorageConfig(),
+		Log:      ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:   createValidServerConfig(),
+		Storage:  createValidStorageConfig(),
+		Security: createValidSecurityConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
@@ -649,9 +659,10 @@ func TestValidateEncryptionConfigValidMemoryBackend(t *testing.T) {
 // TestValidateEncryptionConfigInvalidMemoryKey verifies validation fails for invalid Memory backend key
 func TestValidateEncryptionConfigInvalidMemoryKey(t *testing.T) {
 	cfg := &ports.Config{
-		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
-		Server:  createValidServerConfig(),
-		Storage: createValidStorageConfig(),
+		Log:      ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:   createValidServerConfig(),
+		Storage:  createValidStorageConfig(),
+		Security: createValidSecurityConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
@@ -675,9 +686,10 @@ func TestValidateEncryptionConfigWrongMemoryKeyLength(t *testing.T) {
 	invalidKey := generateBase64EncodedString(t, 16)
 
 	cfg := &ports.Config{
-		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
-		Server:  createValidServerConfig(),
-		Storage: createValidStorageConfig(),
+		Log:      ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:   createValidServerConfig(),
+		Storage:  createValidStorageConfig(),
+		Security: createValidSecurityConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
@@ -698,9 +710,10 @@ func TestValidateEncryptionConfigWrongMemoryKeyLength(t *testing.T) {
 // TestValidateEncryptionConfigInvalidAWSKMSARN verifies validation fails for malformed AWS KMS ARN
 func TestValidateEncryptionConfigInvalidAWSKMSARN(t *testing.T) {
 	cfg := &ports.Config{
-		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
-		Server:  createValidServerConfig(),
-		Storage: createValidStorageConfig(),
+		Log:      ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:   createValidServerConfig(),
+		Storage:  createValidStorageConfig(),
+		Security: createValidSecurityConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
@@ -755,5 +768,11 @@ func createValidStorageConfig() ports.StorageConfig {
 			Read:  5 * time.Duration(1e9),
 			Write: 10 * time.Duration(1e9),
 		},
+	}
+}
+
+func createValidSecurityConfig() ports.SecurityConfig {
+	return ports.SecurityConfig{
+		CSRFKey: base64.StdEncoding.EncodeToString([]byte("csrf0123456789abcdef0123456789ab")),
 	}
 }

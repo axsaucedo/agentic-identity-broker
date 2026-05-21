@@ -505,6 +505,17 @@ broker:
   security:
     # -- Skip HTTPS validation for third-party services (dev/test only!)
     skipThirdpartyHttpsValidation: false
+    # -- CSRF HMAC key for stateless token signing (required, 32 bytes)
+    # Raw 32-byte key material; this value will be base64-encoded by the chart when creating the Secret.
+    csrfKey: ""
+    # -- Base64-encoded CSRF key (used directly if set; do not provide raw bytes here)
+    # This value must already be base64-encoded, as it is written to stringData without additional encoding.
+    # Precedence order (highest to lowest): csrfKeyBase64 > csrfKey > csrfKeySecret
+    csrfKeyBase64: ""
+    # -- Secret reference for CSRF key (alternative to csrfKey)
+    csrfKeySecret:
+      name: ""
+      key: csrf-key
 
   # OpenTelemetry observability configuration
   telemetry:

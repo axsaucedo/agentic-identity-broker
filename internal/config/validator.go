@@ -57,6 +57,11 @@ func Validate(cfg *ports.Config) error {
 		return err
 	}
 
+	// Validate security configuration
+	if err := validateSecurityConfig(&cfg.Security); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -771,4 +776,42 @@ func isValidURL(urlStr string) bool {
 	}
 
 	return true
+}
+
+// validateSecurityConfig validates the security configuration.
+// CSRFKey is mandatory — must be a valid base64-encoded 32-byte key.
+func validateSecurityConfig(cfg *ports.SecurityConfig) error {
+	if cfg.CSRFKey == "" {
+		return formatValidationError(
+			"security.csrf_key",
+			"",
+			"base64-encoded key (32 bytes)",
+			nil,
+		)
+	}
+
+	keyBytes, err := base64.StdEncoding.DecodeString(cfg.CSRFKey)
+	if err != nil {
+		truncated := cfg.CSRFKey
+		if len(truncated) > 10 {
+			truncated = truncated[:10] + "..."
+		}
+		return formatValidationError(
+			"security.csrf_key",
+			truncated,
+			"valid base64-encoded string",
+			err,
+		)
+	}
+
+	if len(keyBytes) != 32 {
+		return formatValidationError(
+			"security.csrf_key",
+			fmt.Sprintf("%d bytes", len(keyBytes)),
+			"exactly 32 bytes when decoded",
+			nil,
+		)
+	}
+
+	return nil
 }

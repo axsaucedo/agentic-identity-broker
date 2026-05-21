@@ -2,6 +2,7 @@
 package bootstrap
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
@@ -36,10 +37,9 @@ import (
 // - Provides convenience methods for authenticated requests
 // - Handles principal injection via X-Remote-User header
 type TestServer struct {
-	app       *app.App
-	server    *httptest.Server
-	logger    *slog.Logger
-	csrfStore *httpMiddleware.CSRFStore
+	app    *app.App
+	server *httptest.Server
+	logger *slog.Logger
 }
 
 // TestServerConfig holds parameters for building a TestServer that needs URL alignment.
@@ -175,7 +175,6 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 	// Determine route setup and server config based on server type.
 	// Use production NewHandler to align bootstrap with production server path.
 	var routeSetup func(chi.Router)
-	var csrfStore *httpMiddleware.CSRFStore
 	serverCfg := httpAdapter.ServerConfig{
 		Authentication:   app.Config.Server.EndUser.Authentication,
 		JWTAuthenticator: app.JWTAuthenticator,
@@ -188,14 +187,15 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 		spaSaved := app.EnduserHandlers.SPA
 		app.EnduserHandlers.SPA = nil
 		defer func() { app.EnduserHandlers.SPA = spaSaved }()
-		csrfStore = httpMiddleware.NewCSRFStore(logger)
+		csrfKey := decodeCSRFKey(app.Config.Security.CSRFKey)
 		routeSetup = func(r chi.Router) {
 			routing.SetupEnduserRoutes(r, app.EnduserHandlers, routing.EnduserRouteConfig{
 				Authentication:   app.Config.Server.EndUser.Authentication,
 				JWTAuthenticator: app.JWTAuthenticator,
 				Logger:           logger,
 				CORS:             app.Config.Server.EndUser.CORS,
-				CSRFStore:        csrfStore,
+				CSRFKey:          csrfKey,
+				CSRFSecure:       false,
 				Telemetry:        app.Config.Telemetry,
 			})
 			if spaSaved != nil {
@@ -254,10 +254,9 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 	}
 
 	return &TestServer{
-		app:       app,
-		server:    server,
-		logger:    logger,
-		csrfStore: csrfStore,
+		app:    app,
+		server: server,
+		logger: logger,
 	}, nil
 }
 
@@ -333,13 +332,10 @@ func (ts *TestServer) BaseURL() string {
 	return ts.server.URL
 }
 
-// injectCSRFIfNeeded sets the X-CSRF-Token header on mutating requests to consent routes.
-// The CSRF middleware (enabled in production and tests) rejects POST/PUT/DELETE/PATCH to
-// /api/consent/… without a matching token, so test helpers must supply one transparently.
+// injectCSRFIfNeeded obtains a CSRF token via a preflight GET and sets both
+// the cookie and X-CSRF-Token header on mutating requests to consent routes.
+// This mirrors the browser flow: GET sets the csrf_token cookie, POST sends it back.
 func (ts *TestServer) injectCSRFIfNeeded(req *http.Request, principal string) {
-	if ts.csrfStore == nil {
-		return
-	}
 	if principal == "" {
 		return
 	}
@@ -350,11 +346,30 @@ func (ts *TestServer) injectCSRFIfNeeded(req *http.Request, principal string) {
 	if !strings.Contains(req.URL.Path, "/consent/") {
 		return
 	}
-	token, err := ts.csrfStore.GetOrCreate(principal)
+
+	// Preflight GET to obtain CSRF token cookie
+	preflightReq, err := http.NewRequest("GET", ts.BaseURL()+req.URL.Path, nil)
 	if err != nil {
 		return
 	}
-	req.Header.Set(httpMiddleware.CSRFTokenHeader, token)
+	preflightReq.Header.Set("X-Remote-User", principal)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(preflightReq)
+	if err != nil {
+		return
+	}
+	_ = resp.Body.Close()
+
+	for _, cookie := range resp.Cookies() {
+		switch cookie.Name {
+		case "csrf_token":
+			req.Header.Set("X-CSRF-Token", cookie.Value)
+			req.AddCookie(cookie)
+		case "_csrf":
+			req.AddCookie(cookie)
+		}
+	}
 }
 
 // AuthenticatedGET makes an authenticated GET request with Principal injection.
@@ -724,12 +739,13 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 
 	// Step 6: Register production routes on the existing mux
 	// This adds all the actual endpoints while keeping the same httptest server
-	csrfStore := httpMiddleware.NewCSRFStore(b.logger)
+	csrfKey := decodeCSRFKey(appInstance.Config.Security.CSRFKey)
 	routing.SetupEnduserRoutes(router, appInstance.EnduserHandlers, routing.EnduserRouteConfig{
 		Authentication:   appInstance.Config.Server.EndUser.Authentication,
 		JWTAuthenticator: appInstance.JWTAuthenticator,
 		Logger:           b.logger,
-		CSRFStore:        csrfStore,
+		CSRFKey:          csrfKey,
+		CSRFSecure:       false,
 		Telemetry:        appInstance.Config.Telemetry,
 	})
 
@@ -737,9 +753,20 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 
 	// Step 7: Return the TestServer with aligned URL
 	return &TestServer{
-		app:       appInstance,
-		server:    testServer,
-		logger:    b.logger,
-		csrfStore: csrfStore,
+		app:    appInstance,
+		server: testServer,
+		logger: b.logger,
 	}, nil
+}
+
+// decodeCSRFKey decodes a base64-encoded CSRF key. Returns nil if empty or invalid.
+func decodeCSRFKey(encoded string) []byte {
+	if encoded == "" {
+		return nil
+	}
+	key, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil
+	}
+	return key
 }

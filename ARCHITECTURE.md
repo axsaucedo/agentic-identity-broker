@@ -275,7 +275,7 @@ App
 
 **Security Considerations**:
 - **XSS Prevention**: React escapes all user input by default
-- **CSRF Protection**: Token-based CSRF protection for mutating requests
+- **CSRF Protection**: gorilla/csrf HMAC-signed cookie (`_csrf`) with masked token exposed in JS-readable `csrf_token` cookie; frontend sends `X-CSRF-Token` header on mutating requests
 - **Content Security Policy**: (Future) CSP headers from Go backend
 - **Dependency Scanning**: Regular npm audit for vulnerabilities
 - **TypeScript**: Compile-time type checking prevents runtime errors

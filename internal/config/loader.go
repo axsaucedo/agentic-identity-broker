@@ -143,6 +143,7 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("third_party_oauth2.jwe_signing_key", "IDENTITY_BROKER_JWE_SIGNING_KEY")
 	_ = l.v.BindEnv("third_party_oauth2.state_token_ttl", "IDENTITY_BROKER_STATE_TOKEN_TTL")
 	_ = l.v.BindEnv("third_party_oauth2.pkce_verifier_length", "IDENTITY_BROKER_PKCE_VERIFIER_LENGTH")
+	_ = l.v.BindEnv("security.csrf_key", "IDENTITY_BROKER_SECURITY_CSRF_KEY")
 
 	// Bind encryption configuration to environment variables
 	// AWS KMS backend - KMS key and DynamoDB cache configuration
@@ -173,6 +174,7 @@ func (l *Loader) setDefaults() {
 
 	// Set security configuration defaults
 	l.v.SetDefault("security.skip_thirdparty_https_validation", false)
+	l.v.SetDefault("security.csrf_key", "")
 
 	// Telemetry configuration defaults
 	telDefaults := ports.DefaultTelemetryConfig()
@@ -245,6 +247,7 @@ func (l *Loader) setDefaults() {
 			"storage.backend", "storage.timeouts.read", "storage.timeouts.write",
 			"third_party_oauth2.state_token_ttl", "third_party_oauth2.pkce_verifier_length",
 			"security.skip_thirdparty_https_validation",
+			"security.csrf_key",
 			"telemetry.enabled", "telemetry.service_name",
 			"telemetry.traces.enabled", "telemetry.traces.sampling_rate", "telemetry.traces.propagators",
 			"telemetry.metrics.enabled", "telemetry.metrics.export_interval",
