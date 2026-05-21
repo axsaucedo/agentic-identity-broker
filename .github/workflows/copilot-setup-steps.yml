@@ -26,26 +26,6 @@ jobs:
       # Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v5
-      
-      - name: Show disk usage
-        run: df -h
-      
-      - name: Top-level directories
-        run: |
-          for dir in "$GITHUB_WORKSPACE" "$HOME" "$RUNNER_TEMP"; do
-            if [ -d "$dir" ]; then
-              echo "=== $dir ==="
-              du -x -h -d1 "$dir" 2>/dev/null | sort -hr | head -n 20
-            fi
-          done
-      
-      - name: Detailed file sizes
-        run: |
-          for dir in "$GITHUB_WORKSPACE" "$HOME" "$RUNNER_TEMP"; do
-            if [ -d "$dir" ]; then
-              find "$dir" -xdev -type f -exec du -h {} + 2>/dev/null
-            fi
-          done | sort -hr | head -n 1000
 
       # Set up Go
       - name: Set up Go
