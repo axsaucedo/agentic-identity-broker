@@ -38,11 +38,11 @@ func newTestSessionTokenService() *sessiontoken.Service {
 	return sessiontoken.NewService(newServiceTestJWETokenService())
 }
 
-func newTestServiceWithJWE(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, cfg *OAuth2Config) ports.OAuth2Service {
+func newTestAuthorizationService(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, cfg *OAuth2Config) ports.OAuth2Service {
 	return NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), cfg, nil, newTestSessionTokenService())
 }
 
-func newTestServiceWithSessionsAndJWE(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, sessionRepo ports.UserSessionRepository, cfg *OAuth2Config) ports.OAuth2Service {
+func newTestAuthorizationServiceWithSessions(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, sessionRepo ports.UserSessionRepository, cfg *OAuth2Config) ports.OAuth2Service {
 	return NewAuthorizationService(grantRepo, sessionRepo, NewAgentClientResolver(agentRepo, nil), cfg, nil, newTestSessionTokenService())
 }
 
@@ -414,7 +414,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 			tt.setupAgent(agentRepo)
 			tt.setupGrant(grantRepo)
 
-			svc := newTestServiceWithJWE(agentRepo, grantRepo, &OAuth2Config{
+			svc := newTestAuthorizationService(agentRepo, grantRepo, &OAuth2Config{
 				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 				PublicURL:                 "https://broker.example.com",
 				ModeStrategy:              NewProxyModeStrategy(),
@@ -527,7 +527,7 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 			activeGrant(grantRepo)
 			tt.setupSession(sessionRepo)
 
-			svc := newTestServiceWithSessionsAndJWE(agentRepo, grantRepo, sessionRepo, cfg)
+			svc := newTestAuthorizationServiceWithSessions(agentRepo, grantRepo, sessionRepo, cfg)
 
 			decision, err := svc.HandleAuthorization(context.Background(), authReq, id.NewPrincipal("user@example.com"))
 
@@ -935,7 +935,7 @@ func TestService_HandleAuthorization_RedirectURIValidation(t *testing.T) {
 			grantRepo := NewMockGrantRepository()
 			_ = agentRepo.Create(context.Background(), makeAgent(tt.redirectURIs))
 
-			svc := newTestServiceWithJWE(agentRepo, grantRepo, &OAuth2Config{
+			svc := newTestAuthorizationService(agentRepo, grantRepo, &OAuth2Config{
 				PublicURL:    "https://broker.example.com",
 				ModeStrategy: NewProxyModeStrategy(),
 			})
@@ -1022,7 +1022,7 @@ func TestService_HandleAuthorization_ScopeValidation(t *testing.T) {
 			grantRepo := NewMockGrantRepository()
 			_ = agentRepo.Create(context.Background(), makeAgent(tt.allowedScopes))
 
-			svc := newTestServiceWithJWE(agentRepo, grantRepo, &OAuth2Config{
+			svc := newTestAuthorizationService(agentRepo, grantRepo, &OAuth2Config{
 				PublicURL:    "https://broker.example.com",
 				ModeStrategy: NewProxyModeStrategy(),
 			})
@@ -1070,7 +1070,7 @@ func TestService_GenerateMetadata_IssuerURIOverride(t *testing.T) {
 		SupportedResponseTypes: []string{"code"},
 		SupportedGrantTypes:    []string{"authorization_code"},
 	}
-	svc := newTestServiceWithJWE(agentRepo, grantRepo, config)
+	svc := newTestAuthorizationService(agentRepo, grantRepo, config)
 	metadata, err := svc.GenerateMetadata(context.Background())
 
 	require.NoError(t, err)
@@ -1301,7 +1301,7 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 			setupGrant(grantRepo)
 			tt.setupSess(sessionRepo)
 
-			svc := newTestServiceWithSessionsAndJWE(agentRepo, grantRepo, sessionRepo, cfg)
+			svc := newTestAuthorizationServiceWithSessions(agentRepo, grantRepo, sessionRepo, cfg)
 			decision, err := svc.HandleAuthorization(context.Background(), authReq, id.NewPrincipal("user@example.com"))
 
 			require.NoError(t, err)
@@ -1367,7 +1367,7 @@ func TestService_GenerateMetadata_TokenExchangeGrant(t *testing.T) {
 	baseGrants := []string{"authorization_code", "refresh_token"}
 
 	t.Run("enabled — appended when absent from SupportedGrantTypes", func(t *testing.T) {
-		svc := newTestServiceWithJWE(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
+		svc := newTestAuthorizationService(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
 			PublicURL:            "https://broker.example.com",
 			ModeStrategy:         NewProxyModeStrategy(),
 			SupportedGrantTypes:  baseGrants,
@@ -1379,7 +1379,7 @@ func TestService_GenerateMetadata_TokenExchangeGrant(t *testing.T) {
 	})
 
 	t.Run("enabled — not duplicated when already in SupportedGrantTypes", func(t *testing.T) {
-		svc := newTestServiceWithJWE(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
+		svc := newTestAuthorizationService(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
 			PublicURL:            "https://broker.example.com",
 			ModeStrategy:         NewProxyModeStrategy(),
 			SupportedGrantTypes:  append(slices.Clone(baseGrants), tokenExchangeGrant),
@@ -1397,7 +1397,7 @@ func TestService_GenerateMetadata_TokenExchangeGrant(t *testing.T) {
 	})
 
 	t.Run("disabled — removed when manually present in SupportedGrantTypes", func(t *testing.T) {
-		svc := newTestServiceWithJWE(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
+		svc := newTestAuthorizationService(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
 			PublicURL:            "https://broker.example.com",
 			ModeStrategy:         NewProxyModeStrategy(),
 			SupportedGrantTypes:  append(slices.Clone(baseGrants), tokenExchangeGrant),
@@ -1410,7 +1410,7 @@ func TestService_GenerateMetadata_TokenExchangeGrant(t *testing.T) {
 	})
 
 	t.Run("disabled — fallback to mode baseline when token-exchange is the only configured grant", func(t *testing.T) {
-		svc := newTestServiceWithJWE(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
+		svc := newTestAuthorizationService(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
 			PublicURL:            "https://broker.example.com",
 			ModeStrategy:         NewLocalModeStrategy(),
 			SupportedGrantTypes:  []string{tokenExchangeGrant},
@@ -1450,7 +1450,7 @@ func TestService_ResolveForTokenGrant_ModeBoundary(t *testing.T) {
 		for _, a := range agents {
 			_ = repo.Create(ctx, a)
 		}
-		return newTestServiceWithJWE(repo, NewMockGrantRepository(), &OAuth2Config{ModeStrategy: strategy})
+		return newTestAuthorizationService(repo, NewMockGrantRepository(), &OAuth2Config{ModeStrategy: strategy})
 	}
 
 	cases := []struct {
@@ -1546,7 +1546,7 @@ func TestService_HandleAuthorization_ModeBoundary(t *testing.T) {
 				AgentID:   a.ID,
 			})
 		}
-		return newTestServiceWithJWE(repo, grantRepo, &OAuth2Config{ModeStrategy: strategy})
+		return newTestAuthorizationService(repo, grantRepo, &OAuth2Config{ModeStrategy: strategy})
 	}
 
 	authReq := func(agentID id.AgentID) *ports.AuthorizationRequest {
