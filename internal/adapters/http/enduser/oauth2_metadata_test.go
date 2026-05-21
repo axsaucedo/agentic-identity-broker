@@ -15,9 +15,10 @@ import (
 
 // TestOAuth2MetadataHandler_ServeHTTP_SuccessfulMetadata tests successful metadata generation
 func TestOAuth2MetadataHandler_ServeHTTP_SuccessfulMetadata(t *testing.T) {
-	svc := oauth2.NewService(
-		newMockAgentRepo(),
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
+		&noopSessionRepository{},
+		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
@@ -25,6 +26,8 @@ func TestOAuth2MetadataHandler_ServeHTTP_SuccessfulMetadata(t *testing.T) {
 			SupportedResponseTypes:    []string{"code"},
 			SupportedGrantTypes:       []string{"authorization_code"},
 		},
+		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2MetadataHandler{
@@ -53,9 +56,10 @@ func TestOAuth2MetadataHandler_ServeHTTP_SuccessfulMetadata(t *testing.T) {
 
 // TestOAuth2MetadataHandler_ServeHTTP_JSONEncoding tests proper JSON encoding
 func TestOAuth2MetadataHandler_ServeHTTP_JSONEncoding(t *testing.T) {
-	svc := oauth2.NewService(
-		newMockAgentRepo(),
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
+		&noopSessionRepository{},
+		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
@@ -63,6 +67,8 @@ func TestOAuth2MetadataHandler_ServeHTTP_JSONEncoding(t *testing.T) {
 			SupportedResponseTypes:    []string{"code"},
 			SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
 		},
+		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2MetadataHandler{
@@ -92,14 +98,17 @@ func TestOAuth2MetadataHandler_ServeHTTP_JSONEncoding(t *testing.T) {
 
 // TestOAuth2MetadataHandler_ServeHTTP_CacheHeaders tests appropriate cache headers
 func TestOAuth2MetadataHandler_ServeHTTP_CacheHeaders(t *testing.T) {
-	svc := oauth2.NewService(
-		newMockAgentRepo(),
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
+		&noopSessionRepository{},
+		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
 			PublicURL:                 "https://broker.example.com",
 		},
+		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2MetadataHandler{
@@ -118,13 +127,16 @@ func TestOAuth2MetadataHandler_ServeHTTP_CacheHeaders(t *testing.T) {
 
 // TestOAuth2MetadataHandler_ServeHTTP_AllowGETOnly tests only GET method allowed
 func TestOAuth2MetadataHandler_ServeHTTP_AllowGETOnly(t *testing.T) {
-	svc := oauth2.NewService(
-		newMockAgentRepo(),
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
+		&noopSessionRepository{},
+		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
+		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2MetadataHandler{
@@ -146,14 +158,17 @@ func TestOAuth2MetadataHandler_ServeHTTP_AllowGETOnly(t *testing.T) {
 
 // TestOAuth2MetadataHandler_ServeHTTP_PublicEndpoint tests endpoint is public (no auth required)
 func TestOAuth2MetadataHandler_ServeHTTP_PublicEndpoint(t *testing.T) {
-	svc := oauth2.NewService(
-		newMockAgentRepo(),
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
+		&noopSessionRepository{},
+		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
 			PublicURL:                 "https://broker.example.com",
 		},
+		nil,
+		newTestSessionTokenSvc(),
 	)
 
 	handler := &OAuth2MetadataHandler{

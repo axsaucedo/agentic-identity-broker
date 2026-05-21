@@ -3,13 +3,11 @@ package consent
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -18,9 +16,10 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
-	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,9 +38,14 @@ func newTestJWETokenService() *domjwe.TokenService {
 	return domjwe.New(jweKey)
 }
 
+// newTestSessionTokenValidator returns a SessionTokenValidator backed by a test JWE key.
+func newTestSessionTokenValidator() ports.SessionTokenValidator {
+	return sessiontoken.NewService(newTestJWETokenService())
+}
+
 // newTestSessionToken creates a valid JWE session token for the given agent and principal.
 func newTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalVal string, originalURL string) string {
-	claims, err := domotp2.NewAuthorizationSessionClaims(agentID, id.Principal(principalVal), originalURL, nil)
+	claims, err := sessiontoken.NewAuthorizationSessionClaims(agentID, id.Principal(principalVal), originalURL, nil)
 	if err != nil {
 		panic("newTestSessionToken: invalid claims: " + err.Error())
 	}
@@ -55,11 +59,12 @@ func newTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalV
 // newExpiredTestSessionToken creates a JWE session token whose TTL has already elapsed.
 func newExpiredTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalVal string) string {
 	past := time.Now().Add(-time.Hour)
-	claims := &domotp2.AuthorizationSessionClaims{
-		AgentID:   agentID,
-		Principal: id.Principal(principalVal),
-		IssuedAt:  past,
-		ExpiresAt: past,
+	claims := &sessiontoken.AuthorizationSessionClaims{
+		AgentID:     agentID,
+		Principal:   id.Principal(principalVal),
+		OriginalURL: "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
+		IssuedAt:    past,
+		ExpiresAt:   past,
 	}
 	token, err := ts.Encrypt(claims)
 	if err != nil {
@@ -85,7 +90,7 @@ func newRequestWithPrincipal(method, path, principalValue string, body any) *htt
 
 func TestCreateGrant_NoPrincipal(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
 	testAgentID := id.NewAgentID()
 
 	reqBody := GrantRequest{
@@ -110,7 +115,7 @@ func TestCreateGrant_NoPrincipal(t *testing.T) {
 
 func TestCreateGrant_InvalidJSON(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
 	testAgentID := id.NewAgentID()
 
 	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
@@ -141,7 +146,7 @@ func TestCreateGrant_InvalidJSON(t *testing.T) {
 
 func TestCreateGrant_ValidUntilInPast(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
 	testAgentID := id.NewAgentID()
 
 	pastTime := time.Now().Add(-1 * time.Hour)
@@ -182,7 +187,7 @@ func TestCreateGrant_ValidUntilInPast(t *testing.T) {
 
 func TestToGrantResponse(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
 
 	testGrantID := id.NewGrantID()
 	testAgentID := id.NewAgentID()
@@ -296,7 +301,7 @@ func TestCreateGrant_ServiceErrors(t *testing.T) {
 					return nil, tt.serviceError
 				},
 			}
-			handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
+			handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 			// Create valid request
 			reqBody := GrantRequest{
@@ -355,7 +360,7 @@ func TestCreateGrant_Success(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 	// Create request
 	reqBody := GrantRequest{
@@ -409,315 +414,6 @@ func TestCreateGrant_Success(t *testing.T) {
 	}
 }
 
-// =========================================================================
-// Tests for User Story 6: Redirect URL Validation (T049, T050)
-// =========================================================================
-
-// TestValidateRedirectURI tests the redirect URI validation function
-func TestValidateRedirectURI(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name          string
-		redirectURI   string
-		requestHost   string
-		expectedValid bool
-		expectError   bool
-	}{
-		// T049: Test case 1 - Relative URL without scheme/host
-		{
-			name:          "relative URL without scheme",
-			redirectURI:   "/callback",
-			requestHost:   "localhost:8000",
-			expectedValid: true,
-			expectError:   false,
-		},
-		// T049: Test case 2 - Relative URL with query params
-		{
-			name:          "relative URL with query params",
-			redirectURI:   "/callback?code=abc",
-			requestHost:   "localhost:8000",
-			expectedValid: true,
-			expectError:   false,
-		},
-		// T049: Test case 3 - Same-origin absolute URL (http)
-		{
-			name:          "same-origin absolute URL http",
-			redirectURI:   "http://localhost:8000/callback",
-			requestHost:   "localhost:8000",
-			expectedValid: true,
-			expectError:   false,
-		},
-		// T049: Test case 4 - Same-origin absolute URL (https)
-		{
-			name:          "same-origin absolute URL https",
-			redirectURI:   "https://example.com/callback",
-			requestHost:   "example.com:443", // Explicitly https
-			expectedValid: true,
-			expectError:   false,
-		},
-		// T049: Test case 5 - Different origin/domain
-		{
-			name:          "different domain",
-			redirectURI:   "https://evil.com/callback",
-			requestHost:   "example.com",
-			expectedValid: false,
-			expectError:   false,
-		},
-		// T049: Test case 6 - Different scheme (http vs https)
-		// Note: requestHost without port defaults to http://
-		{
-			name:          "different scheme",
-			redirectURI:   "https://example.com/callback",
-			requestHost:   "example.com:80", // Explicitly http
-			expectedValid: false,
-			expectError:   false,
-		},
-		// T049: Test case 7 - Different port
-		{
-			name:          "different port",
-			redirectURI:   "http://localhost:8001/callback",
-			requestHost:   "localhost:8000",
-			expectedValid: false,
-			expectError:   false,
-		},
-		// T049: Test case 8 - Empty redirect_uri
-		{
-			name:          "empty redirect_uri",
-			redirectURI:   "",
-			requestHost:   "localhost:8000",
-			expectedValid: true,
-			expectError:   false,
-		},
-		// T049: Test case 9 - URL with special characters encoded
-		{
-			name:          "URL with encoded special characters",
-			redirectURI:   "http://localhost:8000/callback?state=%20test",
-			requestHost:   "localhost:8000",
-			expectedValid: true,
-			expectError:   false,
-		},
-		// T049: Test case 10 - Fragment in URL
-		{
-			name:          "URL with fragment",
-			redirectURI:   "http://localhost:8000/callback#section",
-			requestHost:   "localhost:8000",
-			expectedValid: true,
-			expectError:   false,
-		},
-		// T049: Test case 11 - Malformed URL
-		{
-			name:          "malformed URL",
-			redirectURI:   "ht!tp://invalid",
-			requestHost:   "localhost:8000",
-			expectedValid: false,
-			expectError:   true,
-		},
-		// T053: Relative paths with dots
-		{
-			name:          "relative URL with dot notation",
-			redirectURI:   "../../callback",
-			requestHost:   "localhost:8000",
-			expectedValid: true,
-			expectError:   false,
-		},
-		// Port normalization - default http port
-		{
-			name:          "http default port normalization",
-			redirectURI:   "http://localhost:80/callback",
-			requestHost:   "localhost",
-			expectedValid: true,
-			expectError:   false,
-		},
-		// Port normalization - default https port
-		{
-			name:          "https default port normalization",
-			redirectURI:   "https://example.com:443/callback",
-			requestHost:   "example.com:443", // Explicitly https
-			expectedValid: true,
-			expectError:   false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			// Create *http.Request from requestHost string
-			// Detect if HTTPS by checking for :443 port indicator
-			isTLS := strings.Contains(tt.requestHost, ":443")
-
-			req := httptest.NewRequest("GET", "http://"+tt.requestHost+"/", nil)
-			req.Host = tt.requestHost
-			if isTLS {
-				req.TLS = &tls.ConnectionState{}
-			}
-
-			valid, err := validateRedirectURI(tt.redirectURI, req)
-
-			if tt.expectError && err == nil {
-				t.Error("expected error but got nil")
-			}
-			if !tt.expectError && err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
-
-			if valid != tt.expectedValid {
-				t.Errorf("expected valid=%v, got valid=%v", tt.expectedValid, valid)
-			}
-		})
-	}
-}
-
-// TestCreateGrant_WithRedirectURI_Valid tests approval with valid redirect_uri
-func TestCreateGrant_WithRedirectURI_Valid(t *testing.T) {
-	t.Parallel()
-	// T050: Test case 2 - Approval with valid redirect_uri should redirect
-	testAgentID := id.NewAgentID()
-	testGrantID := id.NewGrantID()
-	now := time.Now()
-	futureTime := now.Add(24 * time.Hour)
-
-	mockService := &mockConsentService{
-		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
-			return &storage.UserGrant{
-				ID:                    testGrantID,
-				Principal:             id.Principal("user@example.com"),
-				AgentID:               testAgentID,
-				ValidUntil:            &futureTime,
-				GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
-				CreatedAt:             now,
-				UpdatedAt:             now,
-			}, nil
-		},
-	}
-
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
-
-	reqBody := GrantRequest{
-		GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
-	}
-
-	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants?redirect_uri=%2Fcallback&code=xyz", "user@example.com", reqBody)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", testAgentID.String())
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-
-	rr := httptest.NewRecorder()
-
-	handler.CreateGrant(rr, req)
-
-	// Should return 201 Created with redirect_url in response body (not HTTP redirect)
-	if rr.Code != http.StatusCreated {
-		t.Errorf("expected 201 Created, got %d", rr.Code)
-	}
-
-	// Check response body contains redirect_url
-	var response map[string]any
-	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
-		t.Fatalf("failed to parse response: %v", err)
-	}
-
-	redirectUrl, ok := response["redirect_url"].(string)
-	if !ok {
-		t.Error("expected redirect_url in response body")
-	}
-	if redirectUrl != "/callback" {
-		t.Errorf("expected redirect_url '/callback', got '%s'", redirectUrl)
-	}
-}
-
-// TestCreateGrant_WithRedirectURI_RelativeValid tests approval with relative redirect_uri
-func TestCreateGrant_WithRedirectURI_RelativeValid(t *testing.T) {
-	t.Parallel()
-	// T050: Test case 3 - Approval with relative redirect_uri should redirect
-	testAgentID := id.NewAgentID()
-	testGrantID := id.NewGrantID()
-	now := time.Now()
-	futureTime := now.Add(24 * time.Hour)
-
-	mockService := &mockConsentService{
-		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
-			return &storage.UserGrant{
-				ID:                    testGrantID,
-				Principal:             id.Principal("user@example.com"),
-				AgentID:               testAgentID,
-				ValidUntil:            &futureTime,
-				GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
-				CreatedAt:             now,
-				UpdatedAt:             now,
-			}, nil
-		},
-	}
-
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
-
-	reqBody := GrantRequest{
-		GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
-	}
-
-	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants?redirect_uri=/auth/return", "user@example.com", reqBody)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", testAgentID.String())
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-
-	rr := httptest.NewRecorder()
-
-	handler.CreateGrant(rr, req)
-
-	// Should return 201 Created with redirect_url in response body (not HTTP redirect)
-	if rr.Code != http.StatusCreated {
-		t.Errorf("expected 201 Created, got %d", rr.Code)
-	}
-
-	// Check response body contains redirect_url
-	var response map[string]any
-	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
-		t.Fatalf("failed to parse response: %v", err)
-	}
-
-	redirectUrl, ok := response["redirect_url"].(string)
-	if !ok {
-		t.Error("expected redirect_url in response body")
-	}
-	if redirectUrl != "/auth/return" {
-		t.Errorf("expected redirect_url '/auth/return', got '%s'", redirectUrl)
-	}
-}
-
-// TestCreateGrant_WithRedirectURI_InvalidDomain tests approval with external domain redirect_uri
-func TestCreateGrant_WithRedirectURI_InvalidDomain(t *testing.T) {
-	t.Parallel()
-	// T050: Test case 4 - Approval with invalid redirect_uri (external domain) should return error
-	testAgentID := id.NewAgentID()
-	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
-
-	reqBody := GrantRequest{
-		GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
-	}
-
-	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants?redirect_uri=https://evil.com/callback", "user@example.com", reqBody)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", testAgentID.String())
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-
-	rr := httptest.NewRecorder()
-
-	handler.CreateGrant(rr, req)
-
-	// Should return HTTP 400
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400, got %d", rr.Code)
-	}
-
-	var errResp ErrorResponse
-	if err := json.NewDecoder(rr.Body).Decode(&errResp); err != nil {
-		t.Fatalf("failed to decode error response: %v", err)
-	}
-
-	if errResp.Error == "" {
-		t.Error("expected error response")
-	}
-}
-
 // TestCreateGrant_WithoutRedirectURI tests approval without redirect_uri (success page)
 func TestCreateGrant_WithoutRedirectURI(t *testing.T) {
 	t.Parallel()
@@ -741,7 +437,7 @@ func TestCreateGrant_WithoutRedirectURI(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 	reqBody := GrantRequest{
 		GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
@@ -768,66 +464,6 @@ func TestCreateGrant_WithoutRedirectURI(t *testing.T) {
 
 	if _, ok := envelope["data"]; !ok {
 		t.Error("expected 'data' field in success response")
-	}
-}
-
-// TestCreateGrant_WithRedirectURI_PreservesQueryParams tests that query parameters are preserved
-func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
-	t.Parallel()
-	// T058: Test case - Approval preserves query parameters in redirect
-	testAgentID := id.NewAgentID()
-	testGrantID := id.NewGrantID()
-	now := time.Now()
-	futureTime := now.Add(24 * time.Hour)
-
-	mockService := &mockConsentService{
-		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
-			return &storage.UserGrant{
-				ID:                    testGrantID,
-				Principal:             id.Principal("user@example.com"),
-				AgentID:               testAgentID,
-				ValidUntil:            &futureTime,
-				GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
-				CreatedAt:             now,
-				UpdatedAt:             now,
-			}, nil
-		},
-	}
-
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
-
-	reqBody := GrantRequest{
-		GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
-	}
-
-	// redirect_uri already has query params, and we have additional OAuth params
-	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants?redirect_uri=/callback%3Fsession%3Dabc&state=xyz", "user@example.com", reqBody)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", testAgentID.String())
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-
-	rr := httptest.NewRecorder()
-
-	handler.CreateGrant(rr, req)
-
-	// Should return 201 Created with redirect_url in response body (not HTTP redirect)
-	if rr.Code != http.StatusCreated {
-		t.Errorf("expected 201 Created, got %d", rr.Code)
-	}
-
-	// Check response body contains redirect_url
-	var response map[string]any
-	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
-		t.Fatalf("failed to parse response: %v", err)
-	}
-
-	redirectUrl, ok := response["redirect_url"].(string)
-	if !ok {
-		t.Error("expected redirect_url in response body")
-	}
-	// Verify that query parameters are preserved in the redirect URL
-	if redirectUrl != "/callback?session=abc" {
-		t.Errorf("expected redirect_url '/callback?session=abc', got '%s'", redirectUrl)
 	}
 }
 
@@ -860,7 +496,7 @@ func TestCreateGrant_SessionToken_ValidFlow(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil, ts)
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 	req := newRequestWithPrincipal(
 		"POST",
@@ -889,8 +525,7 @@ func TestCreateGrant_SessionToken_InvalidToken(t *testing.T) {
 	testAgentID := id.NewAgentID()
 	principalVal := "user@example.com"
 
-	ts := newTestJWETokenService()
-	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
+	handler := NewGrantsHandler(&mockConsentService{}, nil, newTestSessionTokenValidator())
 
 	req := newRequestWithPrincipal(
 		"POST",
@@ -908,6 +543,38 @@ func TestCreateGrant_SessionToken_InvalidToken(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
 }
 
+// TestCreateGrant_SessionToken_Expired verifies that a valid but expired JWE session
+// token produces 400 with "session_expired" error code.
+func TestCreateGrant_SessionToken_Expired(t *testing.T) {
+	t.Parallel()
+
+	testAgentID := id.NewAgentID()
+	principalVal := "user@example.com"
+
+	ts := newTestJWETokenService()
+	expiredToken := newExpiredTestSessionToken(ts, testAgentID, principalVal)
+
+	handler := NewGrantsHandler(&mockConsentService{}, nil, newTestSessionTokenValidator())
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+testAgentID.String()+"/grants?session_token="+expiredToken,
+		principalVal,
+		GrantRequest{GrantedPermissionSets: map[string][]string{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", testAgentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
+	var resp ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	assert.Equal(t, "session_expired", resp.Error)
+}
+
 // TestCreateGrant_SessionToken_AgentMismatch verifies that a session token issued for
 // a different agent produces 400.
 func TestCreateGrant_SessionToken_AgentMismatch(t *testing.T) {
@@ -920,7 +587,7 @@ func TestCreateGrant_SessionToken_AgentMismatch(t *testing.T) {
 	ts := newTestJWETokenService()
 	tokenForAgentA := newTestSessionToken(ts, agentA, principalVal, "/callback")
 
-	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
+	handler := NewGrantsHandler(&mockConsentService{}, nil, newTestSessionTokenValidator())
 
 	req := newRequestWithPrincipal(
 		"POST",
@@ -948,7 +615,7 @@ func TestCreateGrant_SessionToken_PrincipalMismatch(t *testing.T) {
 	ts := newTestJWETokenService()
 	tokenForUserA := newTestSessionToken(ts, testAgentID, "userA@example.com", "/callback")
 
-	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
+	handler := NewGrantsHandler(&mockConsentService{}, nil, newTestSessionTokenValidator())
 
 	req := newRequestWithPrincipal(
 		"POST",
@@ -964,4 +631,92 @@ func TestCreateGrant_SessionToken_PrincipalMismatch(t *testing.T) {
 	handler.CreateGrant(rr, req)
 
 	require.Equal(t, http.StatusForbidden, rr.Code, rr.Body.String())
+}
+
+// mockTokenValidator is a configurable SessionTokenValidator for tests that need
+// to inject specific claims or errors without a real JWE round-trip.
+type mockTokenValidator struct {
+	claims *ports.AuthorizationSession
+	err    error
+}
+
+func (m *mockTokenValidator) ValidateAuthorizationSessionToken(_ string, _ id.AgentID, _ id.Principal) (*ports.AuthorizationSession, error) {
+	return m.claims, m.err
+}
+
+// TestCreateGrant_RedirectURIWithoutSessionTokenIsIgnored verifies spec scenario 3.2:
+// a redirect_uri query param without a session_token is silently ignored (not echoed back).
+// This pins the behaviour so any future re-introduction of a redirect_uri fallback is caught.
+func TestCreateGrant_RedirectURIWithoutSessionTokenIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	testAgentID := id.NewAgentID()
+	testGrantID := id.NewGrantID()
+	now := time.Now()
+	futureTime := now.Add(24 * time.Hour)
+
+	mockService := &mockConsentService{
+		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
+			return &storage.UserGrant{
+				ID:                    testGrantID,
+				Principal:             id.Principal("user@example.com"),
+				AgentID:               testAgentID,
+				ValidUntil:            &futureTime,
+				GrantedPermissionSets: []storage.GrantedPermissionSetEntry{},
+				CreatedAt:             now,
+				UpdatedAt:             now,
+			}, nil
+		},
+	}
+
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+testAgentID.String()+"/grants?redirect_uri=https://evil.example.com",
+		"user@example.com",
+		GrantRequest{GrantedPermissionSets: map[string][]string{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", testAgentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	require.Equal(t, http.StatusCreated, rr.Code, rr.Body.String())
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	_, hasRedirectURL := resp["redirect_url"]
+	assert.False(t, hasRedirectURL, "redirect_url must not appear in response when only redirect_uri (no session_token) is provided")
+}
+
+// TestCreateGrant_ValidTokenWithEmptyOriginalURLReturns500 verifies the defense-in-depth
+// guard at the handler layer: if a validated token somehow has an empty OriginalURL,
+// the handler returns 500 rather than silently succeeding with no redirect.
+func TestCreateGrant_ValidTokenWithEmptyOriginalURLReturns500(t *testing.T) {
+	t.Parallel()
+
+	testAgentID := id.NewAgentID()
+
+	validator := &mockTokenValidator{
+		claims: &ports.AuthorizationSession{OriginalURL: ""},
+		err:    nil,
+	}
+	handler := NewGrantsHandler(&mockConsentService{}, nil, validator)
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+testAgentID.String()+"/grants?session_token=dummy",
+		"user@example.com",
+		GrantRequest{GrantedPermissionSets: map[string][]string{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", testAgentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code, rr.Body.String())
 }

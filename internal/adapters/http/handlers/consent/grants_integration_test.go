@@ -155,7 +155,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	consentService := consent.NewService(agentRepo, providerService, grantRepo, sessionRepo, psService, slog.Default())
 
 	// Create handler
-	handler := NewGrantsHandler(consentService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
 	// Test 1: Create initial grant
 	t.Run("create_grant", func(t *testing.T) {
@@ -233,7 +233,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 
 	// Test 3: Retrieve grants
 	t.Run("get_grants", func(t *testing.T) {
-		agentGrantsHandler := NewGrantsHandler(consentService, slog.Default(), newTestJWETokenService())
+		agentGrantsHandler := NewGrantsHandler(consentService, slog.Default(), newTestSessionTokenValidator())
 
 		req := httptest.NewRequest("GET", "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
 		//nolint:staticcheck // Using string key for test simplicity
@@ -262,7 +262,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 
 	// Test 4: Revoke grant via DELETE /grants
 	t.Run("revoke_grant", func(t *testing.T) {
-		revokeHandler := NewGrantsHandler(consentService, nil, newTestJWETokenService())
+		revokeHandler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
 		req := httptest.NewRequest("DELETE", "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
 		//nolint:staticcheck // Using string key for test simplicity
@@ -323,7 +323,7 @@ func TestGrantsIntegration_SessionToken_CreateGrantWithRedirect(t *testing.T) {
 	sessionToken := newTestSessionToken(ts, agentID, principalValue.String(), originalURL)
 
 	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, nil, slog.Default())
-	handler := NewGrantsHandler(consentService, nil, ts)
+	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
 	validUntil := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
 
@@ -406,7 +406,7 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, nil, slog.Default())
-	handler := NewGrantsHandler(consentService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
 	// Approval with no selected services creates a grant with empty permission sets (201).
 	t.Run("approve_with_no_services_optional_only_agent", func(t *testing.T) {
@@ -432,8 +432,8 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 		assert.Empty(t, data["granted_permission_sets"])
 	})
 
-	// Empty permission sets with redirect_uri: creates grant and honours the redirect.
-	t.Run("empty_tokens_with_redirect_uri_creates_grant_and_redirects", func(t *testing.T) {
+	// redirect_uri without session_token must be ignored — no redirect_url in response (SR-004, ADR 016).
+	t.Run("redirect_uri_without_session_token_is_ignored", func(t *testing.T) {
 		reqBody := GrantRequest{
 			GrantedPermissionSets: map[string][]string{},
 		}
@@ -451,7 +451,7 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 		assert.Equal(t, http.StatusCreated, rr.Code)
 		var resp map[string]interface{}
 		require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-		assert.Equal(t, "/callback", resp["redirect_url"])
+		assert.NotContains(t, resp, "redirect_url", "redirect_uri fallback is removed per SR-004")
 	})
 }
 
@@ -506,7 +506,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	seedActiveSession(t, sessionRepo, id.Principal("test@example.com"), service.ID)
 
 	consentService := consent.NewService(agentRepo, providerService, grantRepo, sessionRepo, psService, slog.Default())
-	handler := NewGrantsHandler(consentService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
 	tests := []struct {
 		name           string
@@ -594,7 +594,7 @@ func TestGrantsIntegration_FR020_UnconnectedServices(t *testing.T) {
 
 	// Wire session repo so FR-020 validation is active; no sessions are seeded.
 	consentService := consent.NewService(agentRepo, providerService, grantRepo, sessionRepo, newPermissivePermissionSetQuerier(unconnectedServiceID), slog.Default())
-	handler := NewGrantsHandler(consentService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
 	t.Run("returns_400_when_included_service_has_no_active_session", func(t *testing.T) {
 		psID := id.NewPermissionSetID()

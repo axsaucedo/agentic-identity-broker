@@ -7,40 +7,37 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
-	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
 
 // GrantsHandler handles HTTP requests for user grants management.
 // Implements FR-011 through FR-014 (grant CRUD operations).
 type GrantsHandler struct {
-	consentService  ConsentService
-	jweTokenService *domjwe.TokenService
-	logger          *slog.Logger
+	consentService        ConsentService
+	sessionTokenValidator ports.SessionTokenValidator
+	logger                *slog.Logger
 }
 
 // NewGrantsHandler creates a new grants handler.
-func NewGrantsHandler(consentService ConsentService, logger *slog.Logger, jweTokenService *domjwe.TokenService) *GrantsHandler {
-	if jweTokenService == nil {
-		panic("GrantsHandler requires a non-nil JWE token service")
+func NewGrantsHandler(consentService ConsentService, logger *slog.Logger, sessionTokenValidator ports.SessionTokenValidator) *GrantsHandler {
+	if sessionTokenValidator == nil {
+		panic("GrantsHandler requires a non-nil SessionTokenValidator")
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &GrantsHandler{
-		consentService:  consentService,
-		jweTokenService: jweTokenService,
-		logger:          logger,
+		consentService:        consentService,
+		sessionTokenValidator: sessionTokenValidator,
+		logger:                logger,
 	}
 }
 
@@ -125,56 +122,38 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// FR-029: When session_token is present (CIMD flow), validate the JWE token.
+	// FR-029: Validate JWE session_token when present.
 	sessionToken := r.URL.Query().Get("session_token")
 	var sessionRedirectURI string
 	if sessionToken != "" {
-		var claims domotp2.AuthorizationSessionClaims
-		if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
-			h.logger.Warn("authorization session token invalid", "agent_id", agentID, "principal", principalValue, "error", err)
-			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
-			return
-		}
-		if claims.AgentID != parsedAgentID {
-			h.logger.Warn("authorization session agent mismatch",
-				"expected_agent", parsedAgentID, "session_agent", claims.AgentID,
-				"principal", principalValue)
-			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session does not match requested agent")
-			return
-		}
-		if claims.Principal != principalValue {
-			h.logger.Warn("authorization session principal mismatch", "principal", principalValue)
-			h.writeError(w, http.StatusForbidden, "forbidden", "authorization session does not belong to this user")
+		claims, err := h.sessionTokenValidator.ValidateAuthorizationSessionToken(sessionToken, parsedAgentID, id.Principal(principalValue))
+		if err != nil {
+			switch {
+			case errors.Is(err, ports.ErrSessionExpired):
+				h.logger.Warn("authorization session token expired", "agent_id", agentID, "principal", principalValue)
+				h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
+			case errors.Is(err, ports.ErrSessionAgentMismatch):
+				h.logger.Warn("authorization session agent mismatch",
+					"expected_agent", parsedAgentID,
+					"principal", principalValue)
+				h.writeError(w, http.StatusBadRequest, "bad request", "authorization session does not match requested agent")
+			case errors.Is(err, ports.ErrSessionPrincipalMismatch):
+				h.logger.Warn("authorization session principal mismatch", "principal", principalValue)
+				h.writeError(w, http.StatusForbidden, "forbidden", "authorization session does not belong to this user")
+			case errors.Is(err, ports.ErrSessionInvalidToken):
+				h.logger.Warn("authorization session token invalid", "agent_id", agentID, "principal", principalValue)
+				h.writeError(w, http.StatusBadRequest, "invalid_token", "authorization session token is invalid")
+			default:
+				h.logger.Error("unexpected error validating authorization session token", "agent_id", agentID, "principal", principalValue, "error", err)
+				h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			}
 			return
 		}
 		sessionRedirectURI = claims.OriginalURL
-	}
-
-	// Check for redirect_uri parameter early - validate before processing grant (T051-T054).
-	// When session_token is present the redirect comes from the JWE claims;
-	// redirect_uri is ignored in that case so we skip validation to avoid spurious 400s.
-	redirectURI := r.URL.Query().Get("redirect_uri")
-	if redirectURI != "" && sessionToken == "" {
-		// Validate redirect_uri early to prevent unnecessary processing
-		valid, err := validateRedirectURI(redirectURI, r)
-		if err != nil {
-			h.logger.Warn("malformed redirect_uri",
-				"redirect_uri", redirectURI,
-				"principal", principalValue,
-				"agent_id", agentID,
-				"error", err)
-			h.writeError(w, http.StatusBadRequest, "invalid redirect_uri", fmt.Sprintf("redirect_uri format is invalid: %v", err))
-			return
-		}
-
-		if !valid {
-			// External domain - reject (T054)
-			h.logger.Warn("redirect_uri to external domain rejected",
-				"redirect_uri", redirectURI,
-				"request_host", r.Host,
-				"principal", principalValue,
-				"agent_id", agentID)
-			h.writeError(w, http.StatusBadRequest, "invalid redirect_uri", "redirect_uri must be same-origin or relative")
+		if sessionRedirectURI == "" {
+			h.logger.Error("authorization session token contains empty original_url",
+				"agent_id", agentID, "principal", principalValue)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 			return
 		}
 	}
@@ -309,8 +288,8 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if grant == nil {
-		err := errors.New("grant consent returned nil grant without error")
-		handleGrantError(err)
+		h.logger.Error("grant consent returned nil grant without error", "agent_id", agentID)
+		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return
 	}
 
@@ -320,76 +299,11 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		"agent_id", agentID,
 		"grant_id", grant.ID)
 
-	if sessionToken != "" {
-		response := h.toGrantResponse(grant)
-		h.writeJSON(w, http.StatusCreated, map[string]interface{}{
-			"data":         response,
-			"redirect_url": sessionRedirectURI,
-		})
-		return
+	resp := map[string]interface{}{"data": h.toGrantResponse(grant)}
+	if sessionRedirectURI != "" {
+		resp["redirect_url"] = sessionRedirectURI
 	}
-
-	// If redirect_uri was provided and already validated, return redirect URL in response body
-	// instead of HTTP 303 redirect (T056, T057). This avoids CORS issues when the redirect chain
-	// includes cross-origin redirects (e.g., to upstream OAuth2 server).
-	if redirectURI != "" {
-		// Defensive re-validation of redirect_uri at the sink to prevent open redirects.
-		// Normalize backslashes to forward slashes before parsing to avoid browser quirks.
-		normalizedRedirectURI := strings.ReplaceAll(redirectURI, "\\", "/")
-
-		target, err := url.Parse(normalizedRedirectURI)
-		if err != nil {
-			h.logger.Warn("malformed redirect_uri at redirect time",
-				"redirect_uri", redirectURI,
-				"principal", principalValue,
-				"agent_id", agentID,
-				"error", err)
-			h.writeError(w, http.StatusBadRequest, "invalid redirect_uri", fmt.Sprintf("redirect_uri format is invalid: %v", err))
-			return
-		}
-
-		// Allow only relative URLs or same-origin absolute URLs.
-		// Derive the request host from the HTTP Host header, not from r.URL, which may be empty.
-		var requestHost string
-		if r.Host != "" {
-			// Prepend a dummy scheme so we can reliably parse the host.
-			if u, parseErr := url.Parse("http://" + r.Host); parseErr == nil {
-				requestHost = u.Hostname()
-			}
-		}
-		targetHost := target.Hostname()
-		if targetHost != "" && targetHost != requestHost {
-			h.logger.Warn("redirect_uri to external domain rejected at redirect time",
-				"redirect_uri", redirectURI,
-				"target_host", targetHost,
-				"request_host", requestHost,
-				"principal", principalValue,
-				"agent_id", agentID)
-			h.writeError(w, http.StatusBadRequest, "invalid redirect_uri", "redirect_uri must be same-origin or relative")
-			return
-		}
-
-		// Return redirect URL in response body instead of HTTP redirect.
-		// The frontend will use window.location.href to navigate, which properly handles
-		// cross-origin redirects that would otherwise cause CORS errors with XMLHttpRequest.
-		h.logger.Info("returning redirect URL after grant approval",
-			"redirect_uri", normalizedRedirectURI,
-			"principal", principalValue,
-			"agent_id", agentID)
-		response := h.toGrantResponse(grant)
-		h.writeJSON(w, http.StatusCreated, map[string]interface{}{
-			"data":         response,
-			"redirect_url": normalizedRedirectURI,
-		})
-		return
-	}
-
-	// No redirect_uri: return success response (T057: Display success confirmation)
-	response := h.toGrantResponse(grant)
-	// Wrap in data envelope to match frontend expectations
-	h.writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"data": response,
-	})
+	h.writeJSON(w, http.StatusCreated, resp)
 }
 
 // RevokeGrant handles DELETE /api/consent/agent/{agent-id}/grants.
@@ -466,103 +380,4 @@ func (h *GrantsHandler) writeError(w http.ResponseWriter, statusCode int, error 
 		Message: message,
 	}
 	h.writeJSON(w, statusCode, resp)
-}
-
-// =========================================================================
-// Helper Functions for Redirect URI Validation (User Story 6)
-// =========================================================================
-
-// validateRedirectURI validates that a redirect_uri is safe for redirection.
-// It enforces same-origin policy: allows relative URLs and same-origin absolute URLs.
-// Returns (valid, error):
-// - (true, nil): redirect_uri is valid (relative or same-origin absolute)
-// - (false, nil): redirect_uri is not valid (external domain)
-// - (false, error): redirect_uri format is invalid (malformed URL)
-//
-// Per FR-026, FR-027: System MUST validate redirect_uri is same-origin or relative before redirecting
-func validateRedirectURI(redirectURI string, r *http.Request) (bool, error) {
-	// T049: Test case 8 - Empty redirect_uri is allowed
-	if redirectURI == "" {
-		return true, nil
-	}
-
-	// T049: Test case 1, 2 - Relative URLs (no scheme) are always allowed (T053)
-	parsedURL, err := url.Parse(redirectURI)
-	if err != nil {
-		// T049: Test case 11 - Malformed URL returns error
-		return false, fmt.Errorf("failed to parse redirect_uri: %w", err)
-	}
-
-	// If no scheme, it's relative - always allowed (T053)
-	if parsedURL.Scheme == "" {
-		return true, nil
-	}
-
-	// Absolute URL - perform same-origin check (T052)
-	return isSameOrigin(parsedURL, r), nil
-}
-
-// isSameOrigin checks if a parsed URL has the same origin as the current request.
-// Compares scheme, host, and port.
-// Handles port normalization: http default 80, https default 443.
-// SECURITY: Uses r.TLS to detect scheme (not hostname heuristics).
-func isSameOrigin(u *url.URL, r *http.Request) bool {
-	// Determine request scheme from TLS connection or X-Forwarded-Proto header
-	// This is more reliable than trying to infer from hostname (prevents open redirect)
-	requestScheme := "http"
-	if r.TLS != nil {
-		requestScheme = "https"
-	}
-	// Fallback for reverse proxy scenarios where TLS is terminated upstream
-	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
-		requestScheme = proto
-	}
-
-	// Parse request origin with correct scheme
-	requestURL, err := url.Parse(fmt.Sprintf("%s://%s", requestScheme, r.Host))
-	if err != nil {
-		// If we can't parse the request host, it's not same-origin
-		return false
-	}
-
-	// Compare scheme (T049: Test case 6 - Different scheme is not same-origin)
-	if u.Scheme != requestURL.Scheme {
-		return false
-	}
-
-	// Get normalized hosts and ports
-	uHost := u.Hostname()
-	reqHost := requestURL.Hostname()
-	if uHost != reqHost {
-		// T049: Test case 5 - Different domain is not same-origin
-		return false
-	}
-
-	// Get ports with normalization
-	uPort := normalizePort(u.Port(), u.Scheme)
-	reqPort := normalizePort(requestURL.Port(), requestURL.Scheme)
-	if uPort != reqPort {
-		// T049: Test case 7 - Different port is not same-origin
-		return false
-	}
-
-	// T049: Test case 3, 4, 9, 10 - Same-origin is valid
-	return true
-}
-
-// normalizePort returns the port number, applying defaults for well-known schemes.
-// http defaults to 80, https defaults to 443.
-func normalizePort(port string, scheme string) string {
-	if port != "" {
-		return port
-	}
-
-	switch scheme {
-	case "http":
-		return "80"
-	case "https":
-		return "443"
-	default:
-		return ""
-	}
 }

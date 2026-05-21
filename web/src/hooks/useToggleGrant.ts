@@ -34,7 +34,7 @@ interface UseToggleGrantReturn extends UseToggleGrantState {
   /** Submit grant request */
   submit: (
     validUntil?: string | null,
-    submitOptions?: { redirectUri?: string; sessionToken?: string },
+    submitOptions?: { sessionToken?: string },
     grantedPermissionSets?: Record<string, string[]>,
   ) => Promise<GrantResult | undefined>;
   /** Reset state */
@@ -73,12 +73,11 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
   /**
    * Submit grant request to backend.
    * Uses optimistic updates and rolls back on error.
-   * If redirectUri is provided and backend returns 303, navigates to the redirect URL.
    */
   const submit = useCallback(
     async (
       validUntil?: string | null,
-      submitOptions?: { redirectUri?: string; sessionToken?: string },
+      submitOptions?: { sessionToken?: string },
       grantedPermissionSets?: Record<string, string[]>,
     ): Promise<GrantResult | undefined> => {
       // Set submitting state

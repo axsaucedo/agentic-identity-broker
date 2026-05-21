@@ -16,9 +16,11 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 	"github.com/go-chi/chi/v5"
@@ -35,6 +37,10 @@ func newIntegrationJWETokenService() *domjwe.TokenService {
 		panic("newIntegrationJWETokenService: " + err.Error())
 	}
 	return domjwe.New(key)
+}
+
+func newIntegrationSessionTokenValidator() ports.SessionTokenValidator {
+	return sessiontoken.NewService(newIntegrationJWETokenService())
 }
 
 func newIntegrationProviderService(t *testing.T) *thirdparty.ThirdpartyOAuth2ProviderService {
@@ -96,7 +102,7 @@ func TestIntegration_GetAgentDetail(t *testing.T) {
 	}
 
 	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, memorystorage.NewInMemoryUserSessionRepository(), nil, slog.Default())
-	handler := consent.NewAgentDetailHandler(consentSvc, nil, newIntegrationJWETokenService())
+	handler := consent.NewAgentDetailHandler(consentSvc, nil, newIntegrationSessionTokenValidator())
 
 	reqCtx := principal.WithPrincipal(ctx, principalValue)
 	rctx := chi.NewRouteContext()
@@ -172,7 +178,7 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 	}
 
 	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, nil, nil, slog.Default())
-	handler := consent.NewGrantsHandler(consentSvc, nil, newIntegrationJWETokenService())
+	handler := consent.NewGrantsHandler(consentSvc, nil, newIntegrationSessionTokenValidator())
 
 	reqCtx := principal.WithPrincipal(ctx, principalValue)
 	rctx := chi.NewRouteContext()
@@ -306,7 +312,7 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, memorystorage.NewInMemoryUserSessionRepository(), nil, slog.Default())
 
 	t.Run("GetAgentDetail", func(t *testing.T) {
-		handler := consent.NewAgentDetailHandler(consentSvc, nil, newIntegrationJWETokenService())
+		handler := consent.NewAgentDetailHandler(consentSvc, nil, newIntegrationSessionTokenValidator())
 
 		reqCtx := principal.WithPrincipal(context.Background(), principalValue)
 		rctx := chi.NewRouteContext()
@@ -341,7 +347,7 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 	})
 
 	t.Run("GetAgentGrants", func(t *testing.T) {
-		handler := consent.NewGrantsHandler(consentSvc, nil, newIntegrationJWETokenService())
+		handler := consent.NewGrantsHandler(consentSvc, nil, newIntegrationSessionTokenValidator())
 
 		reqCtx := principal.WithPrincipal(context.Background(), principalValue)
 		rctx := chi.NewRouteContext()

@@ -32,6 +32,8 @@ interface UseAgentGrantsState {
   loading: boolean;
   /** Error message if any */
   error: string | null;
+  /** True when the backend returned session_expired — token cannot be retried */
+  sessionExpired: boolean;
 }
 
 interface UseAgentGrantsReturn extends UseAgentGrantsState {
@@ -60,6 +62,7 @@ export function useAgentGrants(
     grants: null,
     loading: true,
     error: null,
+    sessionExpired: false,
   });
 
   const sessionToken = options?.sessionToken;
@@ -73,6 +76,7 @@ export function useAgentGrants(
         grants: null,
         loading: false,
         error: 'Invalid agent ID',
+        sessionExpired: false,
       });
       return;
     }
@@ -81,6 +85,7 @@ export function useAgentGrants(
       ...prev,
       loading: true,
       error: null,
+      sessionExpired: false,
     }));
 
     try {
@@ -96,8 +101,22 @@ export function useAgentGrants(
         grants: grantsData,
         loading: false,
         error: null,
+        sessionExpired: false,
       });
     } catch (err: unknown) {
+      if (isAxiosError(err) && err.response?.data?.error === 'session_expired') {
+        setState({
+          agent: null,
+          services: [],
+          cimdMeta: null,
+          grants: null,
+          loading: false,
+          error: null,
+          sessionExpired: true,
+        });
+        return;
+      }
+
       let errorMessage: string;
       if (isAxiosError(err) && err.response?.status === 404) {
         errorMessage = 'Agent not found';
@@ -112,6 +131,7 @@ export function useAgentGrants(
         grants: null,
         loading: false,
         error: errorMessage,
+        sessionExpired: false,
       });
     }
   }, [agentId, sessionToken]);

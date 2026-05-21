@@ -4,6 +4,7 @@ package consent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -11,9 +12,8 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
-	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -33,34 +33,41 @@ type ScopeWithDescription struct {
 	Description string `json:"description,omitempty"`
 }
 
-// errSessionExpired is returned by resolveCIMDMetadata when the JWE session token
-// cannot be decrypted or has passed its TTL. Callers use errors.Is to distinguish
-// this from other validation errors (agent mismatch, principal mismatch) and return
-// a machine-readable "session_expired" error code so the frontend can redirect the
-// user back through the /oauth2/authorize flow.
+// errSessionExpired is returned by resolveSessionContext when the JWE session token
+// TTL has elapsed. Callers return "session_expired" so the frontend can restart the
+// /oauth2/authorize flow.
 var errSessionExpired = errors.New("authorization session expired")
+
+// errInvalidToken is returned by resolveSessionContext when the JWE session token
+// cannot be decrypted or unmarshalled (tampered, wrong key, truncated). Distinct from
+// errSessionExpired to allow callers to log at appropriate severity.
+var errInvalidToken = errors.New("authorization session token invalid")
+
+// errInternalSession is returned by resolveSessionContext when session validation fails
+// due to a server-side misconfiguration or invariant violation (not a bad client token).
+var errInternalSession = errors.New("internal session validation error")
 
 // AgentDetailHandler handles HTTP requests for retrieving detailed agent information.
 // Implements User Story 2: Review Agent-Specific Grants (GET /api/consent/agent/:agentId).
 // Phase 6 extension: Includes service requirements with user connection status.
 type AgentDetailHandler struct {
-	consentService  ConsentService
-	jweTokenService *domjwe.TokenService
-	logger          *slog.Logger
+	consentService        ConsentService
+	sessionTokenValidator ports.SessionTokenValidator
+	logger                *slog.Logger
 }
 
 // NewAgentDetailHandler creates a new agent detail handler.
-func NewAgentDetailHandler(consentService ConsentService, logger *slog.Logger, jweTokenService *domjwe.TokenService) *AgentDetailHandler {
-	if jweTokenService == nil {
-		panic("AgentDetailHandler requires a non-nil JWE token service")
+func NewAgentDetailHandler(consentService ConsentService, logger *slog.Logger, sessionTokenValidator ports.SessionTokenValidator) *AgentDetailHandler {
+	if sessionTokenValidator == nil {
+		panic("AgentDetailHandler requires a non-nil SessionTokenValidator")
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &AgentDetailHandler{
-		consentService:  consentService,
-		jweTokenService: jweTokenService,
-		logger:          logger,
+		consentService:        consentService,
+		sessionTokenValidator: sessionTokenValidator,
+		logger:                logger,
 	}
 }
 
@@ -151,8 +158,18 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 			h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
 			return
 		}
+		if errors.Is(err, errInvalidToken) {
+			h.logger.Error("authorization session token invalid", "agent_id", agentID)
+			h.writeError(w, http.StatusBadRequest, "invalid_token", "authorization session token is invalid")
+			return
+		}
+		if errors.Is(err, errInternalSession) {
+			h.logger.Error("internal session validation error", "agent_id", agentID, "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
 		h.logger.Warn("authorization session error", "agent_id", agentID, "error", err)
-		h.writeError(w, http.StatusBadRequest, "bad request", err.Error())
+		h.writeError(w, http.StatusBadRequest, "bad request", "invalid authorization session")
 		return
 	}
 
@@ -237,16 +254,24 @@ func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.A
 		return nil, nil
 	}
 
-	var claims domotp2.AuthorizationSessionClaims
-	if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
-		return nil, errSessionExpired
+	userID, ok := getPrincipalFromContext(r.Context())
+	if !ok {
+		return nil, fmt.Errorf("%w: principal not found in context", errInternalSession)
 	}
-	if claims.AgentID != agentID {
-		return nil, errors.New("authorization session does not match requested agent")
-	}
-	userID, _ := getPrincipalFromContext(r.Context())
-	if string(claims.Principal) != userID {
-		return nil, errors.New("authorization session does not belong to this user")
+	claims, err := h.sessionTokenValidator.ValidateAuthorizationSessionToken(sessionToken, agentID, id.Principal(userID))
+	if err != nil {
+		switch {
+		case errors.Is(err, ports.ErrSessionExpired):
+			return nil, errSessionExpired
+		case errors.Is(err, ports.ErrSessionAgentMismatch):
+			return nil, errors.New("authorization session does not match requested agent")
+		case errors.Is(err, ports.ErrSessionPrincipalMismatch):
+			return nil, errors.New("authorization session does not belong to this user")
+		case errors.Is(err, ports.ErrSessionInvalidToken):
+			return nil, errInvalidToken
+		default:
+			return nil, fmt.Errorf("%w: unexpected error: %v", errInternalSession, err)
+		}
 	}
 
 	if claims.CIMDMetadata == nil {
@@ -255,12 +280,12 @@ func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.A
 
 	u, err := url.Parse(claims.CIMDMetadata.ClientID)
 	if err != nil {
-		return nil, errors.New("invalid client_id in authorization session")
+		return nil, fmt.Errorf("%w: invalid client_id in sealed session token", errInternalSession)
 	}
 
 	orig, err := url.Parse(claims.OriginalURL)
 	if err != nil {
-		return nil, errors.New("invalid original_url in authorization session")
+		return nil, fmt.Errorf("%w: invalid original_url in sealed session token", errInternalSession)
 	}
 	q := orig.Query()
 

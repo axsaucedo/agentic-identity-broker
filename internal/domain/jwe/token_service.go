@@ -2,12 +2,17 @@ package jwe
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	gojwe "github.com/lestrrat-go/jwx/v3/jwe"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 )
+
+// ErrExpired is returned by DecryptAndValidate when the token's TTL has elapsed.
+// Callers can use errors.Is to distinguish expiry from decryption/unmarshal failures.
+var ErrExpired = errors.New("token has expired")
 
 // TokenService encrypts/decrypts JSON-serializable claims into compact JWE strings.
 // Algorithm: A256GCMKW key wrapping + A256GCM content encryption.
@@ -50,7 +55,7 @@ func (s *TokenService) DecryptAndValidate(token string, target Expirable) error 
 		return err
 	}
 	if target.IsExpired() {
-		return fmt.Errorf("token has expired")
+		return ErrExpired
 	}
 	return nil
 }

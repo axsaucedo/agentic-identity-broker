@@ -15,13 +15,15 @@ interface InlineErrorProps {
   error: string;
   /** Callback function for retry action */
   onRetry: () => void;
+  /** Label for the retry button. Defaults to "Try again". */
+  retryLabel?: string;
 }
 
 /**
  * InlineError displays an error message with an option to retry the failed action.
  * Can be dismissed by the user.
  */
-export function InlineError({ error, onRetry }: InlineErrorProps) {
+export function InlineError({ error, onRetry, retryLabel = 'Try again' }: InlineErrorProps) {
   const [isDismissed, setIsDismissed] = useState(false);
 
   if (isDismissed) {
@@ -63,7 +65,7 @@ export function InlineError({ error, onRetry }: InlineErrorProps) {
               onClick={onRetry}
               className="text-sm font-medium text-red-800 hover:text-red-900 underline focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 rounded"
             >
-              Try again
+              {retryLabel}
             </button>
           </div>
         </div>
