@@ -15,7 +15,9 @@ import (
 	. "github.com/onsi/gomega"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
@@ -70,6 +72,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 		mockUpstream   *helpers.MockUpstreamOAuth2Server
 		storageFactory *bootstrap.StorageFactory
 		serverFactory  *bootstrap.ServerFactory
+		appInstance    *app.App
 		logger         *slog.Logger
 		adminPrincipal string
 		userPrincipal  string
@@ -90,7 +93,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 		Expect(err).ToNot(HaveOccurred(), "Failed to create test storage")
 
 		serverFactory = bootstrap.NewServerFactory(config, logger)
-		appInstance, err := serverFactory.BuildApp(testStorage)
+		appInstance, err = serverFactory.BuildApp(testStorage)
 		Expect(err).ToNot(HaveOccurred(), "Failed to build app instance")
 
 		// Create separate servers for end-user and admin routes
@@ -1283,19 +1286,25 @@ var _ = Describe("Agent Permission Requirements", func() {
 		})
 
 		// Scenario 1: spec.md User Story 6, Scenario 1
-		// Spec: Issue HTTP redirect (302/303) when redirect_uri parameter provided
-		It("should issue HTTP redirect with 302/303 status when redirect_uri parameter provided", func() {
+		// Spec: redirect_url is present in response when grant is submitted with a session_token
+		// that encodes an original_url (the authorize redirect URL).
+		It("should include redirect_url in response body when session_token encodes an original_url", func() {
 			// FR-020: Seed active session for githubService.
 			Expect(testStorage.UserSessions().Create(context.Background(), fixtures.SessionForService(userPrincipalForGrant, githubService.ID.String()))).To(Succeed())
-			// Given: User approves consent with redirect_uri query parameter
+
+			// Build a session token whose original_url contains the redirect destination.
+			claims, err := sessiontoken.NewAuthorizationSessionClaims(agent.ID, id.Principal(userPrincipalForGrant), "/callback", nil)
+			Expect(err).ToNot(HaveOccurred())
+			token, err := appInstance.SessionTokenService.Create(claims)
+			Expect(err).ToNot(HaveOccurred())
+
 			payload := map[string]interface{}{
 				"granted_permission_sets": map[string][]string{testPermissionSetID.String(): {githubService.ID.String()}},
 			}
 			body, _ := json.Marshal(payload)
 
-			// When: User submits grant approval with redirect_uri parameter
 			resp, err := enduserServer.AuthenticatedPOST(
-				fmt.Sprintf("/api/consent/agents/%s/grants?redirect_uri=%s", agent.ID, url.QueryEscape("/callback")),
+				fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", agent.ID, url.QueryEscape(token)),
 				userPrincipalForGrant,
 				"application/json",
 				bytes.NewReader(body),
@@ -1305,11 +1314,8 @@ var _ = Describe("Agent Permission Requirements", func() {
 				_ = resp.Body.Close()
 			}()
 
-			// Then: Backend returns 201 Created with redirect_url in response body
-			// (changed from HTTP 303 redirect to avoid CORS issues with cross-origin redirects)
 			Expect(resp.StatusCode).To(Equal(http.StatusCreated))
 
-			// Verify response body contains redirect_url
 			var respBody map[string]interface{}
 			err = json.NewDecoder(resp.Body).Decode(&respBody)
 			Expect(err).ToNot(HaveOccurred())
@@ -1321,22 +1327,24 @@ var _ = Describe("Agent Permission Requirements", func() {
 		})
 
 		// Scenario 2: spec.md User Story 6, Scenario 2
-		// Spec: Response body contains redirect_url (changed from Location header to avoid CORS)
-		It("should include redirect_uri in response body when redirecting", func() {
+		// Spec: redirect_url in response body carries the full original_url from the session token.
+		It("should carry the full original_url from the session_token as redirect_url in the response", func() {
 			// FR-020: Seed active session for githubService.
 			Expect(testStorage.UserSessions().Create(context.Background(), fixtures.SessionForService(userPrincipalForGrant, githubService.ID.String()))).To(Succeed())
-			// Given: User approves consent with specific redirect_uri
+
+			customCallback := "/oauth2/callback?code=abc123&state=xyz"
+			claims, err := sessiontoken.NewAuthorizationSessionClaims(agent.ID, id.Principal(userPrincipalForGrant), customCallback, nil)
+			Expect(err).ToNot(HaveOccurred())
+			token, err := appInstance.SessionTokenService.Create(claims)
+			Expect(err).ToNot(HaveOccurred())
+
 			payload := map[string]interface{}{
 				"granted_permission_sets": map[string][]string{testPermissionSetID.String(): {githubService.ID.String()}},
 			}
 			body, _ := json.Marshal(payload)
 
-			customCallback := "/oauth2/callback?code=abc123&state=xyz"
-			encodedCallback := url.QueryEscape(customCallback)
-
-			// When: User submits grant approval
 			resp, err := enduserServer.AuthenticatedPOST(
-				fmt.Sprintf("/api/consent/agents/%s/grants?redirect_uri=%s", agent.ID, encodedCallback),
+				fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", agent.ID, url.QueryEscape(token)),
 				userPrincipalForGrant,
 				"application/json",
 				bytes.NewReader(body),
@@ -1346,7 +1354,6 @@ var _ = Describe("Agent Permission Requirements", func() {
 				_ = resp.Body.Close()
 			}()
 
-			// Then: Response body contains redirect_url with the redirect_uri
 			Expect(resp.StatusCode).To(Equal(http.StatusCreated))
 
 			var respBody map[string]interface{}
@@ -1357,6 +1364,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			Expect(ok).To(BeTrue(), "redirect_url should be present in response body")
 			Expect(redirectUrl).To(ContainSubstring("/oauth2/callback"))
 		})
+
 
 		// Scenario 3: spec.md User Story 6, Scenario 3
 		// Spec: Return 200 OK with success response when no redirect_uri provided

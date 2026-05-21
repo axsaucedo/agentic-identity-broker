@@ -151,7 +151,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			// No grant created for this agent
 		})
 
-		It("should redirect to consent UI with full original request URL preserved", func() {
+		It("should redirect to consent UI with session_token sealing the original request URL", func() {
 			// Given: Valid agent but no grant
 			originalURL := "/oauth2/authorize?client_id=" + agent.ID.String() + "&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz&scope=openid"
 
@@ -163,12 +163,11 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			// Then: Redirects to consent UI
 			Expect(resp).To(matchers.HaveOAuth2Redirect("/consent/agent/" + agent.ID.String()))
 
-			// And: Original URL preserved in redirect_uri parameter
+			// And: Original URL sealed in session_token (not exposed as plain redirect_uri)
 			redirectURL, err := helpers.ExtractRedirectURL(resp)
 			Expect(err).ToNot(HaveOccurred())
-			redirectURIParam := redirectURL.Query().Get("redirect_uri")
-			Expect(redirectURIParam).To(ContainSubstring(agent.ID.String()))
-			Expect(redirectURIParam).To(ContainSubstring("state=xyz"))
+			Expect(redirectURL.Query().Get("session_token")).ToNot(BeEmpty(), "consent redirect must carry session_token")
+			Expect(redirectURL.Query().Get("redirect_uri")).To(BeEmpty(), "consent redirect must not expose raw redirect_uri")
 		})
 	})
 
@@ -337,7 +336,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 		})
 
 		Context("and no grant exists (redirect to consent)", func() {
-			It("should preserve state parameter in redirect_uri to consent UI", func() {
+			It("should preserve state parameter in session_token to consent UI", func() {
 				// Given: Valid agent but no grant
 				stateValue := "test-state-xyz-123"
 
@@ -356,12 +355,11 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 					Equal(http.StatusSeeOther),
 				))
 
-				// And: Original request with state is preserved in redirect_uri parameter
+				// And: State is preserved inside the session_token (no raw redirect_uri in URL)
 				redirectURL, err := helpers.ExtractRedirectURL(resp)
 				Expect(err).ToNot(HaveOccurred())
-				redirectURIParam := redirectURL.Query().Get("redirect_uri")
-				// The original URL should be URL-encoded in the redirect_uri parameter
-				Expect(redirectURIParam).To(ContainSubstring(stateValue))
+				Expect(redirectURL.Query().Get("session_token")).ToNot(BeEmpty(), "consent redirect must carry session_token sealing the state")
+				Expect(redirectURL.Query().Get("redirect_uri")).To(BeEmpty(), "state must not be exposed as plain redirect_uri")
 			})
 		})
 

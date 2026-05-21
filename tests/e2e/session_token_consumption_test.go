@@ -16,24 +16,22 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
-	domcimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
-	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 )
 
-// CIMD Session Consumption E2E Tests
+// Session Token Consumption E2E Tests
 //
-// Covers FR-029 and SR-014: session-based consent submission using stateless JWE tokens.
+// Covers FR-029 and SR-014 from specs/031-unified-session-token/spec.md:
+// session-based consent submission using stateless JWE tokens across all agent modes.
 // Anti-replay is enforced by the token TTL — there is no server-side consumed flag.
 
-var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
+var _ = Describe("Session Token Grant Submission", func() {
 	var (
 		logger         *slog.Logger
-		mockUpstream   *helpers.MockUpstreamOAuth2Server
 		storageFactory *bootstrap.StorageFactory
 		testStorage    *storageadapter.Adapter
 		server         *bootstrap.TestServer
@@ -43,13 +41,12 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 
 	BeforeEach(func() {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-		mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 		storageFactory = bootstrap.NewStorageFactory(logger)
 		var err error
 		testStorage, err = storageFactory.NewTestStorage()
 		Expect(err).ToNot(HaveOccurred())
 
-		config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
+		config := fixtures.DefaultOAuth2Config()
 		serverFactory := bootstrap.NewServerFactory(config, logger)
 		appInstance, err = serverFactory.BuildApp(testStorage)
 		Expect(err).ToNot(HaveOccurred())
@@ -63,46 +60,36 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 		if server != nil {
 			server.Close()
 		}
-		if mockUpstream != nil {
-			mockUpstream.Close()
-		}
 		if testStorage != nil {
 			_ = storageFactory.CloseStorage(testStorage)
 		}
 	})
 
 	// buildToken creates a valid JWE session token for the given agent and principal.
-	buildToken := func(agentID id.AgentID, principal, redirectURI, originalURL string) string {
-		svc, ok := appInstance.OAuth2Service.(*domotp2.Service)
-		Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.Service")
-		claims, err := domotp2.NewAuthorizationSessionClaims(
+	buildToken := func(agentID id.AgentID, principal, originalURL string) string {
+		claims, err := sessiontoken.NewAuthorizationSessionClaims(
 			agentID,
 			id.Principal(principal),
 			originalURL,
-			&domcimd.ClientIDMetadataDocument{
-				ClientID:     "https://agent.example.com/client",
-				ClientName:   "Test CIMD Agent",
-				RedirectURIs: []string{redirectURI},
-			},
+			nil,
 		)
 		Expect(err).NotTo(HaveOccurred())
-		token, err := svc.CreateAuthorizationSessionToken(claims)
+		token, err := appInstance.SessionTokenService.Create(claims)
 		Expect(err).ToNot(HaveOccurred())
 		return token
 	}
 
 	// buildExpiredToken creates a JWE token with a past ExpiresAt.
 	buildExpiredToken := func(agentID id.AgentID, principal string) string {
-		svc, ok := appInstance.OAuth2Service.(*domotp2.Service)
-		Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.Service")
 		past := time.Now().Add(-1 * time.Hour)
-		claims := &domotp2.AuthorizationSessionClaims{
-			AgentID:   agentID,
-			Principal: id.Principal(principal),
-			IssuedAt:  past,
-			ExpiresAt: past,
+		claims := &sessiontoken.AuthorizationSessionClaims{
+			AgentID:     agentID,
+			Principal:   id.Principal(principal),
+			OriginalURL: "/oauth2/authorize?client_id=" + agentID.String(),
+			IssuedAt:    past,
+			ExpiresAt:   past,
 		}
-		token, err := svc.CreateAuthorizationSessionToken(claims)
+		token, err := appInstance.SessionTokenService.Create(claims)
 		Expect(err).ToNot(HaveOccurred())
 		return token
 	}
@@ -110,13 +97,13 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 	createAgent := func() *domstorage.Agent {
 		now := time.Now()
 		agent := &domstorage.Agent{
-			ID:          id.NewAgentID(),
-			ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
-			DisplayName: "Session Consumption Agent",
-			Description: "E2E test agent for session consumption",
-			ClientURIs:  []string{"https://agent.example.com/client"},
-			CreatedAt:   now,
-			UpdatedAt:   now,
+			ID:           id.NewAgentID(),
+			ClientID:     ptr.To(id.NewClientID("test-client")),
+			DisplayName:  "Session Consumption Agent",
+			Description:  "E2E test agent for session consumption",
+			RedirectURIs: []string{"https://agent.example.com/callback"},
+			CreatedAt:    now,
+			UpdatedAt:    now,
 		}
 		Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 		return agent
@@ -129,12 +116,12 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 		return bytes.NewReader(body)
 	}
 
-	// FR-029 from specs/028-cimd-support/spec.md
+	// Scenario 3.1 from specs/031-unified-session-token/spec.md
 	Describe("when consent is submitted with a valid session_token", func() {
 		It("creates the grant and returns redirect_url from the JWE claims OriginalURL", func() {
 			agent := createAgent()
-			originalURL := "/oauth2/authorize?client_id=https://agent.example.com/client&redirect_uri=https://agent.example.com/callback&scope=repo&response_type=code&state=xyz"
-			token := buildToken(agent.ID, principalStr, "https://agent.example.com/callback", originalURL)
+			originalURL := "/oauth2/authorize?client_id=" + agent.ID.String() + "&redirect_uri=https://agent.example.com/callback&scope=repo&response_type=code&state=xyz"
+			token := buildToken(agent.ID, principalStr, originalURL)
 
 			path := fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", agent.ID, token)
 			resp, err := server.AuthenticatedPOST(path, principalStr, "application/json", emptyGrantBody())
@@ -152,7 +139,7 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 		})
 	})
 
-	// SR-014 from specs/028-cimd-support/spec.md — expired token is rejected
+	// SR-014 from specs/031-unified-session-token/spec.md — expired token is rejected
 	Describe("when consent is submitted with an expired session_token", func() {
 		It("rejects with 400 Bad Request", func() {
 			agent := createAgent()
@@ -167,7 +154,7 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 		})
 	})
 
-	// SR-014 from specs/028-cimd-support/spec.md — malformed token is rejected
+	// SR-014 from specs/031-unified-session-token/spec.md — malformed token is rejected
 	Describe("when consent is submitted with a malformed session_token", func() {
 		It("rejects with 400 Bad Request", func() {
 			agent := createAgent()
@@ -181,14 +168,12 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 		})
 	})
 
-	// SR-014 principal isolation: session token issued for a different user
+	// SR-014 principal isolation from specs/031-unified-session-token/spec.md
 	Describe("when session_token belongs to a different principal", func() {
 		It("rejects with 403 Forbidden", func() {
 			agent := createAgent()
-			// Token issued for a different principal
 			token := buildToken(agent.ID, "other-user@example.com",
-				"https://agent.example.com/callback",
-				"/oauth2/authorize?client_id=https://agent.example.com/client",
+				"/oauth2/authorize?client_id="+agent.ID.String(),
 			)
 
 			path := fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", agent.ID, token)
@@ -200,16 +185,13 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 		})
 	})
 
-	// SR-014 agent binding: session token was created for a different agent
+	// SR-014 agent binding from specs/031-unified-session-token/spec.md
 	Describe("when session_token was created for a different agent", func() {
 		It("rejects with 400 Bad Request", func() {
 			agent := createAgent()
-
-			// Create token bound to a different agent ID
 			differentAgentID := id.NewAgentID()
 			token := buildToken(differentAgentID, principalStr,
-				"https://agent.example.com/callback",
-				"/oauth2/authorize?client_id=https://agent.example.com/client",
+				"/oauth2/authorize?client_id="+differentAgentID.String(),
 			)
 
 			path := fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", agent.ID, token)

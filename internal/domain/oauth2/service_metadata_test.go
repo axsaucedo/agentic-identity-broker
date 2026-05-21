@@ -9,11 +9,11 @@ import (
 )
 
 func TestGenerateMetadata_ProxyMode(t *testing.T) {
-	svc := NewService(nil, nil, &OAuth2Config{
+	svc := NewAuthorizationService(nil, NewMockSessionRepository(), nil, &OAuth2Config{
 		PublicURL:              "https://broker.example.com",
 		SupportedResponseTypes: []string{"code"},
 		SupportedGrantTypes:    []string{"authorization_code", "refresh_token"},
-	})
+	}, nil, newTestSessionTokenService())
 
 	metadata, err := svc.GenerateMetadata(context.Background())
 	require.NoError(t, err)
@@ -26,12 +26,12 @@ func TestGenerateMetadata_ProxyMode(t *testing.T) {
 }
 
 func TestGenerateMetadata_IssueTokenMode(t *testing.T) {
-	svc := NewService(nil, nil, &OAuth2Config{
+	svc := NewAuthorizationService(nil, NewMockSessionRepository(), nil, &OAuth2Config{
 		Mode:                   "issue_token",
 		PublicURL:              "https://broker.example.com",
 		SupportedResponseTypes: []string{"code"},
 		SupportedGrantTypes:    []string{"authorization_code", "client_credentials"},
-	})
+	}, nil, newTestSessionTokenService())
 
 	metadata, err := svc.GenerateMetadata(context.Background())
 	require.NoError(t, err)

@@ -50,7 +50,7 @@ func TestGetGrant_Success(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String()+"/grants", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)
@@ -97,7 +97,7 @@ func TestGetGrant_EmptyGrants(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String()+"/grants", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)
@@ -124,7 +124,7 @@ func TestGetGrant_EmptyGrants(t *testing.T) {
 func TestGetGrant_MissingPrincipal(t *testing.T) {
 	t.Parallel()
 
-	handler := NewGrantsHandler(&mockConsentService{}, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(&mockConsentService{}, nil, newTestSessionTokenValidator())
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-123/grants", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", "agent-123")
@@ -149,7 +149,7 @@ func TestGetGrant_MissingPrincipal(t *testing.T) {
 func TestGetGrant_MissingAgentID(t *testing.T) {
 	t.Parallel()
 
-	handler := NewGrantsHandler(&mockConsentService{}, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(&mockConsentService{}, nil, newTestSessionTokenValidator())
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent//grants", nil)
 	ctx := principal.WithPrincipal(req.Context(), "user@example.com")
 	rctx := chi.NewRouteContext()
@@ -182,7 +182,7 @@ func TestGetGrant_AgentNotFound(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String()+"/grants", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)
@@ -217,7 +217,7 @@ func TestGetGrant_ServiceError(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String()+"/grants", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)

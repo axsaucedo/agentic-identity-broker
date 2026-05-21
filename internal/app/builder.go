@@ -38,6 +38,7 @@ import (
 	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/permissionset"
@@ -64,6 +65,7 @@ type App struct {
 	OAuth2SessionService *oauth2session.OAuth2SessionService
 	OAuth2Service        ports.OAuth2Service
 	TokenExchangeService *tokenexchange.TokenExchangeService
+	SessionTokenService  *sessiontoken.Service
 
 	// JWT pre-authentication (optional, nil when not configured)
 	JWTAuthenticator domjwtauth.JWTAuthenticator
@@ -258,6 +260,8 @@ func (b *Builder) Build() (*App, error) {
 		return nil, fmt.Errorf("failed to import JWE signing key: %w", err)
 	}
 	jweTokenService := domjwe.New(jweKey)
+	sessionTokenSvc := sessiontoken.NewService(jweTokenService)
+	app.SessionTokenService = sessionTokenSvc
 
 	// Phase 2: Create domain services
 	// Constitution Principle VI: domain depends on ports (repository interfaces), not adapters
@@ -374,13 +378,15 @@ func (b *Builder) Build() (*App, error) {
 			clientResolver = oauth2service.NewAgentClientResolver(b.storage.Agents(), b.logger)
 		}
 
-		app.OAuth2Service = oauth2service.NewServiceWithClientResolver(
+		authService := oauth2service.NewAuthorizationService(
 			b.storage.UserGrants(),
 			b.storage.UserSessions(),
 			clientResolver,
 			oauth2Config,
 			b.logger,
-		).WithJWETokenService(jweTokenService)
+			sessionTokenSvc,
+		)
+		app.OAuth2Service = authService
 	}
 
 	// OAuth2SessionService is always created because JWESigningKey is mandatory.
@@ -596,7 +602,7 @@ func (b *Builder) Build() (*App, error) {
 		PermissionSets: admin.NewPermissionSetsHandler(app.PermissionSetService, b.logger),
 	}
 
-	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger, jweTokenService)
+	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger, app.SessionTokenService)
 
 	// T040: Build OAuth2TokenHandler — fail-fast if multi-agent verifier construction fails.
 	// Config validation makes this error unreachable in practice, but structural fail-closed
@@ -692,7 +698,7 @@ func (b *Builder) Build() (*App, error) {
 		UserInfo:       consent.NewUserInfoHandler(b.logger),
 		Agents:         consent.NewAgentsHandler(app.ConsentService, b.logger),
 		AgentDetail:    agentDetailHandler,
-		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger, jweTokenService),
+		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger, app.SessionTokenService),
 		AgentInfo:      consent.NewAgentInfoHandler(app.ConsentService, b.logger),
 		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
 		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{

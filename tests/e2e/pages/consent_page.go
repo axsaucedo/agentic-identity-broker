@@ -1520,7 +1520,7 @@ func (cp *ConsentPage) WaitForGrantSuccess(ctx context.Context, timeoutMs int) e
 		timeoutMs = 5000
 	}
 
-	successToast := cp.page().GetByRole("alert").Filter(playwright.LocatorFilterOptions{
+	successToast := cp.page().GetByRole("status").Filter(playwright.LocatorFilterOptions{
 		HasText: "Grant updated successfully",
 	})
 

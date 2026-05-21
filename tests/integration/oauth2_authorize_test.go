@@ -2,26 +2,48 @@ package integration
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwk"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"log/slog"
 )
+
+func newIntegrationJWETokenService() *domjwe.TokenService {
+	keyBytes, err := base64.StdEncoding.DecodeString("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=")
+	if err != nil {
+		panic("newIntegrationJWETokenService: " + err.Error())
+	}
+	jweKey, err := jwk.Import(keyBytes)
+	if err != nil {
+		panic("newIntegrationJWETokenService: " + err.Error())
+	}
+	return domjwe.New(jweKey)
+}
+
+func newIntegrationSessionTokenSvc() *sessiontoken.Service {
+	return sessiontoken.NewService(newIntegrationJWETokenService())
+}
 
 // TestOAuth2AuthorizeEndpoint_NonUUIDClientIDError tests that a non-UUID client_id
 // returns a direct 400 invalid_client (not a redirect).
@@ -29,12 +51,12 @@ func TestOAuth2AuthorizeEndpoint_NonUUIDClientIDError(t *testing.T) {
 	agentRepo := newInMemoryAgentRepo()
 	grantRepo := newInMemoryGrantRepo()
 
-	svc := oauth2.NewService(agentRepo, grantRepo, &oauth2.OAuth2Config{
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
 		SupportedResponseTypes:    []string{"code"},
 		SupportedGrantTypes:       []string{"authorization_code"},
-	})
+	}, nil, newIntegrationSessionTokenSvc())
 	handler := &enduser.OAuth2AuthorizeHandler{Service: svc}
 
 	req := httptest.NewRequest(
@@ -58,12 +80,12 @@ func TestOAuth2AuthorizeEndpoint_UnknownAgentUUIDDirectError(t *testing.T) {
 	agentRepo := newInMemoryAgentRepo()
 	grantRepo := newInMemoryGrantRepo()
 
-	svc := oauth2.NewService(agentRepo, grantRepo, &oauth2.OAuth2Config{
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
 		SupportedResponseTypes:    []string{"code"},
 		SupportedGrantTypes:       []string{"authorization_code"},
-	})
+	}, nil, newIntegrationSessionTokenSvc())
 	handler := &enduser.OAuth2AuthorizeHandler{Service: svc}
 
 	unknownUUID := id.NewAgentID().String()
@@ -90,14 +112,10 @@ func TestOAuth2AuthorizeEndpoint_MissingParameterError(t *testing.T) {
 	agentRepo := newInMemoryAgentRepo()
 	grantRepo := newInMemoryGrantRepo()
 
-	svc := oauth2.NewService(
-		agentRepo,
-		grantRepo,
-		&oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:                 "https://broker.example.com",
-		},
-	)
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2AuthorizeHandler{
 		Service: svc,
@@ -148,14 +166,10 @@ func TestOAuth2AuthorizeEndpoint_NoGrantRedirectsToConsent(t *testing.T) {
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
-	svc := oauth2.NewService(
-		agentRepo,
-		grantRepo,
-		&oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:                 "https://broker.example.com",
-		},
-	)
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+	}, nil, sessiontoken.NewService(newIntegrationJWETokenService()))
 
 	handler := &enduser.OAuth2AuthorizeHandler{
 		Service: svc,
@@ -170,10 +184,12 @@ func TestOAuth2AuthorizeEndpoint_NoGrantRedirectsToConsent(t *testing.T) {
 
 	handler.ServeHTTP(w, req)
 
-	// Verify redirect to consent
+	// Verify redirect to consent with session_token state transport
 	assert.Equal(t, http.StatusFound, w.Code)
 	redirectURL := w.Header().Get("Location")
 	assert.Contains(t, redirectURL, "https://broker.example.com/consent/agent/"+agent.ID.String())
+	assert.Contains(t, redirectURL, "session_token=")
+	assert.NotContains(t, redirectURL, "redirect_uri=")
 }
 
 // TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream tests redirect to upstream with active grant
@@ -201,14 +217,10 @@ func TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream(t *testing.T) {
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
-	svc := oauth2.NewService(
-		agentRepo,
-		grantRepo,
-		&oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:                 "https://broker.example.com",
-		},
-	)
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2AuthorizeHandler{
 		Service:        svc,
@@ -267,14 +279,10 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
-	svc := oauth2.NewService(
-		agentRepo,
-		grantRepo,
-		&oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:                 "https://broker.example.com",
-		},
-	)
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+	}, nil, sessiontoken.NewService(newIntegrationJWETokenService()))
 
 	handler := &enduser.OAuth2AuthorizeHandler{
 		Service: svc,
@@ -292,10 +300,12 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 
 	handler.ServeHTTP(w, req)
 
-	// Verify redirect to consent (not upstream)
+	// Verify redirect to consent (not upstream) with session_token state transport
 	assert.Equal(t, http.StatusFound, w.Code)
 	redirectURL := w.Header().Get("Location")
 	assert.Contains(t, redirectURL, "https://broker.example.com/consent/agent/"+agent.ID.String())
+	assert.Contains(t, redirectURL, "session_token=")
+	assert.NotContains(t, redirectURL, "redirect_uri=")
 	assert.NotContains(t, redirectURL, "https://auth.example.com/authorize")
 }
 
@@ -322,14 +332,10 @@ func TestOAuth2AuthorizeEndpoint_WithMiddleware(t *testing.T) {
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
-	svc := oauth2.NewService(
-		agentRepo,
-		grantRepo,
-		&oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:                 "https://broker.example.com",
-		},
-	)
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2AuthorizeHandler{
 		Service:        svc,
@@ -382,14 +388,10 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
-	svc := oauth2.NewService(
-		agentRepo,
-		grantRepo,
-		&oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:                 "https://broker.example.com",
-		},
-	)
+	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+	}, nil, newIntegrationSessionTokenSvc())
 
 	handler := &enduser.OAuth2AuthorizeHandler{
 		Service:        svc,
