@@ -364,7 +364,6 @@ func (b *Builder) Build() (*App, error) {
 			SupportedResponseTypes:    b.config.OAuth2AuthServer.SupportedResponseTypes,
 			SupportedGrantTypes:       b.config.OAuth2AuthServer.SupportedGrantTypes,
 			MultiAgentClient:          b.config.OAuth2AuthServer.MultiAgentClient,
-			Mode:                      b.config.OAuth2AuthServer.Mode,
 			CIMDEnabled:               b.config.OAuth2AuthServer.CIMD.Enabled,
 			ModeStrategy:              modeStrategyFor(b.config.OAuth2AuthServer.Mode),
 			TokenExchangeEnabled:      tokenExchangeEnabled,

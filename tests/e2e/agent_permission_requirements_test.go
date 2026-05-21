@@ -17,8 +17,8 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
@@ -1364,7 +1364,6 @@ var _ = Describe("Agent Permission Requirements", func() {
 			Expect(ok).To(BeTrue(), "redirect_url should be present in response body")
 			Expect(redirectUrl).To(ContainSubstring("/oauth2/callback"))
 		})
-
 
 		// Scenario 3: spec.md User Story 6, Scenario 3
 		// Spec: Return 200 OK with success response when no redirect_uri provided

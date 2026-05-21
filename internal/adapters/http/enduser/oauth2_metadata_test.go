@@ -20,6 +20,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_SuccessfulMetadata(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
 			PublicURL:                 "https://broker.example.com",
@@ -61,6 +62,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_JSONEncoding(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
 			PublicURL:                 "https://broker.example.com",
@@ -103,6 +105,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_CacheHeaders(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
 			PublicURL:                 "https://broker.example.com",
@@ -132,6 +135,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_AllowGETOnly(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -163,6 +167,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_PublicEndpoint(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
 			PublicURL:                 "https://broker.example.com",

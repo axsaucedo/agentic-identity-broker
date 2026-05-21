@@ -13,7 +13,6 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -418,6 +417,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 			svc := newTestServiceWithJWE(agentRepo, grantRepo, &OAuth2Config{
 				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 				PublicURL:                 "https://broker.example.com",
+				ModeStrategy:              NewProxyModeStrategy(),
 				SupportedResponseTypes:    []string{"code"},
 				SupportedGrantTypes:       []string{"authorization_code"},
 			})
@@ -456,6 +456,7 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 	cfg := &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 	}
 
 	authReq := &ports.AuthorizationRequest{
@@ -569,6 +570,7 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 	}, nil, newTestSessionTokenService())
 
 	authReq := &ports.AuthorizationRequest{
@@ -672,6 +674,7 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 			svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 				PublicURL:                 "https://broker.example.com",
+				ModeStrategy:              NewProxyModeStrategy(),
 				SupportedResponseTypes:    []string{"code"},
 			}, nil, newTestSessionTokenService())
 
@@ -726,6 +729,7 @@ func TestService_HandleAuthorization_UUIDResolution_UpstreamClientID(t *testing.
 	svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 	}, nil, newTestSessionTokenService())
 
 	req := &ports.AuthorizationRequest{
@@ -756,6 +760,7 @@ func TestService_GenerateMetadata(t *testing.T) {
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 		SupportedResponseTypes:    []string{"code"},
 		SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
 	}
@@ -839,6 +844,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 		svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
+			ModeStrategy:              NewProxyModeStrategy(),
 			MultiAgentClient: ports.MultiAgentClientConfig{
 				Enabled:          true,
 				AgentIDParamName: "x_agent_id",
@@ -858,6 +864,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 		svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
+			ModeStrategy:              NewProxyModeStrategy(),
 			MultiAgentClient:          ports.MultiAgentClientConfig{Enabled: false},
 		}, nil, newTestSessionTokenService())
 
@@ -929,7 +936,8 @@ func TestService_HandleAuthorization_RedirectURIValidation(t *testing.T) {
 			_ = agentRepo.Create(context.Background(), makeAgent(tt.redirectURIs))
 
 			svc := newTestServiceWithJWE(agentRepo, grantRepo, &OAuth2Config{
-				PublicURL: "https://broker.example.com",
+				PublicURL:    "https://broker.example.com",
+				ModeStrategy: NewProxyModeStrategy(),
 			})
 
 			req := &ports.AuthorizationRequest{
@@ -1015,7 +1023,8 @@ func TestService_HandleAuthorization_ScopeValidation(t *testing.T) {
 			_ = agentRepo.Create(context.Background(), makeAgent(tt.allowedScopes))
 
 			svc := newTestServiceWithJWE(agentRepo, grantRepo, &OAuth2Config{
-				PublicURL: "https://broker.example.com",
+				PublicURL:    "https://broker.example.com",
+				ModeStrategy: NewProxyModeStrategy(),
 			})
 
 			req := &ports.AuthorizationRequest{
@@ -1057,7 +1066,6 @@ func TestService_GenerateMetadata_IssuerURIOverride(t *testing.T) {
 	config := &OAuth2Config{
 		PublicURL:              "https://broker.example.com",
 		IssuerURI:              "https://sso.example.com",
-		Mode:                   servermode.Local,
 		ModeStrategy:           NewLocalModeStrategy(),
 		SupportedResponseTypes: []string{"code"},
 		SupportedGrantTypes:    []string{"authorization_code"},
@@ -1081,6 +1089,7 @@ func TestService_GenerateMetadata_RFC8414Compliance(t *testing.T) {
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 		SupportedResponseTypes:    []string{"code"},
 		SupportedGrantTypes:       []string{"authorization_code"},
 	}
@@ -1137,7 +1146,8 @@ func TestService_HandleAuthorization_GrantLookupError(t *testing.T) {
 	}
 
 	svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
-		PublicURL: "https://broker.example.com",
+		PublicURL:    "https://broker.example.com",
+		ModeStrategy: NewProxyModeStrategy(),
 	}, nil, newTestSessionTokenService())
 
 	req := &ports.AuthorizationRequest{
@@ -1168,6 +1178,7 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 	cfg := &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 	}
 
 	authReq := &ports.AuthorizationRequest{
@@ -1330,6 +1341,7 @@ func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
 	svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "%",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 	}, nil, newTestSessionTokenService())
 
 	decision, err := svc.HandleAuthorization(context.Background(), &ports.AuthorizationRequest{
@@ -1357,6 +1369,7 @@ func TestService_GenerateMetadata_TokenExchangeGrant(t *testing.T) {
 	t.Run("enabled — appended when absent from SupportedGrantTypes", func(t *testing.T) {
 		svc := newTestServiceWithJWE(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
 			PublicURL:            "https://broker.example.com",
+			ModeStrategy:         NewProxyModeStrategy(),
 			SupportedGrantTypes:  baseGrants,
 			TokenExchangeEnabled: true,
 		})
@@ -1368,6 +1381,7 @@ func TestService_GenerateMetadata_TokenExchangeGrant(t *testing.T) {
 	t.Run("enabled — not duplicated when already in SupportedGrantTypes", func(t *testing.T) {
 		svc := newTestServiceWithJWE(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
 			PublicURL:            "https://broker.example.com",
+			ModeStrategy:         NewProxyModeStrategy(),
 			SupportedGrantTypes:  append(slices.Clone(baseGrants), tokenExchangeGrant),
 			TokenExchangeEnabled: true,
 		})
@@ -1385,6 +1399,7 @@ func TestService_GenerateMetadata_TokenExchangeGrant(t *testing.T) {
 	t.Run("disabled — removed when manually present in SupportedGrantTypes", func(t *testing.T) {
 		svc := newTestServiceWithJWE(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
 			PublicURL:            "https://broker.example.com",
+			ModeStrategy:         NewProxyModeStrategy(),
 			SupportedGrantTypes:  append(slices.Clone(baseGrants), tokenExchangeGrant),
 			TokenExchangeEnabled: false,
 		})
@@ -1397,7 +1412,6 @@ func TestService_GenerateMetadata_TokenExchangeGrant(t *testing.T) {
 	t.Run("disabled — fallback to mode baseline when token-exchange is the only configured grant", func(t *testing.T) {
 		svc := newTestServiceWithJWE(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
 			PublicURL:            "https://broker.example.com",
-			Mode:                 "local",
 			ModeStrategy:         NewLocalModeStrategy(),
 			SupportedGrantTypes:  []string{tokenExchangeGrant},
 			TokenExchangeEnabled: false,
@@ -1477,12 +1491,6 @@ func TestService_ResolveForTokenGrant_ModeBoundary(t *testing.T) {
 			strategy:    NewLocalModeStrategy(),
 			agent:       proxyAgent,
 			wantErrCode: "unauthorized_client",
-		},
-		{
-			name:     "nil strategy accepts ProxyClient (no enforcement)",
-			strategy: nil,
-			agent:    proxyAgent,
-			wantMode: storage.ProxyClient,
 		},
 	}
 
@@ -1608,7 +1616,7 @@ func TestBuildConsentURL_AlwaysProducesSessionToken(t *testing.T) {
 		NewMockGrantRepository(),
 		NewMockSessionRepository(),
 		NewAgentClientResolver(NewMockAgentRepository(), nil),
-		&OAuth2Config{PublicURL: "https://broker.example.com"},
+		&OAuth2Config{PublicURL: "https://broker.example.com", ModeStrategy: NewProxyModeStrategy()},
 		nil,
 		newTestSessionTokenService(),
 	)

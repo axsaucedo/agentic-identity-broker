@@ -42,10 +42,6 @@ type OAuth2Config struct {
 	// When Enabled, multiple agents may share a single upstream OAuth2 client ID.
 	MultiAgentClient ports.MultiAgentClientConfig
 
-	// Mode indicates whether the broker operates in "proxy", "local", or "hybrid" mode.
-	// In local mode, JWKS and code_challenge_methods are included in metadata.
-	Mode servermode.Mode
-
 	// CIMDEnabled indicates whether CIMD-based client_id resolution is enabled.
 	// When true, client_id_metadata_document_supported is advertised in metadata.
 	CIMDEnabled bool
@@ -54,19 +50,9 @@ type OAuth2Config struct {
 	// When true, the token-exchange grant type is appended to GrantTypesSupported in metadata.
 	TokenExchangeEnabled bool
 
-	// ModeStrategy enforces which agent client modes are permitted in this server mode.
-	// When non-nil, every authorization request is checked against the strategy.
+	// ModeStrategy enforces which agent client modes are permitted and drives metadata output.
+	// Always required — pass NewProxyModeStrategy(), NewLocalModeStrategy(), or NewHybridModeStrategy().
 	ModeStrategy ModeStrategy
-}
-
-// Validate checks that the config is self-consistent.
-// Mode and ModeStrategy must both be set or both be absent — a non-empty Mode without a
-// ModeStrategy silently disables agent client-mode enforcement.
-func (c *OAuth2Config) Validate() error {
-	if c.Mode != "" && c.ModeStrategy == nil {
-		return fmt.Errorf("OAuth2Config: Mode %q requires a non-nil ModeStrategy", c.Mode)
-	}
-	return nil
 }
 
 // AuthorizationService implements the OAuth2Service port.
@@ -80,8 +66,7 @@ type AuthorizationService struct {
 }
 
 // NewAuthorizationService creates an AuthorizationService.
-// Panics if sessionTokenService or sessionRepo is nil.
-// Returns an error if config validation fails (e.g. Mode set without ModeStrategy).
+// Panics if sessionTokenService, sessionRepo, or config.ModeStrategy is nil.
 func NewAuthorizationService(
 	grantRepo ports.UserGrantRepository,
 	sessionRepo ports.UserSessionRepository,
@@ -96,10 +81,8 @@ func NewAuthorizationService(
 	if sessionRepo == nil {
 		panic("oauth2.NewAuthorizationService: sessionRepo must not be nil")
 	}
-	if config != nil {
-		if err := config.Validate(); err != nil {
-			panic("oauth2.NewAuthorizationService: invalid config: " + err.Error())
-		}
+	if config == nil || config.ModeStrategy == nil {
+		panic("oauth2.NewAuthorizationService: config.ModeStrategy must not be nil")
 	}
 	return &AuthorizationService{
 		grantRepo:           grantRepo,
@@ -487,7 +470,7 @@ func (s *AuthorizationService) GenerateMetadata(ctx context.Context) (*ports.Met
 			return g == tokenExchangeGrant
 		})
 		if len(grantTypes) == 0 {
-			switch s.config.Mode {
+			switch s.config.ModeStrategy.Mode() {
 			case servermode.Local, servermode.Hybrid:
 				grantTypes = []string{"authorization_code", "client_credentials"}
 			default:
@@ -506,7 +489,7 @@ func (s *AuthorizationService) GenerateMetadata(ctx context.Context) (*ports.Met
 	}
 
 	// In local and hybrid modes, include JWKS URI and code challenge methods (both serve the JWKS endpoint).
-	if s.config.Mode == servermode.Local || s.config.Mode == servermode.Hybrid {
+	if mode := s.config.ModeStrategy.Mode(); mode == servermode.Local || mode == servermode.Hybrid {
 		metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
 		metadata.CodeChallengeMethodsSupported = []string{"S256"}
 		// client_secret_post is always supported for confidential clients.

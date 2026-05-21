@@ -69,4 +69,3 @@ func NewAuthorizationSessionClaims(
 		ExpiresAt:    now.Add(ttl),
 	}, nil
 }
-

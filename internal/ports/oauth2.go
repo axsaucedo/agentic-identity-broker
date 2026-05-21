@@ -14,9 +14,9 @@ import (
 // handled by adapters that consume the port. Defined here so adapters do not need to import
 // the concrete sessiontoken package to interpret errors from the interface.
 var (
-	ErrSessionExpired          = errors.New("authorization session expired")
-	ErrSessionInvalidToken     = errors.New("authorization session token invalid")
-	ErrSessionAgentMismatch    = errors.New("authorization session does not match requested agent")
+	ErrSessionExpired           = errors.New("authorization session expired")
+	ErrSessionInvalidToken      = errors.New("authorization session token invalid")
+	ErrSessionAgentMismatch     = errors.New("authorization session does not match requested agent")
 	ErrSessionPrincipalMismatch = errors.New("authorization session does not belong to this user")
 )
 

@@ -51,6 +51,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -86,6 +87,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -162,6 +164,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID(t *testing.T) {
 			&noopSessionRepository{},
 			oauth2.NewAgentClientResolver(mockAgentRepo, nil),
 			&oauth2.OAuth2Config{
+				ModeStrategy:              oauth2.NewProxyModeStrategy(),
 				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 				PublicURL:                 "https://broker.example.com",
 			},
@@ -196,6 +199,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_UnknownAgent(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -246,6 +250,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -301,6 +306,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -362,6 +368,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -410,6 +417,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_JSONResponseFormat(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -770,6 +778,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_StorageErrorReturns500(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},

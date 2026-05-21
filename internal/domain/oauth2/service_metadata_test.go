@@ -10,6 +10,7 @@ import (
 
 func TestGenerateMetadata_ProxyMode(t *testing.T) {
 	svc := NewAuthorizationService(nil, NewMockSessionRepository(), nil, &OAuth2Config{
+		ModeStrategy:           NewProxyModeStrategy(),
 		PublicURL:              "https://broker.example.com",
 		SupportedResponseTypes: []string{"code"},
 		SupportedGrantTypes:    []string{"authorization_code", "refresh_token"},
@@ -27,7 +28,6 @@ func TestGenerateMetadata_ProxyMode(t *testing.T) {
 
 func TestGenerateMetadata_LocalMode(t *testing.T) {
 	svc := NewAuthorizationService(nil, NewMockSessionRepository(), nil, &OAuth2Config{
-		Mode:                   "local",
 		ModeStrategy:           NewLocalModeStrategy(),
 		PublicURL:              "https://broker.example.com",
 		SupportedResponseTypes: []string{"code"},
@@ -48,7 +48,6 @@ func TestGenerateMetadata_LocalMode(t *testing.T) {
 // T045b: hybrid mode metadata reflects union of proxy + local capabilities.
 func TestGenerateMetadata_HybridMode(t *testing.T) {
 	svc := NewAuthorizationService(nil, NewMockSessionRepository(), nil, &OAuth2Config{
-		Mode:                   "hybrid",
 		ModeStrategy:           NewHybridModeStrategy(),
 		PublicURL:              "https://broker.example.com",
 		SupportedResponseTypes: []string{"code"},
@@ -66,7 +65,6 @@ func TestGenerateMetadata_HybridMode(t *testing.T) {
 
 func TestGenerateMetadata_LocalModeWithCIMD(t *testing.T) {
 	svc := NewAuthorizationService(nil, NewMockSessionRepository(), nil, &OAuth2Config{
-		Mode:                   "local",
 		ModeStrategy:           NewLocalModeStrategy(),
 		PublicURL:              "https://broker.example.com",
 		SupportedResponseTypes: []string{"code"},

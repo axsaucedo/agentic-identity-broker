@@ -21,6 +21,7 @@ func TestOAuth2MetadataEndpoint_ReturnsValidJSON(t *testing.T) {
 	grantRepo := newInMemoryGrantRepo()
 
 	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		ModeStrategy:              oauth2.NewProxyModeStrategy(),
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		PublicURL:                 "https://broker.example.com",
@@ -53,6 +54,7 @@ func TestOAuth2MetadataEndpoint_RFC8414Schema(t *testing.T) {
 	grantRepo := newInMemoryGrantRepo()
 
 	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		ModeStrategy:              oauth2.NewProxyModeStrategy(),
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		PublicURL:                 "https://broker.example.com",
@@ -94,6 +96,7 @@ func TestOAuth2MetadataEndpoint_HTTPStatus(t *testing.T) {
 	grantRepo := newInMemoryGrantRepo()
 
 	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		ModeStrategy:              oauth2.NewProxyModeStrategy(),
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		PublicURL:                 "https://broker.example.com",
@@ -117,6 +120,7 @@ func TestOAuth2MetadataEndpoint_ContentType(t *testing.T) {
 	grantRepo := newInMemoryGrantRepo()
 
 	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		ModeStrategy:              oauth2.NewProxyModeStrategy(),
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		PublicURL:                 "https://broker.example.com",
@@ -141,6 +145,7 @@ func TestOAuth2MetadataEndpoint_IsPublic(t *testing.T) {
 	grantRepo := newInMemoryGrantRepo()
 
 	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		ModeStrategy:              oauth2.NewProxyModeStrategy(),
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		PublicURL:                 "https://broker.example.com",
@@ -166,6 +171,7 @@ func TestOAuth2MetadataEndpoint_MultipleRequests(t *testing.T) {
 	grantRepo := newInMemoryGrantRepo()
 
 	svc := oauth2.NewAuthorizationService(grantRepo, memory.NewInMemoryUserSessionRepository(), oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
+		ModeStrategy:              oauth2.NewProxyModeStrategy(),
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		PublicURL:                 "https://broker.example.com",

@@ -73,7 +73,7 @@ var _ = Describe("Unified Session Token State Transport", func() {
 		testStorage, err = storageFactory.NewTestStorage()
 		Expect(err).ToNot(HaveOccurred())
 
-		config := fixtures.IssueTokenConfig()
+		config := fixtures.LocalConfig()
 		serverFactory = bootstrap.NewServerFactory(config, logger)
 		appInstance, err := serverFactory.BuildApp(testStorage)
 		Expect(err).ToNot(HaveOccurred())
