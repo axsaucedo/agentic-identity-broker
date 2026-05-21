@@ -75,20 +75,6 @@ spec:
               name: {{ .Values.broker.thirdPartyOauth2.jweSigningKeySecret.name }}
               key: {{ .Values.broker.thirdPartyOauth2.jweSigningKeySecret.key | default "signing-key" }}
         {{- end }}
-        # CSRF HMAC key for stateless token signing
-        {{- if or .Values.broker.security.csrfKey .Values.broker.security.csrfKeyBase64 }}
-        - name: IDENTITY_BROKER_SECURITY_CSRF_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "agentic-identity-broker.fullname" . }}-csrf-key
-              key: csrf-key
-        {{- else if .Values.broker.security.csrfKeySecret.name }}
-        - name: IDENTITY_BROKER_SECURITY_CSRF_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Values.broker.security.csrfKeySecret.name }}
-              key: {{ .Values.broker.security.csrfKeySecret.key | default "csrf-key" }}
-        {{- end }}
         {{- if .Values.broker.encryption.memory.rawKey }}
         - name: IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY
           valueFrom:

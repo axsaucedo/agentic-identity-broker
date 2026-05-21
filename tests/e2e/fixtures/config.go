@@ -76,11 +76,7 @@ func DefaultOAuth2Config() *ports.Config {
 				RawKey: TestKEKMaterialDeterministic(),
 			},
 		},
-		Security: ports.SecurityConfig{
-			CSRF: ports.CSRFConfig{
-				Key: base64.StdEncoding.EncodeToString([]byte("test-csrf-key-32-bytes-exactly!!")),
-			},
-		},
+		Security: ports.SecurityConfig{},
 	}
 }
 

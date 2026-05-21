@@ -3,7 +3,6 @@ package routing_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -19,26 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSetupEnduserRoutes_ConsentCSRFTokenAllowsMutatingRequest(t *testing.T) {
-	t.Parallel()
-
-	router, testAgentID := newEnduserConsentRouter(t)
-	const principal = "user@example.com"
-	internalCookie, maskedToken := mintCSRFToken(t, router, testAgentID, principal)
-
-	postReq := newGrantRequest(t, testAgentID)
-	postReq.Header.Set("Content-Type", "application/json")
-	postReq.Header.Set("X-Remote-User", principal)
-	postReq.Header.Set("X-CSRF-Token", maskedToken)
-	postReq.AddCookie(internalCookie)
-
-	postResp := httptest.NewRecorder()
-	router.ServeHTTP(postResp, postReq)
-
-	require.Equal(t, http.StatusCreated, postResp.Code)
-}
-
-func TestSetupEnduserRoutes_ConsentCSRFRejectsMissingToken(t *testing.T) {
+func TestSetupEnduserRoutes_ConsentAllowsSameOriginPost(t *testing.T) {
 	t.Parallel()
 
 	router, testAgentID := newEnduserConsentRouter(t)
@@ -46,6 +26,23 @@ func TestSetupEnduserRoutes_ConsentCSRFRejectsMissingToken(t *testing.T) {
 	postReq := newGrantRequest(t, testAgentID)
 	postReq.Header.Set("Content-Type", "application/json")
 	postReq.Header.Set("X-Remote-User", "user@example.com")
+	postReq.Header.Set("Sec-Fetch-Site", "same-origin")
+
+	postResp := httptest.NewRecorder()
+	router.ServeHTTP(postResp, postReq)
+
+	require.Equal(t, http.StatusCreated, postResp.Code)
+}
+
+func TestSetupEnduserRoutes_ConsentRejectsCrossSitePost(t *testing.T) {
+	t.Parallel()
+
+	router, testAgentID := newEnduserConsentRouter(t)
+
+	postReq := newGrantRequest(t, testAgentID)
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq.Header.Set("X-Remote-User", "user@example.com")
+	postReq.Header.Set("Sec-Fetch-Site", "cross-site")
 
 	postResp := httptest.NewRecorder()
 	router.ServeHTTP(postResp, postReq)
@@ -53,23 +50,37 @@ func TestSetupEnduserRoutes_ConsentCSRFRejectsMissingToken(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, postResp.Code)
 }
 
-func TestSetupEnduserRoutes_ConsentCSRFRejectsInvalidToken(t *testing.T) {
+func TestSetupEnduserRoutes_ConsentRejectsCrossOriginPost(t *testing.T) {
 	t.Parallel()
 
 	router, testAgentID := newEnduserConsentRouter(t)
-	const principal = "user@example.com"
-	internalCookie, _ := mintCSRFToken(t, router, testAgentID, principal)
 
 	postReq := newGrantRequest(t, testAgentID)
 	postReq.Header.Set("Content-Type", "application/json")
-	postReq.Header.Set("X-Remote-User", principal)
-	postReq.Header.Set("X-CSRF-Token", "totally-invalid-token")
-	postReq.AddCookie(internalCookie)
+	postReq.Header.Set("X-Remote-User", "user@example.com")
+	postReq.Header.Set("Origin", "https://evil.example.com")
+	postReq.Host = "broker.example.com"
 
 	postResp := httptest.NewRecorder()
 	router.ServeHTTP(postResp, postReq)
 
 	require.Equal(t, http.StatusForbidden, postResp.Code)
+}
+
+func TestSetupEnduserRoutes_ConsentAllowsNonBrowserPost(t *testing.T) {
+	t.Parallel()
+
+	router, testAgentID := newEnduserConsentRouter(t)
+
+	postReq := newGrantRequest(t, testAgentID)
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq.Header.Set("X-Remote-User", "user@example.com")
+	// No Sec-Fetch-Site or Origin headers — non-browser client
+
+	postResp := httptest.NewRecorder()
+	router.ServeHTTP(postResp, postReq)
+
+	require.Equal(t, http.StatusCreated, postResp.Code)
 }
 
 func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
@@ -99,10 +110,6 @@ func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
 		}
 	})
 
-	csrfKey := make([]byte, 32)
-	_, err = rand.Read(csrfKey)
-	require.NoError(t, err)
-
 	router := httpadapter.NewHandler(
 		httpadapter.ServerConfig{
 			Authentication: application.Config.Server.EndUser.Authentication,
@@ -112,8 +119,6 @@ func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
 				Authentication: application.Config.Server.EndUser.Authentication,
 				Logger:         logger,
 				CORS:           application.Config.Server.EndUser.CORS,
-				CSRFKey:        csrfKey,
-				CSRFSecure:     false,
 				Telemetry:      application.Config.Telemetry,
 			})
 		},
@@ -121,34 +126,6 @@ func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
 	)
 
 	return router, testAgent.ID.String()
-}
-
-func mintCSRFToken(t *testing.T, router http.Handler, agentID, principal string) (*http.Cookie, string) {
-	t.Helper()
-
-	getReq := httptest.NewRequest(http.MethodGet, "/api/consent/agents/"+agentID+"/grants", nil)
-	getReq.Header.Set("X-Remote-User", principal)
-
-	getResp := httptest.NewRecorder()
-	router.ServeHTTP(getResp, getReq)
-
-	require.Equal(t, http.StatusOK, getResp.Code)
-
-	var internalCookie *http.Cookie
-	var maskedToken string
-	for _, cookie := range getResp.Result().Cookies() {
-		switch cookie.Name {
-		case "_csrf":
-			internalCookie = cookie
-		case "csrf_token":
-			maskedToken = cookie.Value
-		}
-	}
-
-	require.NotNil(t, internalCookie, "expected _csrf cookie to be set")
-	require.NotEmpty(t, maskedToken, "expected csrf_token cookie to be set")
-
-	return internalCookie, maskedToken
 }
 
 func newGrantRequest(t *testing.T, agentID string) *http.Request {

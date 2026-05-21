@@ -54,11 +54,7 @@ func validTestConfig() *ports.Config {
 				RawKey: base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
 			},
 		},
-		Security: ports.SecurityConfig{
-			CSRF: ports.CSRFConfig{
-				Key: base64.StdEncoding.EncodeToString([]byte("csrf0123456789abcdef0123456789ab")),
-			},
-		},
+		Security: ports.SecurityConfig{},
 	}
 }
 

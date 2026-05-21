@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
@@ -772,9 +771,5 @@ func createValidStorageConfig() ports.StorageConfig {
 }
 
 func createValidSecurityConfig() ports.SecurityConfig {
-	return ports.SecurityConfig{
-		CSRF: ports.CSRFConfig{
-			Key: base64.StdEncoding.EncodeToString([]byte("csrf0123456789abcdef0123456789ab")),
-		},
-	}
+	return ports.SecurityConfig{}
 }

@@ -20,9 +20,6 @@ var testJWESigningKey = base64.StdEncoding.EncodeToString([]byte("0123456789abcd
 // testEncryptionKey is a valid test encryption key (32 bytes base64 encoded)
 var testEncryptionKey = base64.StdEncoding.EncodeToString([]byte("abcdef0123456789abcdef0123456789"))
 
-// testCSRFKey is a valid test CSRF key (32 bytes base64 encoded)
-var testCSRFKey = base64.StdEncoding.EncodeToString([]byte("csrf0123456789abcdef0123456789ab"))
-
 // TestConfigurationPrecedence tests that configuration sources are applied in correct precedence order.
 // Order: CLI flags > Environment variables > YAML > Defaults
 func TestConfigurationPrecedence(t *testing.T) {
@@ -166,10 +163,9 @@ encryption:
 			t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_BIND", "")
 			t.Setenv("IDENTITY_BROKER_SERVER_SHUTDOWN_TIMEOUT", "")
 
-			// Set mandatory JWESigningKey, encryption key, CSRF key, and principal headers for all tests
+			// Set mandatory JWESigningKey, encryption key, and principal headers for all tests
 			t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", testJWESigningKey)
 			t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", testEncryptionKey)
-			t.Setenv("IDENTITY_BROKER_SECURITY_CSRF_KEY", testCSRFKey)
 			t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
 			t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
 
@@ -287,9 +283,8 @@ func TestConfigurationFromExamples(t *testing.T) {
 			// Set config path in environment
 			t.Setenv("IDENTITY_BROKER_CONFIG_PATH", configPath)
 
-			// Set mandatory JWESigningKey, encryption key, and CSRF key
+			// Set mandatory JWESigningKey
 			t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", testJWESigningKey)
-			t.Setenv("IDENTITY_BROKER_SECURITY_CSRF_KEY", testCSRFKey)
 
 			// Set encryption backend environment variables based on config type
 			if tt.name == "production config" {

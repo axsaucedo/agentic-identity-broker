@@ -505,18 +505,6 @@ broker:
   security:
     # -- Skip HTTPS validation for third-party services (dev/test only!)
     skipThirdpartyHttpsValidation: false
-    # -- CSRF HMAC signing key (required, base64-encoded 32 bytes)
-    # This is the base64-encoded key the application expects in IDENTITY_BROKER_SECURITY_CSRF_KEY.
-    # Generate with: openssl rand -base64 32
-    csrfKey: ""
-    # -- Pre-encoded CSRF key (alternative to csrfKey, takes precedence)
-    # Must be a valid base64 string encoding exactly 32 bytes. Written to the Secret as-is.
-    # Precedence order (highest to lowest): csrfKeyBase64 > csrfKey > csrfKeySecret
-    csrfKeyBase64: ""
-    # -- Secret reference for CSRF key (alternative to csrfKey)
-    csrfKeySecret:
-      name: ""
-      key: csrf-key
 
   # OpenTelemetry observability configuration
   telemetry:

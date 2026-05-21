@@ -10,14 +10,8 @@
 import axios, {
   AxiosError,
   AxiosInstance,
-  InternalAxiosRequestConfig,
 } from 'axios';
 import type { ApiError } from '../../types/consent';
-
-function getCookie(name: string): string | undefined {
-  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : undefined;
-}
 
 /**
  * Create and configure the axios instance with interceptors.
@@ -30,23 +24,6 @@ function createApiClient(): AxiosInstance {
       'Content-Type': 'application/json',
     },
   });
-
-  // Request interceptor: Attach CSRF token on mutating requests
-  client.interceptors.request.use(
-    (config: InternalAxiosRequestConfig) => {
-      const method = config.method?.toUpperCase();
-      if (method === 'POST' || method === 'PUT' || method === 'DELETE' || method === 'PATCH') {
-        const csrfToken = getCookie('csrf_token');
-        if (csrfToken) {
-          config.headers.set('X-CSRF-Token', csrfToken);
-        }
-      }
-      return config;
-    },
-    (error) => {
-      return Promise.reject(error);
-    },
-  );
 
   // Response interceptor: Handle errors with enhanced error messages
   client.interceptors.response.use(
