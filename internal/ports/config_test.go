@@ -360,7 +360,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		AgentIDClaimName: "x_agent_id",
 	}
 	sharedResponseTypes := []string{"code", "token"}
-	sharedGrantTypes := []string{"authorization_code", "client_credentials"}
+	sharedGrantTypes := []string{"authorization_code", "client_credentials", "refresh_token"}
 
 	t.Run("proxy mode propagates all upstream fields", func(t *testing.T) {
 		cfg := OAuth2AuthServerConfig{
@@ -460,6 +460,26 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		assert.Equal(t, sharedResponseTypes, h.Local.SupportedResponseTypes)
 		assert.Equal(t, sharedGrantTypes, h.Local.SupportedGrantTypes)
 		assert.Equal(t, cimd, h.Local.CIMD)
+	})
+
+	t.Run("hybrid mode applies default token TTL and grant types when zero", func(t *testing.T) {
+		cfg := OAuth2AuthServerConfig{
+			Mode: "hybrid",
+			Proxy: ProxyModeConfig{
+				UpstreamIssuerURI:         proxyFields.UpstreamIssuerURI,
+				UpstreamAuthorizeEndpoint: proxyFields.UpstreamAuthorizeEndpoint,
+				UpstreamTokenEndpoint:     proxyFields.UpstreamTokenEndpoint,
+			},
+		}
+		result, err := cfg.Resolve()
+		require.NoError(t, err)
+		h := result.(*HybridOAuth2Config)
+		assert.Equal(t, time.Hour, h.Local.TokenTTL, "default hybrid local token TTL must be 1h")
+		assert.Equal(t, []string{"code"}, h.Proxy.SupportedResponseTypes, "default proxy response type")
+		assert.Equal(t, []string{"authorization_code", "client_credentials"}, h.Proxy.SupportedGrantTypes, "default hybrid grant types")
+		assert.Equal(t, []string{"code"}, h.Local.SupportedResponseTypes, "default local response type")
+		assert.Equal(t, []string{"authorization_code", "client_credentials"}, h.Local.SupportedGrantTypes, "default hybrid grant types")
+		assert.Equal(t, 30, h.Proxy.UpstreamTimeoutSeconds, "default hybrid proxy timeout must be 30s")
 	})
 
 	t.Run("invalid mode returns error without panicking", func(t *testing.T) {
