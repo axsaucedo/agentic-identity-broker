@@ -59,7 +59,7 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 	span.SetAttributes(attribute.String("http.method", "POST"))
 
 	if resolution.ClientID == nil {
-		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_client", "agent has no upstream client_id configured")
+		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "agent has no upstream client_id configured")
 		return
 	}
 	formData.Set("client_id", resolution.ClientID.String())

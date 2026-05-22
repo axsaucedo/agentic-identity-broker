@@ -678,6 +678,39 @@ func TestOAuth2TokenHandler_ProxyToUpstream_AgentNotFound(t *testing.T) {
 	assert.False(t, upstreamCalled, "upstream must not be called when agent is not found")
 }
 
+// TestProxyGrantStrategy_NilClientID_ReturnsServerError verifies that a nil ClientID
+// (server misconfiguration) returns 500 server_error, not 400 invalid_client.
+// This is a server-side configuration error, not a client authentication failure.
+func TestProxyGrantStrategy_NilClientID_ReturnsServerError(t *testing.T) {
+	upstreamCalled := false
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mockUpstream.Close()
+
+	strategy := NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=authorization_code&code=abc"))
+
+	// resolution with nil ClientID = misconfigured proxy agent
+	resolution := &ports.TokenGrantResolution{
+		AgentID:    id.NewAgentID(),
+		ClientType: storage.ProxyClient,
+		ClientID:   nil,
+	}
+
+	strategy.HandleTokenGrant(w, req, "authorization_code", url.Values{"grant_type": {"authorization_code"}}, resolution)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code, "nil ClientID is server misconfiguration, not client error")
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	var body map[string]string
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "server_error", body["error"])
+	assert.False(t, upstreamCalled, "upstream must not be called when ClientID is nil")
+}
+
 func TestWriteTokenResponse(t *testing.T) {
 	t.Run("success returns 200 with complete JSON body", func(t *testing.T) {
 		s := &localGrantStrategy{}
