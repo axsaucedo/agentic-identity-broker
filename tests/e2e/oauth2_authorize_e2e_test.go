@@ -315,10 +315,4 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (local mode)", func() {
 		Expect(tokenResp2.StatusCode).To(Equal(http.StatusBadRequest))
 	})
 
-	It("code expiry documented", func() {
-		// Authorization codes expire after 60 seconds.
-		// This behavior is tested at the unit level in provider_test.go (TestProvider_HandleAuthorizationCodeExchange/expired_code_rejects).
-		// E2E testing of 60-second expiry would require time manipulation which is not practical.
-		Skip("Code expiry tested at unit level — 60s TTL not practical for E2E")
-	})
 })

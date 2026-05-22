@@ -101,14 +101,6 @@ var _ = Describe("OpenTelemetry Instrumentation", func() {
 			Expect(recorder.Ended()).To(matchers.ContainSpanWithAttribute("GET /health", "net.host.name", "admin"))
 		})
 
-		// Scenario US1-S3 from specs/017-opentelemetry-support/spec.md
-		It("should create child spans for storage operations within a request", func() {
-			// Child spans are emitted by the postgres adapter (internal/adapters/storage/postgres/).
-			// The in-memory adapter used in E2E tests does not emit spans.
-			// This scenario is verified in the integration test suite via:
-			//   internal/adapters/storage/postgres/agent_spans_test.go
-			Skip("child spans only emitted by postgres adapter; covered by postgres integration test")
-		})
 	})
 
 	Context("when telemetry is disabled", func() {
@@ -170,25 +162,6 @@ var _ = Describe("OpenTelemetry Instrumentation", func() {
 	// US2: Expose Runtime Metrics for Capacity Planning
 
 	Context("when metrics are enabled", func() {
-		// Scenario US2-S1 from specs/017-opentelemetry-support/spec.md
-		It("should export request count, duration, and response size metrics", func() {
-			// HTTP metrics (request count, duration, response size) are emitted by otelchi
-			// against the global MeterProvider. Asserting on metric data requires a
-			// metrictest.NewMeterProvider() recorder in the E2E bootstrap fixture.
-			// The production behaviour is covered by the provider unit tests in
-			// internal/adapters/telemetry/provider_test.go.
-			Skip("MeterProvider recorder not wired in E2E bootstrap fixture; covered by unit tests")
-		})
-
-		// Scenario US2-S2 from specs/017-opentelemetry-support/spec.md
-		It("should expose Go runtime metrics", func() {
-			// runtime.Start() is called in provider.go when Metrics.Enabled=true.
-			// Asserting on goroutine/GC metrics requires a MeterProvider recorder fixture.
-			// The production behaviour is covered by the provider unit tests in
-			// internal/adapters/telemetry/provider_test.go.
-			Skip("MeterProvider recorder not wired in E2E bootstrap fixture; covered by unit tests")
-		})
-
 		// Scenario US2-S3 from specs/017-opentelemetry-support/spec.md
 		It("should not export metric data when metrics are disabled", func() {
 			// TelemetryEnabledConfig() has Metrics.Enabled=false while Traces.Enabled=true.
@@ -326,15 +299,6 @@ var _ = Describe("OpenTelemetry Instrumentation", func() {
 	})
 
 	Context("when OTLP endpoint is set via environment variable", func() {
-		// Scenario US3-S5 from specs/017-opentelemetry-support/spec.md
-		It("should use the environment variable value for the OTLP endpoint", func() {
-			// Requires the env-var-driven config loader path in the E2E bootstrap
-			// (IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT env var → Viper binding).
-			// The binding is implemented in internal/config/loader.go and tested in
-			// internal/config/loader_test.go. E2E wiring of env-var config loading
-			// requires a dedicated bootstrap path not yet available.
-			Skip("env-var config loader path not wired into E2E bootstrap; covered by config unit tests")
-		})
 	})
 
 	// US4: Graceful Degradation When Collector is Unavailable
@@ -404,12 +368,5 @@ var _ = Describe("OpenTelemetry Instrumentation", func() {
 			}
 		})
 
-		// Scenario US4-S3 from specs/017-opentelemetry-support/spec.md
-		It("should resume telemetry export automatically when the collector becomes available again", func() {
-			// The OTel SDK handles automatic reconnection and buffered export internally.
-			// Verifying this requires a mock collector that can be toggled on/off —
-			// infrastructure not available in this E2E fixture.
-			Skip("requires a toggleable mock OTLP collector; SDK reconnection is an internal OTel SDK behaviour")
-		})
 	})
 })

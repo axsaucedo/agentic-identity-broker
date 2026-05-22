@@ -685,28 +685,6 @@ var _ = Describe("JWT Pre-Authentication", func() {
 	})
 
 	// ============================================================================
-	// User Story 4: Display User Profile in Consent UI (Priority: P3)
-	// ============================================================================
-	Describe("Consent UI Profile Display (US4)", func() {
-
-		// Scenario 4.1 from specs/016-jwt-preauth/spec.md (User Story 4)
-		PIt("should display profile picture, display name, and email in consent UI header", func() {
-			// Pending: Requires frontend implementation (T041-T043)
-			// Use Go Playwright page objects from tests/e2e/pages/
-		})
-
-		// Scenario 4.2 from specs/016-jwt-preauth/spec.md (User Story 4)
-		PIt("should show principal as fallback when no profile attributes available", func() {
-			// Pending: Requires frontend implementation (T041-T043)
-		})
-
-		// Scenario 4.3 from specs/016-jwt-preauth/spec.md (User Story 4)
-		PIt("should show initials avatar when picture URL unavailable", func() {
-			// Pending: Requires frontend implementation (T041-T043)
-		})
-	})
-
-	// ============================================================================
 	// User Story 5: Backward-Compatible Configuration (Priority: P1)
 	// ============================================================================
 	Describe("Backward-Compatible Configuration (US5)", func() {
