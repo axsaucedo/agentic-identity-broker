@@ -236,3 +236,19 @@ func TestHybridProceedStrategy_DefaultBranchLogsError(t *testing.T) {
 	logLine := buf.String()
 	assert.Contains(t, logLine, "ERROR")
 }
+
+// TestNewHybridProceedStrategy_NilArgsPanic verifies that nil proxy or local strategies
+// are caught at construction time rather than silently producing wrong-arg dispatches.
+func TestNewHybridProceedStrategy_NilArgsPanic(t *testing.T) {
+	t.Run("nil proxy panics", func(t *testing.T) {
+		assert.Panics(t, func() {
+			NewHybridProceedStrategy(nil, &captureProceedStrategy{}, nil)
+		})
+	})
+
+	t.Run("nil local panics", func(t *testing.T) {
+		assert.Panics(t, func() {
+			NewHybridProceedStrategy(&captureProceedStrategy{}, nil, nil)
+		})
+	})
+}

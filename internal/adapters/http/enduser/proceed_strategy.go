@@ -118,7 +118,14 @@ type hybridProceedStrategy struct {
 }
 
 // NewHybridProceedStrategy returns a ProceedStrategy that dispatches by client mode.
+// proxy handles ProxyClient agents; local handles LocalClient and CIMDClient agents.
 func NewHybridProceedStrategy(proxy, local AuthorizationProceedStrategy, logger *slog.Logger) AuthorizationProceedStrategy {
+	if proxy == nil {
+		panic("NewHybridProceedStrategy: proxy strategy must not be nil")
+	}
+	if local == nil {
+		panic("NewHybridProceedStrategy: local strategy must not be nil")
+	}
 	return &hybridProceedStrategy{proxy: proxy, local: local, logger: logger}
 }
 

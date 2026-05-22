@@ -119,12 +119,14 @@ func ProceedDecision(redirectURL string, clientType storage.ClientType) *Authori
 }
 
 // ConsentDecision returns a decision that redirects the user to the consent UI.
+// ClientType is left as the zero value (UnknownClient); it is irrelevant for non-proceed actions.
 func ConsentDecision(consentURL string) *AuthorizationDecision {
 	return &AuthorizationDecision{Action: "redirect_to_consent", RedirectURL: consentURL}
 }
 
 // ErrorDecision returns a decision that signals an OAuth2 error.
 // redirectURL may be empty when the redirect URI has not yet been verified (RFC 6749 §4.1.2.1).
+// ClientType is left as the zero value (UnknownClient); it is irrelevant for non-proceed actions.
 func ErrorDecision(code, desc, redirectURL string) *AuthorizationDecision {
 	return &AuthorizationDecision{Action: "error", ErrorCode: code, ErrorDesc: desc, RedirectURL: redirectURL}
 }
