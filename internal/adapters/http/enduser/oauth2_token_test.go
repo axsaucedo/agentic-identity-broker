@@ -1133,3 +1133,28 @@ func TestHybridTokenGrantStrategy_DefaultBranchLogsError(t *testing.T) {
 	assert.Contains(t, logLine, "ERROR")
 	assert.Contains(t, logLine, agentID.String())
 }
+
+// TestTokenEndpointStatus_RFC6749Mapping verifies the HTTP status code mapping for
+// OAuth2 error codes on the token endpoint per RFC 6749 §5.2.
+// invalid_client → 401, server_error → 500, all others (including unknown codes) → 400.
+func TestTokenEndpointStatus_RFC6749Mapping(t *testing.T) {
+	tests := []struct {
+		code string
+		want int
+	}{
+		{"invalid_client", http.StatusUnauthorized},
+		{"server_error", http.StatusInternalServerError},
+		{"invalid_request", http.StatusBadRequest},
+		{"invalid_grant", http.StatusBadRequest},
+		{"unauthorized_client", http.StatusBadRequest},
+		{"unsupported_grant_type", http.StatusBadRequest},
+		{"invalid_scope", http.StatusBadRequest},
+		{"some_future_code", http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			got := tokenEndpointStatus(tt.code)
+			assert.Equal(t, tt.want, got, "tokenEndpointStatus(%q)", tt.code)
+		})
+	}
+}

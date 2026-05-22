@@ -249,15 +249,15 @@ func (h *OAuth2TokenHandler) handleTokenExchangeError(w http.ResponseWriter, err
 }
 
 // tokenEndpointStatus maps an OAuth2 error code to the appropriate HTTP status for the token endpoint.
-// RFC 6749 §5.2: invalid_client → 401, unauthorized_client → 400, server_error → 500.
+// RFC 6749 §5.2: invalid_client → 401, server_error → 500, all other codes → 400.
 func tokenEndpointStatus(code string) int {
 	switch code {
-	case "unauthorized_client":
-		return http.StatusBadRequest
+	case "invalid_client":
+		return http.StatusUnauthorized
 	case "server_error":
 		return http.StatusInternalServerError
 	default:
-		return http.StatusUnauthorized
+		return http.StatusBadRequest
 	}
 }
 
