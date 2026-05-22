@@ -106,7 +106,7 @@ func writeDirectOAuth2Error(w http.ResponseWriter, err error) {
 	}
 }
 
-// hybridProceedStrategy dispatches to proxy or local based on the resolved ClientMode.
+// hybridProceedStrategy dispatches to proxy or local based on the resolved ClientType.
 type hybridProceedStrategy struct {
 	proxy AuthorizationProceedStrategy
 	local AuthorizationProceedStrategy
@@ -118,7 +118,7 @@ func NewHybridProceedStrategy(proxy, local AuthorizationProceedStrategy) Authori
 }
 
 func (s *hybridProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Request, decision *ports.AuthorizationDecision, req *ports.AuthorizationRequest, principal id.Principal) {
-	switch decision.ClientMode {
+	switch decision.ClientType {
 	case storage.ProxyClient:
 		s.proxy.HandleProceed(w, r, decision, req, principal)
 	case storage.CIMDClient, storage.LocalClient:

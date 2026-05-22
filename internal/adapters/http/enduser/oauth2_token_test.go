@@ -116,7 +116,7 @@ func (m *mockOAuth2ServiceForToken) ResolveForTokenGrant(ctx context.Context, ra
 func newResolvingOAuth2Service(agent *storage.Agent) *mockOAuth2ServiceForToken {
 	return &mockOAuth2ServiceForToken{
 		resolveFn: func(_ context.Context, _ string) (*ports.TokenGrantResolution, error) {
-			return ports.NewTokenGrantResolution(agent.ID, agent.ClientID, agent.ClientMode())
+			return ports.NewTokenGrantResolution(agent.ID, agent.ClientID, agent.ClientType())
 		},
 	}
 }
@@ -140,7 +140,7 @@ func newLocalModeOAuth2Service() *mockOAuth2ServiceForToken {
 			}
 			return &ports.TokenGrantResolution{
 				AgentID:    id.NewAgentID(),
-				ClientMode: storage.LocalClient,
+				ClientType: storage.LocalClient,
 			}, nil
 		},
 	}
@@ -925,7 +925,7 @@ func TestLocalGrantStrategy_AcceptsLocalClient(t *testing.T) {
 
 	strategy.HandleTokenGrant(w, req, "client_credentials", parseForm(req), &ports.TokenGrantResolution{
 		AgentID:    agentID,
-		ClientMode: storage.LocalClient,
+		ClientType: storage.LocalClient,
 	})
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -962,10 +962,10 @@ func TestHybridTokenGrant_EmptyClientIDReturns400(t *testing.T) {
 	assert.Equal(t, "invalid_request", body["error"])
 }
 
-// TestHybridTokenGrantStrategy_DispatchByClientMode verifies that hybridTokenGrantStrategy
+// TestHybridTokenGrantStrategy_DispatchByClientType verifies that hybridTokenGrantStrategy
 // routes ProxyClient agents to the proxy sub-strategy and local modes (LocalClient,
 // CIMDClient) to the local sub-strategy, while rejecting ambiguous/unknown modes.
-func TestHybridTokenGrantStrategy_DispatchByClientMode(t *testing.T) {
+func TestHybridTokenGrantStrategy_DispatchByClientType(t *testing.T) {
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000099")
 	cases := []struct {
 		name         string
@@ -975,20 +975,20 @@ func TestHybridTokenGrantStrategy_DispatchByClientMode(t *testing.T) {
 	}{
 		{
 			name:         "ProxyClient routes to proxy sub-strategy",
-			resolution:   &ports.TokenGrantResolution{AgentID: agentID, ClientID: ptr.To(id.ClientID("upstream-client")), ClientMode: storage.ProxyClient},
+			resolution:   &ports.TokenGrantResolution{AgentID: agentID, ClientID: ptr.To(id.ClientID("upstream-client")), ClientType: storage.ProxyClient},
 			expectsProxy: true,
 		},
 		{
 			name:       "LocalClient routes to local sub-strategy",
-			resolution: &ports.TokenGrantResolution{AgentID: agentID, ClientMode: storage.LocalClient},
+			resolution: &ports.TokenGrantResolution{AgentID: agentID, ClientType: storage.LocalClient},
 		},
 		{
 			name:       "CIMDClient routes to local sub-strategy",
-			resolution: &ports.TokenGrantResolution{AgentID: agentID, ClientMode: storage.CIMDClient},
+			resolution: &ports.TokenGrantResolution{AgentID: agentID, ClientType: storage.CIMDClient},
 		},
 		{
 			name:         "AmbiguousClient returns server_error",
-			resolution:   &ports.TokenGrantResolution{AgentID: agentID, ClientMode: storage.AmbiguousClient},
+			resolution:   &ports.TokenGrantResolution{AgentID: agentID, ClientType: storage.AmbiguousClient},
 			expectsError: true,
 		},
 	}

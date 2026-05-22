@@ -157,10 +157,10 @@ func TestLocalProceedStrategy_Errors(t *testing.T) {
 	}
 }
 
-func TestHybridProceedStrategy_DispatchesByClientMode(t *testing.T) {
+func TestHybridProceedStrategy_DispatchesByClientType(t *testing.T) {
 	cases := []struct {
 		name         string
-		clientMode   storage.ClientMode
+		clientType   storage.ClientType
 		expectsProxy bool
 	}{
 		{"ProxyClient routes to proxy sub-strategy", storage.ProxyClient, true},
@@ -173,7 +173,7 @@ func TestHybridProceedStrategy_DispatchesByClientMode(t *testing.T) {
 			localMock := &captureProceedStrategy{}
 			strategy := NewHybridProceedStrategy(proxyMock, localMock)
 
-			decision := ports.ProceedDecision("", tc.clientMode)
+			decision := ports.ProceedDecision("", tc.clientType)
 			strategy.HandleProceed(httptest.NewRecorder(), newProceedRequest(t), decision, &ports.AuthorizationRequest{}, id.NewPrincipal("u@example.com"))
 
 			assert.Equal(t, tc.expectsProxy, proxyMock.called, "proxy strategy called")
@@ -182,11 +182,11 @@ func TestHybridProceedStrategy_DispatchesByClientMode(t *testing.T) {
 	}
 }
 
-// TestHybridProceedStrategy_RejectsAmbiguousClientMode verifies that the hybrid proceed
+// TestHybridProceedStrategy_RejectsAmbiguousClientType verifies that the hybrid proceed
 // strategy returns server_error for AmbiguousClient and UnknownClient rather than
 // silently dispatching to either sub-strategy.
-func TestHybridProceedStrategy_RejectsAmbiguousClientMode(t *testing.T) {
-	for _, mode := range []storage.ClientMode{storage.AmbiguousClient, storage.UnknownClient} {
+func TestHybridProceedStrategy_RejectsAmbiguousClientType(t *testing.T) {
+	for _, mode := range []storage.ClientType{storage.AmbiguousClient, storage.UnknownClient} {
 		t.Run(fmt.Sprintf("mode_%d", mode), func(t *testing.T) {
 			proxyMock := &captureProceedStrategy{}
 			localMock := &captureProceedStrategy{}

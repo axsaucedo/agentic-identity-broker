@@ -27,7 +27,7 @@ func ValidAgent() *storage.Agent {
 }
 
 // LocalAgent returns a valid test agent for local/hybrid mode testing.
-// It has NO upstream ClientID, so ClientMode() returns LocalClient.
+// It has NO upstream ClientID, so ClientType() returns LocalClient.
 // Use this for tests that exercise local token minting (not proxy forwarding).
 func LocalAgent() *storage.Agent {
 	now := time.Now()

@@ -49,16 +49,16 @@ type OAuth2Service interface {
 type TokenGrantResolution struct {
 	AgentID    id.AgentID
 	ClientID   *id.ClientID // nil for local/CIMD agents
-	ClientMode storage.ClientMode
+	ClientType storage.ClientType
 }
 
 // NewTokenGrantResolution constructs a TokenGrantResolution and enforces that
 // ProxyClient always carries a non-nil ClientID.
-func NewTokenGrantResolution(agentID id.AgentID, clientID *id.ClientID, mode storage.ClientMode) (*TokenGrantResolution, error) {
+func NewTokenGrantResolution(agentID id.AgentID, clientID *id.ClientID, mode storage.ClientType) (*TokenGrantResolution, error) {
 	if mode == storage.ProxyClient && clientID == nil {
 		return nil, fmt.Errorf("TokenGrantResolution: ProxyClient requires a non-nil ClientID")
 	}
-	return &TokenGrantResolution{AgentID: agentID, ClientID: clientID, ClientMode: mode}, nil
+	return &TokenGrantResolution{AgentID: agentID, ClientID: clientID, ClientType: mode}, nil
 }
 
 // AuthorizationRequest represents an OAuth2 authorization request (RFC 6749 Section 4.1.1).
@@ -101,9 +101,9 @@ type AuthorizationDecision struct {
 	// RedirectURL is the target URL for HTTP 302 redirect
 	RedirectURL string
 
-	// ClientMode is the resolved agent classification (set on "proceed" actions only).
+	// ClientType is the resolved agent classification (set on "proceed" actions only).
 	// Used by hybrid proceed strategy to dispatch to proxy or local sub-strategy explicitly.
-	ClientMode storage.ClientMode
+	ClientType storage.ClientType
 
 	// ErrorCode is the OAuth2 error code (if Action == "error")
 	ErrorCode string
@@ -113,9 +113,9 @@ type AuthorizationDecision struct {
 }
 
 // ProceedDecision returns a decision allowing the authorization request to proceed.
-// clientMode is required so the hybrid strategy can dispatch to the correct sub-strategy.
-func ProceedDecision(redirectURL string, clientMode storage.ClientMode) *AuthorizationDecision {
-	return &AuthorizationDecision{Action: "proceed", RedirectURL: redirectURL, ClientMode: clientMode}
+// clientType is required so the hybrid strategy can dispatch to the correct sub-strategy.
+func ProceedDecision(redirectURL string, clientType storage.ClientType) *AuthorizationDecision {
+	return &AuthorizationDecision{Action: "proceed", RedirectURL: redirectURL, ClientType: clientType}
 }
 
 // ConsentDecision returns a decision that redirects the user to the consent UI.

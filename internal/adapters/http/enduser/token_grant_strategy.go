@@ -312,7 +312,7 @@ func (s *localGrantStrategy) writeTokenResponse(w http.ResponseWriter, resp *por
 	_, _ = w.Write(body)
 }
 
-// hybridTokenGrantStrategy dispatches token grants to proxy or local based on the agent's ClientMode.
+// hybridTokenGrantStrategy dispatches token grants to proxy or local based on the agent's ClientType.
 // The agent is pre-resolved by the domain layer — this strategy only routes.
 type hybridTokenGrantStrategy struct {
 	proxy TokenGrantStrategy
@@ -325,7 +325,7 @@ func NewHybridTokenGrantStrategy(proxy, local TokenGrantStrategy) TokenGrantStra
 }
 
 func (s *hybridTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values, resolution *ports.TokenGrantResolution) {
-	switch resolution.ClientMode {
+	switch resolution.ClientType {
 	case storage.ProxyClient:
 		s.proxy.HandleTokenGrant(w, r, grantType, formData, resolution)
 	case storage.CIMDClient, storage.LocalClient:

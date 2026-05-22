@@ -94,7 +94,7 @@ func (r *AgentClientResolver) resolveOpaque(ctx context.Context, clientID id.Cli
 	// CIMD and ambiguous agents must not be addressed by bare UUID when CIMD is disabled.
 	// CIMDClient agents require URL-form client_id with CIMD document validation.
 	// AmbiguousClient agents are always invalid.
-	switch agent.ClientMode() {
+	switch agent.ClientType() {
 	case storage.CIMDClient:
 		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client requires CIMD support (disabled)"}
 	case storage.AmbiguousClient:

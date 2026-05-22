@@ -269,7 +269,7 @@ func TestOpaqueClientResolver_UUID_ResolvesById(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resolution)
 	assert.Equal(t, agentID, resolution.Agent.ID)
-	assert.Equal(t, storage.LocalClient, resolution.Agent.ClientMode())
+	assert.Equal(t, storage.LocalClient, resolution.Agent.ClientType())
 }
 
 // T044: CIMD agent UUID rejection (FR-005) via OpaqueClientResolver.
@@ -348,12 +348,12 @@ func TestOpaqueClientResolver_AmbiguousAgent_UUIDRejected(t *testing.T) {
 // T045: Mode enforcement — proxy mode rejects local/CIMD agents.
 func TestModeStrategy_ProxyMode_RejectsLocalAndCIMD(t *testing.T) {
 	s := NewProxyModeStrategy()
-	assert.False(t, s.AcceptsClientMode(storage.LocalClient), "proxy mode must reject LocalClient")
-	assert.False(t, s.AcceptsClientMode(storage.CIMDClient), "proxy mode must reject CIMDClient")
+	assert.False(t, s.AcceptsClientType(storage.LocalClient), "proxy mode must reject LocalClient")
+	assert.False(t, s.AcceptsClientType(storage.CIMDClient), "proxy mode must reject CIMDClient")
 }
 
 // T045: Mode enforcement — local mode rejects proxy agents.
 func TestModeStrategy_LocalMode_RejectsProxy(t *testing.T) {
 	s := NewLocalModeStrategy()
-	assert.False(t, s.AcceptsClientMode(storage.ProxyClient), "local mode must reject ProxyClient")
+	assert.False(t, s.AcceptsClientType(storage.ProxyClient), "local mode must reject ProxyClient")
 }

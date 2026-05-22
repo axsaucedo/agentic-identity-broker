@@ -1424,7 +1424,7 @@ func TestService_GenerateMetadata_TokenExchangeGrant(t *testing.T) {
 	})
 }
 
-// TestService_ResolveForTokenGrant_ModeBoundary verifies that ModeStrategy.AcceptsClientMode
+// TestService_ResolveForTokenGrant_ModeBoundary verifies that ModeStrategy.AcceptsClientType
 // is enforced on the token endpoint: a proxy-mode server must reject LocalClient agents and
 // vice versa, while a nil strategy must accept all modes.
 func TestService_ResolveForTokenGrant_ModeBoundary(t *testing.T) {
@@ -1457,7 +1457,7 @@ func TestService_ResolveForTokenGrant_ModeBoundary(t *testing.T) {
 		name        string
 		strategy    ModeStrategy
 		agent       *storage.Agent
-		wantMode    storage.ClientMode
+		wantMode    storage.ClientType
 		wantErrCode string
 	}{
 		{
@@ -1508,13 +1508,13 @@ func TestService_ResolveForTokenGrant_ModeBoundary(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, res)
-				assert.Equal(t, tc.wantMode, res.ClientMode)
+				assert.Equal(t, tc.wantMode, res.ClientType)
 			}
 		})
 	}
 }
 
-// TestService_HandleAuthorization_ModeBoundary verifies that ModeStrategy.AcceptsClientMode
+// TestService_HandleAuthorization_ModeBoundary verifies that ModeStrategy.AcceptsClientType
 // is enforced on the authorize endpoint, mirroring TestService_ResolveForTokenGrant_ModeBoundary.
 func TestService_HandleAuthorization_ModeBoundary(t *testing.T) {
 	ctx := context.Background()

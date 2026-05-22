@@ -407,30 +407,10 @@ func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 		return c.newValidationError("oauth2_authorization_server.local must be empty in proxy mode")
 	}
 
-	if c.Proxy.UpstreamIssuerURI == "" {
-		return c.newValidationError("oauth2_authorization_server.proxy.upstream_issuer_uri")
+	if err := c.validateProxyFields(""); err != nil {
+		return err
 	}
-
-	if c.Proxy.UpstreamAuthorizeEndpoint == "" {
-		return c.newValidationError("oauth2_authorization_server.proxy.upstream_authorize_endpoint")
-	}
-
-	if c.Proxy.UpstreamTokenEndpoint == "" {
-		return c.newValidationError("oauth2_authorization_server.proxy.upstream_token_endpoint")
-	}
-
-	if len(c.SupportedResponseTypes) == 0 {
-		c.SupportedResponseTypes = []string{"code"}
-	}
-
-	if len(c.SupportedGrantTypes) == 0 {
-		c.SupportedGrantTypes = []string{"authorization_code"}
-	}
-
-	if c.Proxy.UpstreamTimeoutSeconds == 0 {
-		c.Proxy.UpstreamTimeoutSeconds = 30
-	}
-
+	c.applySharedDefaults([]string{"authorization_code"})
 	return c.validateMultiAgentClient()
 }
 
@@ -455,20 +435,11 @@ func (c *OAuth2AuthServerConfig) validateLocalMode() error {
 		return c.newValidationError("oauth2_authorization_server.proxy must be empty in local mode")
 	}
 
-	if c.Local.TokenTTL == 0 {
-		c.Local.TokenTTL = time.Hour
-	}
+	c.applyLocalDefaults()
+	c.applySharedDefaults([]string{"authorization_code", "client_credentials"})
 
-	if len(c.SupportedResponseTypes) == 0 {
-		c.SupportedResponseTypes = []string{"code"}
-	}
-
-	if len(c.SupportedGrantTypes) == 0 {
-		c.SupportedGrantTypes = []string{"authorization_code", "client_credentials"}
-	}
-
-	if c.CIMD.Enabled && c.CIMD.Cache.MinTTL > c.CIMD.Cache.MaxTTL {
-		return c.newValidationError("oauth2_authorization_server.cimd.cache.min_ttl must not exceed max_ttl")
+	if err := c.validateCIMDCache(); err != nil {
+		return err
 	}
 
 	if c.MultiAgentClient.Enabled {
@@ -480,39 +451,57 @@ func (c *OAuth2AuthServerConfig) validateLocalMode() error {
 
 // validateHybridMode validates configuration for hybrid mode (proxy + local token minting).
 func (c *OAuth2AuthServerConfig) validateHybridMode() error {
+	if err := c.validateProxyFields(" is required in hybrid mode"); err != nil {
+		return err
+	}
+	c.applyLocalDefaults()
+	c.applySharedDefaults([]string{"authorization_code", "client_credentials"})
+	if err := c.validateCIMDCache(); err != nil {
+		return err
+	}
+	return c.validateMultiAgentClient()
+}
+
+// validateProxyFields checks that the proxy section has all required upstream endpoints.
+func (c *OAuth2AuthServerConfig) validateProxyFields(suffix string) error {
 	if c.Proxy.UpstreamIssuerURI == "" {
-		return c.newValidationError("oauth2_authorization_server.proxy.upstream_issuer_uri is required in hybrid mode")
+		return c.newValidationError("oauth2_authorization_server.proxy.upstream_issuer_uri" + suffix)
 	}
-
 	if c.Proxy.UpstreamAuthorizeEndpoint == "" {
-		return c.newValidationError("oauth2_authorization_server.proxy.upstream_authorize_endpoint is required in hybrid mode")
+		return c.newValidationError("oauth2_authorization_server.proxy.upstream_authorize_endpoint" + suffix)
 	}
-
 	if c.Proxy.UpstreamTokenEndpoint == "" {
-		return c.newValidationError("oauth2_authorization_server.proxy.upstream_token_endpoint is required in hybrid mode")
+		return c.newValidationError("oauth2_authorization_server.proxy.upstream_token_endpoint" + suffix)
 	}
-
-	if c.Local.TokenTTL == 0 {
-		c.Local.TokenTTL = time.Hour
-	}
-
-	if len(c.SupportedResponseTypes) == 0 {
-		c.SupportedResponseTypes = []string{"code"}
-	}
-
-	if len(c.SupportedGrantTypes) == 0 {
-		c.SupportedGrantTypes = []string{"authorization_code", "client_credentials"}
-	}
-
 	if c.Proxy.UpstreamTimeoutSeconds == 0 {
 		c.Proxy.UpstreamTimeoutSeconds = 30
 	}
+	return nil
+}
 
+// applyLocalDefaults sets local-mode defaults (token TTL).
+func (c *OAuth2AuthServerConfig) applyLocalDefaults() {
+	if c.Local.TokenTTL == 0 {
+		c.Local.TokenTTL = time.Hour
+	}
+}
+
+// applySharedDefaults sets shared defaults for response types and grant types.
+func (c *OAuth2AuthServerConfig) applySharedDefaults(defaultGrantTypes []string) {
+	if len(c.SupportedResponseTypes) == 0 {
+		c.SupportedResponseTypes = []string{"code"}
+	}
+	if len(c.SupportedGrantTypes) == 0 {
+		c.SupportedGrantTypes = defaultGrantTypes
+	}
+}
+
+// validateCIMDCache validates CIMD cache TTL invariants when CIMD is enabled.
+func (c *OAuth2AuthServerConfig) validateCIMDCache() error {
 	if c.CIMD.Enabled && c.CIMD.Cache.MinTTL > c.CIMD.Cache.MaxTTL {
 		return c.newValidationError("oauth2_authorization_server.cimd.cache.min_ttl must not exceed max_ttl")
 	}
-
-	return c.validateMultiAgentClient()
+	return nil
 }
 
 // Resolve validates the OAuth2AuthServerConfig and produces a concrete, mode-specific

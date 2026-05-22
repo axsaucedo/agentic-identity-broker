@@ -28,7 +28,7 @@ func (s *stubOAuth2Service) HandleAuthorization(_ context.Context, _ *ports.Auth
 }
 
 func (s *stubOAuth2Service) ResolveForTokenGrant(_ context.Context, _ string) (*ports.TokenGrantResolution, error) {
-	return &ports.TokenGrantResolution{AgentID: s.agent.ID, ClientID: s.agent.ClientID, ClientMode: s.agent.ClientMode()}, nil
+	return &ports.TokenGrantResolution{AgentID: s.agent.ID, ClientID: s.agent.ClientID, ClientType: s.agent.ClientType()}, nil
 }
 
 func (s *stubOAuth2Service) GenerateMetadata(_ context.Context) (*ports.MetadataResponse, error) {

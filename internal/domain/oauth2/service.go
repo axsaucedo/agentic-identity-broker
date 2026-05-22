@@ -112,9 +112,9 @@ func (s *AuthorizationService) ResolveForTokenGrant(ctx context.Context, rawClie
 	}
 
 	agent := resolution.Agent
-	mode := agent.ClientMode()
+	mode := agent.ClientType()
 
-	if s.config.ModeStrategy != nil && !s.config.ModeStrategy.AcceptsClientMode(mode) {
+	if !s.config.ModeStrategy.AcceptsClientType(mode) {
 		return nil, &ports.ClientIDError{
 			Code: "unauthorized_client",
 			Desc: fmt.Sprintf("client mode not supported in %s mode", s.config.ModeStrategy.Mode()),
@@ -148,8 +148,8 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 	agent = resolution.Agent
 	cimdMeta = resolution.CIMDMetadata
 
-	// Mode enforcement: reject agents whose ClientMode is not permitted in this server mode.
-	if s.config.ModeStrategy != nil && !s.config.ModeStrategy.AcceptsClientMode(agent.ClientMode()) {
+	// Mode enforcement: reject agents whose ClientType is not permitted in this server mode.
+	if !s.config.ModeStrategy.AcceptsClientType(agent.ClientType()) {
 		return ports.ErrorDecision("unauthorized_client", fmt.Sprintf("client mode not supported in %s mode", s.config.ModeStrategy.Mode()), ""), nil
 	}
 
@@ -366,7 +366,7 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 			}, nil
 		}
 	}
-	return ports.ProceedDecision(upstreamURL, agent.ClientMode()), nil
+	return ports.ProceedDecision(upstreamURL, agent.ClientType()), nil
 }
 
 // buildUpstreamAuthorizeURL constructs the upstream authorization endpoint URL

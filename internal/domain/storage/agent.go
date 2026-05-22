@@ -11,13 +11,13 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 )
 
-// ClientMode classifies an Agent based on its registered properties.
+// ClientType classifies an Agent based on its registered properties.
 // Classification is derived at runtime from Agent.ClientID and Agent.ClientURIs.
-type ClientMode int
+type ClientType int
 
 const (
 	// UnknownClient is the zero value — uninitialized; must never reach dispatch logic.
-	UnknownClient ClientMode = iota
+	UnknownClient ClientType = iota
 	// ProxyClient: agent has a ClientID — requests are forwarded to an upstream OAuth2 server.
 	ProxyClient
 	// CIMDClient: agent has ClientURIs but no ClientID — tokens are issued locally via CIMD.
@@ -118,9 +118,9 @@ func (a *Agent) Validate() error {
 	return nil
 }
 
-// ClientMode returns the classification of this agent based on its registered properties.
+// ClientType returns the classification of this agent based on its registered properties.
 // Returns AmbiguousClient when both ClientID and ClientURIs are set — callers must reject this.
-func (a Agent) ClientMode() ClientMode {
+func (a Agent) ClientType() ClientType {
 	if a.ClientID != nil && len(a.ClientURIs) > 0 {
 		return AmbiguousClient
 	}
