@@ -25,6 +25,9 @@ type OAuth2AuthorizeHandler struct {
 // strategy determines the response when the user has an active grant.
 func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.Service == nil {
+		if h.Logger != nil {
+			h.Logger.ErrorContext(r.Context(), "OAuth2 authorization handler invoked with nil Service — check builder wiring")
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = fmt.Fprintf(w, `{"error":"server_error","error_description":"OAuth2 authorization server not configured"}`)
