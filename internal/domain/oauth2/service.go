@@ -366,6 +366,18 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 			}, nil
 		}
 	}
+	if upstreamURL == "" && s.config.UpstreamAuthorizeEndpoint != "" {
+		errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "agent missing upstream client_id")
+		if buildURLErr != nil && s.logger != nil {
+			s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
+		}
+		return &ports.AuthorizationDecision{
+			Action:      "error",
+			ErrorCode:   "server_error",
+			ErrorDesc:   "Agent is not configured for upstream proxy (missing client_id)",
+			RedirectURL: errRedirect,
+		}, nil
+	}
 	return ports.ProceedDecision(upstreamURL, agent.ClientType()), nil
 }
 

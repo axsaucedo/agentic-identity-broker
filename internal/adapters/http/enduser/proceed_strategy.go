@@ -29,6 +29,10 @@ func NewProxyProceedStrategy() AuthorizationProceedStrategy {
 }
 
 func (s *proxyProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Request, decision *ports.AuthorizationDecision, _ *ports.AuthorizationRequest, _ id.Principal) {
+	if decision.RedirectURL == "" {
+		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "empty upstream redirect URL")
+		return
+	}
 	http.Redirect(w, r, decision.RedirectURL, http.StatusFound)
 }
 

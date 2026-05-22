@@ -45,6 +45,21 @@ func TestProxyProceedStrategy_RedirectsToDecisionURL(t *testing.T) {
 	assert.Equal(t, decision.RedirectURL, w.Header().Get("Location"))
 }
 
+func TestProxyProceedStrategy_EmptyRedirectURL_ReturnsServerError(t *testing.T) {
+	strategy := NewProxyProceedStrategy()
+	w := httptest.NewRecorder()
+	r := newProceedRequest(t)
+
+	decision := ports.ProceedDecision("", storage.ProxyClient)
+	req := &ports.AuthorizationRequest{RedirectURI: "https://client.example.com/callback"}
+
+	strategy.HandleProceed(w, r, decision, req, id.NewPrincipal("user@example.com"))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "server_error")
+	assert.Empty(t, w.Header().Get("Location"), "must not issue a redirect for empty URL")
+}
+
 // T045c: FR-008b / SR-004 — proxy proceed strategy passes the upstream authorize URL through as-is,
 // without modification or re-signing. The broker never alters the upstream redirect target.
 func TestProxyProceedStrategy_PassesThroughUpstreamURL(t *testing.T) {

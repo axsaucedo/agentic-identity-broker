@@ -1359,6 +1359,54 @@ func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
 	assert.Contains(t, decision.RedirectURL, "error=server_error")
 }
 
+// TestService_HandleAuthorization_NilClientIDInProxyMode verifies that when
+// UpstreamAuthorizeEndpoint is configured but an agent has ClientID = nil (ADR 017),
+// the service returns server_error rather than proceeding with an empty upstream URL.
+func TestService_HandleAuthorization_NilClientIDInProxyMode(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	agentRepo := NewMockAgentRepository()
+	grantRepo := NewMockGrantRepository()
+
+	// Agent has no ClientID (ADR 017: nullable) — classified as LocalClient.
+	// In hybrid mode this client type is accepted, but with UpstreamAuthorizeEndpoint
+	// configured and ClientID nil, upstreamURL stays empty.
+	require.NoError(t, agentRepo.Create(context.Background(), &storage.Agent{
+		ID:           agentID,
+		ClientID:     nil,
+		DisplayName:  "No-ClientID Agent",
+		RedirectURIs: []string{"https://client.example.com/callback"},
+	}))
+	require.NoError(t, grantRepo.Create(context.Background(), &storage.UserGrant{
+		ID:                    id.NewGrantID(),
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               agentID,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{},
+	}))
+
+	// Hybrid mode accepts LocalClient agents AND has an UpstreamAuthorizeEndpoint.
+	svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewHybridModeStrategy(),
+	}, nil, newTestSessionTokenService())
+
+	decision, err := svc.HandleAuthorization(context.Background(), &ports.AuthorizationRequest{
+		ClientID:     id.ClientID(agentID.String()),
+		RedirectURI:  "https://client.example.com/callback",
+		ResponseType: "code",
+		State:        "xyz",
+		OriginalURL:  "https://broker.example.com/oauth2/authorize",
+	}, id.NewPrincipal("user@example.com"))
+
+	// The guard in service.go must catch the empty upstreamURL and return server_error.
+	require.NoError(t, err)
+	require.NotNil(t, decision)
+	assert.Equal(t, "error", decision.Action)
+	assert.Equal(t, "server_error", decision.ErrorCode)
+	assert.Contains(t, decision.RedirectURL, "error=server_error")
+}
+
 // TestService_GenerateMetadata_TokenExchangeGrant verifies that the token-exchange
 // grant type is included in discovery only when TokenExchangeEnabled is true, and
 // is filtered out when false — even if manually present in SupportedGrantTypes.
