@@ -78,6 +78,7 @@ func DefaultOAuth2Config() *ports.Config {
 				RawKey: TestKEKMaterialDeterministic(),
 			},
 		},
+		Security: ports.SecurityConfig{},
 	}
 }
 

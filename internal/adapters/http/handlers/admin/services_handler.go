@@ -119,10 +119,15 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 		skipHTTPSValidation = h.config.Security.SkipThirdpartyHTTPSValidation
 	}
 
-	// Parse and validate oauth2_flavor; default to "standard" when omitted.
+	// Parse and validate oauth2_flavor; default to "standard" when omitted,
+	// or auto-detect "github" from token endpoint URL.
 	flavor := model.OAuth2Flavor(req.OAuth2Flavor)
 	if flavor == "" {
-		flavor = model.DefaultOAuth2Flavor
+		var tokenEndpoint string
+		if req.Endpoints != nil {
+			tokenEndpoint = req.Endpoints.TokenEndpoint
+		}
+		flavor = model.InferOAuth2Flavor(tokenEndpoint)
 	}
 
 	// Build entity from request
@@ -279,10 +284,15 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Parse and validate oauth2_flavor; default to "standard" when omitted.
+	// Parse and validate oauth2_flavor; default to "standard" when omitted,
+	// or auto-detect "github" from token endpoint URL.
 	flavor := model.OAuth2Flavor(req.OAuth2Flavor)
 	if flavor == "" {
-		flavor = model.DefaultOAuth2Flavor
+		var tokenEndpoint string
+		if req.Endpoints != nil {
+			tokenEndpoint = req.Endpoints.TokenEndpoint
+		}
+		flavor = model.InferOAuth2Flavor(tokenEndpoint)
 	}
 
 	// created_at is not set here; repo.Update() populates it from storage (no KMS decrypt needed).

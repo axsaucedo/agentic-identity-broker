@@ -62,6 +62,7 @@ func validTestConfig() *ports.Config {
 				UpstreamTokenEndpoint:     "https://auth.example.com/token",
 			},
 		},
+		Security: ports.SecurityConfig{},
 	}
 }
 

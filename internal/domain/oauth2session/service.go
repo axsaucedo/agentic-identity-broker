@@ -565,11 +565,17 @@ func (s *OAuth2SessionService) HandleCallback(
 		return nil, fmt.Errorf("failed to exchange authorization code: %w", err)
 	}
 
-	// Extract scopes from token response or fall back to service scopes
+	// Extract scopes from token response or fall back to service scopes.
+	// GitHub returns scopes as comma-separated; use the flavor's separator.
 	scopes := make([]string, 0)
 	if scopeVal := token.Extra("scope"); scopeVal != nil {
-		if scopeStr, ok := scopeVal.(string); ok {
-			scopes = strings.Split(scopeStr, " ")
+		if scopeStr, ok := scopeVal.(string); ok && scopeStr != "" {
+			separator := service.Flavor.ScopeSeparator()
+			for _, s := range strings.Split(scopeStr, separator) {
+				if trimmed := strings.TrimSpace(s); trimmed != "" {
+					scopes = append(scopes, trimmed)
+				}
+			}
 		}
 	}
 	if len(scopes) == 0 {

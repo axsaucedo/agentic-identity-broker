@@ -1092,6 +1092,136 @@ func createTestService(serviceID id.ServiceID) *model.ThirdpartyOAuth2ProviderEn
 }
 
 // =============================================================================
+// Tests for HandleCallback with GitHub Flavor (comma-separated scopes)
+// =============================================================================
+
+func TestHandleCallback_GitHubFlavorCommaSeparatedScopes(t *testing.T) {
+	ctx := context.Background()
+	service, _, providerService := setupService(t)
+
+	principal := id.Principal("user@example.com")
+	serviceID := id.NewServiceID()
+	redirectURI := "https://example.com/sessions"
+
+	thirdPartyService := createTestService(serviceID)
+	thirdPartyService.Flavor = model.OAuth2FlavorGitHub
+
+	mockServer := createMockOAuth2TokenEndpoint(t, mockTokenConfig{
+		accessToken:  "gho_test_token_123",
+		tokenType:    "Bearer",
+		expiresIn:    3600,
+		refreshToken: "ghr_refresh_456",
+		scope:        "repo,user",
+	})
+	defer mockServer.Close()
+
+	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
+
+	err := providerService.Create(ctx, thirdPartyService)
+	require.NoError(t, err)
+
+	flowResult, err := service.InitiateOAuth2Flow(ctx, principal, serviceID, redirectURI)
+	require.NoError(t, err)
+
+	req := &oauth2session.HandleCallbackRequest{
+		ServiceID: serviceID,
+		Code:      "test-code",
+		State:     flowResult.StateToken,
+	}
+
+	result, err := service.HandleCallback(ctx, principal, req)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Session)
+	assert.Equal(t, []string{"repo", "user"}, result.Session.Scope)
+}
+
+func TestHandleCallback_GitHubFlavorCommaSeparatedScopesWithWhitespace(t *testing.T) {
+	ctx := context.Background()
+	service, _, providerService := setupService(t)
+
+	principal := id.Principal("user@example.com")
+	serviceID := id.NewServiceID()
+	redirectURI := "https://example.com/sessions"
+
+	thirdPartyService := createTestService(serviceID)
+	thirdPartyService.Flavor = model.OAuth2FlavorGitHub
+
+	mockServer := createMockOAuth2TokenEndpoint(t, mockTokenConfig{
+		accessToken:  "gho_test_token_123",
+		tokenType:    "Bearer",
+		expiresIn:    3600,
+		refreshToken: "ghr_refresh_456",
+		scope:        "repo, user, admin:org",
+	})
+	defer mockServer.Close()
+
+	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
+
+	err := providerService.Create(ctx, thirdPartyService)
+	require.NoError(t, err)
+
+	flowResult, err := service.InitiateOAuth2Flow(ctx, principal, serviceID, redirectURI)
+	require.NoError(t, err)
+
+	req := &oauth2session.HandleCallbackRequest{
+		ServiceID: serviceID,
+		Code:      "test-code",
+		State:     flowResult.StateToken,
+	}
+
+	result, err := service.HandleCallback(ctx, principal, req)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Session)
+	assert.Equal(t, []string{"repo", "user", "admin:org"}, result.Session.Scope)
+}
+
+func TestHandleCallback_GitHubFlavorFallsBackToServiceScopes(t *testing.T) {
+	ctx := context.Background()
+	service, _, providerService := setupService(t)
+
+	principal := id.Principal("user@example.com")
+	serviceID := id.NewServiceID()
+	redirectURI := "https://example.com/sessions"
+
+	thirdPartyService := createTestService(serviceID)
+	thirdPartyService.Flavor = model.OAuth2FlavorGitHub
+
+	mockServer := createMockOAuth2TokenEndpoint(t, mockTokenConfig{
+		accessToken:  "gho_test_token_123",
+		tokenType:    "Bearer",
+		expiresIn:    3600,
+		refreshToken: "ghr_refresh_456",
+		scope:        "",
+	})
+	defer mockServer.Close()
+
+	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
+
+	err := providerService.Create(ctx, thirdPartyService)
+	require.NoError(t, err)
+
+	flowResult, err := service.InitiateOAuth2Flow(ctx, principal, serviceID, redirectURI)
+	require.NoError(t, err)
+
+	req := &oauth2session.HandleCallbackRequest{
+		ServiceID: serviceID,
+		Code:      "test-code",
+		State:     flowResult.StateToken,
+	}
+
+	result, err := service.HandleCallback(ctx, principal, req)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Session)
+	assert.Equal(t, []string{"repo", "user"}, result.Session.Scope)
+}
+
+// =============================================================================
 // Tests for TerminateSession (T063)
 // =============================================================================
 
