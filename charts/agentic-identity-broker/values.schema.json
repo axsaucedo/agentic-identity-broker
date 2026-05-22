@@ -652,6 +652,7 @@
           "type": "object",
           "additionalProperties": false,
           "description": "OAuth2 Authorization Server configuration",
+          "required": ["mode"],
           "properties": {
             "mode": {
               "type": "string",
@@ -794,21 +795,44 @@
               }
             }
           },
-          "if": {
-            "properties": {
-              "cimd": {
-                "properties": { "enabled": { "const": true } },
-                "required": ["enabled"]
+          "allOf": [
+            {
+              "if": {
+                "properties": { "mode": { "enum": ["proxy", "hybrid"] } },
+                "required": ["mode"]
+              },
+              "then": {
+                "required": ["proxy"],
+                "properties": {
+                  "proxy": {
+                    "required": ["upstreamIssuerUri", "upstreamAuthorizeEndpoint", "upstreamTokenEndpoint"],
+                    "properties": {
+                      "upstreamIssuerUri": { "minLength": 1 },
+                      "upstreamAuthorizeEndpoint": { "minLength": 1 },
+                      "upstreamTokenEndpoint": { "minLength": 1 }
+                    }
+                  }
+                }
               }
             },
-            "required": ["cimd"]
-          },
-          "then": {
-            "properties": {
-              "mode": { "enum": ["local", "hybrid"] }
-            },
-            "required": ["mode"]
-          }
+            {
+              "if": {
+                "properties": {
+                  "cimd": {
+                    "properties": { "enabled": { "const": true } },
+                    "required": ["enabled"]
+                  }
+                },
+                "required": ["cimd"]
+              },
+              "then": {
+                "properties": {
+                  "mode": { "enum": ["local", "hybrid"] }
+                },
+                "required": ["mode"]
+              }
+            }
+          ]
         },
         "tokenExchange": {
           "type": "object",

@@ -1,0 +1,5 @@
+broker:
+  oauth2AuthorizationServer:
+    mode: "local"
+storage:
+  type: memory

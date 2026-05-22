@@ -635,6 +635,11 @@ helm-lint:
     @helm lint charts/agentic-identity-broker
     @echo "✓ Helm chart lint passed"
 
+# Run Helm schema validation tests (valid/invalid configurations)
+helm-schema-test:
+    @echo "Running Helm schema validation tests..."
+    @./scripts/helm-schema-test.sh
+
 # Validate Helm chart deployment in Kind cluster (full E2E test)
 helm-validate:
     @echo "Validating Helm chart in Kind cluster..."
