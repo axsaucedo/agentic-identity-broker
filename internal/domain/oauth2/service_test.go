@@ -1359,22 +1359,20 @@ func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
 	assert.Contains(t, decision.RedirectURL, "error=server_error")
 }
 
-// TestService_HandleAuthorization_NilClientIDInProxyMode verifies that when
-// UpstreamAuthorizeEndpoint is configured but an agent has ClientID = nil (ADR 017),
-// the service returns server_error rather than proceeding with an empty upstream URL.
-func TestService_HandleAuthorization_NilClientIDInProxyMode(t *testing.T) {
+// TestService_HandleAuthorization_LocalClientInHybridMode verifies that a LocalClient
+// agent (nil ClientID) in hybrid mode proceeds to local token issuance even when
+// UpstreamAuthorizeEndpoint is configured (spec FR-008, scenario 2).
+func TestService_HandleAuthorization_LocalClientInHybridMode(t *testing.T) {
 	agentID := id.NewAgentID()
 
 	agentRepo := NewMockAgentRepository()
 	grantRepo := NewMockGrantRepository()
 
-	// Agent has no ClientID (ADR 017: nullable) — classified as LocalClient.
-	// In hybrid mode this client type is accepted, but with UpstreamAuthorizeEndpoint
-	// configured and ClientID nil, upstreamURL stays empty.
+	// LocalClient: no ClientID, no ClientURIs — local token issuance.
 	require.NoError(t, agentRepo.Create(context.Background(), &storage.Agent{
 		ID:           agentID,
 		ClientID:     nil,
-		DisplayName:  "No-ClientID Agent",
+		DisplayName:  "Local Agent",
 		RedirectURIs: []string{"https://client.example.com/callback"},
 	}))
 	require.NoError(t, grantRepo.Create(context.Background(), &storage.UserGrant{
@@ -1384,7 +1382,7 @@ func TestService_HandleAuthorization_NilClientIDInProxyMode(t *testing.T) {
 		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{},
 	}))
 
-	// Hybrid mode accepts LocalClient agents AND has an UpstreamAuthorizeEndpoint.
+	// Hybrid mode: UpstreamAuthorizeEndpoint set for proxy agents; local agents must not be blocked.
 	svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
@@ -1399,12 +1397,61 @@ func TestService_HandleAuthorization_NilClientIDInProxyMode(t *testing.T) {
 		OriginalURL:  "https://broker.example.com/oauth2/authorize",
 	}, id.NewPrincipal("user@example.com"))
 
-	// The guard in service.go must catch the empty upstreamURL and return server_error.
 	require.NoError(t, err)
 	require.NotNil(t, decision)
-	assert.Equal(t, "error", decision.Action)
-	assert.Equal(t, "server_error", decision.ErrorCode)
-	assert.Contains(t, decision.RedirectURL, "error=server_error")
+	assert.Equal(t, "proceed", decision.Action)
+	assert.Equal(t, "", decision.RedirectURL, "local agents must not get an upstream redirect URL")
+	assert.Equal(t, storage.LocalClient, decision.ClientType)
+}
+
+// TestService_HandleAuthorization_CIMDClientInHybridMode verifies that a CIMDClient
+// agent (client_uris set, no ClientID) in hybrid mode proceeds to local token issuance
+// even when UpstreamAuthorizeEndpoint is configured (spec FR-008, FR-009).
+func TestService_HandleAuthorization_CIMDClientInHybridMode(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	agentRepo := NewMockAgentRepository()
+	grantRepo := NewMockGrantRepository()
+
+	agent := &storage.Agent{
+		ID:           agentID,
+		ClientID:     nil,
+		ClientURIs:   []string{"https://cimd.example.com/agent.json"},
+		DisplayName:  "CIMD Agent",
+		RedirectURIs: []string{"https://cimd.example.com/callback"},
+	}
+	require.NoError(t, agentRepo.Create(context.Background(), agent))
+	agentRepo.RegisterURI("https://cimd.example.com/agent.json", agent)
+	require.NoError(t, grantRepo.Create(context.Background(), &storage.UserGrant{
+		ID:                    id.NewGrantID(),
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               agentID,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{},
+	}))
+
+	cimdBody := `{"client_id":"https://cimd.example.com/agent.json","client_name":"CIMD Agent","redirect_uris":["https://cimd.example.com/callback"]}`
+	cimdFetch := &ports.CIMDFetchResult{Body: []byte(cimdBody), CacheControl: "max-age=300"}
+	cimdSvc := cimdServiceForTest(t, cimdFetch, nil)
+
+	svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolverWithCIMD(agentRepo, cimdSvc, nil), &OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewHybridModeStrategy(),
+	}, nil, newTestSessionTokenService())
+
+	decision, err := svc.HandleAuthorization(context.Background(), &ports.AuthorizationRequest{
+		ClientID:     id.ClientID("https://cimd.example.com/agent.json"),
+		RedirectURI:  "https://cimd.example.com/callback",
+		ResponseType: "code",
+		State:        "xyz",
+		OriginalURL:  "https://broker.example.com/oauth2/authorize",
+	}, id.NewPrincipal("user@example.com"))
+
+	require.NoError(t, err)
+	require.NotNil(t, decision)
+	assert.Equal(t, "proceed", decision.Action)
+	assert.Equal(t, "", decision.RedirectURL, "CIMD agents must not get an upstream redirect URL")
+	assert.Equal(t, storage.CIMDClient, decision.ClientType)
 }
 
 // TestService_GenerateMetadata_TokenExchangeGrant verifies that the token-exchange

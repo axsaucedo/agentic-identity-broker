@@ -366,7 +366,7 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 			}, nil
 		}
 	}
-	if upstreamURL == "" && s.config.UpstreamAuthorizeEndpoint != "" {
+	if upstreamURL == "" && s.config.UpstreamAuthorizeEndpoint != "" && agent.ClientType() == storage.ProxyClient {
 		errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "agent missing upstream client_id")
 		if buildURLErr != nil && s.logger != nil {
 			s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
