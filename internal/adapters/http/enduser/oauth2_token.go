@@ -42,12 +42,13 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer func() { _ = r.Body.Close() }()
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to read request body: %v", err), http.StatusBadRequest)
 		return
 	}
-	defer func() { _ = r.Body.Close() }()
 
 	if len(body) == 0 {
 		http.Error(w, "request body cannot be empty", http.StatusBadRequest)

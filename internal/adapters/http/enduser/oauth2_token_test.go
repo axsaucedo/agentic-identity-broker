@@ -1134,6 +1134,44 @@ func TestHybridTokenGrantStrategy_DefaultBranchLogsError(t *testing.T) {
 	assert.Contains(t, logLine, agentID.String())
 }
 
+// TestOAuth2TokenHandler_BodyClosedOnReadError verifies that r.Body is closed even
+// when io.ReadAll returns an error (i.e. the defer fires on all exit paths).
+func TestOAuth2TokenHandler_BodyClosedOnReadError(t *testing.T) {
+	handler := &OAuth2TokenHandler{
+		GrantHandler:  NewLocalGrantStrategy(fixedMinting(nil, nil), nil),
+		OAuth2Service: newLocalModeOAuth2Service(),
+	}
+
+	closed := false
+	body := &failingReadCloser{
+		err:     errors.New("simulated read failure"),
+		onClose: func() { closed = true },
+	}
+
+	req := httptest.NewRequest("POST", "/oauth2/token", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Body = body // override the body with our tracking reader
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.True(t, closed, "r.Body must be closed even when ReadAll fails")
+}
+
+// failingReadCloser is a test double that fails on Read and tracks Close calls.
+type failingReadCloser struct {
+	err     error
+	onClose func()
+}
+
+func (f *failingReadCloser) Read([]byte) (int, error) { return 0, f.err }
+func (f *failingReadCloser) Close() error {
+	if f.onClose != nil {
+		f.onClose()
+	}
+	return nil
+}
+
 // TestTokenEndpointStatus_RFC6749Mapping verifies the HTTP status code mapping for
 // OAuth2 error codes on the token endpoint per RFC 6749 §5.2.
 // invalid_client → 401, server_error → 500, all others (including unknown codes) → 400.
