@@ -123,7 +123,7 @@ export class ConsentApiService {
     const responseData = response.data.data;
 
     const agent: AgentDetail = {
-      agentId: responseData.agent.id,
+      agentId: responseData.agent.agentId,
       displayName: responseData.agent.display_name,
       description: responseData.agent.description,
       governanceUrl: responseData.agent.governance_url,

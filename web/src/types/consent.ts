@@ -231,7 +231,7 @@ export interface CIMDMetadata {
 export interface GetAgentDetailResponse {
   data: {
     agent: {
-      id: string;
+      agentId: string;
       client_id?: string;
       client_uris?: string[];
       display_name: string;

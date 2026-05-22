@@ -99,7 +99,7 @@ type AgentDetailData struct {
 
 // AgentMetadata is the agent metadata portion of the unified response.
 type AgentMetadata struct {
-	ID                   string   `json:"id"`
+	ID                   string   `json:"agentId"`
 	ClientID             string   `json:"client_id,omitempty"`
 	ClientURIs           []string `json:"client_uris,omitempty"`
 	DisplayName          string   `json:"display_name"`
@@ -271,6 +271,24 @@ func (h *AgentDetailHandler) buildResponse(detail *consent.AgentConsentDetail, s
 		serviceReqs[i] = ServiceRequirementInfo{
 			ServiceID:       sr.ServiceID.String(),
 			RequirementType: string(sr.RequirementType),
+		}
+	}
+	if len(serviceReqs) == 0 {
+		seen := make(map[string]struct{})
+		for _, entry := range detail.ResolvedPermissionSets {
+			if entry.PermissionSet == nil {
+				continue
+			}
+			for _, ss := range entry.PermissionSet.ServiceScopes {
+				key := ss.ServiceID.String()
+				if _, exists := seen[key]; !exists {
+					seen[key] = struct{}{}
+					serviceReqs = append(serviceReqs, ServiceRequirementInfo{
+						ServiceID:       key,
+						RequirementType: string(entry.RequirementType),
+					})
+				}
+			}
 		}
 	}
 

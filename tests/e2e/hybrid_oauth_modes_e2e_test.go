@@ -353,20 +353,20 @@ var _ = Describe("US2: Hybrid Mode — Local Agent Full Authorization Code Journ
 		}.Encode()
 
 		// Step 1: Authorize — no grant → consent redirect.
-		// Non-CIMD agents use redirect_uri (not session_token) in the consent URL.
+		// Consent URL contains session_token (spec 031 unified session token).
 		authResp, err := enduserServer.AuthenticatedGET(authorizeURL, principal)
 		Expect(err).ToNot(HaveOccurred())
 		defer func() { _ = authResp.Body.Close() }()
 		Expect(authResp.StatusCode).To(Equal(http.StatusFound))
 		consentLoc, err := url.Parse(authResp.Header.Get("Location"))
 		Expect(err).ToNot(HaveOccurred())
-		originalAuthorizeURL := consentLoc.Query().Get("redirect_uri")
-		Expect(originalAuthorizeURL).ToNot(BeEmpty())
+		sessionToken := consentLoc.Query().Get("session_token")
+		Expect(sessionToken).ToNot(BeEmpty())
 
 		// Step 2: Submit grant — no service delegations required for this local agent.
 		grantBodyBytes, _ := json.Marshal(map[string]any{"granted_permission_sets": map[string]any{}})
 		grantResp, err := enduserServer.AuthenticatedPOST(
-			fmt.Sprintf("/api/consent/agents/%s/grants?redirect_uri=%s", agent.ID, url.QueryEscape(originalAuthorizeURL)),
+			fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", agent.ID, url.QueryEscape(sessionToken)),
 			principal, "application/json", bytes.NewReader(grantBodyBytes),
 		)
 		Expect(err).ToNot(HaveOccurred())
@@ -374,7 +374,8 @@ var _ = Describe("US2: Hybrid Mode — Local Agent Full Authorization Code Journ
 		Expect(grantResp.StatusCode).To(Equal(http.StatusCreated))
 		var grantRespBody map[string]any
 		Expect(json.NewDecoder(grantResp.Body).Decode(&grantRespBody)).To(Succeed())
-		reAuthorizeURL := grantRespBody["redirect_url"].(string)
+		reAuthorizeURL, _ := grantRespBody["redirect_url"].(string)
+		Expect(reAuthorizeURL).ToNot(BeEmpty())
 
 		// Step 3: Re-authorize — grant satisfied → local path issues authorization code.
 		codeResp, err := enduserServer.AuthenticatedGET(reAuthorizeURL, principal)
@@ -476,20 +477,20 @@ var _ = Describe("US2: Hybrid Mode — Proxy Agent Full Authorization Code Journ
 		}.Encode()
 
 		// Step 1: Authorize — no grant → consent redirect.
-		// Non-CIMD agents use redirect_uri (not session_token) in the consent URL.
+		// Consent URL contains session_token (spec 031 unified session token).
 		authResp, err := server.AuthenticatedGET(authorizeURL, principal)
 		Expect(err).ToNot(HaveOccurred())
 		defer func() { _ = authResp.Body.Close() }()
 		Expect(authResp.StatusCode).To(Equal(http.StatusFound))
 		consentLoc, err := url.Parse(authResp.Header.Get("Location"))
 		Expect(err).ToNot(HaveOccurred())
-		originalAuthorizeURL := consentLoc.Query().Get("redirect_uri")
-		Expect(originalAuthorizeURL).ToNot(BeEmpty())
+		sessionToken := consentLoc.Query().Get("session_token")
+		Expect(sessionToken).ToNot(BeEmpty())
 
 		// Step 2: Submit grant.
 		grantBodyBytes, _ := json.Marshal(map[string]any{"granted_permission_sets": map[string]any{}})
 		grantResp, err := server.AuthenticatedPOST(
-			fmt.Sprintf("/api/consent/agents/%s/grants?redirect_uri=%s", proxyAgent.ID, url.QueryEscape(originalAuthorizeURL)),
+			fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", proxyAgent.ID, url.QueryEscape(sessionToken)),
 			principal, "application/json", bytes.NewReader(grantBodyBytes),
 		)
 		Expect(err).ToNot(HaveOccurred())
@@ -497,9 +498,8 @@ var _ = Describe("US2: Hybrid Mode — Proxy Agent Full Authorization Code Journ
 		Expect(grantResp.StatusCode).To(Equal(http.StatusCreated))
 		var grantRespBody map[string]any
 		Expect(json.NewDecoder(grantResp.Body).Decode(&grantRespBody)).To(Succeed())
-		reAuthorizeURL := grantRespBody["redirect_url"].(string)
-
-		// Step 3: Re-authorize — grant satisfied → proxy path redirects to upstream authorize.
+		reAuthorizeURL, _ := grantRespBody["redirect_url"].(string)
+		Expect(reAuthorizeURL).ToNot(BeEmpty())
 		proxyResp, err := server.AuthenticatedGET(reAuthorizeURL, principal)
 		Expect(err).ToNot(HaveOccurred())
 		defer func() { _ = proxyResp.Body.Close() }()

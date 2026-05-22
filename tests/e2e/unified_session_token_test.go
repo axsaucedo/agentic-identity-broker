@@ -102,7 +102,6 @@ var _ = Describe("Unified Session Token State Transport", func() {
 			now := time.Now()
 			agent = &storage.Agent{
 				ID:           id.NewAgentID(),
-				ClientID:     ptr.To(id.ClientID("test-local-client")),
 				DisplayName:  "Local Test Agent",
 				Description:  "E2E test agent for unified session token scenarios",
 				RedirectURIs: []string{"https://client.example.com/cb"},
@@ -284,7 +283,6 @@ var _ = Describe("Unified Session Token State Transport", func() {
 			now := time.Now()
 			agent = &storage.Agent{
 				ID:           id.NewAgentID(),
-				ClientID:     ptr.To(id.ClientID("consent-handler-client")),
 				DisplayName:  "Consent Handler Test Agent",
 				Description:  "E2E test agent for consent handler unified session token scenarios",
 				RedirectURIs: []string{"https://client.example.com/cb"},
