@@ -50,7 +50,6 @@ type EnduserRouteConfig struct {
 //	Consent Routes (authenticated):
 //	GET    /api/consent/agents                        - List agents with delegations
 //	GET    /api/consent/agents/{agent-id}             - Get agent details
-//	GET    /api/consent/agents/{agent-id}/consent-info - Extended consent info with permission sets
 //	GET    /api/consent/agents/{agent-id}/grants      - Get agent grants
 //	POST   /api/consent/agents/{agent-id}/grants      - Create grant
 //	DELETE /api/consent/agents/{agent-id}/grants      - Revoke grant (FR-014)
