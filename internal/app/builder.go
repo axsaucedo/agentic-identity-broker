@@ -192,8 +192,8 @@ func extractOAuthValues(cfg ports.OAuth2ModeConfig, publicURL string) oauthResol
 		r.upstreamAuthorizeEndpoint = c.Proxy.UpstreamAuthorizeEndpoint
 		r.upstreamTokenEndpoint = c.Proxy.UpstreamTokenEndpoint
 		r.upstreamTimeout = c.Proxy.UpstreamTimeout()
-		r.responseTypes = c.Proxy.SupportedResponseTypes
-		r.grantTypes = c.Proxy.SupportedGrantTypes
+		r.responseTypes = c.ResponseTypes()
+		r.grantTypes = c.GrantTypes()
 		r.multiAgentClient = c.Proxy.MultiAgentClient
 		if c.Local.IssuerURI != "" {
 			r.localIssuerURI = c.Local.IssuerURI
