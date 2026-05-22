@@ -322,6 +322,12 @@ type hybridTokenGrantStrategy struct {
 
 // NewHybridTokenGrantStrategy returns a TokenGrantStrategy that dispatches based on client mode.
 func NewHybridTokenGrantStrategy(proxy, local TokenGrantStrategy, logger *slog.Logger) TokenGrantStrategy {
+	if proxy == nil {
+		panic("NewHybridTokenGrantStrategy: proxy strategy must not be nil")
+	}
+	if local == nil {
+		panic("NewHybridTokenGrantStrategy: local strategy must not be nil")
+	}
 	return &hybridTokenGrantStrategy{proxy: proxy, local: local, logger: logger}
 }
 

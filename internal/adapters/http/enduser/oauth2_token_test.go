@@ -1216,6 +1216,30 @@ func TestOAuth2TokenHandler_MissingGrantType(t *testing.T) {
 	assert.Equal(t, "invalid_request", body["error"])
 }
 
+// TestNewHybridTokenGrantStrategy_PanicsOnNilSubStrategies verifies that construction
+// panics when either sub-strategy is nil, matching NewHybridProceedStrategy's behavior.
+func TestNewHybridTokenGrantStrategy_PanicsOnNilSubStrategies(t *testing.T) {
+	dummy := &mockTokenGrantStrategy{}
+
+	t.Run("nil proxy panics", func(t *testing.T) {
+		assert.Panics(t, func() {
+			NewHybridTokenGrantStrategy(nil, dummy, nil)
+		})
+	})
+
+	t.Run("nil local panics", func(t *testing.T) {
+		assert.Panics(t, func() {
+			NewHybridTokenGrantStrategy(dummy, nil, nil)
+		})
+	})
+
+	t.Run("both non-nil does not panic", func(t *testing.T) {
+		assert.NotPanics(t, func() {
+			NewHybridTokenGrantStrategy(dummy, dummy, nil)
+		})
+	})
+}
+
 // TestHybridTokenGrantStrategy_DefaultBranchLogsError verifies that reaching the default
 // (unknown/ambiguous client type) branch emits an Error-level log with agent_id.
 func TestHybridTokenGrantStrategy_DefaultBranchLogsError(t *testing.T) {
