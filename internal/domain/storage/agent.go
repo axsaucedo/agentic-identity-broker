@@ -59,11 +59,7 @@ type Agent struct {
 
 // Validate performs validation on the Agent entity.
 // Returns an error if any validation rules are violated.
-func (a *Agent) Validate() error {
-	// Required fields
-	if a.ID.IsZero() {
-		return errors.New("agent ID cannot be empty")
-	}
+func (a *Agent) validateFields() error {
 	if a.ClientID != nil && strings.TrimSpace(string(*a.ClientID)) == "" {
 		return errors.New("client_id cannot be empty when provided")
 	}
@@ -105,17 +101,22 @@ func (a *Agent) Validate() error {
 		return err
 	}
 
-	// Service requirements validation
 	if err := a.ValidateServiceRequirements(); err != nil {
 		return fmt.Errorf("service_requirements validation failed: %w", err)
 	}
 
-	// Permission sets validation
 	if err := a.ValidatePermissionSets(); err != nil {
 		return fmt.Errorf("permission_sets validation failed: %w", err)
 	}
 
 	return nil
+}
+
+func (a *Agent) Validate() error {
+	if a.ID.IsZero() {
+		return errors.New("agent ID cannot be empty")
+	}
+	return a.validateFields()
 }
 
 // ClientType returns the classification of this agent based on its registered properties.
@@ -280,58 +281,7 @@ func (a *Agent) Copy() *Agent {
 // ValidateForCreate validates an agent before creation.
 // ID will be generated, so it may be empty.
 func (a *Agent) ValidateForCreate() error {
-	if a.ClientID != nil && strings.TrimSpace(string(*a.ClientID)) == "" {
-		return errors.New("client_id cannot be empty when provided")
-	}
-	if a.ClientID != nil && len(a.ClientURIs) > 0 {
-		return errors.New("agent cannot have both client_id and client_uris set: client mode must be unambiguous")
-	}
-	if a.DisplayName == "" {
-		return errors.New("display_name is required")
-	}
-	if len(a.DisplayName) > 255 {
-		return fmt.Errorf("display_name exceeds 255 characters (got %d)", len(a.DisplayName))
-	}
-	if a.Description == "" {
-		return errors.New("description is required")
-	}
-	if len(a.Description) > 1000 {
-		return fmt.Errorf("description exceeds 1000 characters (got %d)", len(a.Description))
-	}
-
-	// URL validation
-	if a.GovernanceURL != nil && !isValidURL(*a.GovernanceURL) {
-		return errors.New("governance_url is not a valid HTTP/HTTPS URL")
-	}
-	if a.UserDocumentationURL != nil && !isValidURL(*a.UserDocumentationURL) {
-		return errors.New("user_documentation_url is not a valid HTTP/HTTPS URL")
-	}
-	if a.AgentInterfaceURL != nil && !isValidURL(*a.AgentInterfaceURL) {
-		return errors.New("agent_interface_url is not a valid HTTP/HTTPS URL")
-	}
-
-	// Redirect URI validation (stricter than isValidURL: requires non-empty host, no fragment)
-	for i, uri := range a.RedirectURIs {
-		if !IsValidRedirectURI(uri) {
-			return fmt.Errorf("redirect_uris[%d] is not a valid absolute HTTP/HTTPS URI without a fragment", i)
-		}
-	}
-
-	if err := validateClientURIs(a.ClientURIs); err != nil {
-		return err
-	}
-
-	// Service requirements validation
-	if err := a.ValidateServiceRequirements(); err != nil {
-		return fmt.Errorf("service_requirements validation failed: %w", err)
-	}
-
-	// Permission sets validation
-	if err := a.ValidatePermissionSets(); err != nil {
-		return fmt.Errorf("permission_sets validation failed: %w", err)
-	}
-
-	return nil
+	return a.validateFields()
 }
 
 // ValidateServiceRequirements validates the service requirements array.

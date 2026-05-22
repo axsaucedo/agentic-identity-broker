@@ -191,7 +191,7 @@ func TestAgent_ValidateForCreate(t *testing.T) {
 				DisplayName: strings.Repeat("a", 256),
 				Description: "A test agent",
 			},
-			wantErr: "display_name exceeds 255 characters (got 256)",
+			wantErr: "display_name exceeds 255 characters",
 		},
 		{
 			name: "client_id and client_uris both set is invalid",
