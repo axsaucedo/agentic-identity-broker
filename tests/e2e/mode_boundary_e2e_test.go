@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -101,6 +103,37 @@ var _ = Describe("SR-002: Mode Boundary Enforcement", func() {
 			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
 			Expect(resp).To(matchers.HaveOAuth2Error("unauthorized_client"))
 		})
+
+		// Token endpoint must also enforce mode boundary (SR-002 — covers wiring regression
+		// where wrong OAuth2Service is injected into OAuth2TokenHandler).
+		It("rejects LocalClient agent at token endpoint with unauthorized_client (SR-002)", func() {
+			now := time.Now()
+			localAgent := &storage.Agent{
+				ID:           id.NewAgentID(),
+				DisplayName:  "Local Agent at Token Endpoint",
+				Description:  "agent with no ClientID — classified as LocalClient",
+				RedirectURIs: []string{"https://example.com/cb"},
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), localAgent)).To(Succeed())
+
+			formData := url.Values{
+				"grant_type": {"authorization_code"},
+				"client_id":  {localAgent.ID.String()},
+				"code":       {"fake-code"},
+			}
+			resp, err := server.PublicPOST(
+				"/oauth2/token",
+				"application/x-www-form-urlencoded",
+				strings.NewReader(formData.Encode()),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
+			Expect(resp).To(matchers.HaveOAuth2Error("unauthorized_client"))
+		})
 	})
 
 	// FR-007: local mode rejects ProxyClient agents (spec scenario US2.8)
@@ -150,6 +183,37 @@ var _ = Describe("SR-002: Mode Boundary Enforcement", func() {
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://example.com/cb&response_type=code&state=xyz", proxyAgent.ID.String()),
 				fixtures.DefaultPrincipal().String(),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
+			Expect(resp).To(matchers.HaveOAuth2Error("unauthorized_client"))
+		})
+
+		// Token endpoint mode boundary enforcement (SR-002).
+		It("rejects ProxyClient agent at token endpoint with unauthorized_client (SR-002)", func() {
+			now := time.Now()
+			proxyAgent := &storage.Agent{
+				ID:           id.NewAgentID(),
+				ClientID:     ptr.To(id.ClientID("upstream-client-token")),
+				DisplayName:  "Proxy Agent at Token Endpoint",
+				Description:  "agent with ClientID — classified as ProxyClient",
+				RedirectURIs: []string{"https://example.com/cb"},
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), proxyAgent)).To(Succeed())
+
+			formData := url.Values{
+				"grant_type": {"authorization_code"},
+				"client_id":  {proxyAgent.ID.String()},
+				"code":       {"fake-code"},
+			}
+			resp, err := server.PublicPOST(
+				"/oauth2/token",
+				"application/x-www-form-urlencoded",
+				strings.NewReader(formData.Encode()),
 			)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
