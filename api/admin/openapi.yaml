@@ -1872,16 +1872,21 @@ components:
           enum:
             - standard
             - google
+            - github
           default: standard
           description: |
             OAuth2 authentication variant for this service.
 
             - **standard**: Plain client secret string (default behavior, backward compatible)
             - **google**: Google service account JSON key; `client_id` is derived from the credential
+            - **github**: GitHub OAuth2 app; scopes in token responses are comma-separated
 
             For `google` flavor, the `client_secret` field contains a serialized Google service account
             JSON document. The `client_id` in responses is extracted automatically from the JSON's
             `client_id` field; it need not be provided in requests.
+
+            If omitted, the flavor is auto-detected as `github` when the token endpoint host
+            equals `github.com`; otherwise defaults to `standard`.
           example: standard
         issuer_uri:
           type: string
@@ -1949,21 +1954,24 @@ components:
           enum:
             - standard
             - google
+            - github
           default: standard
           description: |
             OAuth2 authentication variant. Defaults to `standard` if omitted.
+            Auto-detected as `github` when the token endpoint host equals `github.com`.
 
             - **standard**: `client_secret` must be a non-empty plain string; `client_id` is required
             - **google**: `client_secret` must be a valid Google service account JSON key (≤32 KB);
               `client_id` is derived from the JSON's `client_id` field and need not be provided;
               `issuer_uri` is optional; `endpoints` are derived from the service account JSON
+            - **github**: Same as `standard` but scopes in token responses are parsed as comma-separated
           example: standard
         client_id:
           type: string
           description: |
             OAuth2 client_id for this service.
 
-            Required when `oauth2_flavor` is `standard`.
+            Required when `oauth2_flavor` is `standard` or `github`.
             Optional when `oauth2_flavor` is `google` — automatically extracted from the service account JSON.
           example: Iv1.1234567890abcdef
           minLength: 1
@@ -1973,7 +1981,7 @@ components:
             Authentication credential for this service.
 
             The content depends on `oauth2_flavor`:
-            - **standard**: Non-empty OAuth2 client secret string
+            - **standard** / **github**: Non-empty OAuth2 client secret string
             - **google**: Serialized Google service account JSON key document. Must contain:
                 `type` (must be `"service_account"`), `private_key` (non-empty),
                 `client_email` (non-empty), `token_uri` (non-empty), `client_id` (non-empty).
@@ -2042,21 +2050,24 @@ components:
           enum:
             - standard
             - google
+            - github
           default: standard
           description: |
             OAuth2 authentication variant. Defaults to `standard` if omitted.
+            Auto-detected as `github` when the token endpoint host equals `github.com`.
 
             - **standard**: `client_secret` must be a non-empty plain string; `client_id` is required
             - **google**: `client_secret` must be a valid Google service account JSON key (≤32 KB);
               `client_id` is derived from the JSON's `client_id` field and need not be provided;
               `issuer_uri` is optional; `endpoints` are derived from the service account JSON
+            - **github**: Same as `standard` but scopes in token responses are parsed as comma-separated
           example: standard
         client_id:
           type: string
           description: |
             OAuth2 client_id for this service.
 
-            Required when `oauth2_flavor` is `standard`.
+            Required when `oauth2_flavor` is `standard` or `github`.
             Optional when `oauth2_flavor` is `google` — automatically extracted from the service account JSON.
           example: Iv1.1234567890abcdef
           minLength: 1
@@ -2066,7 +2077,7 @@ components:
             Authentication credential for this service (provide new value to rotate).
 
             The content depends on `oauth2_flavor`:
-            - **standard**: Non-empty OAuth2 client secret string
+            - **standard** / **github**: Non-empty OAuth2 client secret string
             - **google**: Serialized Google service account JSON key document (≤32 KB)
 
             **SECURITY**: Encrypted at rest, never returned in responses.

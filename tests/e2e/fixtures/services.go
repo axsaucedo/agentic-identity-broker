@@ -19,6 +19,7 @@ func GitHubService() *model.ThirdpartyOAuth2ProviderEntity {
 		DisplayName: "GitHub",
 		ClientID:    id.ClientID("github-client-id"),
 		Secret:      EncryptedSecret("a0000000-0000-0000-0000-000000000001", "github-client-secret"),
+		Flavor:      model.OAuth2FlavorGitHub,
 		IssuerURI:   "https://github.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: true,
@@ -158,5 +159,24 @@ func ValidGoogleServiceRequest() map[string]interface{} {
 		"discovery":           map[string]interface{}{"enable_discovery": false},
 		"scopes":              []map[string]interface{}{{"scope_value": "https://www.googleapis.com/auth/cloud-platform", "description": "Cloud Platform"}},
 		"protected_resources": []string{"https://test.googleapis.com"},
+	}
+}
+
+// ValidGitHubServiceRequest returns a complete ServiceRequest body for creating a
+// github-flavor service. Used in E2E tests for github flavor scenarios.
+func ValidGitHubServiceRequest() map[string]interface{} {
+	return map[string]interface{}{
+		"display_name":  "GitHub Test Service",
+		"oauth2_flavor": "github",
+		"client_id":     "Iv1.1234567890abcdef",
+		"client_secret": "ghp_secretkey1234567890abcdef",
+		"issuer_uri":    "https://github.com",
+		"discovery":     map[string]interface{}{"enable_discovery": false},
+		"endpoints": map[string]interface{}{
+			"token_endpoint":     "https://github.com/login/oauth/access_token",
+			"authorize_endpoint": "https://github.com/login/oauth/authorize",
+		},
+		"scopes":              []map[string]interface{}{{"scope_value": "repo", "description": "Repository access"}},
+		"protected_resources": []string{"https://api.github.com"},
 	}
 }

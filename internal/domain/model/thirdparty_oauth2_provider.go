@@ -120,8 +120,8 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForCreate(skipHTTPSValidation b
 	}
 
 	switch flavor {
-	case OAuth2FlavorStandard:
-		// Standard flavor: client_id required, credential non-empty, issuer_uri required+HTTPS.
+	case OAuth2FlavorStandard, OAuth2FlavorGitHub:
+		// Standard/GitHub flavor: client_id required, credential non-empty, issuer_uri required+HTTPS.
 		if e.ClientID == "" {
 			return errors.New("client_id is required")
 		}
@@ -205,8 +205,8 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForUpdate(skipHTTPSValidation b
 	}
 
 	switch flavor {
-	case OAuth2FlavorStandard:
-		// Standard flavor: client_id required, credential non-empty, issuer_uri required+HTTPS.
+	case OAuth2FlavorStandard, OAuth2FlavorGitHub:
+		// Standard/GitHub flavor: client_id required, credential non-empty, issuer_uri required+HTTPS.
 		if e.ClientID == "" {
 			return errors.New("client_id is required")
 		}
