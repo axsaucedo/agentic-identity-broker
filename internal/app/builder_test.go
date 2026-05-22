@@ -542,19 +542,20 @@ func TestModeStrategyFor_PanicsOnUnknownMode(t *testing.T) {
 	modeStrategyFor("bogus")
 }
 
-func TestResolveUpstreamTimeout(t *testing.T) {
+func TestProxyOAuth2ConfigUpstreamTimeout(t *testing.T) {
 	tests := []struct {
 		configured int
 		want       time.Duration
 	}{
-		{0, 30 * time.Second},  // local mode sentinel → application default
+		{0, 30 * time.Second},  // zero → application default
 		{5, 5 * time.Second},   // explicit proxy config
 		{60, 60 * time.Second}, // custom timeout
 	}
 	for _, tt := range tests {
-		got := resolveUpstreamTimeout(tt.configured)
+		cfg := &ports.ProxyOAuth2Config{UpstreamTimeoutSeconds: tt.configured}
+		got := cfg.UpstreamTimeout()
 		if got != tt.want {
-			t.Errorf("resolveUpstreamTimeout(%d) = %v, want %v", tt.configured, got, tt.want)
+			t.Errorf("UpstreamTimeout() with %d seconds = %v, want %v", tt.configured, got, tt.want)
 		}
 	}
 }

@@ -515,6 +515,59 @@ func (c *OAuth2AuthServerConfig) validateHybridMode() error {
 	return c.validateMultiAgentClient()
 }
 
+// Resolve validates the OAuth2AuthServerConfig and produces a concrete, mode-specific
+// OAuth2ModeConfig. The returned type is one of *ProxyOAuth2Config, *LocalOAuth2Config,
+// or *HybridOAuth2Config. Downstream code type-switches on the result — no scattered
+// mode checks needed.
+func (c *OAuth2AuthServerConfig) Resolve() (OAuth2ModeConfig, error) {
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+	switch c.Mode {
+	case servermode.Proxy:
+		return &ProxyOAuth2Config{
+			UpstreamIssuerURI:         c.Proxy.UpstreamIssuerURI,
+			UpstreamAuthorizeEndpoint: c.Proxy.UpstreamAuthorizeEndpoint,
+			UpstreamTokenEndpoint:     c.Proxy.UpstreamTokenEndpoint,
+			UpstreamTimeoutSeconds:    c.Proxy.UpstreamTimeoutSeconds,
+			SupportedResponseTypes:    c.SupportedResponseTypes,
+			SupportedGrantTypes:       c.SupportedGrantTypes,
+			MultiAgentClient:          c.MultiAgentClient,
+		}, nil
+	case servermode.Local:
+		return &LocalOAuth2Config{
+			IssuerURI:              c.Local.IssuerURI,
+			TokenTTL:               c.Local.TokenTTL,
+			TokenClaimsExpression:  c.Local.TokenClaimsExpression,
+			SupportedResponseTypes: c.SupportedResponseTypes,
+			SupportedGrantTypes:    c.SupportedGrantTypes,
+			CIMD:                   c.CIMD,
+		}, nil
+	case servermode.Hybrid:
+		return &HybridOAuth2Config{
+			Proxy: ProxyOAuth2Config{
+				UpstreamIssuerURI:         c.Proxy.UpstreamIssuerURI,
+				UpstreamAuthorizeEndpoint: c.Proxy.UpstreamAuthorizeEndpoint,
+				UpstreamTokenEndpoint:     c.Proxy.UpstreamTokenEndpoint,
+				UpstreamTimeoutSeconds:    c.Proxy.UpstreamTimeoutSeconds,
+				SupportedResponseTypes:    c.SupportedResponseTypes,
+				SupportedGrantTypes:       c.SupportedGrantTypes,
+				MultiAgentClient:          c.MultiAgentClient,
+			},
+			Local: LocalOAuth2Config{
+				IssuerURI:              c.Local.IssuerURI,
+				TokenTTL:               c.Local.TokenTTL,
+				TokenClaimsExpression:  c.Local.TokenClaimsExpression,
+				SupportedResponseTypes: c.SupportedResponseTypes,
+				SupportedGrantTypes:    c.SupportedGrantTypes,
+				CIMD:                   c.CIMD,
+			},
+		}, nil
+	default:
+		return nil, c.newValidationError("oauth2_authorization_server.mode must be 'proxy', 'local', or 'hybrid'")
+	}
+}
+
 // newValidationError creates a validation error for the given field.
 // This is a helper to create errors compatible with domain/config.ConfigError.
 func (c *OAuth2AuthServerConfig) newValidationError(field string) error {
