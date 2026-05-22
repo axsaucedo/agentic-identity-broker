@@ -202,6 +202,8 @@ func extractOAuthValues(cfg ports.OAuth2ModeConfig, publicURL string) oauthResol
 		r.localClaimsExpression = c.Local.TokenClaimsExpression
 		r.cimdConfig = c.Local.CIMD
 		r.cimdEnabled = c.Local.CIMD.Enabled
+	default:
+		panic(fmt.Sprintf("BUG: unhandled OAuth2ModeConfig type %T — update extractOAuthValues", cfg))
 	}
 	return r
 }
@@ -788,6 +790,8 @@ func (b *Builder) Build() (*App, error) {
 		)
 	case *ports.ProxyOAuth2Config:
 		grantHandler, proceedHandler = buildProxyStrategies(cfg.UpstreamTokenEndpoint)
+	default:
+		panic(fmt.Sprintf("BUG: unhandled OAuth2ModeConfig type %T — update strategy switch", oauthCfg))
 	}
 
 	oauth2MetadataHandler := &enduser.OAuth2MetadataHandler{
