@@ -286,8 +286,8 @@ func TestOpaqueClientResolver_CIMDAgent_URLRejectedBefore_Lookup(t *testing.T) {
 	}
 	require.NoError(t, repo.Create(context.Background(), agent))
 
-	// Attempting to access the CIMD agent via its UUID must be rejected by OpaqueClientResolver
-	// because URL-format client_ids are rejected before lookup (CIMD gate).
+	// Attempting to access the CIMD agent via its URL-form client_id must be rejected by
+	// OpaqueClientResolver before any lookup when CIMD is disabled (CIMD gate).
 	resolver := NewAgentClientResolver(repo, nil)
 	_, err := resolver.ResolveClient(context.Background(), id.ClientID("https://agent.example.com/.well-known/openid-configuration"))
 
