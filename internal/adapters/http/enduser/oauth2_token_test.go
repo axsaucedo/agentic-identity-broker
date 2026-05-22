@@ -386,6 +386,36 @@ func TestOAuth2TokenHandler_ServeHTTP_UpstreamError(t *testing.T) {
 	assert.Contains(t, string(respBody), "invalid_grant")
 }
 
+// TestProxyGrantStrategy_InfraErrorsReturnJSON verifies that infrastructure failures
+// in the proxy strategy return application/json per RFC 6749 §5.2.
+func TestProxyGrantStrategy_InfraErrorsReturnJSON(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	t.Run("unreachable upstream returns JSON server_error", func(t *testing.T) {
+		// Use an invalid URL that will fail to connect
+		strategy := NewProxyTokenGrantStrategy("http://127.0.0.1:1/token", nil, nil, nil)
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/oauth2/token", nil)
+
+		resolution := &ports.TokenGrantResolution{
+			AgentID:    agentID,
+			ClientID:   ptr.To(id.ClientID("upstream-client")),
+			ClientType: storage.ProxyClient,
+		}
+		strategy.HandleTokenGrant(w, req, "authorization_code", url.Values{
+			"grant_type": {"authorization_code"},
+			"client_id":  {agentID.String()},
+			"code":       {"abc"},
+		}, resolution)
+
+		assert.Equal(t, "application/json", w.Header().Get("Content-Type"),
+			"upstream contact failure must return application/json")
+		var body map[string]string
+		_ = json.NewDecoder(w.Body).Decode(&body)
+		assert.Equal(t, "server_error", body["error"])
+	})
+}
+
 // TestIsHopByHopHeader tests hop-by-hop header identification
 func TestIsHopByHopHeader(t *testing.T) {
 	tests := []struct {

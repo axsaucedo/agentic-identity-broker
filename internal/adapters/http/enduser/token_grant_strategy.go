@@ -71,7 +71,7 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 			s.logger.ErrorContext(ctx, "failed to create upstream token request",
 				"upstream_url", s.upstreamTokenURL, "error", err)
 		}
-		http.Error(w, "failed to create upstream request", http.StatusInternalServerError)
+		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "failed to create upstream request")
 		return
 	}
 
@@ -95,7 +95,7 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 			s.logger.ErrorContext(ctx, "upstream token request failed",
 				"upstream_url", s.upstreamTokenURL, "error", err)
 		}
-		http.Error(w, "failed to contact upstream server", http.StatusBadGateway)
+		writeOAuth2ErrorJSON(w, http.StatusBadGateway, "server_error", "failed to contact upstream server")
 		return
 	}
 	defer func() { _ = upstreamResp.Body.Close() }()
@@ -301,7 +301,7 @@ func (s *localGrantStrategy) writeTokenResponse(w http.ResponseWriter, resp *por
 		if s.logger != nil {
 			s.logger.Error("failed to encode token response", "error", err)
 		}
-		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "internal server error")
 		return
 	}
 
