@@ -351,8 +351,8 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		TokenClaimsExpression: `{"sub": claims.sub}`,
 	}
 	cimd := CIMDConfig{
-		Enabled:  true,
-		Cache:    CIMDCacheConfig{MinTTL: 30 * time.Second, MaxTTL: 2 * time.Hour},
+		Enabled: true,
+		Cache:   CIMDCacheConfig{MinTTL: 30 * time.Second, MaxTTL: 2 * time.Hour},
 	}
 	mac := MultiAgentClientConfig{
 		Enabled:          true,

@@ -89,12 +89,12 @@ type GetAgentDetailResponse struct {
 // AgentDetailData contains the unified agent detail response: display fields,
 // services with connection status, permission sets, and active session IDs.
 type AgentDetailData struct {
-	Agent               AgentMetadata                   `json:"agent"`
-	Services            []ServiceRequirementForUser     `json:"services"`
-	PermissionSets      []PermissionSetWithRequirement  `json:"permission_sets"`
-	ActiveSessionIDs    []string                        `json:"active_session_service_ids"`
-	ServiceRequirements []ServiceRequirementInfo        `json:"service_requirements"`
-	CIMDMetadata        *CIMDMetadataResponse           `json:"cimd_metadata,omitempty"`
+	Agent               AgentMetadata                  `json:"agent"`
+	Services            []ServiceRequirementForUser    `json:"services"`
+	PermissionSets      []PermissionSetWithRequirement `json:"permission_sets"`
+	ActiveSessionIDs    []string                       `json:"active_session_service_ids"`
+	ServiceRequirements []ServiceRequirementInfo       `json:"service_requirements"`
+	CIMDMetadata        *CIMDMetadataResponse          `json:"cimd_metadata,omitempty"`
 }
 
 // AgentMetadata is the agent metadata portion of the unified response.

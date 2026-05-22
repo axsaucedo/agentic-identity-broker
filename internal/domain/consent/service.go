@@ -104,9 +104,9 @@ type ResolvedPermissionSetEntry struct {
 // needed to render the consent screen: the agent, enriched service requirements with
 // connection status, resolved permission sets, and active session service IDs.
 type AgentConsentDetail struct {
-	Agent                  *storage.Agent
-	ServiceRequirements    []ServiceRequirementStatus
-	ResolvedPermissionSets []ResolvedPermissionSetEntry
+	Agent                   *storage.Agent
+	ServiceRequirements     []ServiceRequirementStatus
+	ResolvedPermissionSets  []ResolvedPermissionSetEntry
 	ActiveSessionServiceIDs []id.ServiceID
 }
 
