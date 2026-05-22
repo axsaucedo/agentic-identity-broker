@@ -96,7 +96,11 @@ func (r *AgentClientResolver) resolveOpaque(ctx context.Context, clientID id.Cli
 	// AmbiguousClient agents are always invalid.
 	switch agent.ClientType() {
 	case storage.CIMDClient:
-		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client requires CIMD support (disabled)"}
+		desc := "Client requires CIMD support (disabled)"
+		if r.cimdService != nil {
+			desc = "CIMD client must use URL-form client_id"
+		}
+		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: desc}
 	case storage.AmbiguousClient:
 		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
 	}

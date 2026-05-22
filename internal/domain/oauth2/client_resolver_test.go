@@ -298,6 +298,33 @@ func TestOpaqueClientResolver_CIMDAgent_URLRejectedBefore_Lookup(t *testing.T) {
 	assert.Contains(t, clientErr.Desc, "CIMD")
 }
 
+// TestOpaqueClientResolver_CIMDAgent_UUIDRejectedWithCIMDEnabled verifies that when CIMD
+// is enabled, addressing a CIMDClient agent by UUID returns a message that tells the client
+// to use URL-form client_id (not falsely claiming CIMD is disabled).
+func TestOpaqueClientResolver_CIMDAgent_UUIDRejectedWithCIMDEnabled(t *testing.T) {
+	repo := NewMockAgentRepository()
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000020")
+	agent := &storage.Agent{
+		ID:          agentID,
+		ClientURIs:  []string{"https://agent.example.com/.well-known/openid-configuration"},
+		DisplayName: "CIMD Agent",
+	}
+	require.NoError(t, repo.Create(context.Background(), agent))
+
+	// CIMD is enabled — use NewAgentClientResolverWithCIMD.
+	svc := cimdServiceForTest(t, nil, nil)
+	resolver := NewAgentClientResolverWithCIMD(repo, svc, slog.Default())
+
+	_, err := resolver.ResolveClient(context.Background(), id.ClientID(agentID.String()))
+
+	require.Error(t, err)
+	var clientErr *ports.ClientIDError
+	require.True(t, errors.As(err, &clientErr))
+	assert.Equal(t, "invalid_client", clientErr.Code)
+	assert.Equal(t, "CIMD client must use URL-form client_id", clientErr.Desc,
+		"error should not say CIMD is disabled when CIMD is enabled")
+}
+
 // TestOpaqueClientResolver_CIMDAgent_UUIDRejected verifies that a CIMD agent cannot be
 // addressed by its bare entity UUID when CIMD is disabled.
 func TestOpaqueClientResolver_CIMDAgent_UUIDRejected(t *testing.T) {
