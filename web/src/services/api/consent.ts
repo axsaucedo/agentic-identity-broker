@@ -136,7 +136,7 @@ export class ConsentApiService {
 
     const rawServices = responseData.services ?? [];
     const services: ThirdpartyService[] = rawServices.map((s) => {
-      const obj = (s as unknown) as Record<string, unknown>;
+      const obj = s as unknown as Record<string, unknown>;
       return 'requirementType' in obj && obj.requirementType
         ? ({ ...obj, kind: 'requirement' } as ServiceRequirement)
         : ({ ...obj, kind: 'scoped' } as ServiceWithScopes);

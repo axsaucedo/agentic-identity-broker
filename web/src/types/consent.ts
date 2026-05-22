@@ -245,7 +245,10 @@ export interface GetAgentDetailResponse {
     services?: ThirdpartyService[];
     permission_sets?: ResolvedPermissionSetEntry[];
     active_session_service_ids?: string[];
-    service_requirements?: Array<{ service_id: string; requirement_type: 'mandatory' | 'optional' }>;
+    service_requirements?: Array<{
+      service_id: string;
+      requirement_type: 'mandatory' | 'optional';
+    }>;
     cimd_metadata?: CIMDMetadata | null;
   };
 }
