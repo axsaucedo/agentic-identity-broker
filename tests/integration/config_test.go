@@ -283,7 +283,7 @@ func TestConfigurationFromExamples(t *testing.T) {
 			// Set config path in environment
 			t.Setenv("IDENTITY_BROKER_CONFIG_PATH", configPath)
 
-			// Set mandatory JWESigningKey and encryption key
+			// Set mandatory JWESigningKey
 			t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", testJWESigningKey)
 
 			// Set encryption backend environment variables based on config type

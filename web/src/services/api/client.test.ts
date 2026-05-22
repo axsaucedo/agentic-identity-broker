@@ -1,66 +1,24 @@
-import { AxiosHeaders, type InternalAxiosRequestConfig } from 'axios';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { apiClient } from './client';
+import { describe, expect, it } from 'vitest';
+import { apiClient, isApiError } from './client';
 
-describe('apiClient CSRF request interceptor', () => {
-  let cookieValue = '';
-  let originalCookieDescriptor: PropertyDescriptor | undefined;
-
-  beforeEach(() => {
-    cookieValue = '';
-    originalCookieDescriptor = Object.getOwnPropertyDescriptor(document, 'cookie');
-
-    Object.defineProperty(document, 'cookie', {
-      configurable: true,
-      get: () => cookieValue,
-      set: (value: string) => {
-        cookieValue = value;
-      },
-    });
+describe('apiClient', () => {
+  it('should be configured with /api base URL', () => {
+    expect(apiClient.defaults.baseURL).toBe('/api');
   });
 
-  afterEach(() => {
-    if (originalCookieDescriptor) {
-      Object.defineProperty(document, 'cookie', originalCookieDescriptor);
-      return;
-    }
+  it('should have 30s timeout', () => {
+    expect(apiClient.defaults.timeout).toBe(30000);
+  });
+});
 
-    delete (document as Document & { cookie?: string }).cookie;
+describe('isApiError', () => {
+  it('returns true for valid ApiError objects', () => {
+    expect(isApiError({ status: 404, code: 'NOT_FOUND', message: 'not found' })).toBe(true);
   });
 
-  async function runRequestInterceptor(method: string) {
-    const interceptor = apiClient.interceptors.request.handlers?.[0];
-
-    if (!interceptor) {
-      throw new Error('Expected request interceptor to be registered');
-    }
-
-    return interceptor.fulfilled({
-      headers: new AxiosHeaders(),
-      method,
-      url: '/consent/agent/agent-1/grant',
-    } as InternalAxiosRequestConfig);
-  }
-
-  it.each(['POST', 'PUT', 'PATCH', 'DELETE'])(
-    'sets X-CSRF-Token header for %s requests',
-    async (method) => {
-      document.cookie = 'csrf_token=token%20value';
-
-      const config = await runRequestInterceptor(method);
-
-      expect(config.headers.get('X-CSRF-Token')).toBe('token value');
-    },
-  );
-
-  it.each(['GET', 'HEAD', 'OPTIONS'])(
-    'does not set X-CSRF-Token header for %s requests',
-    async (method) => {
-      document.cookie = 'csrf_token=token%20value';
-
-      const config = await runRequestInterceptor(method);
-
-      expect(config.headers.has('X-CSRF-Token')).toBe(false);
-    },
-  );
+  it('returns false for non-ApiError values', () => {
+    expect(isApiError(null)).toBe(false);
+    expect(isApiError('string')).toBe(false);
+    expect(isApiError({ status: 404 })).toBe(false);
+  });
 });

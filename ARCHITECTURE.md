@@ -275,7 +275,7 @@ App
 
 **Security Considerations**:
 - **XSS Prevention**: React escapes all user input by default
-- **CSRF Protection**: Token-based CSRF protection for mutating requests
+- **CSRF Protection**: Go 1.25 `http.CrossOriginProtection` rejects cross-origin mutating requests via `Sec-Fetch-Site` / `Origin` header validation (zero config, no cookies or tokens)
 - **Content Security Policy**: (Future) CSP headers from Go backend
 - **Dependency Scanning**: Regular npm audit for vulnerabilities
 - **TypeScript**: Compile-time type checking prevents runtime errors
