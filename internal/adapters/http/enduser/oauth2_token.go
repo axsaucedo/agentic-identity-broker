@@ -31,14 +31,14 @@ type OAuth2TokenHandler struct {
 // ServeHTTP implements http.Handler for the token endpoint.
 func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeOAuth2ErrorJSON(w, http.StatusMethodNotAllowed, "invalid_request", "method not allowed")
 		return
 	}
 
 	// OAuth 2.0 token endpoint must accept application/x-www-form-urlencoded per RFC 6749 Section 4.1.3
 	contentType := r.Header.Get("Content-Type")
 	if !strings.HasPrefix(contentType, "application/x-www-form-urlencoded") {
-		http.Error(w, "invalid Content-Type: expected application/x-www-form-urlencoded", http.StatusBadRequest)
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "invalid Content-Type: expected application/x-www-form-urlencoded")
 		return
 	}
 
@@ -46,18 +46,18 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to read request body: %v", err), http.StatusBadRequest)
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "failed to read request body")
 		return
 	}
 
 	if len(body) == 0 {
-		http.Error(w, "request body cannot be empty", http.StatusBadRequest)
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "request body cannot be empty")
 		return
 	}
 
 	formData, err := url.ParseQuery(string(body))
 	if err != nil {
-		http.Error(w, "failed to parse form data", http.StatusBadRequest)
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "failed to parse form data")
 		return
 	}
 

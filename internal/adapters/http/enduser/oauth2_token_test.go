@@ -200,6 +200,80 @@ func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 	}
 }
 
+// TestOAuth2TokenHandler_PreFlightErrorsReturnJSON verifies that all pre-flight error
+// paths return application/json with a valid RFC 6749 error body, not text/plain.
+func TestOAuth2TokenHandler_PreFlightErrorsReturnJSON(t *testing.T) {
+	handler := &OAuth2TokenHandler{
+		GrantHandler:  NewLocalGrantStrategy(fixedMinting(nil, nil), nil),
+		OAuth2Service: newLocalModeOAuth2Service(),
+	}
+
+	tests := []struct {
+		name       string
+		method     string
+		ct         string
+		body       io.Reader
+		wantStatus int
+		wantError  string
+	}{
+		{
+			name:       "wrong HTTP method returns JSON error",
+			method:     "GET",
+			ct:         "application/x-www-form-urlencoded",
+			body:       strings.NewReader("grant_type=client_credentials"),
+			wantStatus: http.StatusMethodNotAllowed,
+			wantError:  "invalid_request",
+		},
+		{
+			name:       "wrong Content-Type returns JSON error",
+			method:     "POST",
+			ct:         "application/json",
+			body:       strings.NewReader(`{"grant_type":"client_credentials"}`),
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_request",
+		},
+		{
+			name:       "empty body returns JSON error",
+			method:     "POST",
+			ct:         "application/x-www-form-urlencoded",
+			body:       strings.NewReader(""),
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_request",
+		},
+		{
+			name:       "body read failure returns JSON error",
+			method:     "POST",
+			ct:         "application/x-www-form-urlencoded",
+			body:       &failingReadCloser{err: errors.New("disk failure")},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_request",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, "/oauth2/token", tt.body)
+			req.Header.Set("Content-Type", tt.ct)
+			if fr, ok := tt.body.(*failingReadCloser); ok {
+				req.Body = fr
+			}
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			assert.Equal(t, "application/json", w.Header().Get("Content-Type"),
+				"token endpoint must return application/json for errors per RFC 6749 §5.2")
+
+			var body map[string]string
+			err := json.NewDecoder(w.Body).Decode(&body)
+			assert.NoError(t, err, "response body must be valid JSON")
+			assert.Equal(t, tt.wantError, body["error"])
+			assert.NotEmpty(t, body["error_description"])
+		})
+	}
+}
+
 // TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering tests hop-by-hop header filtering
 func TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering(t *testing.T) {
 	agentID := id.NewAgentID()
