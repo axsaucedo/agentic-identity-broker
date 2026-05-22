@@ -88,7 +88,7 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.OAuth2Service == nil || h.GrantHandler == nil {
-		writeOAuth2ErrorJSON(w, http.StatusServiceUnavailable, "server_error", "OAuth2 authorization server not configured")
+		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "OAuth2 authorization server not configured")
 		return
 	}
 

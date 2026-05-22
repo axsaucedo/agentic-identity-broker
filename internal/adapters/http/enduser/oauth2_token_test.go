@@ -1061,6 +1061,28 @@ func TestOAuth2TokenHandler_UnauthorizedClient_Returns400(t *testing.T) {
 	assert.Equal(t, "unauthorized_client", body["error"])
 }
 
+// TestOAuth2TokenHandler_NilOAuth2Service_Returns500 verifies that when OAuth2Service
+// is nil (misconfigured deployment), the token endpoint returns 500 (server_error) and
+// NOT 503 (ServiceUnavailable). RFC 6749 §5.2 constrains the token endpoint to
+// 400 / 401 / 500 status codes.
+func TestOAuth2TokenHandler_NilOAuth2Service_Returns500(t *testing.T) {
+	handler := &OAuth2TokenHandler{
+		GrantHandler:  NewLocalGrantStrategy(fixedMinting(nil, nil), nil),
+		OAuth2Service: nil,
+	}
+	form := "grant_type=client_credentials&client_id=" + id.NewAgentID().String()
+	req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code, "nil OAuth2Service must yield 500, not 503")
+	var body map[string]string
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "server_error", body["error"])
+}
+
 // TestOAuth2TokenHandler_MissingGrantType verifies that an absent grant_type returns
 // 400 invalid_request without performing client resolution (RFC 6749 §5.2).
 func TestOAuth2TokenHandler_MissingGrantType(t *testing.T) {
