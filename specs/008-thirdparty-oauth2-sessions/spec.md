@@ -94,6 +94,22 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 
 ---
 
+### User Story 5 - Preserve Consent Selections Across Third-Party OAuth2 Redirects (Priority: P2)
+
+The consent page encodes active permission set selections into the `redirect_uri` before initiating a third-party OAuth2 login, so that selections survive the redirect round-trip and are restored when the user returns.
+
+**Why this priority**: Without this, any third-party OAuth2 login from the consent page discards the user's optional permission set toggle state, requiring the user to re-select their choices after every service login.
+
+**Independent Test**: User toggles optional permission sets on the consent page, clicks Login for a service, and after the OAuth2 redirect round-trip the consent page re-renders with the same permission set selections active.
+
+**Acceptance Scenarios**:
+
+1. **Given** the user has active permission set selections on the consent page, **When** the user initiates a third-party OAuth2 login for a service, **Then** the consent page encodes the current selections as `consent_state` (base64url JSON) in the `redirect_uri` so they survive the OAuth2 redirect round-trip.
+2. **Given** the OAuth2 callback redirects back to the consent page with a `consent_state` URL parameter, **When** the consent page renders, **Then** the page restores the permission set selection state from `consent_state`, re-selecting optional permission sets that were active before the redirect.
+3. **Given** a user completes a full OAuth2 redirect round-trip (consent → third-party OAuth2 → callback → consent), **When** the consent page re-renders after the callback, **Then** permission set selections from before the redirect are fully restored and the corresponding service connections remain visible.
+
+---
+
 ### Edge Cases
 
 - **Multiple simultaneous OAuth2 flows for same service**: Database unique constraint on (principal, service_id) ensures first successful callback wins. Subsequent callbacks detect existing session and skip token storage, preventing race conditions and token corruption.

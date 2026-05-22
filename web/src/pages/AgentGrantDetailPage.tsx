@@ -47,6 +47,30 @@ export function AgentGrantDetailPage() {
   const searchParams = new URLSearchParams(location.search);
   const sessionToken = searchParams.get('session_token') || undefined;
 
+  // Restore consent state from URL (survives third-party OAuth2 redirects).
+  // Currently contains permission set selections, encoded as base64url JSON in `consent_state`.
+  const restoredSelections = useMemo((): Record<string, string[]> | undefined => {
+    const params = new URLSearchParams(location.search);
+    const encoded = params.get('consent_state');
+    if (!encoded) return undefined;
+    try {
+      const padded = encoded + '='.repeat((4 - (encoded.length % 4)) % 4);
+      const json = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
+      const parsed = JSON.parse(json);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+      const result: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (Array.isArray(v) && v.every((s) => typeof s === 'string')) {
+          result[k] = v;
+        }
+      }
+      return Object.keys(result).length > 0 ? result : undefined;
+    } catch {
+      // Silently ignore malformed selections
+    }
+    return undefined;
+  }, [location.search]);
+
   const resolvedAgentId = agentId ?? '';
 
   // Memoize options to keep a stable object reference across renders.
@@ -196,11 +220,24 @@ export function AgentGrantDetailPage() {
   };
 
   // Handle service login (FR-020a: redirect to third-party OAuth2 flow)
-  // Extract redirect logic to separate function for testability
-  const buildServiceLoginUrl = useCallback((serviceId: string): string => {
-    const currentUrl = window.location.href;
-    return `/api/third-party/${serviceId}/oauth2/authorize?redirect_uri=${encodeURIComponent(currentUrl)}`;
-  }, []);
+  // Extract redirect logic to separate function for testability.
+  // Encodes current permission set selections into the redirect URL so they survive the round-trip.
+  const buildServiceLoginUrl = useCallback(
+    (serviceId: string): string => {
+      const currentUrl = new URL(window.location.href);
+      // Always encode current selections as base64url JSON to preserve state across redirect.
+      // Explicitly delete stale consent_state when no services are selected.
+      if (Object.keys(perPsIncludedServiceIds).length > 0) {
+        const json = JSON.stringify(perPsIncludedServiceIds);
+        const encoded = btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        currentUrl.searchParams.set('consent_state', encoded);
+      } else {
+        currentUrl.searchParams.delete('consent_state');
+      }
+      return `/api/third-party/${serviceId}/oauth2/authorize?redirect_uri=${encodeURIComponent(currentUrl.toString())}`;
+    },
+    [perPsIncludedServiceIds],
+  );
 
   const handleServiceLogin = useCallback(
     (serviceId: string) => {
@@ -591,7 +628,7 @@ export function AgentGrantDetailPage() {
               permissionSets={agent.permission_sets}
               availableServices={agent.available_services}
               serviceRequirements={agent.service_requirements}
-              initialGrantedPermissionSets={grants?.granted_permission_sets ?? {}}
+              initialGrantedPermissionSets={restoredSelections ?? grants?.granted_permission_sets ?? {}}
               onSelectionChange={(_optionalIds, perPsIncluded) => {
                 setPerPsIncludedServiceIds(perPsIncluded);
               }}
