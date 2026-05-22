@@ -410,6 +410,75 @@ var _ = Describe("US2: Hybrid Mode — Local Agent Full Authorization Code Journ
 		Expect(tokenBody).To(HaveKey("access_token"))
 		Expect(tokenBody["token_type"]).To(Equal("Bearer"))
 	})
+
+	// PKCE enforcement: omitting code_verifier when code_challenge was set must fail.
+	It("rejects token exchange without code_verifier when code_challenge was set (PKCE enforcement)", func() {
+		principal := fixtures.DefaultPrincipal().String()
+		verifier := helpers.PKCEVerifier()
+		challenge := helpers.GenerateCodeChallenge(verifier)
+		authorizeURL := "/oauth2/authorize?" + url.Values{
+			"client_id":             {agent.ID.String()},
+			"redirect_uri":          {localAgentRedirectURI},
+			"response_type":         {"code"},
+			"state":                 {"pkce-enforce"},
+			"code_challenge":        {challenge},
+			"code_challenge_method": {"S256"},
+		}.Encode()
+
+		// Step 1: Authorize — get consent redirect.
+		authResp, err := enduserServer.AuthenticatedGET(authorizeURL, principal)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = authResp.Body.Close() }()
+		Expect(authResp.StatusCode).To(Equal(http.StatusFound))
+		consentLoc, err := url.Parse(authResp.Header.Get("Location"))
+		Expect(err).ToNot(HaveOccurred())
+		sessionToken := consentLoc.Query().Get("session_token")
+		Expect(sessionToken).ToNot(BeEmpty())
+
+		// Step 2: Submit grant.
+		grantBodyBytes, _ := json.Marshal(map[string]any{"granted_permission_sets": map[string]any{}})
+		grantResp, err := enduserServer.AuthenticatedPOST(
+			fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", agent.ID, url.QueryEscape(sessionToken)),
+			principal, "application/json", bytes.NewReader(grantBodyBytes),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = grantResp.Body.Close() }()
+		Expect(grantResp.StatusCode).To(Equal(http.StatusCreated))
+		var grantRespBody map[string]any
+		Expect(json.NewDecoder(grantResp.Body).Decode(&grantRespBody)).To(Succeed())
+		reAuthorizeURL, _ := grantRespBody["redirect_url"].(string)
+		Expect(reAuthorizeURL).ToNot(BeEmpty())
+
+		// Step 3: Re-authorize — obtain authorization code.
+		codeResp, err := enduserServer.AuthenticatedGET(reAuthorizeURL, principal)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = codeResp.Body.Close() }()
+		Expect(codeResp.StatusCode).To(Equal(http.StatusFound))
+		parsedCodeLoc, _ := url.Parse(codeResp.Header.Get("Location"))
+		code := parsedCodeLoc.Query().Get("code")
+		Expect(code).ToNot(BeEmpty())
+
+		// Step 4: Exchange code WITHOUT code_verifier — must be rejected.
+		tokenResp, err := http.Post(
+			enduserServer.BaseURL()+"/oauth2/token",
+			"application/x-www-form-urlencoded",
+			strings.NewReader(url.Values{
+				"grant_type":    {"authorization_code"},
+				"client_id":     {agent.ID.String()},
+				"client_secret": {clientSecret},
+				"code":          {code},
+				"redirect_uri":  {localAgentRedirectURI},
+				// code_verifier intentionally omitted
+			}.Encode()),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = tokenResp.Body.Close() }()
+
+		Expect(tokenResp.StatusCode).To(Equal(http.StatusBadRequest))
+		var tokenBody map[string]string
+		Expect(json.NewDecoder(tokenResp.Body).Decode(&tokenBody)).ToNot(HaveOccurred())
+		Expect(tokenBody["error"]).To(Equal("invalid_grant"))
+	})
 })
 
 var _ = Describe("US2: Hybrid Mode — Proxy Agent Full Authorization Code Journey", func() {
