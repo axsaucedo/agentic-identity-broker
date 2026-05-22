@@ -3,9 +3,11 @@ package enduser
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -186,7 +188,7 @@ func TestHybridProceedStrategy_DispatchesByClientType(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			proxyMock := &captureProceedStrategy{}
 			localMock := &captureProceedStrategy{}
-			strategy := NewHybridProceedStrategy(proxyMock, localMock)
+			strategy := NewHybridProceedStrategy(proxyMock, localMock, nil)
 
 			decision := ports.ProceedDecision("", tc.clientType)
 			strategy.HandleProceed(httptest.NewRecorder(), newProceedRequest(t), decision, &ports.AuthorizationRequest{}, id.NewPrincipal("u@example.com"))
@@ -205,7 +207,7 @@ func TestHybridProceedStrategy_RejectsAmbiguousClientType(t *testing.T) {
 		t.Run(fmt.Sprintf("mode_%d", mode), func(t *testing.T) {
 			proxyMock := &captureProceedStrategy{}
 			localMock := &captureProceedStrategy{}
-			strategy := NewHybridProceedStrategy(proxyMock, localMock)
+			strategy := NewHybridProceedStrategy(proxyMock, localMock, nil)
 
 			w := httptest.NewRecorder()
 			decision := ports.ProceedDecision("", mode)
@@ -216,4 +218,21 @@ func TestHybridProceedStrategy_RejectsAmbiguousClientType(t *testing.T) {
 			assert.False(t, localMock.called, "local strategy must not be called")
 		})
 	}
+}
+
+// TestHybridProceedStrategy_DefaultBranchLogsError verifies that reaching the default
+// (unknown/ambiguous client type) branch emits an Error-level log with the client_type.
+func TestHybridProceedStrategy_DefaultBranchLogsError(t *testing.T) {
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+
+	decision := ports.ProceedDecision("", storage.AmbiguousClient)
+
+	strategy := NewHybridProceedStrategy(&captureProceedStrategy{}, &captureProceedStrategy{}, logger)
+	w := httptest.NewRecorder()
+	strategy.HandleProceed(w, newProceedRequest(t), decision, &ports.AuthorizationRequest{}, id.NewPrincipal("u@example.com"))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	logLine := buf.String()
+	assert.Contains(t, logLine, "ERROR")
 }

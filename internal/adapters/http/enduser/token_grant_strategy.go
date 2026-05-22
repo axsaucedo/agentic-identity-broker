@@ -315,13 +315,14 @@ func (s *localGrantStrategy) writeTokenResponse(w http.ResponseWriter, resp *por
 // hybridTokenGrantStrategy dispatches token grants to proxy or local based on the agent's ClientType.
 // The agent is pre-resolved by the domain layer — this strategy only routes.
 type hybridTokenGrantStrategy struct {
-	proxy TokenGrantStrategy
-	local TokenGrantStrategy
+	proxy  TokenGrantStrategy
+	local  TokenGrantStrategy
+	logger *slog.Logger
 }
 
 // NewHybridTokenGrantStrategy returns a TokenGrantStrategy that dispatches based on client mode.
-func NewHybridTokenGrantStrategy(proxy, local TokenGrantStrategy) TokenGrantStrategy {
-	return &hybridTokenGrantStrategy{proxy: proxy, local: local}
+func NewHybridTokenGrantStrategy(proxy, local TokenGrantStrategy, logger *slog.Logger) TokenGrantStrategy {
+	return &hybridTokenGrantStrategy{proxy: proxy, local: local, logger: logger}
 }
 
 func (s *hybridTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values, resolution *ports.TokenGrantResolution) {
@@ -331,6 +332,11 @@ func (s *hybridTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *ht
 	case storage.CIMDClient, storage.LocalClient:
 		s.local.HandleTokenGrant(w, r, grantType, formData, resolution)
 	default:
+		if s.logger != nil {
+			s.logger.ErrorContext(r.Context(), "unexpected client type in hybrid token grant dispatch",
+				"client_type", resolution.ClientType,
+				"agent_id", resolution.AgentID)
+		}
 		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "unexpected client mode in hybrid dispatch")
 	}
 }

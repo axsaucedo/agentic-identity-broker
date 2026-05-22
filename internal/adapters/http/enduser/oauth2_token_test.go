@@ -946,6 +946,7 @@ func TestHybridTokenGrant_EmptyClientIDReturns400(t *testing.T) {
 	strategy := NewHybridTokenGrantStrategy(
 		&mockTokenGrantStrategy{},
 		&mockTokenGrantStrategy{},
+		nil,
 	)
 	handler := &OAuth2TokenHandler{GrantHandler: strategy}
 
@@ -996,7 +997,7 @@ func TestHybridTokenGrantStrategy_DispatchByClientType(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			proxyMock := &mockTokenGrantStrategy{}
 			localMock := &mockTokenGrantStrategy{}
-			strategy := NewHybridTokenGrantStrategy(proxyMock, localMock)
+			strategy := NewHybridTokenGrantStrategy(proxyMock, localMock, nil)
 
 			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=client_credentials"))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1101,4 +1102,29 @@ func TestOAuth2TokenHandler_MissingGrantType(t *testing.T) {
 	var body map[string]string
 	_ = json.NewDecoder(w.Body).Decode(&body)
 	assert.Equal(t, "invalid_request", body["error"])
+}
+
+// TestHybridTokenGrantStrategy_DefaultBranchLogsError verifies that reaching the default
+// (unknown/ambiguous client type) branch emits an Error-level log with agent_id.
+func TestHybridTokenGrantStrategy_DefaultBranchLogsError(t *testing.T) {
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000077")
+
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	strategy := NewHybridTokenGrantStrategy(&mockTokenGrantStrategy{}, &mockTokenGrantStrategy{}, logger)
+
+	req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=client_credentials"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	resolution := &ports.TokenGrantResolution{
+		AgentID:    agentID,
+		ClientType: storage.AmbiguousClient,
+	}
+	strategy.HandleTokenGrant(w, req, "client_credentials", url.Values{}, resolution)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	logLine := buf.String()
+	assert.Contains(t, logLine, "ERROR")
+	assert.Contains(t, logLine, agentID.String())
 }

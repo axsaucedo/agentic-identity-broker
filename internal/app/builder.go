@@ -780,8 +780,8 @@ func (b *Builder) Build() (*App, error) {
 		localGrant := enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
 		localProceed := enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
 
-		grantHandler = enduser.NewHybridTokenGrantStrategy(proxyGrant, localGrant)
-		proceedHandler = enduser.NewHybridProceedStrategy(proxyProceed, localProceed)
+		grantHandler = enduser.NewHybridTokenGrantStrategy(proxyGrant, localGrant, b.logger)
+		proceedHandler = enduser.NewHybridProceedStrategy(proxyProceed, localProceed, b.logger)
 		b.logger.Info("OAuth2 server mode: hybrid — proxy and local token minting enabled",
 			"issuer_uri", localIssuerURI,
 			"token_ttl", cfg.Local.TokenTTL,

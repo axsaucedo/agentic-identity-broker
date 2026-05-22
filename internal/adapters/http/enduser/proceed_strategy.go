@@ -112,13 +112,14 @@ func writeDirectOAuth2Error(w http.ResponseWriter, err error) {
 
 // hybridProceedStrategy dispatches to proxy or local based on the resolved ClientType.
 type hybridProceedStrategy struct {
-	proxy AuthorizationProceedStrategy
-	local AuthorizationProceedStrategy
+	proxy  AuthorizationProceedStrategy
+	local  AuthorizationProceedStrategy
+	logger *slog.Logger
 }
 
 // NewHybridProceedStrategy returns a ProceedStrategy that dispatches by client mode.
-func NewHybridProceedStrategy(proxy, local AuthorizationProceedStrategy) AuthorizationProceedStrategy {
-	return &hybridProceedStrategy{proxy: proxy, local: local}
+func NewHybridProceedStrategy(proxy, local AuthorizationProceedStrategy, logger *slog.Logger) AuthorizationProceedStrategy {
+	return &hybridProceedStrategy{proxy: proxy, local: local, logger: logger}
 }
 
 func (s *hybridProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Request, decision *ports.AuthorizationDecision, req *ports.AuthorizationRequest, principal id.Principal) {
@@ -128,6 +129,10 @@ func (s *hybridProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Req
 	case storage.CIMDClient, storage.LocalClient:
 		s.local.HandleProceed(w, r, decision, req, principal)
 	default:
+		if s.logger != nil {
+			s.logger.ErrorContext(r.Context(), "unexpected client type in hybrid proceed dispatch",
+				"client_type", decision.ClientType)
+		}
 		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "unexpected client mode in hybrid dispatch")
 	}
 }
