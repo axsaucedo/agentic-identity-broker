@@ -219,34 +219,42 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 
 // handleTokenExchangeError maps domain-layer token exchange errors to RFC 8693 error responses.
 func (h *OAuth2TokenHandler) handleTokenExchangeError(w http.ResponseWriter, err error) {
-	w.Header().Set("Content-Type", "application/json")
+	var (
+		status  int
+		errBody map[string]string
+	)
 
 	if tokenExchangeErr, ok := err.(*tokenexchange.TokenExchangeError); ok {
-		w.WriteHeader(tokenExchangeErr.HTTPStatus())
-		errBody := map[string]string{
+		status = tokenExchangeErr.HTTPStatus()
+		errBody = map[string]string{
 			"error":             tokenExchangeErr.Code(),
 			"error_description": tokenExchangeErr.Description(),
 		}
 		if tokenExchangeErr.ErrorURI() != "" {
 			errBody["error_uri"] = tokenExchangeErr.ErrorURI()
 		}
-		if err := json.NewEncoder(w).Encode(errBody); err != nil {
-			if h.Logger != nil {
-				h.Logger.Error("failed to encode token exchange error response", "error", err)
-			}
+	} else {
+		status = http.StatusInternalServerError
+		errBody = map[string]string{
+			"error":             "server_error",
+			"error_description": "internal server error during token exchange",
 		}
+	}
+
+	body, marshalErr := json.Marshal(errBody)
+	if marshalErr != nil {
+		if h.Logger != nil {
+			h.Logger.Error("failed to marshal token exchange error response", "error", marshalErr)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"server_error"}`))
 		return
 	}
 
-	w.WriteHeader(http.StatusInternalServerError)
-	if err := json.NewEncoder(w).Encode(map[string]string{
-		"error":             "server_error",
-		"error_description": "internal server error during token exchange",
-	}); err != nil {
-		if h.Logger != nil {
-			h.Logger.Error("failed to encode generic error response", "error", err)
-		}
-	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
 }
 
 // tokenEndpointStatus maps an OAuth2 error code to the appropriate HTTP status for the token endpoint.
