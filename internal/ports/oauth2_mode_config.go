@@ -1,6 +1,7 @@
 package ports
 
 import (
+	"slices"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
@@ -67,5 +68,29 @@ type HybridOAuth2Config struct {
 
 func (*HybridOAuth2Config) oauth2ModeConfig()           {}
 func (*HybridOAuth2Config) ServerMode() servermode.Mode { return servermode.Hybrid }
-func (c *HybridOAuth2Config) ResponseTypes() []string   { return c.Proxy.SupportedResponseTypes }
-func (c *HybridOAuth2Config) GrantTypes() []string      { return c.Proxy.SupportedGrantTypes }
+
+// ResponseTypes returns the deduplicated union of proxy and local supported response types.
+// Both sides are currently populated with the same values by Resolve(), but returning
+// the union makes the method correct if they ever diverge.
+func (c *HybridOAuth2Config) ResponseTypes() []string {
+	return unionStrings(c.Proxy.SupportedResponseTypes, c.Local.SupportedResponseTypes)
+}
+
+// GrantTypes returns the deduplicated union of proxy and local supported grant types.
+// Both sides are currently populated with the same values by Resolve(), but returning
+// the union makes the method correct if they ever diverge.
+func (c *HybridOAuth2Config) GrantTypes() []string {
+	return unionStrings(c.Proxy.SupportedGrantTypes, c.Local.SupportedGrantTypes)
+}
+
+// unionStrings returns a new slice containing each element of a and b exactly once,
+// preserving order (a first, then new elements from b).
+func unionStrings(a, b []string) []string {
+	result := slices.Clone(a)
+	for _, v := range b {
+		if !slices.Contains(result, v) {
+			result = append(result, v)
+		}
+	}
+	return result
+}
