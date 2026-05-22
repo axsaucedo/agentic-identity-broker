@@ -334,3 +334,138 @@ func TestOAuth2AuthServerConfig_Validate_CIMDGating(t *testing.T) {
 		assert.NoError(t, err)
 	})
 }
+
+// TestOAuth2AuthServerConfig_Resolve verifies that Resolve() propagates all config
+// fields into the correct mode-specific struct for all three modes. Non-default values
+// are used throughout to catch zero-value masking bugs.
+func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
+	proxyFields := ProxyModeConfig{
+		UpstreamIssuerURI:         "https://issuer.example.com",
+		UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
+		UpstreamTokenEndpoint:     "https://issuer.example.com/token",
+		UpstreamTimeoutSeconds:    45,
+	}
+	localFields := LocalModeConfig{
+		IssuerURI:             "https://auth.cdn.example.com",
+		TokenTTL:              2 * time.Hour,
+		TokenClaimsExpression: `{"sub": claims.sub}`,
+	}
+	cimd := CIMDConfig{
+		Enabled:  true,
+		Cache:    CIMDCacheConfig{MinTTL: 30 * time.Second, MaxTTL: 2 * time.Hour},
+	}
+	mac := MultiAgentClientConfig{
+		Enabled:          true,
+		AgentIDParamName: "x_agent_id",
+		AgentIDClaimName: "x_agent_id",
+	}
+	sharedResponseTypes := []string{"code", "token"}
+	sharedGrantTypes := []string{"authorization_code", "client_credentials"}
+
+	t.Run("proxy mode propagates all upstream fields", func(t *testing.T) {
+		cfg := OAuth2AuthServerConfig{
+			Mode:                   "proxy",
+			Proxy:                  proxyFields,
+			SupportedResponseTypes: sharedResponseTypes,
+			SupportedGrantTypes:    sharedGrantTypes,
+			MultiAgentClient:       mac,
+		}
+		result, err := cfg.Resolve()
+		require.NoError(t, err)
+		require.IsType(t, &ProxyOAuth2Config{}, result)
+		p := result.(*ProxyOAuth2Config)
+		assert.Equal(t, proxyFields.UpstreamIssuerURI, p.UpstreamIssuerURI)
+		assert.Equal(t, proxyFields.UpstreamAuthorizeEndpoint, p.UpstreamAuthorizeEndpoint)
+		assert.Equal(t, proxyFields.UpstreamTokenEndpoint, p.UpstreamTokenEndpoint)
+		assert.Equal(t, proxyFields.UpstreamTimeoutSeconds, p.UpstreamTimeoutSeconds)
+		assert.Equal(t, sharedResponseTypes, p.SupportedResponseTypes)
+		assert.Equal(t, sharedGrantTypes, p.SupportedGrantTypes)
+		assert.Equal(t, mac, p.MultiAgentClient)
+	})
+
+	t.Run("proxy mode applies default timeout and grant types when zero", func(t *testing.T) {
+		cfg := OAuth2AuthServerConfig{
+			Mode: "proxy",
+			Proxy: ProxyModeConfig{
+				UpstreamIssuerURI:         proxyFields.UpstreamIssuerURI,
+				UpstreamAuthorizeEndpoint: proxyFields.UpstreamAuthorizeEndpoint,
+				UpstreamTokenEndpoint:     proxyFields.UpstreamTokenEndpoint,
+				UpstreamTimeoutSeconds:    0,
+			},
+		}
+		result, err := cfg.Resolve()
+		require.NoError(t, err)
+		p := result.(*ProxyOAuth2Config)
+		assert.Equal(t, 30, p.UpstreamTimeoutSeconds, "default timeout must be 30s")
+		assert.Equal(t, []string{"code"}, p.SupportedResponseTypes, "default response type must be 'code'")
+		assert.Equal(t, []string{"authorization_code"}, p.SupportedGrantTypes, "default proxy grant type")
+	})
+
+	t.Run("local mode propagates all local fields", func(t *testing.T) {
+		cfg := OAuth2AuthServerConfig{
+			Mode:                   "local",
+			Local:                  localFields,
+			SupportedResponseTypes: sharedResponseTypes,
+			SupportedGrantTypes:    sharedGrantTypes,
+			CIMD:                   cimd,
+		}
+		result, err := cfg.Resolve()
+		require.NoError(t, err)
+		require.IsType(t, &LocalOAuth2Config{}, result)
+		l := result.(*LocalOAuth2Config)
+		assert.Equal(t, localFields.IssuerURI, l.IssuerURI)
+		assert.Equal(t, localFields.TokenTTL, l.TokenTTL)
+		assert.Equal(t, localFields.TokenClaimsExpression, l.TokenClaimsExpression)
+		assert.Equal(t, sharedResponseTypes, l.SupportedResponseTypes)
+		assert.Equal(t, sharedGrantTypes, l.SupportedGrantTypes)
+		assert.Equal(t, cimd, l.CIMD)
+	})
+
+	t.Run("local mode applies default token TTL and grant types when zero", func(t *testing.T) {
+		cfg := OAuth2AuthServerConfig{Mode: "local"}
+		result, err := cfg.Resolve()
+		require.NoError(t, err)
+		l := result.(*LocalOAuth2Config)
+		assert.Equal(t, time.Hour, l.TokenTTL, "default local token TTL must be 1h")
+		assert.Equal(t, []string{"code"}, l.SupportedResponseTypes)
+		assert.Equal(t, []string{"authorization_code", "client_credentials"}, l.SupportedGrantTypes)
+	})
+
+	t.Run("hybrid mode propagates proxy and local fields independently", func(t *testing.T) {
+		cfg := OAuth2AuthServerConfig{
+			Mode:                   "hybrid",
+			Proxy:                  proxyFields,
+			Local:                  localFields,
+			SupportedResponseTypes: sharedResponseTypes,
+			SupportedGrantTypes:    sharedGrantTypes,
+			MultiAgentClient:       mac,
+			CIMD:                   cimd,
+		}
+		result, err := cfg.Resolve()
+		require.NoError(t, err)
+		require.IsType(t, &HybridOAuth2Config{}, result)
+		h := result.(*HybridOAuth2Config)
+
+		assert.Equal(t, proxyFields.UpstreamIssuerURI, h.Proxy.UpstreamIssuerURI)
+		assert.Equal(t, proxyFields.UpstreamAuthorizeEndpoint, h.Proxy.UpstreamAuthorizeEndpoint)
+		assert.Equal(t, proxyFields.UpstreamTokenEndpoint, h.Proxy.UpstreamTokenEndpoint)
+		assert.Equal(t, proxyFields.UpstreamTimeoutSeconds, h.Proxy.UpstreamTimeoutSeconds)
+		assert.Equal(t, sharedResponseTypes, h.Proxy.SupportedResponseTypes)
+		assert.Equal(t, sharedGrantTypes, h.Proxy.SupportedGrantTypes)
+		assert.Equal(t, mac, h.Proxy.MultiAgentClient)
+
+		assert.Equal(t, localFields.IssuerURI, h.Local.IssuerURI)
+		assert.Equal(t, localFields.TokenTTL, h.Local.TokenTTL)
+		assert.Equal(t, localFields.TokenClaimsExpression, h.Local.TokenClaimsExpression)
+		assert.Equal(t, sharedResponseTypes, h.Local.SupportedResponseTypes)
+		assert.Equal(t, sharedGrantTypes, h.Local.SupportedGrantTypes)
+		assert.Equal(t, cimd, h.Local.CIMD)
+	})
+
+	t.Run("invalid mode returns error without panicking", func(t *testing.T) {
+		cfg := OAuth2AuthServerConfig{Mode: "invalid"}
+		_, err := cfg.Resolve()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "mode")
+	})
+}
