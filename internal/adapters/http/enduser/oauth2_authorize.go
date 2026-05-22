@@ -16,7 +16,7 @@ import (
 // redirects to the upstream OAuth2 server, local mode issues a local authorization code.
 type OAuth2AuthorizeHandler struct {
 	Service        ports.OAuth2Service
-	logger         *slog.Logger
+	Logger         *slog.Logger
 	ProceedHandler AuthorizationProceedStrategy
 }
 
@@ -71,8 +71,8 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 
 	decision, err := h.Service.HandleAuthorization(r.Context(), authReq, id.NewPrincipal(principalValue))
 	if err != nil {
-		if h.logger != nil {
-			h.logger.ErrorContext(r.Context(), "authorization_request_failed", "error", err)
+		if h.Logger != nil {
+			h.Logger.ErrorContext(r.Context(), "authorization_request_failed", "error", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -95,8 +95,8 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		respondWithDecisionError(w, r, decision)
 
 	default:
-		if h.logger != nil {
-			h.logger.Error("unexpected authorization decision action", "action", decision.Action)
+		if h.Logger != nil {
+			h.Logger.Error("unexpected authorization decision action", "action", decision.Action)
 		}
 		redirectWithError(w, r, authReq.RedirectURI, authReq.State, "server_error", "unexpected authorization decision")
 	}

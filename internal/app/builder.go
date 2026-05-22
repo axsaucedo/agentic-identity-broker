@@ -806,6 +806,7 @@ func (b *Builder) Build() (*App, error) {
 		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
 		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{
 			Service:        app.OAuth2Service,
+			Logger:         b.logger,
 			ProceedHandler: proceedHandler,
 		},
 		OAuth2Token: &enduser.OAuth2TokenHandler{

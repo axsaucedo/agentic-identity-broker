@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -807,4 +809,45 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_StorageErrorReturns500(t *testing.T) {
 	err := json.NewDecoder(w.Body).Decode(&body)
 	require.NoError(t, err)
 	assert.Equal(t, "server_error", body.Error)
+}
+
+type erroringOAuth2Service struct{}
+
+func (s *erroringOAuth2Service) HandleAuthorization(_ context.Context, _ *ports.AuthorizationRequest, _ id.Principal) (*ports.AuthorizationDecision, error) {
+	return nil, errors.New("storage unavailable")
+}
+
+func (s *erroringOAuth2Service) GenerateMetadata(_ context.Context) (*ports.MetadataResponse, error) {
+	return &ports.MetadataResponse{}, nil
+}
+
+func (s *erroringOAuth2Service) ResolveForTokenGrant(_ context.Context, _ string) (*ports.TokenGrantResolution, error) {
+	return nil, errors.New("not implemented")
+}
+
+// TestOAuth2AuthorizeHandler_LogsAuthorizationRequestFailed verifies that when
+// HandleAuthorization returns an error, the logger receives an authorization_request_failed
+// entry. This guards against the Logger field being silently unwired.
+func TestOAuth2AuthorizeHandler_LogsAuthorizationRequestFailed(t *testing.T) {
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	handler := &OAuth2AuthorizeHandler{
+		Service: &erroringOAuth2Service{},
+		Logger:  logger,
+	}
+
+	agentID := id.NewAgentID()
+	req := httptest.NewRequest(
+		"GET",
+		"/?client_id="+agentID.String()+"&redirect_uri=https://client.example.com/cb&response_type=code",
+		nil,
+	)
+	req = req.WithContext(principal.WithPrincipal(req.Context(), "user@example.com"))
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, buf.String(), "authorization_request_failed")
 }
