@@ -75,3 +75,4 @@ mocks/mcp-server/mcp-server
 imgdiff
 .githooks/
 .pi/
+.pi-lens/
