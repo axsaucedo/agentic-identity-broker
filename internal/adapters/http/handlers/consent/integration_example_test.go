@@ -124,8 +124,8 @@ func TestIntegration_GetAgentDetail(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if response.Data.Agent.AgentID != testAgentID {
-		t.Errorf("expected agent ID %q, got %q", testAgentID, response.Data.Agent.AgentID)
+	if response.Data.Agent.ID != testAgentID.String() {
+		t.Errorf("expected agent ID %q, got %q", testAgentID.String(), response.Data.Agent.ID)
 	}
 	if response.Data.Agent.DisplayName != "Example AI Agent" {
 		t.Errorf("expected display name %q, got %q", "Example AI Agent", response.Data.Agent.DisplayName)
@@ -337,8 +337,8 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 		if response.Data.Agent.DisplayName != "MyAgent AI Assistant" {
 			t.Errorf("unexpected display name: %s", response.Data.Agent.DisplayName)
 		}
-		if response.Data.Agent.AgentID != testAgentID {
-			t.Errorf("expected agent ID %q, got %q", testAgentID, response.Data.Agent.AgentID)
+		if response.Data.Agent.ID != testAgentID.String() {
+			t.Errorf("expected agent ID %q, got %q", testAgentID.String(), response.Data.Agent.ID)
 		}
 		// Agent has no ServiceRequirements, so no services are returned.
 		if len(response.Data.Services) != 0 {

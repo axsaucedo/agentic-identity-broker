@@ -47,7 +47,7 @@ export interface AgentDelegation {
 
 /**
  * Detailed agent information for grant management page.
- * Returned by GET /api/consent/agents/{id}/consent-info
+ * Returned by GET /api/consent/agents/{id} (unified response)
  */
 export interface AgentDetail {
   /** Unique agent identifier */
@@ -71,16 +71,13 @@ export interface AgentDetail {
   /** Link to agent's public interface (if applicable) */
   agentInterfaceUrl?: string;
 
-  /** Permission sets for this agent (spec 019) */
+  /** Permission sets for this agent */
   permission_sets?: ResolvedPermissionSetEntry[];
 
-  /** Service IDs with active OAuth2 sessions (spec 019) */
+  /** Service IDs with active OAuth2 sessions */
   active_session_service_ids?: string[];
 
-  /** All available services for display (spec 019) */
-  available_services?: AvailableServiceInfo[];
-
-  /** Agent's service requirements with mandatory/optional types (spec 019, FR-008) */
+  /** Agent's service requirements with mandatory/optional types */
   service_requirements?: Array<{
     service_id: string;
     requirement_type: 'mandatory' | 'optional';
@@ -153,17 +150,6 @@ export interface ResolvedPermissionSetEntry {
 
   /** Whether mandatory (locked) or optional (user-selectable) */
   requirement_type: 'mandatory' | 'optional';
-}
-
-/**
- * Available third-party service (for display purposes).
- */
-export interface AvailableServiceInfo {
-  /** Unique service identifier */
-  id: string;
-
-  /** Human-readable service display name */
-  display_name: string;
 }
 
 /**
@@ -240,15 +226,26 @@ export interface CIMDMetadata {
 }
 
 /**
- * Response from GET /api/consent/agents/{id}/consent-info (spec 019)
+ * Response from GET /api/consent/agents/{id} (unified)
  */
 export interface GetAgentDetailResponse {
   data: {
-    agent: AgentDetail;
+    agent: {
+      id: string;
+      client_id?: string;
+      client_uris?: string[];
+      display_name: string;
+      description: string;
+      governance_url?: string;
+      user_documentation_url?: string;
+      agent_interface_url?: string;
+      created_at: string;
+      updated_at: string;
+    };
+    services?: ThirdpartyService[];
     permission_sets?: ResolvedPermissionSetEntry[];
     active_session_service_ids?: string[];
-    available_services?: AvailableServiceInfo[];
-    services?: ThirdpartyService[];
+    service_requirements?: Array<{ service_id: string; requirement_type: 'mandatory' | 'optional' }>;
     cimd_metadata?: CIMDMetadata | null;
   };
 }

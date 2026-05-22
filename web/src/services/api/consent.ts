@@ -86,7 +86,6 @@ export class ConsentApiService {
 
   /**
    * Get detailed information about a specific agent including permission sets and CIMD metadata.
-   * Fetches agent detail and consent-info in parallel and merges the results.
    * Pass sessionToken for CIMD authorization flows. Results are cached for 5 minutes.
    *
    * @param agentId - Unique agent identifier
@@ -109,7 +108,7 @@ export class ConsentApiService {
       agentUrl += `?session_token=${encodeURIComponent(options.sessionToken)}`;
     }
 
-    const cacheKey = `/consent/agents/${agentId}/consent-info${options?.sessionToken ? `?session_token=${options.sessionToken}` : ''}`;
+    const cacheKey = `/consent/agents/${agentId}${options?.sessionToken ? `?session_token=${options.sessionToken}` : ''}`;
 
     const cached = apiCache.get<{
       agent: AgentDetail;
@@ -120,35 +119,22 @@ export class ConsentApiService {
       return cached;
     }
 
-    type RawConsentInfo = {
-      agent: { id: string; client_id: string; display_name: string; description: string;
-        governance_url?: string; user_documentation_url?: string; agent_interface_url?: string; };
-      permission_sets?: import('../../types/consent').ResolvedPermissionSetEntry[];
-      active_session_service_ids?: string[];
-      available_services?: { id: string; display_name: string }[];
-      service_requirements?: Array<{ service_id: string; requirement_type: 'mandatory' | 'optional' }>;
-    };
-
-    const [detailResponse, consentInfoResult] = await Promise.all([
-      apiClient.get<GetAgentDetailResponse>(agentUrl),
-      apiClient.get<RawConsentInfo>(`/consent/agents/${agentId}/consent-info`),
-    ]);
-
-    const legacyData = detailResponse.data.data;
-    const consentInfo = consentInfoResult.data;
+    const response = await apiClient.get<GetAgentDetailResponse>(agentUrl);
+    const responseData = response.data.data;
 
     const agent: AgentDetail = {
-      ...legacyData.agent,
-      permission_sets: consentInfo?.permission_sets,
-      active_session_service_ids: consentInfo?.active_session_service_ids,
-      available_services: consentInfo?.available_services?.map((s) => ({
-        id: s.id,
-        display_name: s.display_name,
-      })),
-      service_requirements: consentInfo?.service_requirements,
+      agentId: responseData.agent.id,
+      displayName: responseData.agent.display_name,
+      description: responseData.agent.description,
+      governanceUrl: responseData.agent.governance_url,
+      userDocumentationUrl: responseData.agent.user_documentation_url,
+      agentInterfaceUrl: responseData.agent.agent_interface_url,
+      permission_sets: responseData.permission_sets,
+      active_session_service_ids: responseData.active_session_service_ids,
+      service_requirements: responseData.service_requirements,
     };
 
-    const rawServices = legacyData.services ?? [];
+    const rawServices = responseData.services ?? [];
     const services: ThirdpartyService[] = rawServices.map((s) => {
       const obj = (s as unknown) as Record<string, unknown>;
       return 'requirementType' in obj && obj.requirementType
@@ -156,9 +142,8 @@ export class ConsentApiService {
         : ({ ...obj, kind: 'scoped' } as ServiceWithScopes);
     });
 
-    const data = { agent, services, cimd_metadata: legacyData.cimd_metadata };
+    const data = { agent, services, cimd_metadata: responseData.cimd_metadata };
 
-    // Session-scoped requests are single-use; skip caching so expiry is always server-checked.
     if (!options?.sessionToken) {
       apiCache.set(cacheKey, data, 5 * 60 * 1000);
     }

@@ -39,7 +39,6 @@ type EnduserHandlers struct {
 	Agents      *consent.AgentsHandler
 	AgentDetail *consent.AgentDetailHandler
 	Grants      *consent.GrantsHandler
-	AgentInfo   *consent.AgentInfoHandler // Permission Sets (019): /api/consent/agents/{id}/consent-info
 
 	// OAuth2 sessions handler for /api/third-party routes
 	OAuth2Sessions *oauth2_sessions.Handler

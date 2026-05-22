@@ -584,7 +584,7 @@ func (m *mockSessionRepo) ListActiveByPrincipal(_ context.Context, _ id.Principa
 
 // Test cases
 
-func TestService_GetAgentWithServiceRequirements(t *testing.T) {
+func TestService_GetAgentConsentDetail(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	principal := id.Principal("user@example.com")
@@ -627,7 +627,7 @@ func TestService_GetAgentWithServiceRequirements(t *testing.T) {
 			nil,
 			slog.Default(),
 		)
-		_, _, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		_, err := svc.GetAgentConsentDetail(ctx, agentID, principal)
 		require.ErrorIs(t, err, ErrAgentNotFound)
 	})
 
@@ -642,10 +642,10 @@ func TestService_GetAgentWithServiceRequirements(t *testing.T) {
 			nil,
 			slog.Default(),
 		)
-		a, reqs, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		detail, err := svc.GetAgentConsentDetail(ctx, agentID, principal)
 		require.NoError(t, err)
-		assert.Equal(t, agentNoReqs.ID, a.ID)
-		assert.Empty(t, reqs)
+		assert.Equal(t, agentNoReqs.ID, detail.Agent.ID)
+		assert.Empty(t, detail.ServiceRequirements)
 	})
 
 	t.Run("connected user shows IsConnected true", func(t *testing.T) {
@@ -660,10 +660,10 @@ func TestService_GetAgentWithServiceRequirements(t *testing.T) {
 			nil,
 			slog.Default(),
 		)
-		_, reqs, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		detail, err := svc.GetAgentConsentDetail(ctx, agentID, principal)
 		require.NoError(t, err)
-		require.Len(t, reqs, 2)
-		for _, r := range reqs {
+		require.Len(t, detail.ServiceRequirements, 2)
+		for _, r := range detail.ServiceRequirements {
 			assert.True(t, r.IsConnected)
 		}
 	})
@@ -678,17 +678,16 @@ func TestService_GetAgentWithServiceRequirements(t *testing.T) {
 			nil,
 			slog.Default(),
 		)
-		_, reqs, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		detail, err := svc.GetAgentConsentDetail(ctx, agentID, principal)
 		require.NoError(t, err)
-		require.Len(t, reqs, 2)
-		for _, r := range reqs {
+		require.Len(t, detail.ServiceRequirements, 2)
+		for _, r := range detail.ServiceRequirements {
 			assert.False(t, r.IsConnected)
 		}
 	})
 
 	t.Run("missing service is skipped", func(t *testing.T) {
 		t.Parallel()
-		// Only github exists; google requirement should be silently skipped
 		svc := NewService(
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{githubID: github}}),
@@ -697,10 +696,10 @@ func TestService_GetAgentWithServiceRequirements(t *testing.T) {
 			nil,
 			slog.Default(),
 		)
-		_, reqs, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		detail, err := svc.GetAgentConsentDetail(ctx, agentID, principal)
 		require.NoError(t, err)
-		require.Len(t, reqs, 1)
-		assert.Equal(t, githubID, reqs[0].ServiceID)
+		require.Len(t, detail.ServiceRequirements, 1)
+		assert.Equal(t, githubID, detail.ServiceRequirements[0].ServiceID)
 	})
 
 	t.Run("scope descriptions are populated", func(t *testing.T) {
@@ -720,12 +719,12 @@ func TestService_GetAgentWithServiceRequirements(t *testing.T) {
 			nil,
 			slog.Default(),
 		)
-		_, reqs, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		detail, err := svc.GetAgentConsentDetail(ctx, agentID, principal)
 		require.NoError(t, err)
-		require.Len(t, reqs, 1)
-		require.Len(t, reqs[0].RequiredScopes, 1)
-		assert.Equal(t, "read:user", reqs[0].RequiredScopes[0].Name)
-		assert.Equal(t, "Read user", reqs[0].RequiredScopes[0].Description)
+		require.Len(t, detail.ServiceRequirements, 1)
+		require.Len(t, detail.ServiceRequirements[0].RequiredScopes, 1)
+		assert.Equal(t, "read:user", detail.ServiceRequirements[0].RequiredScopes[0].Name)
+		assert.Equal(t, "Read user", detail.ServiceRequirements[0].RequiredScopes[0].Description)
 	})
 
 	t.Run("session lookup error propagates", func(t *testing.T) {
@@ -740,75 +739,29 @@ func TestService_GetAgentWithServiceRequirements(t *testing.T) {
 			nil,
 			slog.Default(),
 		)
-		_, _, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		_, err := svc.GetAgentConsentDetail(ctx, agentID, principal)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "checking session status")
 	})
 }
 
-func TestService_GetAgentConsentInfo(t *testing.T) {
+func TestService_GetAgentConsentDetail_NotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	agentID := id.NewAgentID()
-	serviceID1 := id.NewServiceID()
+	svc := NewService(
+		&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
+		newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
+		&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+		nil,
+		nil,
+		slog.Default(),
+	)
 
-	agent := &storage.Agent{
-		ID:          agentID,
-		ClientID:    ptr.To(id.ClientID("test-client")),
-		DisplayName: "Test Agent",
-		Description: "A test agent",
-	}
-
-	service1 := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID1,
-		DisplayName: "GitHub",
-		ClientID:    id.ClientID("github-client"),
-		IssuerURI:   "https://github.com",
-		Discovery:   model.DiscoveryConfig{EnableDiscovery: true},
-		Scopes: []model.OAuthScope{
-			{ScopeValue: "repo", Description: "Repository access"},
-		},
-		Secret: model.NewEncryptedSecret([]byte("test-ciphertext")),
-	}
-
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
-		svc := NewService(
-			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
-			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
-			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
-			&mockUserSessionRepo{sessions: map[id.SessionID]*storage.UserSession{}},
-			nil,
-			slog.Default(),
-		)
-
-		info, err := svc.GetAgentConsentInfo(ctx, agentID, id.Principal("user@example.com"))
-		require.NoError(t, err)
-		require.NotNil(t, info)
-		assert.Equal(t, agentID, info.Agent.ID)
-		assert.Len(t, info.AvailableThirdpartyServices, 1)
-		// Client secret should be redacted
-		plaintext, ptErr := info.AvailableThirdpartyServices[0].Secret.GetPlaintext()
-		require.NoError(t, ptErr)
-		assert.Equal(t, "REDACTED", plaintext)
-	})
-
-	t.Run("agent not found", func(t *testing.T) {
-		t.Parallel()
-		svc := NewService(
-			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
-			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
-			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
-			nil,
-			nil,
-			slog.Default(),
-		)
-
-		info, err := svc.GetAgentConsentInfo(ctx, id.NewAgentID(), id.Principal("user@example.com"))
-		assert.Error(t, err)
-		assert.Nil(t, info)
-	})
+	detail, err := svc.GetAgentConsentDetail(ctx, id.NewAgentID(), id.Principal("user@example.com"))
+	assert.Error(t, err)
+	assert.Nil(t, detail)
+	assert.ErrorIs(t, err, ErrAgentNotFound)
 }
 
 func TestService_GrantConsent(t *testing.T) {
@@ -1546,54 +1499,16 @@ func TestService_GetAgentDelegations(t *testing.T) {
 	}
 }
 
-// TestService_GetAgentConsentInfo_WithPermissionSets tests the extended GetAgentConsentInfo method
-// that includes resolved permission sets, active session service IDs, and available services.
-// Phase 4 User Story 2: Consent Screen Shows Permission Sets First (T035).
-func TestService_GetAgentConsentInfo_WithPermissionSets(t *testing.T) {
+func TestService_GetAgentConsentDetail_WithPermissionSets(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
 	agentID := id.NewAgentID()
 	serviceID1 := id.NewServiceID()
-	serviceID2 := id.NewServiceID()
 	sessionID1 := id.NewSessionID()
 
 	now := time.Now()
 	future := now.Add(24 * time.Hour)
-
-	agent := &storage.Agent{
-		ID:             agentID,
-		ClientID:       ptr.To(id.ClientID("test-client")),
-		DisplayName:    "Test Agent",
-		Description:    "A test agent",
-		PermissionSets: []storage.AgentPermissionSetEntry{
-			// Note: Permission set resolution tested via full integration, not mocked here
-		},
-	}
-
-	service1 := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID1,
-		DisplayName: "GitHub",
-		ClientID:    id.ClientID("github-client"),
-		IssuerURI:   "https://github.com",
-		Discovery:   model.DiscoveryConfig{EnableDiscovery: true},
-		Scopes: []model.OAuthScope{
-			{ScopeValue: "read", Description: "Read access"},
-		},
-		Secret: model.NewEncryptedSecret([]byte("test-ciphertext")),
-	}
-
-	service2 := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID2,
-		DisplayName: "Google",
-		ClientID:    id.ClientID("google-client"),
-		IssuerURI:   "https://google.com",
-		Discovery:   model.DiscoveryConfig{EnableDiscovery: true},
-		Scopes: []model.OAuthScope{
-			{ScopeValue: "write", Description: "Write access"},
-		},
-		Secret: model.NewEncryptedSecret([]byte("test-ciphertext")),
-	}
 
 	session1 := &storage.UserSession{
 		ID:                    sessionID1,
@@ -1608,25 +1523,23 @@ func TestService_GetAgentConsentInfo_WithPermissionSets(t *testing.T) {
 		UpdatedAt:             now,
 	}
 
-	t.Run("GetAgentConsentInfo returns active session service IDs when sessionRepo is wired", func(t *testing.T) {
+	t.Run("returns active session service IDs", func(t *testing.T) {
 		t.Parallel()
 
-		// Create mocks for all dependencies
-		agentRepo := &mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}}
-		serviceRepo := &mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{
-			serviceID1: service1,
-			serviceID2: service2,
-		}}
+		agent := &storage.Agent{
+			ID:          agentID,
+			ClientID:    ptr.To(id.ClientID("test-client")),
+			DisplayName: "Test Agent",
+			Description: "A test agent",
+		}
+
 		sessionRepo := &mockUserSessionRepo{sessions: map[id.SessionID]*storage.UserSession{
 			sessionID1: session1,
 		}}
 
-		providerService := newTestProviderService(serviceRepo)
-
-		// Create base consent service and wire session repository
 		svc := NewService(
-			agentRepo,
-			providerService,
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
 			sessionRepo,
 			nil,
@@ -1634,76 +1547,44 @@ func TestService_GetAgentConsentInfo_WithPermissionSets(t *testing.T) {
 		)
 
 		principal := id.Principal("user@example.com")
-		info, err := svc.GetAgentConsentInfo(ctx, agentID, principal)
+		detail, err := svc.GetAgentConsentDetail(ctx, agentID, principal)
 
 		require.NoError(t, err)
-		require.NotNil(t, info)
-
-		// Verify agent is present
-		assert.Equal(t, agentID, info.Agent.ID)
-
-		// Verify resolved permission sets field exists (empty without psService)
-		require.NotNil(t, info.ResolvedPermissionSets)
-		// Permission sets are only populated if psService is wired (not in this test)
-		assert.Len(t, info.ResolvedPermissionSets, 0)
-
-		// Verify active session service IDs (new field - should have 1 from sessionID1)
-		require.NotNil(t, info.ActiveSessionServiceIDs)
-		assert.Len(t, info.ActiveSessionServiceIDs, 1)
-		assert.Equal(t, serviceID1, info.ActiveSessionServiceIDs[0])
-
-		// Verify available services (new field - redacted copies)
-		require.NotNil(t, info.AvailableThirdpartyServices)
-		assert.Len(t, info.AvailableThirdpartyServices, 2)
-		// Secrets should be redacted
-		plaintext, ptErr := info.AvailableThirdpartyServices[0].Secret.GetPlaintext()
-		require.NoError(t, ptErr)
-		assert.Equal(t, "REDACTED", plaintext)
+		require.NotNil(t, detail)
+		assert.Equal(t, agentID, detail.Agent.ID)
+		require.NotNil(t, detail.ActiveSessionServiceIDs)
+		assert.Len(t, detail.ActiveSessionServiceIDs, 1)
+		assert.Equal(t, serviceID1, detail.ActiveSessionServiceIDs[0])
 	})
 
-	t.Run("GetAgentConsentInfo handles missing sessions gracefully", func(t *testing.T) {
+	t.Run("handles missing sessions gracefully", func(t *testing.T) {
 		t.Parallel()
 
-		agentRepo := &mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}}
-		serviceRepo := &mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{
-			serviceID1: service1,
-			serviceID2: service2,
-		}}
-		emptySessionRepo := &mockUserSessionRepo{sessions: map[id.SessionID]*storage.UserSession{}}
+		agent := &storage.Agent{
+			ID:          agentID,
+			ClientID:    ptr.To(id.ClientID("test-client")),
+			DisplayName: "Test Agent",
+			Description: "A test agent",
+		}
 
-		providerService := newTestProviderService(serviceRepo)
-
-		// Create service without permission set service (psService remains nil)
 		svc := NewService(
-			agentRepo,
-			providerService,
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
-			emptySessionRepo,
+			&mockUserSessionRepo{sessions: map[id.SessionID]*storage.UserSession{}},
 			nil,
 			slog.Default(),
 		)
 
 		principal := id.Principal("user@example.com")
-		info, err := svc.GetAgentConsentInfo(ctx, agentID, principal)
+		detail, err := svc.GetAgentConsentDetail(ctx, agentID, principal)
 
-		// Should succeed with empty resolved sets and sessions
 		require.NoError(t, err)
-		require.NotNil(t, info)
-
-		// Should have resolved permission sets (but not populated since psService is nil)
-		require.NotNil(t, info.ResolvedPermissionSets)
-		assert.Len(t, info.ResolvedPermissionSets, 0)
-
-		// No active sessions
-		require.NotNil(t, info.ActiveSessionServiceIDs)
-		assert.Empty(t, info.ActiveSessionServiceIDs)
-
-		// Should have available services
-		require.NotNil(t, info.AvailableThirdpartyServices)
-		assert.Len(t, info.AvailableThirdpartyServices, 2)
+		require.NotNil(t, detail)
+		assert.Empty(t, detail.ActiveSessionServiceIDs)
 	})
 
-	t.Run("GetAgentConsentInfo returns resolved permission sets when psService is wired", func(t *testing.T) {
+	t.Run("returns resolved permission sets when psService is wired", func(t *testing.T) {
 		t.Parallel()
 
 		psID := id.NewPermissionSetID()
@@ -1716,7 +1597,6 @@ func TestService_GetAgentConsentInfo_WithPermissionSets(t *testing.T) {
 			},
 		}
 
-		// Use mockPermissionSetService as the repository backing the permissionset.Service
 		psRepo := &mockPermissionSetService{
 			permissionSets: map[id.PermissionSetID]*storage.PermissionSet{psID: ps},
 		}
@@ -1724,23 +1604,17 @@ func TestService_GetAgentConsentInfo_WithPermissionSets(t *testing.T) {
 
 		agentWithPS := &storage.Agent{
 			ID:          agentID,
-			ClientID:    agent.ClientID,
-			DisplayName: agent.DisplayName,
-			Description: agent.Description,
+			ClientID:    ptr.To(id.ClientID("test-client")),
+			DisplayName: "Test Agent",
+			Description: "A test agent",
 			PermissionSets: []storage.AgentPermissionSetEntry{
 				{PermissionSetID: psID, RequirementType: storage.RequirementTypeMandatory},
 			},
 		}
 
-		agentRepo := &mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agentWithPS}}
-		serviceRepo := &mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{
-			serviceID1: service1,
-		}}
-		providerSvc := newTestProviderService(serviceRepo)
-
 		svc := NewService(
-			agentRepo,
-			providerSvc,
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agentWithPS}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
 			&mockUserSessionRepo{sessions: map[id.SessionID]*storage.UserSession{}},
 			psService,
@@ -1748,14 +1622,13 @@ func TestService_GetAgentConsentInfo_WithPermissionSets(t *testing.T) {
 		)
 
 		principal := id.Principal("user@example.com")
-		info, err := svc.GetAgentConsentInfo(ctx, agentID, principal)
+		detail, err := svc.GetAgentConsentDetail(ctx, agentID, principal)
 
 		require.NoError(t, err)
-		require.NotNil(t, info)
-		require.NotNil(t, info.ResolvedPermissionSets)
-		require.Len(t, info.ResolvedPermissionSets, 1)
-		assert.Equal(t, psID, info.ResolvedPermissionSets[0].PermissionSet.ID)
-		assert.Equal(t, storage.RequirementTypeMandatory, info.ResolvedPermissionSets[0].RequirementType)
+		require.NotNil(t, detail)
+		require.Len(t, detail.ResolvedPermissionSets, 1)
+		assert.Equal(t, psID, detail.ResolvedPermissionSets[0].PermissionSet.ID)
+		assert.Equal(t, storage.RequirementTypeMandatory, detail.ResolvedPermissionSets[0].RequirementType)
 	})
 }
 

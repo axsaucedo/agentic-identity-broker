@@ -626,7 +626,10 @@ export function AgentGrantDetailPage() {
           {agent?.permission_sets && agent.permission_sets.length > 0 && (
             <PermissionSetsList
               permissionSets={agent.permission_sets}
-              availableServices={agent.available_services}
+              availableServices={services.map((s) => ({
+                id: s.serviceId,
+                display_name: s.kind === 'requirement' ? s.serviceName : (s.displayName ?? s.serviceId),
+              }))}
               serviceRequirements={agent.service_requirements}
               initialGrantedPermissionSets={restoredSelections ?? grants?.granted_permission_sets ?? {}}
               onSelectionChange={(_optionalIds, perPsIncluded) => {

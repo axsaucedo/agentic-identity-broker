@@ -13,12 +13,12 @@ import (
 // AgentsHandler handles HTTP requests for retrieving agent delegations.
 // Implements User Story 1: View Active Delegations (GET /api/consent/agents).
 type AgentsHandler struct {
-	consentService *consent.Service
+	consentService ConsentService
 	logger         *slog.Logger
 }
 
 // NewAgentsHandler creates a new agents handler.
-func NewAgentsHandler(consentService *consent.Service, logger *slog.Logger) *AgentsHandler {
+func NewAgentsHandler(consentService ConsentService, logger *slog.Logger) *AgentsHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}

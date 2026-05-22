@@ -116,9 +116,6 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 						r.Get("/grants", h.Grants.GetGrant)
 						r.Post("/grants", h.Grants.CreateGrant)
 						r.Delete("/grants", h.Grants.RevokeGrant)
-						if h.AgentInfo != nil {
-							r.Get("/consent-info", h.AgentInfo.GetAgentConsentInfo)
-						}
 					})
 				})
 			}

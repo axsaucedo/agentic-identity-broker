@@ -81,19 +81,60 @@ type CIMDMetadataResponse struct {
 	LogoURI         string   `json:"logo_uri,omitempty"`
 }
 
-// GetAgentDetailResponse represents the response for GET /api/consent/agent/:agentId.
+// GetAgentDetailResponse represents the response for GET /api/consent/agents/{id}.
 type GetAgentDetailResponse struct {
 	Data AgentDetailData `json:"data"`
 }
 
-// AgentDetailData contains the agent detail and associated services.
+// AgentDetailData contains the unified agent detail response: display fields,
+// services with connection status, permission sets, and active session IDs.
 type AgentDetailData struct {
-	Agent        consent.AgentDetail         `json:"agent"`
-	Services     []ServiceRequirementForUser `json:"services"`
-	CIMDMetadata *CIMDMetadataResponse       `json:"cimd_metadata,omitempty"`
+	Agent               AgentMetadata                   `json:"agent"`
+	Services            []ServiceRequirementForUser     `json:"services"`
+	PermissionSets      []PermissionSetWithRequirement  `json:"permission_sets"`
+	ActiveSessionIDs    []string                        `json:"active_session_service_ids"`
+	ServiceRequirements []ServiceRequirementInfo        `json:"service_requirements"`
+	CIMDMetadata        *CIMDMetadataResponse           `json:"cimd_metadata,omitempty"`
 }
 
-// GetAgentDetail handles GET /api/consent/agent/:agentId
+// AgentMetadata is the agent metadata portion of the unified response.
+type AgentMetadata struct {
+	ID                   string   `json:"id"`
+	ClientID             string   `json:"client_id,omitempty"`
+	ClientURIs           []string `json:"client_uris,omitempty"`
+	DisplayName          string   `json:"display_name"`
+	Description          string   `json:"description"`
+	GovernanceURL        *string  `json:"governance_url,omitempty"`
+	UserDocumentationURL *string  `json:"user_documentation_url,omitempty"`
+	AgentInterfaceURL    *string  `json:"agent_interface_url,omitempty"`
+	CreatedAt            string   `json:"created_at"`
+	UpdatedAt            string   `json:"updated_at"`
+}
+
+// ServiceScopeInfo represents one service within a permission set.
+type ServiceScopeInfo struct {
+	ServiceID       string `json:"service_id"`
+	RequirementType string `json:"requirement_type"`
+}
+
+// PermissionSetWithRequirement represents a permission set with its requirement type.
+type PermissionSetWithRequirement struct {
+	PermissionSet struct {
+		ID            string             `json:"id"`
+		Name          string             `json:"name"`
+		Description   string             `json:"description"`
+		ServiceScopes []ServiceScopeInfo `json:"service_scopes"`
+	} `json:"permission_set"`
+	RequirementType string `json:"requirement_type"`
+}
+
+// ServiceRequirementInfo represents a service requirement entry for the consent screen.
+type ServiceRequirementInfo struct {
+	ServiceID       string `json:"service_id"`
+	RequirementType string `json:"requirement_type"`
+}
+
+// GetAgentDetail handles GET /api/consent/agents/{id}
 // Returns detailed information about an agent and its required services with user session status.
 // Only returns services that are configured as requirements for the agent (not all system services).
 //
@@ -127,28 +168,21 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	agent, serviceRequirements, err := h.consentService.GetAgentWithServiceRequirements(ctx, id.Principal(userID), parsedAgentID)
+	userPrincipal := id.Principal(userID)
+
+	detail, err := h.consentService.GetAgentConsentDetail(ctx, parsedAgentID, userPrincipal)
 	if err != nil {
 		if errors.Is(err, consent.ErrAgentNotFound) {
 			h.logger.Warn("agent not found", "agent_id", agentID)
 			h.writeError(w, http.StatusNotFound, "not found", "agent not found")
 			return
 		}
-		h.logger.Error("failed to get agent", "agent_id", agentID, "error", err)
+		h.logger.Error("failed to get agent consent detail", "agent_id", agentID, "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return
 	}
 
-	agentDetail := &consent.AgentDetail{
-		AgentID:              agent.ID,
-		DisplayName:          agent.DisplayName,
-		Description:          agent.Description,
-		GovernanceURL:        agent.GovernanceURL,
-		UserDocumentationURL: agent.UserDocumentationURL,
-		AgentInterfaceURL:    agent.AgentInterfaceURL,
-	}
-
-	services := toServiceRequirementForUser(serviceRequirements)
+	services := toServiceRequirementForUser(detail.ServiceRequirements)
 	sortServiceRequirements(services)
 
 	cimdMeta, err := h.resolveSessionContext(r, parsedAgentID)
@@ -174,11 +208,7 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 	}
 
 	response := GetAgentDetailResponse{
-		Data: AgentDetailData{
-			Agent:        *agentDetail,
-			Services:     services,
-			CIMDMetadata: cimdMeta,
-		},
+		Data: h.buildResponse(detail, services, cimdMeta),
 	}
 
 	h.logger.Info("agent detail retrieved",
@@ -187,6 +217,71 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 		"services_count", len(services))
 
 	h.writeJSON(w, http.StatusOK, response)
+}
+
+func (h *AgentDetailHandler) buildResponse(detail *consent.AgentConsentDetail, services []ServiceRequirementForUser, cimdMeta *CIMDMetadataResponse) AgentDetailData {
+	agent := detail.Agent
+	agentResp := AgentMetadata{
+		ID:                   agent.ID.String(),
+		DisplayName:          agent.DisplayName,
+		Description:          agent.Description,
+		GovernanceURL:        agent.GovernanceURL,
+		UserDocumentationURL: agent.UserDocumentationURL,
+		AgentInterfaceURL:    agent.AgentInterfaceURL,
+		CreatedAt:            agent.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:            agent.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+	if agent.ClientID != nil {
+		agentResp.ClientID = agent.ClientID.String()
+	}
+	if len(agent.ClientURIs) > 0 {
+		agentResp.ClientURIs = agent.ClientURIs
+	}
+
+	permissionSets := make([]PermissionSetWithRequirement, 0, len(detail.ResolvedPermissionSets))
+	for _, entry := range detail.ResolvedPermissionSets {
+		if entry.PermissionSet == nil {
+			h.logger.Warn("resolved permission set entry has nil PermissionSet, omitting")
+			continue
+		}
+		serviceScopes := make([]ServiceScopeInfo, 0, len(entry.PermissionSet.ServiceScopes))
+		for _, ss := range entry.PermissionSet.ServiceScopes {
+			serviceScopes = append(serviceScopes, ServiceScopeInfo{
+				ServiceID:       ss.ServiceID.String(),
+				RequirementType: string(ss.RequirementType),
+			})
+		}
+		item := PermissionSetWithRequirement{
+			RequirementType: string(entry.RequirementType),
+		}
+		item.PermissionSet.ID = entry.PermissionSet.ID.String()
+		item.PermissionSet.Name = entry.PermissionSet.Name
+		item.PermissionSet.Description = entry.PermissionSet.Description
+		item.PermissionSet.ServiceScopes = serviceScopes
+		permissionSets = append(permissionSets, item)
+	}
+
+	activeSessionIDs := make([]string, len(detail.ActiveSessionServiceIDs))
+	for i, sid := range detail.ActiveSessionServiceIDs {
+		activeSessionIDs[i] = sid.String()
+	}
+
+	serviceReqs := make([]ServiceRequirementInfo, len(agent.ServiceRequirements))
+	for i, sr := range agent.ServiceRequirements {
+		serviceReqs[i] = ServiceRequirementInfo{
+			ServiceID:       sr.ServiceID.String(),
+			RequirementType: string(sr.RequirementType),
+		}
+	}
+
+	return AgentDetailData{
+		Agent:               agentResp,
+		Services:            services,
+		PermissionSets:      permissionSets,
+		ActiveSessionIDs:    activeSessionIDs,
+		ServiceRequirements: serviceReqs,
+		CIMDMetadata:        cimdMeta,
+	}
 }
 
 func toServiceRequirementForUser(reqs []consent.ServiceRequirementStatus) []ServiceRequirementForUser {
