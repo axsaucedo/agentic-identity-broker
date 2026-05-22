@@ -288,6 +288,51 @@ func TestOAuth2AuthServerConfig_LocalMode(t *testing.T) {
 	})
 }
 
+// TestOAuth2AuthServerConfig_HybridMode tests hybrid mode-specific validation rules.
+func TestOAuth2AuthServerConfig_HybridMode(t *testing.T) {
+	validHybridProxy := ports.ProxyModeConfig{
+		UpstreamIssuerURI:         "https://auth.example.com",
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		UpstreamTokenEndpoint:     "https://auth.example.com/token",
+	}
+
+	t.Run("multi_agent_client.enabled=true is accepted in hybrid mode", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode:  "hybrid",
+			Proxy: validHybridProxy,
+			MultiAgentClient: ports.MultiAgentClientConfig{
+				Enabled:          true,
+				AgentIDParamName: "x_agent_id",
+				AgentIDClaimName: "x_agent_id",
+			},
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err, "multi_agent_client.enabled=true must be valid in hybrid mode")
+	})
+
+	t.Run("multi_agent_client.enabled=true without param names is rejected in hybrid mode", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode:  "hybrid",
+			Proxy: validHybridProxy,
+			MultiAgentClient: ports.MultiAgentClientConfig{
+				Enabled: true,
+			},
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "multi_agent_client.enabled=true without required param names must fail")
+		assert.Contains(t, err.Error(), "agent_id_param_name")
+	})
+
+	t.Run("hybrid mode requires upstream fields", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode: "hybrid",
+		}
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "upstream_issuer_uri")
+	})
+}
+
 // TestOAuth2AuthServerConfig_PartialConfigFails is a regression test ensuring that a
 // partially populated OAuth2AuthServerConfig (non-zero but incomplete) is rejected rather
 // than silently skipped by the unconfigured-block guard.

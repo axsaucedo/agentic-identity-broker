@@ -992,6 +992,11 @@ func TestHybridTokenGrantStrategy_DispatchByClientType(t *testing.T) {
 			resolution:   &ports.TokenGrantResolution{AgentID: agentID, ClientType: storage.AmbiguousClient},
 			expectsError: true,
 		},
+		{
+			name:         "UnknownClient returns server_error",
+			resolution:   &ports.TokenGrantResolution{AgentID: agentID, ClientType: storage.UnknownClient},
+			expectsError: true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
