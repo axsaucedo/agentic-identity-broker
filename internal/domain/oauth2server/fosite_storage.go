@@ -253,6 +253,11 @@ func (s *FositeStorage) GetClient(ctx context.Context, clientID string) (fosite.
 		return &publicClient{clientID: clientID, agent: resolution.Agent, redirectURIs: resolution.CIMDMetadata.RedirectURIs}, nil
 	}
 
+	// LocalClient agents are public clients — no credential is registered for them.
+	if resolution.Agent.ClientType() == storage.LocalClient {
+		return &publicClient{clientID: clientID, agent: resolution.Agent, redirectURIs: resolution.Agent.RedirectURIs}, nil
+	}
+
 	cred, err := s.credRepo.GetByAgentID(ctx, resolution.Agent.ID)
 	if err != nil {
 		return nil, s.mapStorageError(ctx, err)
