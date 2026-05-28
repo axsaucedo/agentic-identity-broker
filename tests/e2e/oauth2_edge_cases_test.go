@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
@@ -31,9 +30,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 
 	BeforeEach(func() {
 		// Create logger for diagnostics
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
-		}))
+		logger = bootstrap.TestLogger(slog.LevelInfo)
 
 		// Initialize test storage factory
 		storageFactory = bootstrap.NewStorageFactory(logger)

@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -80,9 +79,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 
 	// Extract setup into helper for better error context
 	setupTestEnvironment := func() {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
-		}))
+		logger = bootstrap.TestLogger(slog.LevelInfo)
 
 		mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 		config := fixtures.OAuth2ConfigWithUpstream(mockUpstream.Server.URL)

@@ -38,6 +38,7 @@ type TestServer struct {
 	app    *app.App
 	server *httptest.Server
 	logger *slog.Logger
+	client *http.Client
 }
 
 // TestServerConfig holds parameters for building a TestServer that needs URL alignment.
@@ -252,6 +253,12 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 		app:    app,
 		server: server,
 		logger: logger,
+		client: &http.Client{
+			Timeout: 5 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}, nil
 }
 
@@ -364,13 +371,7 @@ func (ts *TestServer) AuthenticatedGET(path string, principal string) (*http.Res
 
 	// Make request using HTTP client that does NOT follow redirects
 	// E2E tests need to verify redirect responses themselves
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse // Don't follow redirects
-		},
-	}
-	resp, err := client.Do(req)
+	resp, err := ts.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -423,13 +424,7 @@ func (ts *TestServer) AuthenticatedPOST(path string, principal string, contentTy
 
 	// Make request using HTTP client that does NOT follow redirects
 	// E2E tests need to verify redirect responses themselves
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse // Don't follow redirects
-		},
-	}
-	resp, err := client.Do(req)
+	resp, err := ts.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -463,13 +458,7 @@ func (ts *TestServer) PublicGET(path string) (*http.Response, error) {
 
 	// Make request using HTTP client that does NOT follow redirects
 	// E2E tests need to verify redirect responses themselves
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse // Don't follow redirects
-		},
-	}
-	resp, err := client.Do(req)
+	resp, err := ts.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -512,13 +501,7 @@ func (ts *TestServer) PublicPOST(path string, contentType string, body io.Reader
 
 	// Make request using HTTP client that does NOT follow redirects
 	// E2E tests need to verify redirect responses themselves
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse // Don't follow redirects
-		},
-	}
-	resp, err := client.Do(req)
+	resp, err := ts.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -557,13 +540,7 @@ func (ts *TestServer) DirectRequest(method string, path string, principal string
 
 	// Make request using HTTP client that does NOT follow redirects
 	// E2E tests need to verify redirect responses themselves
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse // Don't follow redirects
-		},
-	}
-	resp, err := client.Do(req)
+	resp, err := ts.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -702,5 +679,11 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 		app:    appInstance,
 		server: testServer,
 		logger: b.logger,
+		client: &http.Client{
+			Timeout: 5 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}, nil
 }

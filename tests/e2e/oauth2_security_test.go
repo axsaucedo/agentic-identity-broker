@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
@@ -32,9 +31,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 	)
 
 	BeforeEach(func() {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
-		}))
+		logger = bootstrap.TestLogger(slog.LevelInfo)
 		storageFactory = bootstrap.NewStorageFactory(logger)
 
 		var err error

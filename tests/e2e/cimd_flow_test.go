@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -40,7 +39,7 @@ var _ = Describe("CIMD Full Authorization Flow", func() {
 	const fakeHost = "cimd-e2e-flow.test.invalid"
 
 	BeforeEach(func() {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		logger = bootstrap.TestLogger(slog.LevelInfo)
 		mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 		storageFactory = bootstrap.NewStorageFactory(logger)
 		var err error

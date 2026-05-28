@@ -24,7 +24,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -98,7 +97,7 @@ var _ = Describe("Permission Sets (019)", func() {
 	)
 
 	setupEnv := func() {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		logger = bootstrap.TestLogger(slog.LevelWarn)
 		mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 		config := fixtures.OAuth2ConfigWithTokenExchange(mockUpstream.Server.URL)
 		storageFactory = bootstrap.NewStorageFactory(logger)

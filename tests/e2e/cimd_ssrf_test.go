@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -31,7 +30,7 @@ var _ = Describe("CIMD SSRF Protection", func() {
 	)
 
 	BeforeEach(func() {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		logger = bootstrap.TestLogger(slog.LevelInfo)
 		mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 		storageFactory = bootstrap.NewStorageFactory(logger)
 		var err error

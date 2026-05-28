@@ -1,7 +1,7 @@
 # Variable definitions
 NAME := "agentic-identity-broker"
 IMAGE_NAME := env_var_or_default("IMAGE_NAME", "agentic-identity-broker")
-GINKGO_PROCS := env_var_or_default("GINKGO_PROCS", "4")
+GINKGO_PROCS := env_var_or_default("GINKGO_PROCS", num_cpus())
 NUM_CPUS := num_cpus()
 VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
 

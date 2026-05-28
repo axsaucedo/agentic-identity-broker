@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -40,9 +39,7 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 
 	BeforeEach(func() {
 		// Create logger for test
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
-		}))
+		logger = bootstrap.TestLogger(slog.LevelInfo)
 
 		// Create storage factory
 		storageFactory = bootstrap.NewStorageFactory(logger)

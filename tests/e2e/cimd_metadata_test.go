@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -25,7 +24,7 @@ var _ = Describe("CIMD Authorization Server Metadata", func() {
 	)
 
 	BeforeEach(func() {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		logger = bootstrap.TestLogger(slog.LevelInfo)
 		mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 		storageFactory = bootstrap.NewStorageFactory(logger)
 		var err error

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -35,9 +34,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 		// This ensures tests are truly independent - no shared state between tests
 
 		// Create logger for this test
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
-		}))
+		logger = bootstrap.TestLogger(slog.LevelInfo)
 
 		// Create upstream mock server
 		mockUpstream = helpers.NewMockUpstreamOAuth2Server()

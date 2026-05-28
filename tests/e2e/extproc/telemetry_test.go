@@ -12,7 +12,6 @@ package extproc_test
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,9 +39,7 @@ import (
 )
 
 // testLogger provides consistent logging for test setup and teardown.
-var testLogger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-	Level: slog.LevelInfo,
-}))
+var testLogger = bootstrap.NewTestLogger()
 
 // sendExchangeRequest sends a RequestHeaders message with the given headers and returns
 // the response. It handles stream lifecycle automatically.
