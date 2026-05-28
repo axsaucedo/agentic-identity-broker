@@ -281,7 +281,7 @@ test-all-junit:
     FRONTEND_PID=$!
     echo "  [frontend]    PID $FRONTEND_PID"
 
-    (cd web && npm ci --silent && npm test -- --run --reporter=junit) \
+    (cd web && npm ci --silent && npm test --silent -- --run --reporter=junit) \
         > test-results/web-unit-junit.xml 2>test-results/web-unit.log &
     WEB_UNIT_PID=$!
     echo "  [web-unit]    PID $WEB_UNIT_PID"
