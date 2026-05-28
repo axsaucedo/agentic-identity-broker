@@ -433,5 +433,10 @@ var _ = Describe("US4b: Authorization Code Flow — LocalClient as public client
 		Expect(err).ToNot(HaveOccurred())
 		defer func() { _ = resp.Body.Close() }()
 		Expect(resp.StatusCode).To(SatisfyAny(Equal(http.StatusBadRequest), Equal(http.StatusFound)))
+		if resp.StatusCode == http.StatusFound {
+			locURL, _ := url.Parse(resp.Header.Get("Location"))
+			Expect(locURL.Query().Get("error")).ToNot(BeEmpty(), "expected OAuth2 error in redirect")
+			Expect(locURL.Query().Get("code")).To(BeEmpty(), "expected no authorization code to be issued")
+		}
 	})
 })
