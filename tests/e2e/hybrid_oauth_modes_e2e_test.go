@@ -272,6 +272,86 @@ var _ = Describe("US2+US3: Hybrid Mode with CIMD", func() {
 		Expect(resp).To(matchers.HaveStatusCode(http.StatusFound))
 		Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent/agent/" + proxyAgent.ID.String()))
 	})
+
+	// Scenario US2.4: full CIMD agent authorization code journey in hybrid mode.
+	// Exercises the GetAuthorizeCodeSession path that was broken — it used AgentID
+	// for GetClient, but CIMD resolvers reject UUID lookups, returning invalid_client.
+	It("CIMD agent in hybrid mode completes full authorization code flow with PKCE", func() {
+		ctx := context.Background()
+		principal := fixtures.DefaultPrincipal().String()
+		verifier := helpers.PKCEVerifier()
+		challenge := helpers.GenerateCodeChallenge(verifier)
+
+		now := time.Now()
+		cimdAgent := &storage.Agent{
+			ID:          id.NewAgentID(),
+			ClientURIs:  []string{clientURL},
+			DisplayName: "CIMD Auth Code Agent",
+			Description: "CIMD agent for full auth code flow test",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		Expect(testStorage.Agents().Create(ctx, cimdAgent)).To(Succeed())
+
+		// Step 1: Authorize — no grant → consent redirect.
+		authResp, err := server.AuthenticatedGET(
+			fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=cimd-state&code_challenge=%s&code_challenge_method=S256",
+				url.QueryEscape(clientURL), url.QueryEscape(redirectURI), challenge),
+			principal,
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = authResp.Body.Close() }()
+		Expect(authResp.StatusCode).To(Equal(http.StatusFound))
+		consentLoc, _ := url.Parse(authResp.Header.Get("Location"))
+		sessionToken := consentLoc.Query().Get("session_token")
+		Expect(sessionToken).ToNot(BeEmpty())
+
+		// Step 2: Submit grant (no service delegations for this agent).
+		grantBody, _ := json.Marshal(map[string]any{"granted_permission_sets": map[string]any{}})
+		grantResp, err := server.AuthenticatedPOST(
+			fmt.Sprintf("/api/consent/agents/%s/grants?session_token=%s", cimdAgent.ID, url.QueryEscape(sessionToken)),
+			principal, "application/json", bytes.NewReader(grantBody),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = grantResp.Body.Close() }()
+		Expect(grantResp.StatusCode).To(Equal(http.StatusCreated))
+		var grantRespBody map[string]any
+		Expect(json.NewDecoder(grantResp.Body).Decode(&grantRespBody)).To(Succeed())
+		reAuthorizeURL, _ := grantRespBody["redirect_url"].(string)
+		Expect(reAuthorizeURL).ToNot(BeEmpty())
+
+		// Step 3: Re-authorize — grant satisfied → CIMD local path issues authorization code.
+		codeResp, err := server.AuthenticatedGET(reAuthorizeURL, principal)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = codeResp.Body.Close() }()
+		Expect(codeResp.StatusCode).To(Equal(http.StatusFound))
+		parsedCodeLoc, _ := url.Parse(codeResp.Header.Get("Location"))
+		Expect(parsedCodeLoc.String()).To(HavePrefix(redirectURI))
+		code := parsedCodeLoc.Query().Get("code")
+		Expect(code).ToNot(BeEmpty())
+
+		// Step 4: Exchange code for token — no client_secret (CIMD clients are public).
+		// This step previously failed because GetAuthorizeCodeSession used agentID.String()
+		// for GetClient, which the CIMD resolver rejects with invalid_client.
+		tokenResp, err := http.Post(
+			server.BaseURL()+"/oauth2/token",
+			"application/x-www-form-urlencoded",
+			strings.NewReader(url.Values{
+				"grant_type":    {"authorization_code"},
+				"client_id":     {clientURL},
+				"code":          {code},
+				"redirect_uri":  {redirectURI},
+				"code_verifier": {verifier},
+			}.Encode()),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = tokenResp.Body.Close() }()
+		Expect(tokenResp.StatusCode).To(Equal(http.StatusOK))
+		var tokenBody map[string]any
+		Expect(json.NewDecoder(tokenResp.Body).Decode(&tokenBody)).To(Succeed())
+		Expect(tokenBody).To(HaveKey("access_token"))
+		Expect(tokenBody["token_type"]).To(Equal("Bearer"))
+	})
 })
 
 var _ = Describe("US2: Hybrid Mode — Local Agent Full Authorization Code Journey", func() {
