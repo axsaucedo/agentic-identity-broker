@@ -98,8 +98,8 @@ func NewAuthorizationService(
 // mode boundaries for the token endpoint. Follows the same universal resolution as
 // HandleAuthorization (FR-003, FR-004, FR-005) but without authorization-specific
 // logic (redirect URI, scopes, consent).
-func (s *AuthorizationService) ResolveForTokenGrant(ctx context.Context, rawClientID string) (*ports.TokenGrantResolution, error) {
-	resolution, resolveErr := s.clientResolver.ResolveClient(ctx, id.ClientID(rawClientID))
+func (s *AuthorizationService) ResolveForTokenGrant(ctx context.Context, clientID id.ClientID) (*ports.TokenGrantResolution, error) {
+	resolution, resolveErr := s.clientResolver.ResolveClient(ctx, clientID)
 	if resolveErr != nil {
 		var clientErr *ports.ClientIDError
 		if errors.As(resolveErr, &clientErr) {

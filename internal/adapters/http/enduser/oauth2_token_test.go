@@ -98,7 +98,7 @@ func (r *stubAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID
 
 // mockOAuth2ServiceForToken implements ports.OAuth2Service with configurable ResolveForTokenGrant.
 type mockOAuth2ServiceForToken struct {
-	resolveFn func(ctx context.Context, rawClientID string) (*ports.TokenGrantResolution, error)
+	resolveFn func(ctx context.Context, clientID id.ClientID) (*ports.TokenGrantResolution, error)
 }
 
 func (m *mockOAuth2ServiceForToken) HandleAuthorization(_ context.Context, _ *ports.AuthorizationRequest, _ id.Principal) (*ports.AuthorizationDecision, error) {
@@ -109,13 +109,13 @@ func (m *mockOAuth2ServiceForToken) GenerateMetadata(_ context.Context) (*ports.
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockOAuth2ServiceForToken) ResolveForTokenGrant(ctx context.Context, rawClientID string) (*ports.TokenGrantResolution, error) {
-	return m.resolveFn(ctx, rawClientID)
+func (m *mockOAuth2ServiceForToken) ResolveForTokenGrant(ctx context.Context, clientID id.ClientID) (*ports.TokenGrantResolution, error) {
+	return m.resolveFn(ctx, clientID)
 }
 
 func newResolvingOAuth2Service(agent *storage.Agent) *mockOAuth2ServiceForToken {
 	return &mockOAuth2ServiceForToken{
-		resolveFn: func(_ context.Context, _ string) (*ports.TokenGrantResolution, error) {
+		resolveFn: func(_ context.Context, _ id.ClientID) (*ports.TokenGrantResolution, error) {
 			return ports.NewTokenGrantResolution(agent.ID, agent.ClientID, agent.ClientType())
 		},
 	}
@@ -123,7 +123,7 @@ func newResolvingOAuth2Service(agent *storage.Agent) *mockOAuth2ServiceForToken 
 
 func newFailingOAuth2Service(err error) *mockOAuth2ServiceForToken {
 	return &mockOAuth2ServiceForToken{
-		resolveFn: func(_ context.Context, _ string) (*ports.TokenGrantResolution, error) {
+		resolveFn: func(_ context.Context, _ id.ClientID) (*ports.TokenGrantResolution, error) {
 			return nil, err
 		},
 	}
@@ -133,8 +133,8 @@ func newFailingOAuth2Service(err error) *mockOAuth2ServiceForToken {
 // dummy local agent (no ClientID) and rejects non-UUIDs with invalid_client.
 func newLocalModeOAuth2Service() *mockOAuth2ServiceForToken {
 	return &mockOAuth2ServiceForToken{
-		resolveFn: func(_ context.Context, rawClientID string) (*ports.TokenGrantResolution, error) {
-			_, err := id.ParseAgentID(rawClientID)
+		resolveFn: func(_ context.Context, clientID id.ClientID) (*ports.TokenGrantResolution, error) {
+			_, err := id.ParseAgentID(clientID.String())
 			if err != nil {
 				return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "client authentication failed"}
 			}

@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -96,7 +97,7 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resolution, resolveErr := h.OAuth2Service.ResolveForTokenGrant(r.Context(), rawClientID)
+	resolution, resolveErr := h.OAuth2Service.ResolveForTokenGrant(r.Context(), id.ClientID(rawClientID))
 	if resolveErr != nil {
 		var clientErr *ports.ClientIDError
 		if errors.As(resolveErr, &clientErr) {

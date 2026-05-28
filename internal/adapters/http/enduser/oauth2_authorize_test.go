@@ -473,7 +473,7 @@ func (s *proceedOAuth2Service) GenerateMetadata(_ context.Context) (*ports.Metad
 	return &ports.MetadataResponse{}, nil
 }
 
-func (s *proceedOAuth2Service) ResolveForTokenGrant(_ context.Context, _ string) (*ports.TokenGrantResolution, error) {
+func (s *proceedOAuth2Service) ResolveForTokenGrant(_ context.Context, _ id.ClientID) (*ports.TokenGrantResolution, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -821,7 +821,7 @@ func (s *erroringOAuth2Service) GenerateMetadata(_ context.Context) (*ports.Meta
 	return &ports.MetadataResponse{}, nil
 }
 
-func (s *erroringOAuth2Service) ResolveForTokenGrant(_ context.Context, _ string) (*ports.TokenGrantResolution, error) {
+func (s *erroringOAuth2Service) ResolveForTokenGrant(_ context.Context, _ id.ClientID) (*ports.TokenGrantResolution, error) {
 	return nil, errors.New("not implemented")
 }
 

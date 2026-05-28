@@ -39,7 +39,7 @@ type OAuth2Service interface {
 	// ResolveForTokenGrant resolves the client_id, classifies the agent, and
 	// enforces mode boundaries for the token endpoint. Returns the resolved agent
 	// and an OAuth2 error if resolution or mode enforcement fails.
-	ResolveForTokenGrant(ctx context.Context, rawClientID string) (*TokenGrantResolution, error)
+	ResolveForTokenGrant(ctx context.Context, clientID id.ClientID) (*TokenGrantResolution, error)
 
 	// GenerateMetadata returns RFC 8414 OAuth2 metadata for auto-discovery.
 	GenerateMetadata(ctx context.Context) (*MetadataResponse, error)

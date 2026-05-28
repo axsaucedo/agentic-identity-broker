@@ -1592,7 +1592,7 @@ func TestService_ResolveForTokenGrant_ModeBoundary(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := buildSvc(tc.strategy, tc.agent)
-			res, err := svc.ResolveForTokenGrant(ctx, tc.agent.ID.String())
+			res, err := svc.ResolveForTokenGrant(ctx, id.ClientID(tc.agent.ID.String()))
 
 			if tc.wantErrCode != "" {
 				require.Error(t, err)
