@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +22,8 @@ import (
 
 // UserInfo represents user information retrieved from OAuth2
 type UserInfo struct {
-	Sub string `json:"sub"`
+	Sub    string
+	Claims map[string]interface{}
 }
 
 // Session represents a user session
@@ -77,7 +79,11 @@ func (h *Handlers) Home(w http.ResponseWriter, r *http.Request) {
 		slog.Info("Displaying user info",
 			"sub", session.UserInfo.Sub,
 			"expiresAt", session.ExpiresAt)
-		fmt.Fprint(w, renderUserPage(session.UserInfo, session.ExpiresAt, session.ClientType))
+		rawToken := ""
+		if session.Token != nil {
+			rawToken = session.Token.AccessToken
+		}
+		fmt.Fprint(w, renderUserPage(session.UserInfo, session.ExpiresAt, session.ClientType, rawToken))
 		return
 	}
 
@@ -245,14 +251,17 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try to extract sub claim from JWT token
-	// If token is not JWT format (opaque), fall back to "N/A"
+	// Decode JWT claims from access token (best-effort; opaque tokens get empty claims).
 	sub := "N/A"
-	if decodedSub, err := extractSubFromToken(accessToken); err == nil {
-		sub = decodedSub
-		slog.Info("Extracted sub claim from JWT token", "sub", sub)
+	var claims map[string]interface{}
+	if c, err := extractTokenClaims(accessToken); err == nil {
+		claims = c
+		if s, ok := c["sub"].(string); ok {
+			sub = s
+		}
+		slog.Info("Extracted JWT claims", "sub", sub)
 	} else {
-		slog.Info("Token is not JWT format (opaque token), using placeholder", "error", err.Error())
+		slog.Info("Token is not JWT format (opaque token)", "error", err.Error())
 	}
 
 	// Store token and user info in session
@@ -261,6 +270,7 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request) {
 		session.Token = token
 		session.ExpiresAt = token.Expiry.Unix()
 		session.UserInfo.Sub = sub
+		session.UserInfo.Claims = claims
 		slog.Info("Updated session in callback",
 			"sub", session.UserInfo.Sub,
 			"expiresAt", session.ExpiresAt)
@@ -464,18 +474,13 @@ func (h *Handlers) getSessionID(r *http.Request) string {
 	return cookie.Value
 }
 
-// extractSubFromToken extracts the 'sub' claim from a JWT access token without verification
-func extractSubFromToken(accessToken string) (string, error) {
-	// JWT format: header.payload.signature
+// extractTokenClaims decodes the payload of a JWT access token without verification.
+func extractTokenClaims(accessToken string) (map[string]interface{}, error) {
 	parts := strings.Split(accessToken, ".")
 	if len(parts) < 2 {
-		return "", fmt.Errorf("invalid token format")
+		return nil, fmt.Errorf("invalid token format")
 	}
-
-	// Decode the payload (second part)
 	payload := parts[1]
-
-	// Add padding if needed for base64 decoding
 	switch len(payload) % 4 {
 	case 1:
 		payload += "==="
@@ -484,25 +489,15 @@ func extractSubFromToken(accessToken string) (string, error) {
 	case 3:
 		payload += "="
 	}
-
 	decoded, err := base64.URLEncoding.DecodeString(payload)
 	if err != nil {
-		return "", fmt.Errorf("failed to decode token payload: %w", err)
+		return nil, fmt.Errorf("failed to decode token payload: %w", err)
 	}
-
-	// Parse the JSON payload
 	var claims map[string]interface{}
 	if err := json.Unmarshal(decoded, &claims); err != nil {
-		return "", fmt.Errorf("failed to parse token claims: %w", err)
+		return nil, fmt.Errorf("failed to parse token claims: %w", err)
 	}
-
-	// Extract the 'sub' claim
-	sub, ok := claims["sub"].(string)
-	if !ok {
-		return "", fmt.Errorf("'sub' claim not found or not a string")
-	}
-
-	return sub, nil
+	return claims, nil
 }
 
 // generateRandomString generates a cryptographically secure random string of given length
@@ -584,13 +579,7 @@ func renderSelectorPage(cfg *config.Config) string {
 }
 
 // renderUserPage renders the post-login user info page.
-func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType string) string {
-	expiresTime := time.Unix(expiresAt, 0).Format(time.RFC3339)
-	slog.Info("renderUserPage called with",
-		"sub", userInfo.Sub,
-		"expiresTime", expiresTime,
-		"clientType", clientType)
-
+func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType, rawToken string) string {
 	var flowLabel string
 	switch clientType {
 	case "local":
@@ -601,42 +590,74 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType string) stri
 		flowLabel = "Proxy Client — token forwarded from upstream OAuth2 server"
 	}
 
+	// Build claims rows: well-known claims first, then remaining alphabetically.
+	wellKnown := []string{"iss", "sub", "aud", "exp", "iat", "jti", "azp", "scope"}
+	seen := map[string]bool{}
+	var claimRows strings.Builder
+	formatVal := func(v interface{}) string {
+		switch t := v.(type) {
+		case float64:
+			if t > 1e9 {
+				return fmt.Sprintf("%s (%g)", time.Unix(int64(t), 0).UTC().Format(time.RFC3339), t)
+			}
+			return fmt.Sprintf("%g", t)
+		case []interface{}:
+			b, _ := json.Marshal(t)
+			return string(b)
+		default:
+			return fmt.Sprintf("%v", v)
+		}
+	}
+	if userInfo.Claims != nil {
+		for _, k := range wellKnown {
+			if v, ok := userInfo.Claims[k]; ok {
+				seen[k] = true
+				claimRows.WriteString(fmt.Sprintf(
+					`<tr><td class="ck">%s</td><td class="cv">%s</td></tr>`,
+					k, formatVal(v)))
+			}
+		}
+		var extra []string
+		for k := range userInfo.Claims {
+			if !seen[k] {
+				extra = append(extra, k)
+			}
+		}
+		sort.Strings(extra)
+		for _, k := range extra {
+			claimRows.WriteString(fmt.Sprintf(
+				`<tr><td class="ck">%s</td><td class="cv">%s</td></tr>`,
+				k, formatVal(userInfo.Claims[k])))
+		}
+	}
+
+	tokenDisplay := rawToken
+	if len(tokenDisplay) > 80 {
+		tokenDisplay = tokenDisplay[:40] + "..." + tokenDisplay[len(tokenDisplay)-20:]
+	}
+
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
     <title>User Info - Sample OAuth2 Client</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 600px; margin: 80px auto; padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%);
-            min-height: 100vh;
-        }
-        .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 680px; margin: 60px auto; padding: 20px; background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); min-height: 100vh; }
+        .container { background: white; padding: 36px; border-radius: 8px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
         h1 { color: #333; margin-bottom: 10px; }
-        .flow-badge {
-            background: #eef0ff; border-left: 4px solid #667eea;
-            padding: 12px 16px; border-radius: 4px; margin-bottom: 24px;
-            color: #3d4db7; font-size: 14px;
-        }
-        .user-info {
-            background: linear-gradient(135deg, #f5f7fa 0%%, #c3cfe2 100%%);
-            padding: 20px; border-radius: 4px; margin-bottom: 24px;
-        }
-        .info-row { margin: 10px 0; padding: 10px; background: white; border-radius: 4px; }
-        .info-row strong { color: #667eea; min-width: 110px; display: inline-block; }
+        .flow-badge { background: #eef0ff; border-left: 4px solid #667eea; padding: 10px 16px; border-radius: 4px; margin-bottom: 20px; color: #3d4db7; font-size: 14px; }
+        h2 { font-size: 15px; color: #555; margin: 20px 0 8px; }
+        table { width: 100%%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+        td { padding: 7px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+        .ck { color: #667eea; font-weight: 600; white-space: nowrap; width: 1%%; }
+        .cv { word-break: break-all; font-family: monospace; }
+        details { margin-bottom: 20px; }
+        summary { cursor: pointer; font-size: 13px; color: #667eea; font-weight: 600; margin-bottom: 6px; }
+        .raw { font-family: monospace; font-size: 12px; background: #f7f7f7; padding: 10px; border-radius: 4px; word-break: break-all; border: 1px solid #e0e0e0; }
         .buttons { display: flex; gap: 10px; margin-top: 16px; }
-        a, button {
-            display: inline-block; padding: 10px 20px; text-decoration: none;
-            border-radius: 4px; font-weight: bold; border: none; cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        .btn-home  { background: #667eea; color: white; flex: 1; }
-        .btn-home:hover  { background: #764ba2; }
-        .btn-mcp {
-            background: #27ae60; color: white; width: 100%%;
-            margin-bottom: 10px; font-size: 14px;
-        }
+        a, button { display: inline-block; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; border: none; cursor: pointer; transition: background-color 0.2s; }
+        .btn-home { background: #667eea; color: white; flex: 1; }
+        .btn-home:hover { background: #764ba2; }
+        .btn-mcp { background: #27ae60; color: white; width: 100%%; margin-bottom: 10px; font-size: 14px; }
         .btn-mcp:hover { background: #219a52; }
         .btn-mcp:disabled { background: #95a5a6; cursor: not-allowed; }
         .mcp-result { margin-top: 15px; padding: 15px; border-radius: 4px; display: none; }
@@ -647,12 +668,14 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType string) stri
 </head>
 <body>
     <div class="container">
-        <h1>✓ OAuth2 Flow Successful</h1>
+        <h1>&#x2713; OAuth2 Flow Successful</h1>
         <div class="flow-badge">%s</div>
-        <div class="user-info">
-            <div class="info-row"><strong>Subject:</strong> <span>%s</span></div>
-            <div class="info-row"><strong>Token Expires:</strong> <span>%s</span></div>
-        </div>
+        <h2>Access Token Claims</h2>
+        <table><tbody>%s</tbody></table>
+        <details>
+            <summary>Raw access token</summary>
+            <div class="raw" title="%s">%s</div>
+        </details>
         <button id="mcp-btn" class="btn-mcp" onclick="callMCPTool()">Call MCP Tool (Token Exchange)</button>
         <div id="mcp-result" class="mcp-result"></div>
         <div class="buttons">
@@ -687,5 +710,5 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType string) stri
     function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
     </script>
 </body>
-</html>`, flowLabel, userInfo.Sub, expiresTime)
+</html>`, flowLabel, claimRows.String(), rawToken, tokenDisplay)
 }
