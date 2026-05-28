@@ -5,10 +5,15 @@
 # to an upstream OAuth2 server while handling consent checks via the grant system.
 
 oauth2_authorization_server:
-  # Upstream OAuth2 server configuration
-  upstream_issuer_uri: "https://auth.example.com"                    # Upstream OAuth2 issuer URL
-  upstream_authorize_endpoint: "https://auth.example.com/authorize"  # Upstream authorization endpoint
-  upstream_token_endpoint: "https://auth.example.com/token"          # Upstream token endpoint
+  # Broker mode: "proxy" (default), "local", or "hybrid"
+  mode: "proxy"
+
+  # Proxy section: upstream OAuth2 server configuration (required in proxy/hybrid mode)
+  proxy:
+    upstream_issuer_uri: "https://auth.example.com"                    # Upstream OAuth2 issuer URL
+    upstream_authorize_endpoint: "https://auth.example.com/authorize"  # Upstream authorization endpoint
+    upstream_token_endpoint: "https://auth.example.com/token"          # Upstream token endpoint
+    upstream_timeout_seconds: 30  # Timeout for upstream OAuth2 server requests (seconds)
 
   # Note: The broker's public URL (used as the OAuth2 issuer in
   # /.well-known/oauth-authorization-server metadata) is configured via
@@ -21,12 +26,6 @@ oauth2_authorization_server:
   supported_grant_types:
     - authorization_code                         # Authorization code grant (RFC 6749 Section 4.1)
     - refresh_token                              # Refresh token grant (RFC 6749 Section 6)
-
-  # Upstream HTTP client configuration
-  upstream_timeout_seconds: 30  # Timeout for upstream OAuth2 server requests (seconds)
-
-  # Broker mode
-  mode: "proxy"  # Mode of operation: "proxy" (default) proxies to upstream OAuth2 server
 
   # Multi-agent client sharing (optional)
   # When disabled (default), each agent must have a unique upstream client_id.

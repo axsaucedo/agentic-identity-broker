@@ -26,8 +26,8 @@ import (
 
 // This test validates behavioral differences across the three operational modes:
 // - Proxy mode: delegates token issuance to upstream, no local JWKS/signing
-// - issue_token mode (no CIMD): mints tokens locally, agents resolved by client_id string
-// - issue_token mode (with CIMD): mints tokens locally, agents resolved by URL-based client_id via CIMD fetch
+// - local mode (no CIMD): mints tokens locally, agents resolved by client_id string
+// - local mode (with CIMD): mints tokens locally, agents resolved by URL-based client_id via CIMD fetch
 
 var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 	var (
@@ -133,14 +133,14 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 		})
 	})
 
-	Describe("issue_token mode (no CIMD)", func() {
+	Describe("local mode (no CIMD)", func() {
 		var (
 			testStorage *storageadapter.Adapter
 			server      *bootstrap.TestServer
 		)
 
 		BeforeEach(func() {
-			config := fixtures.IssueTokenConfig()
+			config := fixtures.LocalConfig()
 
 			var err error
 			testStorage, err = storageFactory.NewTestStorage()
@@ -191,9 +191,8 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:           id.NewAgentID(),
-				ClientID:     ptr.To(id.ClientID("local-agent")),
 				DisplayName:  "Local Agent",
-				Description:  "Test agent for issue_token mode",
+				Description:  "Test agent for local mode",
 				RedirectURIs: []string{"https://example.com/cb"},
 				CreatedAt:    now,
 				UpdatedAt:    now,
@@ -225,7 +224,7 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 		})
 	})
 
-	Describe("issue_token mode (with CIMD)", func() {
+	Describe("local mode (with CIMD)", func() {
 		var (
 			testStorage *storageadapter.Adapter
 			cimdServer  *httptest.Server
@@ -281,14 +280,14 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			}
 		})
 
-		It("exposes JWKS endpoint (issue_token mode feature)", func() {
+		It("exposes JWKS endpoint (local mode feature)", func() {
 			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 		})
 
-		It("exposes discovery metadata (issue_token mode feature)", func() {
+		It("exposes discovery metadata (local mode feature)", func() {
 			resp, err := http.Get(server.BaseURL() + "/.well-known/oauth-authorization-server")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -299,7 +298,6 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "CIMD Agent",
 				Description: "Agent with URL client_id",
@@ -328,9 +326,8 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:           id.NewAgentID(),
-				ClientID:     ptr.To(id.ClientID("plain-agent")),
 				DisplayName:  "Plain Agent",
-				Description:  "Non-URL client_id in CIMD mode",
+				Description:  "Local-mode agent in CIMD mode, resolved by UUID",
 				RedirectURIs: []string{"https://example.com/cb"},
 				CreatedAt:    now,
 				UpdatedAt:    now,

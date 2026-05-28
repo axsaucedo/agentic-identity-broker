@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -95,6 +96,56 @@ func (r *stubAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID
 	return false, nil
 }
 
+// mockOAuth2ServiceForToken implements ports.OAuth2Service with configurable ResolveForTokenGrant.
+type mockOAuth2ServiceForToken struct {
+	resolveFn func(ctx context.Context, clientID id.ClientID) (*ports.TokenGrantResolution, error)
+}
+
+func (m *mockOAuth2ServiceForToken) HandleAuthorization(_ context.Context, _ *ports.AuthorizationRequest, _ id.Principal) (*ports.AuthorizationDecision, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockOAuth2ServiceForToken) GenerateMetadata(_ context.Context) (*ports.MetadataResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockOAuth2ServiceForToken) ResolveForTokenGrant(ctx context.Context, clientID id.ClientID) (*ports.TokenGrantResolution, error) {
+	return m.resolveFn(ctx, clientID)
+}
+
+func newResolvingOAuth2Service(agent *storage.Agent) *mockOAuth2ServiceForToken {
+	return &mockOAuth2ServiceForToken{
+		resolveFn: func(_ context.Context, _ id.ClientID) (*ports.TokenGrantResolution, error) {
+			return ports.NewTokenGrantResolution(agent.ID, agent.ClientID, agent.ClientType())
+		},
+	}
+}
+
+func newFailingOAuth2Service(err error) *mockOAuth2ServiceForToken {
+	return &mockOAuth2ServiceForToken{
+		resolveFn: func(_ context.Context, _ id.ClientID) (*ports.TokenGrantResolution, error) {
+			return nil, err
+		},
+	}
+}
+
+// newLocalModeOAuth2Service returns an OAuth2Service mock that resolves valid UUIDs to a
+// dummy local agent (no ClientID) and rejects non-UUIDs with invalid_client.
+func newLocalModeOAuth2Service() *mockOAuth2ServiceForToken {
+	return &mockOAuth2ServiceForToken{
+		resolveFn: func(_ context.Context, clientID id.ClientID) (*ports.TokenGrantResolution, error) {
+			_, err := id.ParseAgentID(clientID.String())
+			if err != nil {
+				return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "client authentication failed"}
+			}
+			return &ports.TokenGrantResolution{
+				AgentID:    id.NewAgentID(),
+				ClientType: storage.LocalClient,
+			}, nil
+		},
+	}
+}
+
 // TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation tests Content-Type validation
 func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 	agentID := id.NewAgentID()
@@ -109,7 +160,8 @@ func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 	}
 
 	tests := []struct {
@@ -148,6 +200,80 @@ func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 	}
 }
 
+// TestOAuth2TokenHandler_PreFlightErrorsReturnJSON verifies that all pre-flight error
+// paths return application/json with a valid RFC 6749 error body, not text/plain.
+func TestOAuth2TokenHandler_PreFlightErrorsReturnJSON(t *testing.T) {
+	handler := &OAuth2TokenHandler{
+		GrantHandler:  NewLocalGrantStrategy(fixedMinting(nil, nil), nil),
+		OAuth2Service: newLocalModeOAuth2Service(),
+	}
+
+	tests := []struct {
+		name       string
+		method     string
+		ct         string
+		body       io.Reader
+		wantStatus int
+		wantError  string
+	}{
+		{
+			name:       "wrong HTTP method returns JSON error",
+			method:     "GET",
+			ct:         "application/x-www-form-urlencoded",
+			body:       strings.NewReader("grant_type=client_credentials"),
+			wantStatus: http.StatusMethodNotAllowed,
+			wantError:  "invalid_request",
+		},
+		{
+			name:       "wrong Content-Type returns JSON error",
+			method:     "POST",
+			ct:         "application/json",
+			body:       strings.NewReader(`{"grant_type":"client_credentials"}`),
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_request",
+		},
+		{
+			name:       "empty body returns JSON error",
+			method:     "POST",
+			ct:         "application/x-www-form-urlencoded",
+			body:       strings.NewReader(""),
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_request",
+		},
+		{
+			name:       "body read failure returns JSON error",
+			method:     "POST",
+			ct:         "application/x-www-form-urlencoded",
+			body:       &failingReadCloser{err: errors.New("disk failure")},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_request",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, "/oauth2/token", tt.body)
+			req.Header.Set("Content-Type", tt.ct)
+			if fr, ok := tt.body.(*failingReadCloser); ok {
+				req.Body = fr
+			}
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			assert.Equal(t, "application/json", w.Header().Get("Content-Type"),
+				"token endpoint must return application/json for errors per RFC 6749 §5.2")
+
+			var body map[string]string
+			err := json.NewDecoder(w.Body).Decode(&body)
+			assert.NoError(t, err, "response body must be valid JSON")
+			assert.Equal(t, tt.wantError, body["error"])
+			assert.NotEmpty(t, body["error_description"])
+		})
+	}
+}
+
 // TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering tests hop-by-hop header filtering
 func TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering(t *testing.T) {
 	agentID := id.NewAgentID()
@@ -171,7 +297,8 @@ func TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -208,7 +335,8 @@ func TestOAuth2TokenHandler_ServeHTTP_SuccessfulProxy(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String() + "&redirect_uri=https://client.example.com/callback")
@@ -241,7 +369,8 @@ func TestOAuth2TokenHandler_ServeHTTP_UpstreamError(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=expired&client_id=" + agentID.String())
@@ -255,6 +384,36 @@ func TestOAuth2TokenHandler_ServeHTTP_UpstreamError(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	respBody, _ := io.ReadAll(w.Body)
 	assert.Contains(t, string(respBody), "invalid_grant")
+}
+
+// TestProxyGrantStrategy_InfraErrorsReturnJSON verifies that infrastructure failures
+// in the proxy strategy return application/json per RFC 6749 §5.2.
+func TestProxyGrantStrategy_InfraErrorsReturnJSON(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	t.Run("unreachable upstream returns JSON server_error", func(t *testing.T) {
+		// Use an invalid URL that will fail to connect
+		strategy := NewProxyTokenGrantStrategy("http://127.0.0.1:1/token", nil, nil, nil)
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/oauth2/token", nil)
+
+		resolution := &ports.TokenGrantResolution{
+			AgentID:    agentID,
+			ClientID:   ptr.To(id.ClientID("upstream-client")),
+			ClientType: storage.ProxyClient,
+		}
+		strategy.HandleTokenGrant(w, req, "authorization_code", url.Values{
+			"grant_type": {"authorization_code"},
+			"client_id":  {agentID.String()},
+			"code":       {"abc"},
+		}, resolution)
+
+		assert.Equal(t, "application/json", w.Header().Get("Content-Type"),
+			"upstream contact failure must return application/json")
+		var body map[string]string
+		_ = json.NewDecoder(w.Body).Decode(&body)
+		assert.Equal(t, "server_error", body["error"])
+	})
 }
 
 // TestIsHopByHopHeader tests hop-by-hop header identification
@@ -357,7 +516,8 @@ func TestOAuth2TokenHandler_ProxyToUpstream_MultiAgentVerifier(t *testing.T) {
 			defer mockUpstream.Close()
 
 			handler := &OAuth2TokenHandler{
-				GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, tt.verifier, nil),
+				GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, tt.verifier, nil),
+				OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 			}
 
 			body := "grant_type=authorization_code&code=abc123&client_id=" + tt.clientID
@@ -389,7 +549,8 @@ func TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -433,10 +594,10 @@ func TestOAuth2TokenHandler_ClientIDValidation(t *testing.T) {
 		wantError      string
 	}{
 		{
-			name:           "missing client_id returns 401 invalid_client",
+			name:           "missing client_id returns 400 invalid_request",
 			body:           "grant_type=authorization_code&code=abc123",
-			wantStatusCode: http.StatusUnauthorized,
-			wantError:      "invalid_client",
+			wantStatusCode: http.StatusBadRequest,
+			wantError:      "invalid_request",
 		},
 		{
 			name:           "non-UUID client_id returns 401 invalid_client",
@@ -458,7 +619,8 @@ func TestOAuth2TokenHandler_ClientIDValidation(t *testing.T) {
 			for _, v := range verifiers {
 				t.Run(v.name, func(t *testing.T) {
 					handler := &OAuth2TokenHandler{
-						GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, v.verifier, nil),
+						GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, v.verifier, nil),
+						OAuth2Service: newFailingOAuth2Service(&ports.ClientIDError{Code: "invalid_client", Desc: "client authentication failed"}),
 					}
 
 					req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", strings.NewReader(tt.body))
@@ -497,7 +659,8 @@ func TestOAuth2TokenHandler_ProxyToUpstream_ClientIDReplacement(t *testing.T) {
 
 	agentRepo := newStubAgentRepo(agentID, upstreamClientID)
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 	}
 
 	body := "grant_type=authorization_code&code=abc&client_id=" + agentID.String()
@@ -526,13 +689,10 @@ func TestOAuth2TokenHandler_ProxyToUpstream_AgentNotFound(t *testing.T) {
 	}))
 	defer mockUpstream.Close()
 
-	// Repo returns an error for any agent lookup (agent not found)
-	agentRepo := &stubAgentRepo{
-		agent: nil,
-		err:   errors.New("agent not found"),
-	}
+	// OAuth2Service returns an error for agent not found
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newFailingOAuth2Service(&ports.ClientIDError{Code: "invalid_client", Desc: "agent not found"}),
 	}
 
 	body := "grant_type=authorization_code&code=abc&client_id=" + agentID.String()
@@ -548,9 +708,42 @@ func TestOAuth2TokenHandler_ProxyToUpstream_AgentNotFound(t *testing.T) {
 	assert.False(t, upstreamCalled, "upstream must not be called when agent is not found")
 }
 
+// TestProxyGrantStrategy_NilClientID_ReturnsServerError verifies that a nil ClientID
+// (server misconfiguration) returns 500 server_error, not 400 invalid_client.
+// This is a server-side configuration error, not a client authentication failure.
+func TestProxyGrantStrategy_NilClientID_ReturnsServerError(t *testing.T) {
+	upstreamCalled := false
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mockUpstream.Close()
+
+	strategy := NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=authorization_code&code=abc"))
+
+	// resolution with nil ClientID = misconfigured proxy agent
+	resolution := &ports.TokenGrantResolution{
+		AgentID:    id.NewAgentID(),
+		ClientType: storage.ProxyClient,
+		ClientID:   nil,
+	}
+
+	strategy.HandleTokenGrant(w, req, "authorization_code", url.Values{"grant_type": {"authorization_code"}}, resolution)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code, "nil ClientID is server misconfiguration, not client error")
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	var body map[string]string
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "server_error", body["error"])
+	assert.False(t, upstreamCalled, "upstream must not be called when ClientID is nil")
+}
+
 func TestWriteTokenResponse(t *testing.T) {
 	t.Run("success returns 200 with complete JSON body", func(t *testing.T) {
-		s := &issueTokenGrantStrategy{}
+		s := &localGrantStrategy{}
 		w := httptest.NewRecorder()
 
 		s.writeTokenResponse(w, &ports.TokenResponse{
@@ -572,7 +765,7 @@ func TestWriteTokenResponse(t *testing.T) {
 	})
 
 	t.Run("scope included when non-empty", func(t *testing.T) {
-		s := &issueTokenGrantStrategy{}
+		s := &localGrantStrategy{}
 		w := httptest.NewRecorder()
 
 		s.writeTokenResponse(w, &ports.TokenResponse{
@@ -644,7 +837,7 @@ func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 					return successResp, nil
 				},
 			}
-			handler := &OAuth2TokenHandler{GrantHandler: NewIssueTokenGrantStrategy(minting, nil)}
+			handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(minting, nil), OAuth2Service: newLocalModeOAuth2Service()}
 			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
@@ -726,7 +919,7 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 					return successResp, nil
 				},
 			}
-			handler := &OAuth2TokenHandler{GrantHandler: NewIssueTokenGrantStrategy(minting, nil)}
+			handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(minting, nil), OAuth2Service: newLocalModeOAuth2Service()}
 			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
@@ -751,9 +944,9 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 // 400 unsupported_grant_type for any grant type other than client_credentials or
 // authorization_code (e.g. password, implicit, device_code).
 func TestHandleLocalMinting_UnsupportedGrantType(t *testing.T) {
-	handler := &OAuth2TokenHandler{GrantHandler: NewIssueTokenGrantStrategy(fixedMinting(nil, nil), nil)}
+	handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(fixedMinting(nil, nil), nil), OAuth2Service: newLocalModeOAuth2Service()}
 	req := httptest.NewRequest("POST", "/oauth2/token",
-		strings.NewReader("grant_type=password&username=user&password=secret"))
+		strings.NewReader("grant_type=password&client_id=550e8400-e29b-41d4-a716-446655440000&username=user&password=secret"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
@@ -782,7 +975,7 @@ func TestHandleMintingError_RFC6749StatusCodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &issueTokenGrantStrategy{}
+			s := &localGrantStrategy{}
 			w := httptest.NewRecorder()
 
 			s.handleMintingError(w, tt.err, "client_credentials", "broker_test")
@@ -800,7 +993,7 @@ func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
 	internalDetail := "scope \"read:admin\" not allowed for this agent"
 
 	t.Run("invalid_scope does not leak internal detail", func(t *testing.T) {
-		s := &issueTokenGrantStrategy{}
+		s := &localGrantStrategy{}
 		w := httptest.NewRecorder()
 
 		s.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_scope", "scope not allowed", http.StatusBadRequest, oauth2server.ErrInvalidScope)), "client_credentials", "broker_test")
@@ -813,7 +1006,7 @@ func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
 	})
 
 	t.Run("invalid_grant does not leak internal detail", func(t *testing.T) {
-		s := &issueTokenGrantStrategy{}
+		s := &localGrantStrategy{}
 		w := httptest.NewRecorder()
 
 		s.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant)), "authorization_code", "broker_test")
@@ -832,7 +1025,7 @@ func TestHandleMintingError_LogDoesNotLeakErrorChain(t *testing.T) {
 	var buf strings.Builder
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
 
-	s := &issueTokenGrantStrategy{logger: logger}
+	s := &localGrantStrategy{logger: logger}
 	w := httptest.NewRecorder()
 
 	wrapped := fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_client", "client auth failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient))
@@ -842,4 +1035,325 @@ func TestHandleMintingError_LogDoesNotLeakErrorChain(t *testing.T) {
 	assert.NotContains(t, logLine, internalDetail)
 	assert.Contains(t, logLine, "invalid_client")
 	assert.Contains(t, logLine, "client auth failed")
+}
+
+// mockTokenGrantStrategy captures HandleTokenGrant arguments for dispatch assertion.
+type mockTokenGrantStrategy struct {
+	capturedFormData url.Values
+}
+
+func (m *mockTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, _ *http.Request, _ string, formData url.Values, _ *ports.TokenGrantResolution) {
+	m.capturedFormData = formData
+	w.WriteHeader(http.StatusOK)
+}
+
+// T048b: localGrantStrategy accepts LocalClient agents (no upstream ClientID, no ClientURIs).
+// The minting strategy is reached and returns a token response.
+func TestLocalGrantStrategy_AcceptsLocalClient(t *testing.T) {
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000012")
+
+	expected := &ports.TokenResponse{AccessToken: "local-tok", TokenType: "Bearer", ExpiresIn: 3600}
+	strategy := NewLocalGrantStrategy(fixedMinting(expected, nil), nil)
+
+	body := strings.NewReader("grant_type=client_credentials&client_id=" + agentID.String() + "&client_secret=secret")
+	req := httptest.NewRequest("POST", "/oauth2/token", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	strategy.HandleTokenGrant(w, req, "client_credentials", parseForm(req), &ports.TokenGrantResolution{
+		AgentID:    agentID,
+		ClientType: storage.LocalClient,
+	})
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]interface{}
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	assert.Equal(t, "local-tok", resp["access_token"])
+}
+
+// parseForm parses the form body from a request (re-reads body, for test helpers only).
+func parseForm(r *http.Request) url.Values {
+	_ = r.ParseForm()
+	return r.Form
+}
+
+// TestHybridTokenGrant_EmptyClientIDReturns400 ensures missing client_id is rejected with
+// 400 invalid_request before any agent lookup, matching RFC 6749 §5.2.
+func TestHybridTokenGrant_EmptyClientIDReturns400(t *testing.T) {
+	strategy := NewHybridTokenGrantStrategy(
+		&mockTokenGrantStrategy{},
+		&mockTokenGrantStrategy{},
+		nil,
+	)
+	handler := &OAuth2TokenHandler{GrantHandler: strategy}
+
+	req := httptest.NewRequest("POST", "/oauth2/token",
+		strings.NewReader("grant_type=client_credentials&client_secret=secret"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]interface{}
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "invalid_request", body["error"])
+}
+
+// TestHybridTokenGrantStrategy_DispatchByClientType verifies that hybridTokenGrantStrategy
+// routes ProxyClient agents to the proxy sub-strategy and local modes (LocalClient,
+// CIMDClient) to the local sub-strategy, while rejecting ambiguous/unknown modes.
+func TestHybridTokenGrantStrategy_DispatchByClientType(t *testing.T) {
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000099")
+	cases := []struct {
+		name         string
+		resolution   *ports.TokenGrantResolution
+		expectsProxy bool
+		expectsError bool
+	}{
+		{
+			name:         "ProxyClient routes to proxy sub-strategy",
+			resolution:   &ports.TokenGrantResolution{AgentID: agentID, ClientID: ptr.To(id.ClientID("upstream-client")), ClientType: storage.ProxyClient},
+			expectsProxy: true,
+		},
+		{
+			name:       "LocalClient routes to local sub-strategy",
+			resolution: &ports.TokenGrantResolution{AgentID: agentID, ClientType: storage.LocalClient},
+		},
+		{
+			name:       "CIMDClient routes to local sub-strategy",
+			resolution: &ports.TokenGrantResolution{AgentID: agentID, ClientType: storage.CIMDClient},
+		},
+		{
+			name:         "AmbiguousClient returns server_error",
+			resolution:   &ports.TokenGrantResolution{AgentID: agentID, ClientType: storage.AmbiguousClient},
+			expectsError: true,
+		},
+		{
+			name:         "UnknownClient returns server_error",
+			resolution:   &ports.TokenGrantResolution{AgentID: agentID, ClientType: storage.UnknownClient},
+			expectsError: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			proxyMock := &mockTokenGrantStrategy{}
+			localMock := &mockTokenGrantStrategy{}
+			strategy := NewHybridTokenGrantStrategy(proxyMock, localMock, nil)
+
+			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=client_credentials"))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+
+			strategy.HandleTokenGrant(w, req, "client_credentials", url.Values{"grant_type": {"client_credentials"}}, tc.resolution)
+
+			if tc.expectsError {
+				assert.Equal(t, http.StatusInternalServerError, w.Code)
+				assert.Nil(t, proxyMock.capturedFormData, "proxy sub-strategy must not be called")
+				assert.Nil(t, localMock.capturedFormData, "local sub-strategy must not be called")
+				return
+			}
+			assert.Equal(t, tc.expectsProxy, proxyMock.capturedFormData != nil, "proxy sub-strategy called")
+			assert.Equal(t, !tc.expectsProxy, localMock.capturedFormData != nil, "local sub-strategy called")
+		})
+	}
+}
+
+// TestHandleTokenExchange_NilService verifies that a token-exchange request returns
+// 400 unsupported_grant_type (not 500 server_error) when TokenExchangeService is nil.
+// This covers the local-mode deployment where token exchange is not wired.
+func TestHandleTokenExchange_NilService(t *testing.T) {
+	handler := &OAuth2TokenHandler{
+		GrantHandler:  NewLocalGrantStrategy(fixedMinting(nil, nil), nil),
+		OAuth2Service: newLocalModeOAuth2Service(),
+		TokenExchange: nil,
+	}
+	form := "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange" +
+		"&subject_token=sometoken&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aaccess_token"
+	req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]string
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "unsupported_grant_type", body["error"])
+}
+
+// TestOAuth2TokenHandler_UnauthorizedClient_Returns400 verifies that an unauthorized_client
+// error code maps to HTTP 400, not 401 (RFC 6749 §5.2 + tokenEndpointStatus mapping).
+func TestOAuth2TokenHandler_UnauthorizedClient_Returns400(t *testing.T) {
+	handler := &OAuth2TokenHandler{
+		GrantHandler: NewLocalGrantStrategy(fixedMinting(nil, nil), nil),
+		OAuth2Service: newFailingOAuth2Service(
+			&ports.ClientIDError{Code: "unauthorized_client", Desc: "client mode not permitted"},
+		),
+	}
+	form := "grant_type=client_credentials&client_id=" + id.NewAgentID().String()
+	req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code, "unauthorized_client must return 400, not 401")
+	var body map[string]string
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "unauthorized_client", body["error"])
+}
+
+// TestOAuth2TokenHandler_NilOAuth2Service_Returns500 verifies that when OAuth2Service
+// is nil (misconfigured deployment), the token endpoint returns 500 (server_error) and
+// NOT 503 (ServiceUnavailable). RFC 6749 §5.2 constrains the token endpoint to
+// 400 / 401 / 500 status codes.
+func TestOAuth2TokenHandler_NilOAuth2Service_Returns500(t *testing.T) {
+	handler := &OAuth2TokenHandler{
+		GrantHandler:  NewLocalGrantStrategy(fixedMinting(nil, nil), nil),
+		OAuth2Service: nil,
+	}
+	form := "grant_type=client_credentials&client_id=" + id.NewAgentID().String()
+	req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code, "nil OAuth2Service must yield 500, not 503")
+	var body map[string]string
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "server_error", body["error"])
+}
+
+// TestOAuth2TokenHandler_MissingGrantType verifies that an absent grant_type returns
+// 400 invalid_request without performing client resolution (RFC 6749 §5.2).
+func TestOAuth2TokenHandler_MissingGrantType(t *testing.T) {
+	handler := &OAuth2TokenHandler{
+		GrantHandler:  NewLocalGrantStrategy(fixedMinting(nil, nil), nil),
+		OAuth2Service: newLocalModeOAuth2Service(),
+	}
+	form := "client_id=" + id.NewAgentID().String()
+	req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]string
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "invalid_request", body["error"])
+}
+
+// TestNewHybridTokenGrantStrategy_PanicsOnNilSubStrategies verifies that construction
+// panics when either sub-strategy is nil, matching NewHybridProceedStrategy's behavior.
+func TestNewHybridTokenGrantStrategy_PanicsOnNilSubStrategies(t *testing.T) {
+	dummy := &mockTokenGrantStrategy{}
+
+	t.Run("nil proxy panics", func(t *testing.T) {
+		assert.Panics(t, func() {
+			NewHybridTokenGrantStrategy(nil, dummy, nil)
+		})
+	})
+
+	t.Run("nil local panics", func(t *testing.T) {
+		assert.Panics(t, func() {
+			NewHybridTokenGrantStrategy(dummy, nil, nil)
+		})
+	})
+
+	t.Run("both non-nil does not panic", func(t *testing.T) {
+		assert.NotPanics(t, func() {
+			NewHybridTokenGrantStrategy(dummy, dummy, nil)
+		})
+	})
+}
+
+// TestHybridTokenGrantStrategy_DefaultBranchLogsError verifies that reaching the default
+// (unknown/ambiguous client type) branch emits an Error-level log with agent_id.
+func TestHybridTokenGrantStrategy_DefaultBranchLogsError(t *testing.T) {
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000077")
+
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	strategy := NewHybridTokenGrantStrategy(&mockTokenGrantStrategy{}, &mockTokenGrantStrategy{}, logger)
+
+	req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=client_credentials"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	resolution := &ports.TokenGrantResolution{
+		AgentID:    agentID,
+		ClientType: storage.AmbiguousClient,
+	}
+	strategy.HandleTokenGrant(w, req, "client_credentials", url.Values{}, resolution)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	logLine := buf.String()
+	assert.Contains(t, logLine, "ERROR")
+	assert.Contains(t, logLine, agentID.String())
+}
+
+// TestOAuth2TokenHandler_BodyClosedOnReadError verifies that r.Body is closed even
+// when io.ReadAll returns an error (i.e. the defer fires on all exit paths).
+func TestOAuth2TokenHandler_BodyClosedOnReadError(t *testing.T) {
+	handler := &OAuth2TokenHandler{
+		GrantHandler:  NewLocalGrantStrategy(fixedMinting(nil, nil), nil),
+		OAuth2Service: newLocalModeOAuth2Service(),
+	}
+
+	closed := false
+	body := &failingReadCloser{
+		err:     errors.New("simulated read failure"),
+		onClose: func() { closed = true },
+	}
+
+	req := httptest.NewRequest("POST", "/oauth2/token", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Body = body // override the body with our tracking reader
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.True(t, closed, "r.Body must be closed even when ReadAll fails")
+}
+
+// failingReadCloser is a test double that fails on Read and tracks Close calls.
+type failingReadCloser struct {
+	err     error
+	onClose func()
+}
+
+func (f *failingReadCloser) Read([]byte) (int, error) { return 0, f.err }
+func (f *failingReadCloser) Close() error {
+	if f.onClose != nil {
+		f.onClose()
+	}
+	return nil
+}
+
+// TestTokenEndpointStatus_RFC6749Mapping verifies the HTTP status code mapping for
+// OAuth2 error codes on the token endpoint per RFC 6749 §5.2.
+// invalid_client → 401, server_error → 500, all others (including unknown codes) → 400.
+func TestTokenEndpointStatus_RFC6749Mapping(t *testing.T) {
+	tests := []struct {
+		code string
+		want int
+	}{
+		{"invalid_client", http.StatusUnauthorized},
+		{"server_error", http.StatusInternalServerError},
+		{"invalid_request", http.StatusBadRequest},
+		{"invalid_grant", http.StatusBadRequest},
+		{"unauthorized_client", http.StatusBadRequest},
+		{"unsupported_grant_type", http.StatusBadRequest},
+		{"invalid_scope", http.StatusBadRequest},
+		{"some_future_code", http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			got := tokenEndpointStatus(tt.code)
+			assert.Equal(t, tt.want, got, "tokenEndpointStatus(%q)", tt.code)
+		})
+	}
 }

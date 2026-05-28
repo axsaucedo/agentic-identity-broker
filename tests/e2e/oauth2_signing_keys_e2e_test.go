@@ -15,7 +15,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 )
 
-var _ = Describe("US5: Signing Key Management (issue_token mode)", func() {
+var _ = Describe("US5: Signing Key Management (local mode)", func() {
 	var (
 		adminServer    *bootstrap.TestServer
 		enduserServer  *bootstrap.TestServer
@@ -26,7 +26,7 @@ var _ = Describe("US5: Signing Key Management (issue_token mode)", func() {
 
 	BeforeEach(func() {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
-		config := fixtures.IssueTokenConfig()
+		config := fixtures.LocalConfig()
 		storageFactory = bootstrap.NewStorageFactory(logger)
 		var err error
 		testStorage, err = storageFactory.NewTestStorage()

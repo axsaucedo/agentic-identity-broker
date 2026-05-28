@@ -19,7 +19,6 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
@@ -131,7 +130,6 @@ var _ = Describe("CIMD Authorization", func() {
 			now := time.Now()
 			agent = &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "CIMD Test Agent",
 				Description: "E2E test agent for CIMD authorization",
@@ -209,7 +207,6 @@ var _ = Describe("CIMD Authorization", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "Mismatch Agent",
 				Description: "E2E test agent for CIMD mismatch scenario",
@@ -276,7 +273,6 @@ var _ = Describe("CIMD Authorization", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "Missing CIMD Agent",
 				Description: "E2E test agent for CIMD 404 scenario",
@@ -346,7 +342,6 @@ var _ = Describe("CIMD Authorization", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "Redirect Check Agent",
 				Description: "E2E test agent for CIMD redirect URI validation",
@@ -449,7 +444,6 @@ var _ = Describe("CIMD Authorization", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "Auth Method Agent",
 				Description: "E2E test agent for non-public auth method rejection",
@@ -526,7 +520,6 @@ var _ = Describe("CIMD Authorization", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "Empty Redirects Agent",
 				Description: "E2E test agent for empty redirect_uris scenario",
@@ -603,7 +596,6 @@ var _ = Describe("CIMD Authorization", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "Secret-Bearing Agent",
 				Description: "E2E test agent for client_secret rejection",
@@ -681,7 +673,6 @@ var _ = Describe("CIMD Authorization", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "Cross-Origin Agent",
 				Description: "E2E test agent for cross-origin redirect_uri rejection",
@@ -760,7 +751,6 @@ var _ = Describe("CIMD Authorization", func() {
 			now := time.Now()
 			agent = &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "Localhost Redirect Agent",
 				Description: "E2E test agent for localhost redirect URI exception",
@@ -844,7 +834,6 @@ var _ = Describe("CIMD Authorization", func() {
 			now := time.Now()
 			agent = &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "Official Agent Name",
 				Description: "E2E test agent for brand pin mismatch scenario",
@@ -925,7 +914,6 @@ var _ = Describe("CIMD Authorization", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "Admin-Spoofing Agent",
 				Description: "E2E test agent for built-in client_name blocklist",

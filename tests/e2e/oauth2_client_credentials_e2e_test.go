@@ -16,7 +16,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 )
 
-var _ = Describe("US1: Client Credential Management (issue_token mode)", func() {
+var _ = Describe("US1: Client Credential Management (local mode)", func() {
 	var (
 		adminServer    *bootstrap.TestServer
 		storageFactory *bootstrap.StorageFactory
@@ -27,7 +27,7 @@ var _ = Describe("US1: Client Credential Management (issue_token mode)", func() 
 
 	BeforeEach(func() {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
-		config := fixtures.IssueTokenConfig()
+		config := fixtures.LocalConfig()
 		storageFactory = bootstrap.NewStorageFactory(logger)
 		var err error
 		testStorage, err = storageFactory.NewTestStorage()

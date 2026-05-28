@@ -779,34 +779,61 @@ See `examples/config/oauth2-authorization-server.yaml` for a complete configurat
 
 #### oauth2.auth_server
 
-**Description**: Controls the broker's OAuth2 operating mode. In the default `proxy` mode, OAuth2 requests are forwarded to an upstream authorization server. In `issue_token` mode, the broker acts as a standalone OAuth2 authorization server, minting its own JWT access tokens signed with managed asymmetric keys. Issue token mode supports `client_credentials` and `authorization_code` (with PKCE) grant types, and exposes RFC 8414 discovery and JWKS endpoints.
+**Description**: Controls the broker's OAuth2 operating mode. Three symmetric modes are supported:
+
+- **`proxy`**: OAuth2 requests are forwarded to an upstream authorization server. The broker acts as a transparent proxy — it handles consent and delegation, then routes the final authorization to the upstream. No local token issuance; no JWKS endpoint.
+- **`local`**: The broker acts as a standalone OAuth2 authorization server, minting its own JWT access tokens signed with managed asymmetric keys. Supports `client_credentials` and `authorization_code` (with PKCE) grant types, and exposes RFC 8414 discovery and JWKS endpoints.
+- **`hybrid`**: Both proxy and local paths coexist. Agents are classified by their properties: agents with an upstream `ClientID` are routed to the proxy path; local agents (no `ClientID`, no `client_uris`) and CIMD agents (`client_uris` set) are issued local tokens. Requires both `proxy` and `local` configuration sections.
+
+> **Note**: The mode name `issue_token` (used in earlier versions) is no longer valid. Use `local` instead.
 
 **Configuration block** (nested under `oauth2.auth_server`):
 
 | Option | Type | Default | Valid Values | Required? | Environment Variable | CLI Flag | Description |
 |--------|------|---------|--------------|-----------|----------------------|----------|-------------|
-| `oauth2.auth_server.mode` | enum | `proxy` | `proxy`, `issue_token` | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE` | `--oauth2.auth-server.mode` | Operating mode. `proxy` forwards to upstream; `issue_token` mints tokens locally. |
-| `oauth2.auth_server.issuer_uri` | string | — | Valid HTTPS URI | Yes (if `issue_token`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_ISSUER_URI` | `--oauth2.auth-server.issuer-uri` | Issuer identifier used in JWT `iss` claim and `/.well-known/oauth-authorization-server` discovery. Must be a publicly reachable URI. |
-| `oauth2.auth_server.token_ttl` | duration | `1h` | Go duration (e.g. `30m`, `2h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_TOKEN_TTL` | `--oauth2.auth-server.token-ttl` | Validity period for issued JWT access tokens. |
-| `oauth2.auth_server.token_claims_expression` | string | `""` | CEL expression | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_TOKEN_CLAIMS_EXPRESSION` | `--oauth2.auth-server.token-claims-expression` | CEL expression evaluated at token issuance to inject custom claims into the JWT. Available variables: `agent` (map: `id`, `client_id`, `display_name`), `principal` (map: `id`, `email`, `display_name`), `request` (map: `grant_type`, `scopes`), `scope` (list of granted scope strings). Base claims (`iss`, `sub`, `exp`, `iat`, `jti`, `kid`, `agent_id`, `scope`) cannot be overridden. |
+| `oauth2.auth_server.mode` | enum | — | `proxy`, `local`, `hybrid` | Yes (if any auth server field is set) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE` | — | Operating mode. `proxy` forwards to upstream; `local` mints tokens locally; `hybrid` supports both. |
+| `oauth2.auth_server.proxy.upstream_issuer_uri` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI` | — | Upstream OAuth2 issuer URI. Used for proxy path routing. |
+| `oauth2.auth_server.proxy.upstream_authorize_endpoint` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT` | — | Upstream authorization endpoint. |
+| `oauth2.auth_server.proxy.upstream_token_endpoint` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT` | — | Upstream token endpoint. |
+| `oauth2.auth_server.local.token_ttl` | duration | `1h` | Go duration (e.g. `30m`, `2h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_TTL` | — | Validity period for locally issued JWT access tokens. |
+| `oauth2.auth_server.local.token_claims_expression` | string | `""` | CEL expression | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_CLAIMS_EXPRESSION` | — | CEL expression to inject custom claims into issued JWTs. |
 
-**Startup validation**: If `mode` is `issue_token` and `issuer_uri` is empty, the broker fails to start with a clear error message.
+**Required**: `oauth2_authorization_server.mode` is mandatory — the broker rejects startup when the block is absent or `mode` is empty or invalid. Set `mode` to `proxy`, `local`, or `hybrid` before deploying.
 
-**Proxy mode (default)**:
+**Startup validation**: The broker validates configuration at startup and rejects incompatible combinations — proxy-only fields in local mode, local-only fields in proxy mode, or missing sections in hybrid mode.
+
+**Proxy mode**:
 ```yaml
 oauth2:
   auth_server:
-    mode: "proxy"   # default — forward to upstream authorization server
+    mode: "proxy"
+    proxy:
+      upstream_issuer_uri: "https://auth.example.com"
+      upstream_authorize_endpoint: "https://auth.example.com/oauth/authorize"
+      upstream_token_endpoint: "https://auth.example.com/oauth/token"
 ```
 
-**Issue token mode**:
+**Local mode**:
 ```yaml
 oauth2:
   auth_server:
-    mode: "issue_token"
-    issuer_uri: "https://broker.example.com"
-    token_ttl: "1h"
-    token_claims_expression: '{"team": agent.display_name}'
+    mode: "local"
+    local:
+      token_ttl: "1h"
+      token_claims_expression: '{"team": agent.display_name}'
+```
+
+**Hybrid mode** (proxy and local agents coexist):
+```yaml
+oauth2:
+  auth_server:
+    mode: "hybrid"
+    proxy:
+      upstream_issuer_uri: "https://auth.example.com"
+      upstream_authorize_endpoint: "https://auth.example.com/oauth/authorize"
+      upstream_token_endpoint: "https://auth.example.com/oauth/token"
+    local:
+      token_ttl: "1h"
 ```
 
 **Security notes**:
@@ -815,6 +842,7 @@ oauth2:
 - Signing key private material is encrypted at rest via `EncryptionPort`.
 - Authorization codes are single-use with 60-second TTL, stored as SHA-256 hashes.
 - Signing key decryption failure prevents token issuance (fail-closed).
+- In `proxy` mode, locally registered agents (no `ClientID`) are rejected. In `local` mode, proxy agents (with `ClientID`) are rejected. Mode boundaries are strict.
 
 See [docs/features/oauth2-server-mode.md](docs/features/oauth2-server-mode.md) for comprehensive end-user documentation.
 

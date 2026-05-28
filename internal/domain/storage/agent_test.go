@@ -132,6 +132,17 @@ func TestAgent_Validate(t *testing.T) {
 			},
 			wantErr: "agent_interface_url is not a valid HTTP/HTTPS URL",
 		},
+		{
+			name: "client_id and client_uris both set is invalid",
+			agent: &Agent{
+				ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+				ClientID:    ptr.To(id.ClientID("upstream-id")),
+				ClientURIs:  []string{"https://example.com/.well-known/agent"},
+				DisplayName: "Ambiguous Agent",
+				Description: "A test agent",
+			},
+			wantErr: "agent cannot have both client_id and client_uris set",
+		},
 	}
 
 	for _, tt := range tests {
@@ -180,7 +191,17 @@ func TestAgent_ValidateForCreate(t *testing.T) {
 				DisplayName: strings.Repeat("a", 256),
 				Description: "A test agent",
 			},
-			wantErr: "display_name exceeds 255 characters (got 256)",
+			wantErr: "display_name exceeds 255 characters",
+		},
+		{
+			name: "client_id and client_uris both set is invalid",
+			agent: &Agent{
+				ClientID:    ptr.To(id.ClientID("upstream-id")),
+				ClientURIs:  []string{"https://example.com/.well-known/agent"},
+				DisplayName: "Ambiguous Agent",
+				Description: "A test agent",
+			},
+			wantErr: "agent cannot have both client_id and client_uris set",
 		},
 	}
 

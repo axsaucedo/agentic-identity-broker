@@ -53,9 +53,9 @@ var _ = Describe("JWT Pre-Authentication", func() {
 			mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 
 			config = fixtures.SignedJWTConfig(jwksServer.JWKSURL())
-			config.OAuth2AuthServer.UpstreamIssuerURI = mockUpstream.URL()
-			config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
-			config.OAuth2AuthServer.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
+			config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = mockUpstream.URL()
+			config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
+			config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
 
 			storageFactory = bootstrap.NewStorageFactory(logger)
 			var err error
@@ -218,9 +218,9 @@ var _ = Describe("JWT Pre-Authentication", func() {
 				mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 
 				config = fixtures.UnsignedJWTConfig()
-				config.OAuth2AuthServer.UpstreamIssuerURI = mockUpstream.URL()
-				config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
-				config.OAuth2AuthServer.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
+				config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = mockUpstream.URL()
+				config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
+				config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
 
 				storageFactory = bootstrap.NewStorageFactory(logger)
 				var err error
@@ -347,9 +347,9 @@ var _ = Describe("JWT Pre-Authentication", func() {
 				mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 
 				config = fixtures.SignedJWTConfig(jwksServer.JWKSURL())
-				config.OAuth2AuthServer.UpstreamIssuerURI = mockUpstream.URL()
-				config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
-				config.OAuth2AuthServer.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
+				config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = mockUpstream.URL()
+				config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
+				config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
 
 				storageFactory = bootstrap.NewStorageFactory(logger)
 				var err error
@@ -412,9 +412,9 @@ var _ = Describe("JWT Pre-Authentication", func() {
 
 				invalidConfig := fixtures.MutuallyExclusiveJWTConfig("http://localhost:9999/.well-known/jwks.json")
 				invalidConfig.Security.SkipThirdpartyHTTPSValidation = true
-				invalidConfig.OAuth2AuthServer.UpstreamIssuerURI = mockUpstream.URL()
-				invalidConfig.OAuth2AuthServer.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
-				invalidConfig.OAuth2AuthServer.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
+				invalidConfig.OAuth2AuthServer.Proxy.UpstreamIssuerURI = mockUpstream.URL()
+				invalidConfig.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
+				invalidConfig.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
 
 				storageFactory = bootstrap.NewStorageFactory(logger)
 				testStorage, err := storageFactory.NewTestStorage()
@@ -444,9 +444,9 @@ var _ = Describe("JWT Pre-Authentication", func() {
 				mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 
 				config = fixtures.SignedJWTConfig(jwksServer.JWKSURL())
-				config.OAuth2AuthServer.UpstreamIssuerURI = mockUpstream.URL()
-				config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
-				config.OAuth2AuthServer.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
+				config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = mockUpstream.URL()
+				config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
+				config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
 
 				storageFactory = bootstrap.NewStorageFactory(logger)
 				var err error
@@ -555,9 +555,9 @@ var _ = Describe("JWT Pre-Authentication", func() {
 				mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 
 				config = fixtures.SignedJWTConfigMinimal(jwksServer.JWKSURL())
-				config.OAuth2AuthServer.UpstreamIssuerURI = mockUpstream.URL()
-				config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
-				config.OAuth2AuthServer.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
+				config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = mockUpstream.URL()
+				config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
+				config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
 
 				storageFactory = bootstrap.NewStorageFactory(logger)
 				var err error
@@ -630,9 +630,9 @@ var _ = Describe("JWT Pre-Authentication", func() {
 				mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 
 				config = fixtures.NoJWTConfig()
-				config.OAuth2AuthServer.UpstreamIssuerURI = mockUpstream.URL()
-				config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
-				config.OAuth2AuthServer.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
+				config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = mockUpstream.URL()
+				config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
+				config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
 
 				storageFactory = bootstrap.NewStorageFactory(logger)
 				var err error
@@ -685,28 +685,6 @@ var _ = Describe("JWT Pre-Authentication", func() {
 	})
 
 	// ============================================================================
-	// User Story 4: Display User Profile in Consent UI (Priority: P3)
-	// ============================================================================
-	Describe("Consent UI Profile Display (US4)", func() {
-
-		// Scenario 4.1 from specs/016-jwt-preauth/spec.md (User Story 4)
-		PIt("should display profile picture, display name, and email in consent UI header", func() {
-			// Pending: Requires frontend implementation (T041-T043)
-			// Use Go Playwright page objects from tests/e2e/pages/
-		})
-
-		// Scenario 4.2 from specs/016-jwt-preauth/spec.md (User Story 4)
-		PIt("should show principal as fallback when no profile attributes available", func() {
-			// Pending: Requires frontend implementation (T041-T043)
-		})
-
-		// Scenario 4.3 from specs/016-jwt-preauth/spec.md (User Story 4)
-		PIt("should show initials avatar when picture URL unavailable", func() {
-			// Pending: Requires frontend implementation (T041-T043)
-		})
-	})
-
-	// ============================================================================
 	// User Story 5: Backward-Compatible Configuration (Priority: P1)
 	// ============================================================================
 	Describe("Backward-Compatible Configuration (US5)", func() {
@@ -720,9 +698,9 @@ var _ = Describe("JWT Pre-Authentication", func() {
 				mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 
 				config = fixtures.NoJWTConfig()
-				config.OAuth2AuthServer.UpstreamIssuerURI = mockUpstream.URL()
-				config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
-				config.OAuth2AuthServer.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
+				config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = mockUpstream.URL()
+				config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
+				config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
 
 				storageFactory = bootstrap.NewStorageFactory(logger)
 				var err error
@@ -780,9 +758,9 @@ var _ = Describe("JWT Pre-Authentication", func() {
 				mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 
 				config = fixtures.SignedJWTConfig(jwksServer.JWKSURL())
-				config.OAuth2AuthServer.UpstreamIssuerURI = mockUpstream.URL()
-				config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
-				config.OAuth2AuthServer.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
+				config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = mockUpstream.URL()
+				config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
+				config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
 
 				storageFactory = bootstrap.NewStorageFactory(logger)
 				var err error
@@ -870,9 +848,9 @@ var _ = Describe("JWT Pre-Authentication", func() {
 				mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 
 				config = fixtures.SignedJWTConfig(jwksServer.JWKSURL())
-				config.OAuth2AuthServer.UpstreamIssuerURI = mockUpstream.URL()
-				config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
-				config.OAuth2AuthServer.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
+				config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = mockUpstream.URL()
+				config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
+				config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = mockUpstream.URL() + "/oauth/token"
 
 				storageFactory = bootstrap.NewStorageFactory(logger)
 				var err error

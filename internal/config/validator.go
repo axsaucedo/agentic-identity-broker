@@ -42,7 +42,7 @@ func Validate(cfg *ports.Config) error {
 		return err
 	}
 
-	// Validate OAuth2 Authorization Server configuration (if provided)
+	// Validate OAuth2 Authorization Server configuration (mandatory)
 	if err := validateOAuth2AuthServerConfig(&cfg.OAuth2AuthServer); err != nil {
 		return err
 	}

@@ -19,7 +19,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 )
 
-var _ = Describe("US4: Authorization Code Flow with PKCE (issue_token mode)", func() {
+var _ = Describe("US4: Authorization Code Flow with PKCE (local mode)", func() {
 	var (
 		adminServer    *bootstrap.TestServer
 		enduserServer  *bootstrap.TestServer
@@ -32,7 +32,7 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (issue_token mode)", fu
 
 	BeforeEach(func() {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
-		config := fixtures.IssueTokenConfig()
+		config := fixtures.LocalConfig()
 		storageFactory = bootstrap.NewStorageFactory(logger)
 		var err error
 		testStorage, err = storageFactory.NewTestStorage()
@@ -45,7 +45,7 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (issue_token mode)", fu
 		Expect(testStorage.Services().Create(ctx, githubService)).ToNot(HaveOccurred())
 
 		// Create agent with redirect_uris
-		agent = fixtures.ValidAgent()
+		agent = fixtures.LocalAgent()
 		agent.RedirectURIs = []string{"http://localhost:9999/callback"}
 		Expect(testStorage.Agents().Create(ctx, agent)).ToNot(HaveOccurred())
 
@@ -315,10 +315,128 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (issue_token mode)", fu
 		Expect(tokenResp2.StatusCode).To(Equal(http.StatusBadRequest))
 	})
 
-	It("code expiry documented", func() {
-		// Authorization codes expire after 60 seconds.
-		// This behavior is tested at the unit level in provider_test.go (TestProvider_HandleAuthorizationCodeExchange/expired_code_rejects).
-		// E2E testing of 60-second expiry would require time manipulation which is not practical.
-		Skip("Code expiry tested at unit level — 60s TTL not practical for E2E")
+})
+
+var _ = Describe("US4b: Authorization Code Flow — LocalClient as public client (no credentials)", func() {
+	var (
+		enduserServer  *bootstrap.TestServer
+		storageFactory *bootstrap.StorageFactory
+		testStorage    *storageadapter.Adapter
+		logger         *slog.Logger
+		agent          *domainstorage.Agent
+	)
+
+	BeforeEach(func() {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+		storageFactory = bootstrap.NewStorageFactory(logger)
+		var err error
+		testStorage, err = storageFactory.NewTestStorage()
+		Expect(err).ToNot(HaveOccurred())
+
+		ctx := context.Background()
+
+		githubService := fixtures.GitHubService()
+		Expect(testStorage.Services().Create(ctx, githubService)).ToNot(HaveOccurred())
+
+		// LocalAgent with no credentials registered — public client.
+		agent = fixtures.LocalAgent()
+		agent.RedirectURIs = []string{"http://localhost:9999/callback"}
+		Expect(testStorage.Agents().Create(ctx, agent)).ToNot(HaveOccurred())
+
+		grant := fixtures.ActiveGrant("test@example.com", agent.ID.String(), githubService.ID.String(), []string{"repo", "user"})
+		Expect(testStorage.UserGrants().Create(ctx, grant)).ToNot(HaveOccurred())
+
+		// No client-credentials endpoint call — agent has no secret.
+		serverFactory := bootstrap.NewServerFactory(fixtures.LocalConfig(), logger)
+		app, err := serverFactory.BuildApp(testStorage)
+		Expect(err).ToNot(HaveOccurred())
+		_, err = bootstrap.NewAdminTestServer(app, logger)
+		Expect(err).ToNot(HaveOccurred())
+		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		if enduserServer != nil {
+			enduserServer.Close()
+		}
+		if testStorage != nil {
+			_ = storageFactory.CloseStorage(testStorage)
+		}
+	})
+
+	It("full auth code flow without client secret", func() {
+		verifier := helpers.PKCEVerifier()
+		challenge := helpers.GenerateCodeChallenge(verifier)
+
+		client := &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}}
+
+		authURL := enduserServer.BaseURL() + "/oauth2/authorize?" + url.Values{
+			"response_type":         {"code"},
+			"client_id":             {agent.ID.String()},
+			"redirect_uri":          {"http://localhost:9999/callback"},
+			"state":                 {"test-state"},
+			"code_challenge":        {challenge},
+			"code_challenge_method": {"S256"},
+		}.Encode()
+
+		req, _ := http.NewRequest("GET", authURL, nil)
+		req.Header.Set("X-Remote-User", "test@example.com")
+		resp, err := client.Do(req)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = resp.Body.Close() }()
+		Expect(resp.StatusCode).To(Equal(http.StatusFound))
+
+		locURL, _ := url.Parse(resp.Header.Get("Location"))
+		code := locURL.Query().Get("code")
+		Expect(code).ToNot(BeEmpty())
+
+		// Token exchange with no client_secret.
+		form := url.Values{
+			"grant_type":    {"authorization_code"},
+			"client_id":     {agent.ID.String()},
+			"code":          {code},
+			"redirect_uri":  {"http://localhost:9999/callback"},
+			"code_verifier": {verifier},
+		}
+		tokenResp, err := http.Post(
+			enduserServer.BaseURL()+"/oauth2/token",
+			"application/x-www-form-urlencoded",
+			strings.NewReader(form.Encode()),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = tokenResp.Body.Close() }()
+		Expect(tokenResp.StatusCode).To(Equal(http.StatusOK))
+
+		var tokenBody map[string]interface{}
+		Expect(json.NewDecoder(tokenResp.Body).Decode(&tokenBody)).ToNot(HaveOccurred())
+		Expect(tokenBody).To(HaveKey("access_token"))
+		Expect(tokenBody["token_type"]).To(Equal("Bearer"))
+	})
+
+	It("authorize without code_challenge rejected", func() {
+		client := &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}}
+
+		authURL := enduserServer.BaseURL() + "/oauth2/authorize?" + url.Values{
+			"response_type": {"code"},
+			"client_id":     {agent.ID.String()},
+			"redirect_uri":  {"http://localhost:9999/callback"},
+		}.Encode()
+
+		req, _ := http.NewRequest("GET", authURL, nil)
+		req.Header.Set("X-Remote-User", "test@example.com")
+		resp, err := client.Do(req)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = resp.Body.Close() }()
+		Expect(resp.StatusCode).To(SatisfyAny(Equal(http.StatusBadRequest), Equal(http.StatusFound)))
+		if resp.StatusCode == http.StatusFound {
+			locURL, _ := url.Parse(resp.Header.Get("Location"))
+			Expect(locURL.Query().Get("error")).ToNot(BeEmpty(), "expected OAuth2 error in redirect")
+			Expect(locURL.Query().Get("code")).To(BeEmpty(), "expected no authorization code to be issued")
+		}
 	})
 })

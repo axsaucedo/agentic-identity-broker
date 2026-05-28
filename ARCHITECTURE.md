@@ -443,19 +443,19 @@ Admin Server (Port 14000):
 - Validate API implementation compliance against documented spec
 - Reference for integration testing and contract validation
 
-#### 3.1.4.1. OAuth2 Server Mode (`issue_token`)
+#### 3.1.4.1. OAuth2 Server Mode (`local`)
 
 **Mode Selection**: The broker operates in one of two mutually exclusive modes, configured via `oauth2.auth_server.mode`:
 
 | Mode | Value | Behavior |
 |------|-------|----------|
 | Proxy (default) | `proxy` | Forwards OAuth2 requests to an upstream authorization server. The broker acts as a mediating proxy and does not mint tokens. |
-| Issue Token | `issue_token` | The broker acts as a standalone OAuth2 authorization server, minting its own JWT access tokens signed with managed asymmetric keys. |
+| Local | `local` | The broker acts as a standalone OAuth2 authorization server, minting its own JWT access tokens signed with managed asymmetric keys. |
 
 **Strategy Pattern**: Handler behavior switches at startup based on mode:
 
-- `OAuth2AuthorizeHandler` uses an `AuthorizationCodeIssuer` strategy — **nil** in proxy mode, non-nil in `issue_token` mode. When nil, authorization requests are forwarded upstream; when non-nil, the broker generates authorization codes locally.
-- `OAuth2TokenHandler` uses a `TokenMintingStrategy` — **nil** in proxy mode, non-nil in `issue_token` mode. When nil, token requests are proxied upstream; when non-nil, the broker mints JWT access tokens.
+- `OAuth2AuthorizeHandler` uses an `AuthorizationCodeIssuer` strategy — **nil** in proxy mode, non-nil in `local` mode. When nil, authorization requests are forwarded upstream; when non-nil, the broker generates authorization codes locally.
+- `OAuth2TokenHandler` uses a `TokenMintingStrategy` — **nil** in proxy mode, non-nil in `local` mode. When nil, token requests are proxied upstream; when non-nil, the broker mints JWT access tokens.
 
 **Type Containment**: All [fosite](https://github.com/ory/fosite) OAuth2 server types are contained in `internal/domain/oauth2server/`. This package encapsulates the OAuth2 authorization server domain logic (authorization code storage, client authentication, token signing) and **never leaks fosite types** into ports, adapters/http, or app packages.
 
@@ -464,7 +464,7 @@ Admin Server (Port 14000):
 - `internal/domain/oauth2server/` must **never** import adapter packages or `internal/app/`.
 - No other package in the codebase may import fosite types directly — all interaction flows through `oauth2server` domain interfaces.
 
-**Endpoints added in `issue_token` mode**:
+**Endpoints added in `local` mode**:
 ```
 End-User Server (Port 8000):
   ├── GET  /.well-known/oauth-authorization-server   (RFC 8414 discovery)
@@ -1150,6 +1150,24 @@ Define any project-specific terms or acronyms.)
 **TokenClaimsExpression**: CEL expression evaluated at token issuance time to produce custom JWT claims. Has access to `agent`, `principal`, and `request` variables. Return type must be `map[string]dyn`. Base claim keys (iss, sub, iat, exp, jti, kid, agent_id, scope) are silently stripped from the result to prevent override. Compiled at startup — invalid expressions cause startup failure (fail-closed). Located in `internal/domain/oauth2server/token_claims_cel.go`.
 
 **Domain Model Invariants**: (1) One credential per agent — enforced by UNIQUE constraint on `client_credentials.client_id`. (2) Exactly one `is_current` signing key among active keys — enforced by application logic in `SigningKeyService` and transactional `SetCurrent` in PostgreSQL adapter. (3) Authorization codes are single-use with 60-second TTL — enforced by atomic `MarkUsed` (UPDATE WHERE used_at IS NULL) and expiry check before token exchange.
+
+**ModeStrategy**: Domain interface that determines whether a classified agent is permitted in the active OAuth server mode. Single method: `AcceptsClientType(ClientType) bool`. Three implementations wired by the builder at startup: `proxyModeStrategy` (accepts ProxyClient only), `localModeStrategy` (accepts CIMDClient and LocalClient), `hybridModeStrategy` (accepts all client types). Strategy is injected once at startup — no runtime mode checks in handlers. Located in `internal/domain/oauth2/mode_strategy.go`.
+
+**OAuthServerMode**: Enumeration (`internal/domain/oauth2/servermode`) defining the three legal broker operating modes: `proxy` (all agents forwarded to an upstream OAuth2 server), `local` (all tokens minted locally by the broker), `hybrid` (both proxy and local agents coexist; dispatch per request based on `ClientType`). Stored as a string in config; typed as `servermode.Mode` to prevent unchecked string comparisons in handler and service code.
+
+**ClientType**: Enum (`internal/domain/storage`) classifying an Agent at request time based on its registered identifiers. `ProxyClient` — has a `ClientID`; requests forwarded to upstream. `LocalClient` — no `ClientID` and no `ClientURIs`; tokens minted locally. `CIMDClient` — has `ClientURIs` but no `ClientID`; tokens minted locally after CIMD document fetch. `AmbiguousClient` — has both `ClientID` and `ClientURIs`; rejected as `invalid_client` during client resolution. Computed by `Agent.ClientType()` — never stored.
+
+**ProxyModeConfig**: Configuration value object (`internal/ports/config.go`) carrying the upstream OAuth2 server coordinates required when `mode` is `proxy` or `hybrid`: `upstream_issuer_uri`, `upstream_authorize_endpoint`, `upstream_token_endpoint`, `upstream_timeout_seconds`. All fields are ignored (and must be empty) in `local` mode.
+
+**LocalModeConfig**: Configuration value object (`internal/ports/config.go`) carrying local token issuance parameters required when `mode` is `local` or `hybrid`: `token_ttl`, `token_claims_expression`, and optional `issuer_uri`. `issuer_uri` overrides the JWT `iss` claim independently of `server.enduser.public_url`, enabling deployments behind CDNs or reverse proxies. Defaults to `server.enduser.public_url` when absent. All fields are ignored (and must be empty) in `proxy` mode.
+
+**TokenGrantResolution**: Port-layer DTO (`internal/ports/oauth2.go`) returned by `OAuth2Service.ResolveForTokenGrant`. Carries `AgentID`, `ClientID` (nil for local/CIMD agents), and `ClientType` — the minimal scalar projection of `storage.Agent` that the token grant adapter layer needs. The domain entity itself (`storage.Agent`) is consumed by the service and never crosses the adapter boundary.
+
+**TokenGrantStrategy**: Adapter-layer interface (`internal/adapters/http/enduser`) for processing OAuth2 token grant requests. Receives `*ports.TokenGrantResolution` rather than a domain entity. Three implementations: `proxyTokenGrantStrategy` (forwards to upstream, replaces broker UUID with upstream `client_id`), `localGrantStrategy` (delegates to fosite via `TokenMintingStrategy`), `hybridTokenGrantStrategy` (dispatches to proxy or local sub-strategy based on `resolution.ClientType`).
+
+**AuthorizationProceedStrategy**: Adapter-layer interface for the "proceed" branch of an authorization decision — invoked when a grant exists and the broker should advance the flow. `proxyProceedStrategy` issues a 302 to `decision.RedirectURL` (the upstream authorize URL). `localProceedStrategy` calls `AuthorizationCodeIssuer.IssueAuthorizationCode` and redirects with `code=` to the client's `redirect_uri`. `hybridProceedStrategy` dispatches to proxy or local based on `decision.ClientType`.
+
+**Mode Strategy Pattern**: The mechanism by which `OAuthServerMode` drives the entire request-handling topology at startup time rather than via runtime branching. The builder selects and wires the appropriate `ModeStrategy` (domain, controls `AcceptsClientType`) and `AuthorizationProceedStrategy`/`TokenGrantStrategy` (adapters) based on the configured mode. For hybrid mode, both proxy and local strategies are created and wrapped in dispatching composites. Handlers and services never inspect the configured mode string — they receive pre-wired strategies.
 
 ### Client ID Metadata Document (CIMD) Domain
 

@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -51,6 +53,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -86,6 +89,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -162,6 +166,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID(t *testing.T) {
 			&noopSessionRepository{},
 			oauth2.NewAgentClientResolver(mockAgentRepo, nil),
 			&oauth2.OAuth2Config{
+				ModeStrategy:              oauth2.NewProxyModeStrategy(),
 				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 				PublicURL:                 "https://broker.example.com",
 			},
@@ -196,6 +201,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_UnknownAgent(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -246,6 +252,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -301,6 +308,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -362,6 +370,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -410,6 +419,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_JSONResponseFormat(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -456,16 +466,20 @@ func (m *errCodeIssuer) IssueAuthorizationCode(_ context.Context, _ *ports.Autho
 type proceedOAuth2Service struct{}
 
 func (s *proceedOAuth2Service) HandleAuthorization(_ context.Context, _ *ports.AuthorizationRequest, _ id.Principal) (*ports.AuthorizationDecision, error) {
-	return &ports.AuthorizationDecision{Action: "proceed"}, nil
+	return ports.ProceedDecision("", storage.LocalClient), nil
 }
 
 func (s *proceedOAuth2Service) GenerateMetadata(_ context.Context) (*ports.MetadataResponse, error) {
 	return &ports.MetadataResponse{}, nil
 }
 
-// TestOAuth2AuthorizeHandler_IssueTokenMode_CodeIssuerErrors tests that IssueAuthorizationCode
+func (s *proceedOAuth2Service) ResolveForTokenGrant(_ context.Context, _ id.ClientID) (*ports.TokenGrantResolution, error) {
+	return nil, errors.New("not implemented")
+}
+
+// TestOAuth2AuthorizeHandler_LocalMode_CodeIssuerErrors tests that IssueAuthorizationCode
 // domain errors produce correct HTTP status codes and JSON bodies.
-func TestOAuth2AuthorizeHandler_IssueTokenMode_CodeIssuerErrors(t *testing.T) {
+func TestOAuth2AuthorizeHandler_LocalMode_CodeIssuerErrors(t *testing.T) {
 	cases := []struct {
 		name        string
 		err         error
@@ -495,7 +509,7 @@ func TestOAuth2AuthorizeHandler_IssueTokenMode_CodeIssuerErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			handler := &OAuth2AuthorizeHandler{
 				Service:        &proceedOAuth2Service{},
-				ProceedHandler: NewIssueTokenProceedStrategy(&errCodeIssuer{err: tc.err}, nil),
+				ProceedHandler: NewLocalProceedStrategy(&errCodeIssuer{err: tc.err}, nil),
 			}
 
 			req := httptest.NewRequest(
@@ -766,6 +780,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_StorageErrorReturns500(t *testing.T) {
 		&noopSessionRepository{},
 		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
+			ModeStrategy:              oauth2.NewProxyModeStrategy(),
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
@@ -794,4 +809,45 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_StorageErrorReturns500(t *testing.T) {
 	err := json.NewDecoder(w.Body).Decode(&body)
 	require.NoError(t, err)
 	assert.Equal(t, "server_error", body.Error)
+}
+
+type erroringOAuth2Service struct{}
+
+func (s *erroringOAuth2Service) HandleAuthorization(_ context.Context, _ *ports.AuthorizationRequest, _ id.Principal) (*ports.AuthorizationDecision, error) {
+	return nil, errors.New("storage unavailable")
+}
+
+func (s *erroringOAuth2Service) GenerateMetadata(_ context.Context) (*ports.MetadataResponse, error) {
+	return &ports.MetadataResponse{}, nil
+}
+
+func (s *erroringOAuth2Service) ResolveForTokenGrant(_ context.Context, _ id.ClientID) (*ports.TokenGrantResolution, error) {
+	return nil, errors.New("not implemented")
+}
+
+// TestOAuth2AuthorizeHandler_LogsAuthorizationRequestFailed verifies that when
+// HandleAuthorization returns an error, the logger receives an authorization_request_failed
+// entry. This guards against the Logger field being silently unwired.
+func TestOAuth2AuthorizeHandler_LogsAuthorizationRequestFailed(t *testing.T) {
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	handler := &OAuth2AuthorizeHandler{
+		Service: &erroringOAuth2Service{},
+		Logger:  logger,
+	}
+
+	agentID := id.NewAgentID()
+	req := httptest.NewRequest(
+		"GET",
+		"/?client_id="+agentID.String()+"&redirect_uri=https://client.example.com/cb&response_type=code",
+		nil,
+	)
+	req = req.WithContext(principal.WithPrincipal(req.Context(), "user@example.com"))
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, buf.String(), "authorization_request_failed")
 }

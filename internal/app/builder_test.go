@@ -76,6 +76,14 @@ func TestBuilderMinimalConfiguration(t *testing.T) {
 				RawKey: testutil.TestKEKBase64,
 			},
 		},
+		OAuth2AuthServer: ports.OAuth2AuthServerConfig{
+			Mode: "proxy",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "https://auth.example.com",
+				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://auth.example.com/token",
+			},
+		},
 	}
 
 	// Create logger
@@ -133,8 +141,6 @@ func TestBuilderMinimalConfiguration(t *testing.T) {
 		t.Error("expected EnduserHandlers to be set")
 	}
 
-	// Verify basic handler structure in minimal config
-	// (Optional services like OAuth2 and OAuth2Sessions are not configured)
 	if app.EnduserHandlers.UserInfo == nil {
 		t.Error("expected UserInfo handler to be created")
 	}
@@ -194,7 +200,16 @@ func TestBuilderMissingRequiredDependency(t *testing.T) {
 		}
 
 		_, err = NewBuilder().
-			WithConfig(&ports.Config{}).
+			WithConfig(&ports.Config{
+				OAuth2AuthServer: ports.OAuth2AuthServerConfig{
+					Mode: "proxy",
+					Proxy: ports.ProxyModeConfig{
+						UpstreamIssuerURI:         "https://auth.example.com",
+						UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+						UpstreamTokenEndpoint:     "https://auth.example.com/token",
+					},
+				},
+			}).
 			WithStorage(storageAdapter).
 			WithLogger(logger).
 			Build()
@@ -286,11 +301,13 @@ func TestBuilderTokenExchangeExpectedAudience(t *testing.T) {
 			ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
 			Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
 			OAuth2AuthServer: ports.OAuth2AuthServerConfig{
-				UpstreamIssuerURI:         upstream.URL,
-				UpstreamAuthorizeEndpoint: upstream.URL + "/oauth/authorize",
-				UpstreamTokenEndpoint:     upstream.URL + "/oauth/token",
-				UpstreamTimeoutSeconds:    5,
-				Mode:                      "proxy",
+				Mode: "proxy",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         upstream.URL,
+					UpstreamAuthorizeEndpoint: upstream.URL + "/oauth/authorize",
+					UpstreamTokenEndpoint:     upstream.URL + "/oauth/token",
+					UpstreamTimeoutSeconds:    5,
+				},
 			},
 			TokenExchange: ports.TokenExchangeConfig{
 				ClaimExtraction: ports.ClaimExtractionConfig{
@@ -343,12 +360,133 @@ func TestBuilderTokenExchangeExpectedAudience(t *testing.T) {
 	})
 }
 
-// TestBuilder_EmptyOAuth2AuthServerConfig is a regression test ensuring that
-// Build() succeeds when OAuth2AuthServerConfig is the zero value (no oauth2_authorization_server
-// block in config). Previously a refactor moved the unconfigured-skip guard out of Validate(),
-// causing the builder's direct Validate() call to error with "missing upstream_issuer_uri".
-func TestBuilder_EmptyOAuth2AuthServerConfig(t *testing.T) {
+// T056: Builder produces the correct strategy set for each OAuth2 server mode.
+// Proxy → JWKS handler nil; Local/Hybrid → JWKS handler non-nil (signing keys served).
+func TestBuilder_ModeStrategyWiring(t *testing.T) {
+	baseConfig := func(jweKey string) *ports.Config {
+		return &ports.Config{
+			Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+			Server: ports.ServerConfig{
+				EndUser: ports.ServerInstanceConfig{
+					Port: 8000, Bind: "::1", PublicURL: "http://localhost:8000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Admin: ports.ServerInstanceConfig{
+					Port: 14000, Bind: "::1", PublicURL: "http://localhost:14000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Shutdown: ports.ShutdownConfig{Timeout: 5 * time.Second},
+			},
+			Storage: ports.StorageConfig{
+				Backend:  "memory",
+				Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+			},
+			ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
+			Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
+		}
+	}
+
+	newStorage := func(t *testing.T) *storage.Adapter {
+		t.Helper()
+		a, err := storage.NewAdapter(&ports.StorageConfig{
+			Backend:  "memory",
+			Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+		})
+		if err != nil {
+			t.Fatalf("storage.NewAdapter: %v", err)
+		}
+		return a
+	}
+
 	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	t.Run("proxy mode — JWKS handler is nil", func(t *testing.T) {
+		cfg := baseConfig(jweKey)
+		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+			Mode: "proxy",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "https://issuer.example.com",
+				UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://issuer.example.com/token",
+			},
+		}
+		app, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).Build()
+		if err != nil {
+			t.Fatalf("Build() in proxy mode failed: %v", err)
+		}
+		if app.EnduserHandlers.JWKS != nil {
+			t.Error("proxy mode must not wire a JWKS handler")
+		}
+	})
+
+	t.Run("local mode — JWKS handler is non-nil", func(t *testing.T) {
+		cfg := baseConfig(jweKey)
+		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+			Mode:  "local",
+			Local: ports.LocalModeConfig{TokenTTL: time.Hour},
+		}
+		app, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).Build()
+		if err != nil {
+			t.Fatalf("Build() in local mode failed: %v", err)
+		}
+		if app.EnduserHandlers.JWKS == nil {
+			t.Error("local mode must wire a JWKS handler")
+		}
+	})
+
+	t.Run("local mode with token-exchange defaults — Build() succeeds without upstream discovery", func(t *testing.T) {
+		// Mirrors the chart's packaged defaults: local mode + non-empty token exchange CEL expressions
+		// but no proxy config. The builder must not attempt OAuth2 endpoint discovery in this case.
+		cfg := baseConfig(jweKey)
+		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+			Mode:  "local",
+			Local: ports.LocalModeConfig{TokenTTL: time.Hour},
+		}
+		cfg.TokenExchange = ports.TokenExchangeConfig{
+			ClaimExtraction: ports.ClaimExtractionConfig{
+				PrincipalExpression: "subject_token.sub",
+				AgentIDExpression:   "resolveAgentIdByClientId(subject_token.azp)",
+			},
+			Authorization: ports.AuthorizationConfig{
+				Type: "cel",
+				CEL:  ports.CELAuthorizationConfig{Expression: "true"},
+			},
+		}
+		_, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).Build()
+		if err != nil {
+			t.Fatalf("Build() in local mode with token-exchange defaults failed: %v", err)
+		}
+	})
+
+	t.Run("hybrid mode — JWKS handler is non-nil", func(t *testing.T) {
+		cfg := baseConfig(jweKey)
+		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+			Mode: "hybrid",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "https://issuer.example.com",
+				UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://issuer.example.com/token",
+			},
+			Local: ports.LocalModeConfig{TokenTTL: time.Hour},
+		}
+		app, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).Build()
+		if err != nil {
+			t.Fatalf("Build() in hybrid mode failed: %v", err)
+		}
+		if app.EnduserHandlers.JWKS == nil {
+			t.Error("hybrid mode must wire a JWKS handler")
+		}
+	})
+}
+
+// TestBuilder_MissingOAuth2AuthServerConfig verifies that Build() fails when the
+// oauth2_authorization_server block is absent. Mode is mandatory — no default exists.
+func TestBuilder_MissingOAuth2AuthServerConfig(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	adapter, err := storage.NewAdapter(&ports.StorageConfig{
@@ -359,6 +497,7 @@ func TestBuilder_EmptyOAuth2AuthServerConfig(t *testing.T) {
 		t.Fatalf("failed to create storage adapter: %v", err)
 	}
 
+	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
 	cfg := &ports.Config{
 		Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
 		Server: ports.ServerConfig{
@@ -382,14 +521,41 @@ func TestBuilder_EmptyOAuth2AuthServerConfig(t *testing.T) {
 		},
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
 		Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
-		// OAuth2AuthServer intentionally omitted — zero value must be accepted
+		// OAuth2AuthServer intentionally absent — must cause startup failure
 	}
 
-	app, err := NewBuilder().WithConfig(cfg).WithStorage(adapter).WithLogger(logger).Build()
-	if err != nil {
-		t.Fatalf("Build() with empty OAuth2AuthServerConfig must succeed, got: %v", err)
+	_, err = NewBuilder().WithConfig(cfg).WithStorage(adapter).WithLogger(logger).Build()
+	if err == nil {
+		t.Fatal("Build() with absent OAuth2AuthServerConfig must fail")
 	}
-	if app == nil {
-		t.Fatal("expected non-nil app")
+	if !strings.Contains(err.Error(), "mode") {
+		t.Errorf("expected error to mention 'mode', got: %v", err)
+	}
+}
+
+func TestModeStrategyFor_PanicsOnUnknownMode(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected modeStrategyFor to panic on unknown mode, but it did not")
+		}
+	}()
+	modeStrategyFor("bogus")
+}
+
+func TestProxyOAuth2ConfigUpstreamTimeout(t *testing.T) {
+	tests := []struct {
+		configured int
+		want       time.Duration
+	}{
+		{0, 30 * time.Second},  // zero → application default
+		{5, 5 * time.Second},   // explicit proxy config
+		{60, 60 * time.Second}, // custom timeout
+	}
+	for _, tt := range tests {
+		cfg := &ports.ProxyOAuth2Config{UpstreamTimeoutSeconds: tt.configured}
+		got := cfg.UpstreamTimeout()
+		if got != tt.want {
+			t.Errorf("UpstreamTimeout() with %d seconds = %v, want %v", tt.configured, got, tt.want)
+		}
 	}
 }

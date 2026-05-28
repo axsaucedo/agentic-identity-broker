@@ -63,6 +63,33 @@ func NewFetcher(fetchTimeout time.Duration, maxResponseBytes int64, extraBlocked
 	return NewFetcherWithClient(client, blocklist, maxResponseBytes), nil
 }
 
+// NewFetcherInsecure creates a fetcher with SSRF protection and TLS verification disabled.
+// For development/test environments only — allows fetching from private IPs and
+// self-signed certificates. NEVER use in production.
+func NewFetcherInsecure(fetchTimeout time.Duration, maxResponseBytes int64) (*Fetcher, error) {
+	// Empty blocklist: allow all IPs including RFC 1918 ranges.
+	blocklist := domaincimd.SSRFBlocklist{}
+
+	dialer := &net.Dialer{
+		Timeout:   fetchTimeout,
+		KeepAlive: -1,
+	}
+
+	transport := &http.Transport{
+		DialContext:       dialer.DialContext,
+		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}, //nolint:gosec // dev-only
+		MaxConnsPerHost:   1,
+		DisableKeepAlives: true,
+	}
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   fetchTimeout,
+	}
+
+	return NewFetcherWithClient(client, blocklist, maxResponseBytes), nil
+}
+
 // NewFetcherWithClient creates a Fetcher with an injected HTTP client, for testing.
 // The no-redirect policy is always enforced regardless of the client's CheckRedirect setting.
 func NewFetcherWithClient(client *http.Client, blocklist domaincimd.SSRFBlocklist, maxResponseBytes int64) *Fetcher {

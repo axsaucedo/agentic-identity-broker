@@ -35,18 +35,14 @@ func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thir
 
 // mockAgentDetailService is a configurable mock implementation of ConsentService for testing.
 type mockAgentDetailService struct {
-	getAgentWithServiceRequirementsFunc func(ctx context.Context, userPrincipal id.Principal, agentID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error)
+	getAgentConsentDetailFunc func(ctx context.Context, agentID id.AgentID, principal id.Principal) (*consent.AgentConsentDetail, error)
 }
 
-func (m *mockAgentDetailService) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID, principal id.Principal) (*consent.AgentConsentInfo, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockAgentDetailService) GetAgentWithServiceRequirements(ctx context.Context, userPrincipal id.Principal, agentID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
-	if m.getAgentWithServiceRequirementsFunc != nil {
-		return m.getAgentWithServiceRequirementsFunc(ctx, userPrincipal, agentID)
+func (m *mockAgentDetailService) GetAgentConsentDetail(ctx context.Context, agentID id.AgentID, p id.Principal) (*consent.AgentConsentDetail, error) {
+	if m.getAgentConsentDetailFunc != nil {
+		return m.getAgentConsentDetailFunc(ctx, agentID, p)
 	}
-	return nil, nil, errors.New("not implemented")
+	return &consent.AgentConsentDetail{Agent: &storage.Agent{}}, nil
 }
 
 func (m *mockAgentDetailService) GrantConsent(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
@@ -79,8 +75,9 @@ func TestGetAgentDetail_Success(t *testing.T) {
 	googleServiceID := id.NewServiceID()
 
 	mockService := &mockAgentDetailService{
-		getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, _ id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
-			return &storage.Agent{
+		getAgentConsentDetailFunc: func(_ context.Context, _ id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+			return &consent.AgentConsentDetail{
+				Agent: &storage.Agent{
 					ID:                   agentID,
 					ClientID:             ptr.To(id.NewClientID("test-client-id")),
 					DisplayName:          "Test Agent",
@@ -89,7 +86,7 @@ func TestGetAgentDetail_Success(t *testing.T) {
 					UserDocumentationURL: &userDocsURL,
 					AgentInterfaceURL:    &agentInterfaceURL,
 				},
-				[]consent.ServiceRequirementStatus{
+				ServiceRequirements: []consent.ServiceRequirementStatus{
 					{
 						ServiceID:       githubServiceID,
 						DisplayName:     "GitHub",
@@ -107,7 +104,8 @@ func TestGetAgentDetail_Success(t *testing.T) {
 						RequiredScopes:  []consent.ServiceScopeInfo{{Name: "email", Description: "View email address"}},
 						IsConnected:     false,
 					},
-				}, nil
+				},
+			}, nil
 		},
 	}
 
@@ -127,7 +125,7 @@ func TestGetAgentDetail_Success(t *testing.T) {
 	var response GetAgentDetailResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&response))
 
-	assert.Equal(t, agentID, response.Data.Agent.AgentID)
+	assert.Equal(t, agentID.String(), response.Data.Agent.ID)
 	assert.Equal(t, "Test Agent", response.Data.Agent.DisplayName)
 	require.NotNil(t, response.Data.Agent.GovernanceURL)
 	assert.Equal(t, governanceURL, *response.Data.Agent.GovernanceURL)
@@ -139,8 +137,8 @@ func TestGetAgentDetail_Success(t *testing.T) {
 
 func TestGetAgentDetail_AgentNotFound(t *testing.T) {
 	mockService := &mockAgentDetailService{
-		getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, _ id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
-			return nil, nil, consent.ErrAgentNotFound
+		getAgentConsentDetailFunc: func(_ context.Context, _ id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+			return nil, consent.ErrAgentNotFound
 		},
 	}
 
@@ -182,8 +180,8 @@ func TestGetAgentDetail_MissingAgentID(t *testing.T) {
 
 func TestGetAgentDetail_ServiceError(t *testing.T) {
 	mockService := &mockAgentDetailService{
-		getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, _ id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
-			return nil, nil, storage.NewStorageError("GetAgent", storage.ErrorKindConnection, errors.New("database connection failed"), "db unavailable")
+		getAgentConsentDetailFunc: func(_ context.Context, _ id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+			return nil, storage.NewStorageError("GetAgent", storage.ErrorKindConnection, errors.New("database connection failed"), "db unavailable")
 		},
 	}
 
@@ -210,8 +208,8 @@ func TestGetAgentDetail_ServiceRequirementError(t *testing.T) {
 	agentID := id.NewAgentID()
 
 	mockService := &mockAgentDetailService{
-		getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, _ id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
-			return nil, nil, storage.NewStorageError("FindByPrincipalAndService", storage.ErrorKindConnection, nil, "database unavailable")
+		getAgentConsentDetailFunc: func(_ context.Context, _ id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+			return nil, storage.NewStorageError("FindByPrincipalAndService", storage.ErrorKindConnection, nil, "database unavailable")
 		},
 	}
 
@@ -237,13 +235,16 @@ func TestGetAgentDetail_EmptyServicesList(t *testing.T) {
 	agentID := id.NewAgentID()
 
 	mockService := &mockAgentDetailService{
-		getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, _ id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
-			return &storage.Agent{
-				ID:          agentID,
-				ClientID:    ptr.To(id.NewClientID("test-client-id")),
-				DisplayName: "Test Agent",
-				Description: "A test agent",
-			}, []consent.ServiceRequirementStatus{}, nil
+		getAgentConsentDetailFunc: func(_ context.Context, _ id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+			return &consent.AgentConsentDetail{
+				Agent: &storage.Agent{
+					ID:          agentID,
+					ClientID:    ptr.To(id.NewClientID("test-client-id")),
+					DisplayName: "Test Agent",
+					Description: "A test agent",
+				},
+				ServiceRequirements: []consent.ServiceRequirementStatus{},
+			}, nil
 		},
 	}
 
@@ -271,8 +272,11 @@ func TestResolveCIMDMetadata_SessionAgentMismatch(t *testing.T) {
 	principalID := "user@example.com"
 
 	mockService := &mockAgentDetailService{
-		getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, agentID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
-			return &storage.Agent{ID: agentID, ClientID: ptr.To(id.NewClientID("test")), DisplayName: "Agent"}, []consent.ServiceRequirementStatus{}, nil
+		getAgentConsentDetailFunc: func(_ context.Context, agentID id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+			return &consent.AgentConsentDetail{
+				Agent:               &storage.Agent{ID: agentID, ClientID: ptr.To(id.NewClientID("test")), DisplayName: "Agent"},
+				ServiceRequirements: []consent.ServiceRequirementStatus{},
+			}, nil
 		},
 	}
 
@@ -304,8 +308,11 @@ func TestResolveCIMDMetadata_SessionPrincipalMismatch(t *testing.T) {
 	agentID := id.NewAgentID()
 
 	mockService := &mockAgentDetailService{
-		getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, aID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
-			return &storage.Agent{ID: aID, ClientID: ptr.To(id.NewClientID("test")), DisplayName: "Agent"}, []consent.ServiceRequirementStatus{}, nil
+		getAgentConsentDetailFunc: func(_ context.Context, aID id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+			return &consent.AgentConsentDetail{
+				Agent:               &storage.Agent{ID: aID, ClientID: ptr.To(id.NewClientID("test")), DisplayName: "Agent"},
+				ServiceRequirements: []consent.ServiceRequirementStatus{},
+			}, nil
 		},
 	}
 
@@ -337,8 +344,11 @@ func TestGetAgentDetail_ExpiredSessionToken(t *testing.T) {
 	agentID := id.NewAgentID()
 
 	mockService := &mockAgentDetailService{
-		getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, aID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
-			return &storage.Agent{ID: aID, ClientID: ptr.To(id.NewClientID("test")), DisplayName: "Agent"}, []consent.ServiceRequirementStatus{}, nil
+		getAgentConsentDetailFunc: func(_ context.Context, aID id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+			return &consent.AgentConsentDetail{
+				Agent:               &storage.Agent{ID: aID, ClientID: ptr.To(id.NewClientID("test")), DisplayName: "Agent"},
+				ServiceRequirements: []consent.ServiceRequirementStatus{},
+			}, nil
 		},
 	}
 
@@ -370,8 +380,11 @@ func TestGetAgentDetail_MalformedSessionToken(t *testing.T) {
 	agentID := id.NewAgentID()
 
 	mockService := &mockAgentDetailService{
-		getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, aID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
-			return &storage.Agent{ID: aID, ClientID: ptr.To(id.NewClientID("test")), DisplayName: "Agent"}, []consent.ServiceRequirementStatus{}, nil
+		getAgentConsentDetailFunc: func(_ context.Context, aID id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+			return &consent.AgentConsentDetail{
+				Agent:               &storage.Agent{ID: aID, ClientID: ptr.To(id.NewClientID("test")), DisplayName: "Agent"},
+				ServiceRequirements: []consent.ServiceRequirementStatus{},
+			}, nil
 		},
 	}
 
@@ -399,12 +412,14 @@ func TestGetAgentDetail_SortsMandatoryFirst(t *testing.T) {
 	mandatoryServiceID := id.NewServiceID()
 
 	mockService := &mockAgentDetailService{
-		getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, _ id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
-			return &storage.Agent{ID: agentID, ClientID: ptr.To(id.NewClientID("c")), DisplayName: "Agent"},
-				[]consent.ServiceRequirementStatus{
+		getAgentConsentDetailFunc: func(_ context.Context, _ id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+			return &consent.AgentConsentDetail{
+				Agent: &storage.Agent{ID: agentID, ClientID: ptr.To(id.NewClientID("c")), DisplayName: "Agent"},
+				ServiceRequirements: []consent.ServiceRequirementStatus{
 					{ServiceID: optionalServiceID, DisplayName: "Optional", RequirementType: storage.RequirementTypeOptional},
 					{ServiceID: mandatoryServiceID, DisplayName: "Mandatory", RequirementType: storage.RequirementTypeMandatory},
-				}, nil
+				},
+			}, nil
 		},
 	}
 
@@ -434,9 +449,11 @@ func TestGetAgentDetail_ConnectionStatus(t *testing.T) {
 
 	t.Run("connected", func(t *testing.T) {
 		mockService := &mockAgentDetailService{
-			getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, _ id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
-				return &storage.Agent{ID: agentID, ClientID: ptr.To(id.NewClientID("c")), DisplayName: "A"},
-					[]consent.ServiceRequirementStatus{{ServiceID: svcID, IsConnected: true, RequirementType: storage.RequirementTypeMandatory}}, nil
+			getAgentConsentDetailFunc: func(_ context.Context, _ id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+				return &consent.AgentConsentDetail{
+					Agent:               &storage.Agent{ID: agentID, ClientID: ptr.To(id.NewClientID("c")), DisplayName: "A"},
+					ServiceRequirements: []consent.ServiceRequirementStatus{{ServiceID: svcID, IsConnected: true, RequirementType: storage.RequirementTypeMandatory}},
+				}, nil
 			},
 		}
 		handler := NewAgentDetailHandler(mockService, nil, newTestSessionTokenValidator())
@@ -456,9 +473,11 @@ func TestGetAgentDetail_ConnectionStatus(t *testing.T) {
 
 	t.Run("not_connected", func(t *testing.T) {
 		mockService := &mockAgentDetailService{
-			getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, _ id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
-				return &storage.Agent{ID: agentID, ClientID: ptr.To(id.NewClientID("c")), DisplayName: "A"},
-					[]consent.ServiceRequirementStatus{{ServiceID: svcID, IsConnected: false, RequirementType: storage.RequirementTypeMandatory}}, nil
+			getAgentConsentDetailFunc: func(_ context.Context, _ id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+				return &consent.AgentConsentDetail{
+					Agent:               &storage.Agent{ID: agentID, ClientID: ptr.To(id.NewClientID("c")), DisplayName: "A"},
+					ServiceRequirements: []consent.ServiceRequirementStatus{{ServiceID: svcID, IsConnected: false, RequirementType: storage.RequirementTypeMandatory}},
+				}, nil
 			},
 		}
 		handler := NewAgentDetailHandler(mockService, nil, newTestSessionTokenValidator())
@@ -475,4 +494,138 @@ func TestGetAgentDetail_ConnectionStatus(t *testing.T) {
 		require.Len(t, resp.Data.Services, 1)
 		assert.Equal(t, "not_connected", resp.Data.Services[0].ConnectionStatus)
 	})
+}
+
+func TestGetAgentDetail_NilClientID(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	mockService := &mockAgentDetailService{
+		getAgentConsentDetailFunc: func(_ context.Context, _ id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+			return &consent.AgentConsentDetail{
+				Agent: &storage.Agent{
+					ID:          agentID,
+					ClientID:    nil,
+					DisplayName: "Local Agent",
+					Description: "Agent without client_id",
+				},
+				ServiceRequirements: []consent.ServiceRequirementStatus{},
+			}, nil
+		},
+	}
+
+	handler := NewAgentDetailHandler(mockService, nil, newTestSessionTokenValidator())
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agents/"+agentID.String(), nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	req = req.WithContext(principal.WithPrincipal(req.Context(), "user@example.com"))
+
+	rr := httptest.NewRecorder()
+	handler.GetAgentDetail(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp GetAgentDetailResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+
+	assert.Equal(t, agentID.String(), resp.Data.Agent.ID)
+	assert.Empty(t, resp.Data.Agent.ClientID, "client_id should be omitted for local agents")
+	assert.Nil(t, resp.Data.Agent.ClientURIs)
+}
+
+func TestGetAgentDetail_CIMDAgent(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	mockService := &mockAgentDetailService{
+		getAgentConsentDetailFunc: func(_ context.Context, _ id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+			return &consent.AgentConsentDetail{
+				Agent: &storage.Agent{
+					ID:          agentID,
+					ClientID:    nil,
+					ClientURIs:  []string{"https://example.com/.well-known/oauth-client"},
+					DisplayName: "CIMD Agent",
+					Description: "Agent resolved via CIMD URL",
+				},
+				ServiceRequirements: []consent.ServiceRequirementStatus{},
+			}, nil
+		},
+	}
+
+	handler := NewAgentDetailHandler(mockService, nil, newTestSessionTokenValidator())
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agents/"+agentID.String(), nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	req = req.WithContext(principal.WithPrincipal(req.Context(), "user@example.com"))
+
+	rr := httptest.NewRecorder()
+	handler.GetAgentDetail(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp GetAgentDetailResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+
+	assert.Empty(t, resp.Data.Agent.ClientID)
+	assert.Equal(t, []string{"https://example.com/.well-known/oauth-client"}, resp.Data.Agent.ClientURIs)
+}
+
+func TestGetAgentDetail_PermissionSetsIncluded(t *testing.T) {
+	agentID := id.NewAgentID()
+	psID := id.NewPermissionSetID()
+	svcID := id.NewServiceID()
+
+	mockService := &mockAgentDetailService{
+		getAgentConsentDetailFunc: func(_ context.Context, _ id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {
+			return &consent.AgentConsentDetail{
+				Agent: &storage.Agent{
+					ID:          agentID,
+					ClientID:    ptr.To(id.NewClientID("proxy-client")),
+					DisplayName: "Proxy Agent",
+					Description: "Agent with permission sets",
+					ServiceRequirements: []storage.ServiceRequirement{
+						{ServiceID: svcID, RequirementType: storage.RequirementTypeMandatory},
+					},
+				},
+				ServiceRequirements: []consent.ServiceRequirementStatus{},
+				ResolvedPermissionSets: []consent.ResolvedPermissionSetEntry{
+					{
+						PermissionSet: &storage.PermissionSet{
+							ID:          psID,
+							Name:        "Core Access",
+							Description: "Core permissions",
+							ServiceScopes: []storage.ServiceScope{
+								{ServiceID: svcID, RequirementType: storage.RequirementTypeMandatory},
+							},
+						},
+						RequirementType: storage.RequirementTypeMandatory,
+					},
+				},
+				ActiveSessionServiceIDs: []id.ServiceID{svcID},
+			}, nil
+		},
+	}
+
+	handler := NewAgentDetailHandler(mockService, nil, newTestSessionTokenValidator())
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agents/"+agentID.String(), nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	req = req.WithContext(principal.WithPrincipal(req.Context(), "user@example.com"))
+
+	rr := httptest.NewRecorder()
+	handler.GetAgentDetail(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp GetAgentDetailResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+
+	require.Len(t, resp.Data.PermissionSets, 1)
+	assert.Equal(t, psID.String(), resp.Data.PermissionSets[0].PermissionSet.ID)
+	assert.Equal(t, "mandatory", resp.Data.PermissionSets[0].RequirementType)
+
+	require.Len(t, resp.Data.ActiveSessionIDs, 1)
+	assert.Equal(t, svcID.String(), resp.Data.ActiveSessionIDs[0])
+
+	require.Len(t, resp.Data.ServiceRequirements, 1)
+	assert.Equal(t, svcID.String(), resp.Data.ServiceRequirements[0].ServiceID)
+	assert.Equal(t, "mandatory", resp.Data.ServiceRequirements[0].RequirementType)
 }

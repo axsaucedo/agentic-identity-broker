@@ -54,6 +54,14 @@ func validTestConfig() *ports.Config {
 				RawKey: base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
 			},
 		},
+		OAuth2AuthServer: ports.OAuth2AuthServerConfig{
+			Mode: "proxy",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "https://auth.example.com",
+				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://auth.example.com/token",
+			},
+		},
 		Security: ports.SecurityConfig{},
 	}
 }

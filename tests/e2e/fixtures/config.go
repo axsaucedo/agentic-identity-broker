@@ -58,13 +58,15 @@ func DefaultOAuth2Config() *ports.Config {
 			},
 		},
 		OAuth2AuthServer: ports.OAuth2AuthServerConfig{
-			UpstreamIssuerURI:         "http://localhost:19000",
-			UpstreamAuthorizeEndpoint: "http://localhost:19000/authorize",
-			UpstreamTokenEndpoint:     "http://localhost:19000/token",
-			SupportedResponseTypes:    []string{"code"},
-			SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
-			UpstreamTimeoutSeconds:    30,
-			Mode:                      "proxy",
+			Mode: "proxy",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "http://localhost:19000",
+				UpstreamAuthorizeEndpoint: "http://localhost:19000/authorize",
+				UpstreamTokenEndpoint:     "http://localhost:19000/token",
+				UpstreamTimeoutSeconds:    30,
+			},
+			SupportedResponseTypes: []string{"code"},
+			SupportedGrantTypes:    []string{"authorization_code", "refresh_token"},
 		},
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey:      base64.StdEncoding.EncodeToString([]byte("test-32-byte-key-must-be-exact-x")),
@@ -85,9 +87,9 @@ func DefaultOAuth2Config() *ports.Config {
 // All other settings match DefaultOAuth2Config().
 func OAuth2ConfigWithUpstream(upstreamURL string) *ports.Config {
 	config := DefaultOAuth2Config()
-	config.OAuth2AuthServer.UpstreamIssuerURI = upstreamURL
-	config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = upstreamURL + "/oauth/authorize"
-	config.OAuth2AuthServer.UpstreamTokenEndpoint = upstreamURL + "/oauth/token"
+	config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = upstreamURL
+	config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = upstreamURL + "/oauth/authorize"
+	config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = upstreamURL + "/oauth/token"
 	return config
 }
 
@@ -120,7 +122,7 @@ func OAuth2ConfigWithTokenExchange(upstreamURL string) *ports.Config {
 // All other settings match DefaultOAuth2Config().
 func OAuth2ConfigWithTimeout(timeoutSeconds int) *ports.Config {
 	config := DefaultOAuth2Config()
-	config.OAuth2AuthServer.UpstreamTimeoutSeconds = timeoutSeconds
+	config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds = timeoutSeconds
 	return config
 }
 
@@ -427,34 +429,59 @@ func SignedJWTConfigWithIssuer(jwksURL, issuer string) *ports.Config {
 	return config
 }
 
-// IssueTokenConfig returns a config for issue_token mode E2E testing.
-// Uses in-memory storage and encryption, with a test issuer URI.
-// Upstream OAuth2 fields are cleared (not needed in issue_token mode).
-func IssueTokenConfig() *ports.Config {
+// HybridConfig returns a config for hybrid mode E2E testing.
+// Both proxy and local sections are required by hybrid mode validation.
+func HybridConfig(upstreamURL string) *ports.Config {
 	config := DefaultOAuth2Config()
-	config.OAuth2AuthServer.Mode = "issue_token"
-	config.OAuth2AuthServer.TokenTTL = time.Hour
-	config.OAuth2AuthServer.TokenClaimsExpression = ""
-	// Clear upstream fields (not needed in issue_token mode)
-	config.OAuth2AuthServer.UpstreamIssuerURI = ""
-	config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = ""
-	config.OAuth2AuthServer.UpstreamTokenEndpoint = ""
+	config.OAuth2AuthServer.Mode = "hybrid"
+	config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = upstreamURL
+	config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = upstreamURL + "/oauth/authorize"
+	config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = upstreamURL + "/oauth/token"
+	config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds = 30
+	config.OAuth2AuthServer.Local.TokenTTL = time.Hour
 	return config
 }
 
-// IssueTokenConfigWithCEL returns a config for issue_token mode with custom JWT claims.
-func IssueTokenConfigWithCEL(celExpr string) *ports.Config {
-	config := IssueTokenConfig()
-	config.OAuth2AuthServer.TokenClaimsExpression = celExpr
+// HybridConfigWithCIMD returns a hybrid mode config with CIMD support enabled.
+func HybridConfigWithCIMD(upstreamURL string) *ports.Config {
+	config := HybridConfig(upstreamURL)
+	config.OAuth2AuthServer.CIMD = ports.CIMDConfig{
+		Enabled:          true,
+		FetchTimeout:     5 * time.Second,
+		MaxResponseBytes: 5120,
+		Cache: ports.CIMDCacheConfig{
+			MinTTL:     60 * time.Second,
+			MaxTTL:     1 * time.Hour,
+			MaxEntries: 1000,
+		},
+	}
 	return config
 }
 
-// OAuth2ConfigWithCIMD returns a config with CIMD support enabled.
+// LocalConfig returns a config for local mode E2E testing.
+// Uses in-memory storage and encryption, with a test issuer URI.
+// Upstream OAuth2 fields are cleared (not needed in local mode).
+func LocalConfig() *ports.Config {
+	config := DefaultOAuth2Config()
+	config.OAuth2AuthServer.Mode = "local"
+	config.OAuth2AuthServer.Local.TokenTTL = time.Hour
+	config.OAuth2AuthServer.Local.TokenClaimsExpression = ""
+	config.OAuth2AuthServer.Proxy = ports.ProxyModeConfig{}
+	return config
+}
+
+// LocalConfigWithCEL returns a config for local mode with custom JWT claims.
+func LocalConfigWithCEL(celExpr string) *ports.Config {
+	config := LocalConfig()
+	config.OAuth2AuthServer.Local.TokenClaimsExpression = celExpr
+	return config
+}
+
+// OAuth2ConfigWithCIMD returns a config for local mode with CIMD support enabled.
 // The CIMD fetcher is wired in the builder; the config only enables the feature gate.
-// All upstream OAuth2 settings match DefaultOAuth2Config().
-func OAuth2ConfigWithCIMD(upstreamURL string) *ports.Config {
-	config := OAuth2ConfigWithUpstream(upstreamURL)
-	config.OAuth2AuthServer.Mode = "issue_token"
+// The upstreamURL parameter is accepted for compatibility but not used (CIMD is local mode only).
+func OAuth2ConfigWithCIMD(_ string) *ports.Config {
+	config := LocalConfig()
 	config.OAuth2AuthServer.CIMD = ports.CIMDConfig{
 		Enabled:          true,
 		FetchTimeout:     5 * time.Second,

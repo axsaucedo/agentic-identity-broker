@@ -38,6 +38,7 @@ import (
 	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
@@ -148,6 +149,78 @@ func (b *Builder) WithCIMDFetcher(f ports.CIMDFetcher) *Builder {
 	return b
 }
 
+// oauthResolved holds values extracted from a resolved OAuth2ModeConfig for use
+// throughout the builder. Populated once via extractOAuthValues, consumed many times.
+type oauthResolved struct {
+	upstreamIssuerURI         string
+	upstreamAuthorizeEndpoint string
+	upstreamTokenEndpoint     string
+	upstreamTimeout           time.Duration
+	localIssuerURI            string
+	localTokenTTL             time.Duration
+	localClaimsExpression     string
+	responseTypes             []string
+	grantTypes                []string
+	multiAgentClient          ports.MultiAgentClientConfig
+	cimdConfig                ports.CIMDConfig
+	cimdEnabled               bool
+}
+
+func extractOAuthValues(cfg ports.OAuth2ModeConfig, publicURL string) oauthResolved {
+	r := oauthResolved{upstreamTimeout: 30 * time.Second, localIssuerURI: publicURL}
+	switch c := cfg.(type) {
+	case *ports.ProxyOAuth2Config:
+		r.upstreamIssuerURI = c.UpstreamIssuerURI
+		r.upstreamAuthorizeEndpoint = c.UpstreamAuthorizeEndpoint
+		r.upstreamTokenEndpoint = c.UpstreamTokenEndpoint
+		r.upstreamTimeout = c.UpstreamTimeout()
+		r.responseTypes = c.SupportedResponseTypes
+		r.grantTypes = c.SupportedGrantTypes
+		r.multiAgentClient = c.MultiAgentClient
+	case *ports.LocalOAuth2Config:
+		if c.IssuerURI != "" {
+			r.localIssuerURI = c.IssuerURI
+		}
+		r.localTokenTTL = c.TokenTTL
+		r.localClaimsExpression = c.TokenClaimsExpression
+		r.responseTypes = c.SupportedResponseTypes
+		r.grantTypes = c.SupportedGrantTypes
+		r.cimdConfig = c.CIMD
+		r.cimdEnabled = c.CIMD.Enabled
+	case *ports.HybridOAuth2Config:
+		r.upstreamIssuerURI = c.Proxy.UpstreamIssuerURI
+		r.upstreamAuthorizeEndpoint = c.Proxy.UpstreamAuthorizeEndpoint
+		r.upstreamTokenEndpoint = c.Proxy.UpstreamTokenEndpoint
+		r.upstreamTimeout = c.Proxy.UpstreamTimeout()
+		r.responseTypes = c.ResponseTypes()
+		r.grantTypes = c.GrantTypes()
+		r.multiAgentClient = c.Proxy.MultiAgentClient
+		if c.Local.IssuerURI != "" {
+			r.localIssuerURI = c.Local.IssuerURI
+		}
+		r.localTokenTTL = c.Local.TokenTTL
+		r.localClaimsExpression = c.Local.TokenClaimsExpression
+		r.cimdConfig = c.Local.CIMD
+		r.cimdEnabled = c.Local.CIMD.Enabled
+	default:
+		panic(fmt.Sprintf("BUG: unhandled OAuth2ModeConfig type %T — update extractOAuthValues", cfg))
+	}
+	return r
+}
+
+func modeStrategyFor(mode servermode.Mode) oauth2service.ModeStrategy {
+	switch mode {
+	case servermode.Proxy:
+		return oauth2service.NewProxyModeStrategy()
+	case servermode.Local:
+		return oauth2service.NewLocalModeStrategy()
+	case servermode.Hybrid:
+		return oauth2service.NewHybridModeStrategy()
+	default:
+		panic(fmt.Sprintf("BUG: unhandled servermode.Mode %q — update modeStrategyFor", mode))
+	}
+}
+
 // Build constructs the App with all wired dependencies.
 // Returns error if required dependencies are missing or initialization fails.
 //
@@ -168,10 +241,11 @@ func (b *Builder) Build() (*App, error) {
 		return nil, fmt.Errorf("logger is required")
 	}
 
-	// Validate OAuth2AuthServer config (handles the empty-config case internally).
-	if err := b.config.OAuth2AuthServer.Validate(); err != nil {
+	oauthCfg, err := b.config.OAuth2AuthServer.Resolve()
+	if err != nil {
 		return nil, fmt.Errorf("oauth2_authorization_server configuration invalid: %w", err)
 	}
+	ov := extractOAuthValues(oauthCfg, b.config.Server.EndUser.PublicURL)
 
 	app := &App{
 		Config:  b.config,
@@ -319,41 +393,44 @@ func (b *Builder) Build() (*App, error) {
 		)
 	}
 
-	// Create OAuth2 service if configuration available.
-	// T038: Use NewServiceWithSessions (enables mandatory requirement validation + multi-agent
-	// client config) and pass MultiAgentClientConfig from cfg.OAuth2AuthServer.MultiAgentClient.
-	// In issue_token mode, also create the service for consent checks and metadata generation.
+	// Create OAuth2 service — mode-specific config drives all decisions.
 	var clientResolver ports.ClientResolver
-	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" || b.config.OAuth2AuthServer.Mode == "issue_token" {
+	{
+		tokenExchangeEnabled := ov.upstreamIssuerURI != "" &&
+			b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
+			b.config.TokenExchange.Authorization.CEL.Expression != ""
+
 		oauth2Config := &oauth2service.OAuth2Config{
-			UpstreamAuthorizeEndpoint: b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint,
-			UpstreamTokenEndpoint:     b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
+			UpstreamAuthorizeEndpoint: ov.upstreamAuthorizeEndpoint,
+			UpstreamTokenEndpoint:     ov.upstreamTokenEndpoint,
 			PublicURL:                 b.config.Server.EndUser.PublicURL,
-			SupportedResponseTypes:    b.config.OAuth2AuthServer.SupportedResponseTypes,
-			SupportedGrantTypes:       b.config.OAuth2AuthServer.SupportedGrantTypes,
-			MultiAgentClient:          b.config.OAuth2AuthServer.MultiAgentClient,
-			Mode:                      b.config.OAuth2AuthServer.Mode,
-			CIMDEnabled:               b.config.OAuth2AuthServer.CIMD.Enabled,
-		}
-		// In issue_token mode, set correct defaults for supported types
-		if b.config.OAuth2AuthServer.Mode == "issue_token" {
-			if len(oauth2Config.SupportedResponseTypes) == 0 {
-				oauth2Config.SupportedResponseTypes = []string{"code"}
-			}
-			if len(oauth2Config.SupportedGrantTypes) == 0 {
-				oauth2Config.SupportedGrantTypes = []string{"authorization_code", "client_credentials"}
-			}
+			IssuerURI:                 ov.localIssuerURI,
+			SupportedResponseTypes:    ov.responseTypes,
+			SupportedGrantTypes:       ov.grantTypes,
+			MultiAgentClient:          ov.multiAgentClient,
+			CIMDEnabled:               ov.cimdEnabled,
+			ModeStrategy:              modeStrategyFor(oauthCfg.ServerMode()),
+			TokenExchangeEnabled:      tokenExchangeEnabled,
 		}
 
-		cimdCfg := b.config.OAuth2AuthServer.CIMD
-		if cimdCfg.Enabled {
+		if ov.cimdEnabled {
 			activeFetcher := b.cimdFetcher
 			if activeFetcher == nil {
-				concreteFetcher, fetchErr := adaptercmd.NewFetcher(
-					cimdCfg.FetchTimeout,
-					int64(cimdCfg.MaxResponseBytes),
-					cimdCfg.SSRF.ExtraBlockedCIDRs,
-				)
+				var concreteFetcher *adaptercmd.Fetcher
+				var fetchErr error
+				if b.config.Security.SkipCIMDSSRFValidation {
+					b.logger.Warn("CIMD SSRF validation disabled — dev/test only, never use in production")
+					concreteFetcher, fetchErr = adaptercmd.NewFetcherInsecure(
+						ov.cimdConfig.FetchTimeout,
+						int64(ov.cimdConfig.MaxResponseBytes),
+					)
+				} else {
+					concreteFetcher, fetchErr = adaptercmd.NewFetcher(
+						ov.cimdConfig.FetchTimeout,
+						int64(ov.cimdConfig.MaxResponseBytes),
+						ov.cimdConfig.SSRF.ExtraBlockedCIDRs,
+					)
+				}
 				if fetchErr != nil {
 					return nil, fmt.Errorf("failed to create CIMD fetcher: %w", fetchErr)
 				}
@@ -364,15 +441,15 @@ func (b *Builder) Build() (*App, error) {
 				}
 				activeFetcher = concreteFetcher
 			}
-			cimdCache, cacheErr := domaincimd.NewCIMDCache(cimdCfg.Cache.MinTTL, cimdCfg.Cache.MaxTTL, cimdCfg.Cache.MaxEntries)
+			cimdCache, cacheErr := domaincimd.NewCIMDCache(ov.cimdConfig.Cache.MinTTL, ov.cimdConfig.Cache.MaxTTL, ov.cimdConfig.Cache.MaxEntries)
 			if cacheErr != nil {
 				return nil, fmt.Errorf("failed to create CIMD cache: %w", cacheErr)
 			}
-			cimdSvc := domaincimd.NewService(activeFetcher, cimdCache, cimdCfg.ClientNameBlocklist, b.logger)
+			cimdSvc := domaincimd.NewService(activeFetcher, cimdCache, ov.cimdConfig.ClientNameBlocklist, b.logger)
 			clientResolver = oauth2service.NewAgentClientResolverWithCIMD(b.storage.Agents(), cimdSvc, b.logger)
 			b.logger.Info("CIMD client resolution enabled",
-				"fetch_timeout", cimdCfg.FetchTimeout,
-				"max_response_bytes", cimdCfg.MaxResponseBytes,
+				"fetch_timeout", ov.cimdConfig.FetchTimeout,
+				"max_response_bytes", ov.cimdConfig.MaxResponseBytes,
 			)
 		} else {
 			clientResolver = oauth2service.NewAgentClientResolver(b.storage.Agents(), b.logger)
@@ -405,10 +482,8 @@ func (b *Builder) Build() (*App, error) {
 	// Constitution Principle VII: Configuration-Driven Design
 	cfg := oauth2session.NewConfigFromPorts(b.config.ThirdPartyOAuth2, b.config.Server.EndUser.PublicURL)
 
-	// Create HTTP client for token endpoint with configured timeout
-	// Created early to support both OAuth2SessionService and TokenExchangeService
 	upstreamClient := &http.Client{
-		Timeout: time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds) * time.Second,
+		Timeout: ov.upstreamTimeout,
 	}
 
 	// Wrap the HTTP transport with OTel instrumentation when tracing is enabled.
@@ -440,12 +515,13 @@ func (b *Builder) Build() (*App, error) {
 		b.storage.Agents(),
 		app.ProviderService,
 		b.logger,
-		b.config.OAuth2AuthServer.MultiAgentClient.Enabled,
+		ov.multiAgentClient.Enabled,
 	)
 
-	// Create token exchange service if token exchange configuration is available
-	// Per Constitution Principle VII (Configuration-Driven Design): only create if configured
-	if b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
+	// Token exchange (RFC 8693) requires an upstream JWT issuer for JWKS validation.
+	// Only available in proxy/hybrid mode where an upstream issuer is configured.
+	if ov.upstreamIssuerURI != "" &&
+		b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
 		b.config.TokenExchange.Authorization.CEL.Expression != "" {
 		// Validate required dependencies
 		if app.ConsentService == nil {
@@ -463,7 +539,7 @@ func (b *Builder) Build() (*App, error) {
 		// T039: When feature is disabled, register resolveAgentIdByClientId CEL function so
 		// agent_id_expression can look up an agent by its upstream client_id.
 		// When enabled, the expression receives the UUID directly from the token — no lookup needed.
-		if !b.config.OAuth2AuthServer.MultiAgentClient.Enabled {
+		if !ov.multiAgentClient.Enabled {
 			celConfig.ResolveAgentIDByClientID = func(clientID string) (string, error) {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
@@ -483,11 +559,11 @@ func (b *Builder) Build() (*App, error) {
 		// Create JWKS adapter for JWT validation
 		// Per spec FR-039: JWKS URI discovered from upstream OAuth2 server metadata (RFC 8414)
 		discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(),
-			time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds)*time.Second)
+			ov.upstreamTimeout)
 
 		discovered, err := domstorage.DiscoverOAuth2Endpoints(
 			discoveryCtx,
-			b.config.OAuth2AuthServer.UpstreamIssuerURI,
+			ov.upstreamIssuerURI,
 			nil, // use standard /.well-known/oauth-authorization-server path
 			b.config.Security.SkipThirdpartyHTTPSValidation,
 		)
@@ -517,7 +593,7 @@ func (b *Builder) Build() (*App, error) {
 		}
 		jwtValidator, err := tokenexchange.NewJWTValidator(
 			jwksAdapter,
-			b.config.OAuth2AuthServer.UpstreamIssuerURI,
+			ov.upstreamIssuerURI,
 			brokerAudience,
 			tokenexchange.DefaultClockSkewTolerance, // Per spec FR-042: 60 second clock skew tolerance
 		)
@@ -608,16 +684,14 @@ func (b *Builder) Build() (*App, error) {
 	// Config validation makes this error unreachable in practice, but structural fail-closed
 	// guarantees (SR-001) are not conditional on upstream validation alone.
 	var multiAgentVerifier ports.MultiAgentVerifier
-	if b.config.OAuth2AuthServer.MultiAgentClient.Enabled {
-		// Discover JWKS URI for multi-agent token signature verification (defense-in-depth, SR-001).
-		// The broker is the relying party and must verify that the upstream token has not been tampered with.
+	if ov.multiAgentClient.Enabled {
 		multiAgentDiscoveryCtx, multiAgentDiscoveryCancel := context.WithTimeout(
 			context.Background(),
-			time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds)*time.Second,
+			ov.upstreamTimeout,
 		)
 		multiAgentDiscovered, err := domstorage.DiscoverOAuth2Endpoints(
 			multiAgentDiscoveryCtx,
-			b.config.OAuth2AuthServer.UpstreamIssuerURI,
+			ov.upstreamIssuerURI,
 			nil, // use standard /.well-known/oauth-authorization-server path
 			b.config.Security.SkipThirdpartyHTTPSValidation,
 		)
@@ -640,7 +714,7 @@ func (b *Builder) Build() (*App, error) {
 		}
 
 		verifier, err := oauth2service.NewMultiAgentTokenVerifier(
-			b.config.OAuth2AuthServer.MultiAgentClient.AgentIDClaimName,
+			ov.multiAgentClient.AgentIDClaimName,
 			multiAgentJWKSAdapter,
 		)
 		if err != nil {
@@ -652,12 +726,15 @@ func (b *Builder) Build() (*App, error) {
 	var proceedHandler enduser.AuthorizationProceedStrategy
 	var jwksHandler *enduserHandlers.JWKSHandler
 
-	if b.config.OAuth2AuthServer.Mode == "issue_token" {
+	localIssuerURI := ov.localIssuerURI
+
+	// buildLocalProvider constructs the local token issuance infrastructure.
+	// Used in both "local" and "hybrid" modes.
+	buildLocalProvider := func(tokenTTL time.Duration, claimsExpr string) (*oauth2server.Provider, error) {
 		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, b.logger)
 		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), clientResolver, b.logger)
 		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
 		app.AdminHandlers.SigningKeys = admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger)
-
 		provider, err := oauth2server.NewProvider(
 			b.storage.AuthorizationCodes(),
 			b.storage.PKCESessions(),
@@ -665,33 +742,70 @@ func (b *Builder) Build() (*App, error) {
 			clientResolver,
 			b.storage.SigningKeys(),
 			encryptor,
-			b.config.Server.EndUser.PublicURL,
-			b.config.OAuth2AuthServer.TokenTTL,
-			b.config.OAuth2AuthServer.TokenClaimsExpression,
+			localIssuerURI,
+			tokenTTL,
+			claimsExpr,
 			b.logger,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OAuth2 server provider: %w", err)
 		}
-		grantHandler = enduser.NewIssueTokenGrantStrategy(newIssueTokenMintingStrategy(provider), b.logger)
-		proceedHandler = enduser.NewIssueTokenProceedStrategy(newIssueTokenCodeIssuer(provider), b.logger)
+
 		jwksHandler = enduserHandlers.NewJWKSHandler(signingKeyService, b.logger)
 		if err := signingKeyService.EnsureKeyExists(context.Background()); err != nil {
 			return nil, fmt.Errorf("failed to ensure signing key exists: %w", err)
 		}
-		b.logger.Info("OAuth2 server mode: issue_token — local token minting enabled",
-			"issuer_uri", b.config.Server.EndUser.PublicURL,
-			"token_ttl", b.config.OAuth2AuthServer.TokenTTL,
-		)
-	} else {
-		grantHandler = enduser.NewProxyTokenGrantStrategy(
-			b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
+		return provider, nil
+	}
+
+	// buildProxyStrategies constructs the proxy path strategies.
+	// Used in both "proxy" and "hybrid" modes.
+	buildProxyStrategies := func(upstreamTokenEndpoint string) (enduser.TokenGrantStrategy, enduser.AuthorizationProceedStrategy) {
+		grant := enduser.NewProxyTokenGrantStrategy(
+			upstreamTokenEndpoint,
 			upstreamClient,
-			b.storage.Agents(),
 			multiAgentVerifier,
 			b.logger,
 		)
-		proceedHandler = enduser.NewProxyProceedStrategy()
+		proceed := enduser.NewProxyProceedStrategy()
+		return grant, proceed
+	}
+
+	switch cfg := oauthCfg.(type) {
+	case *ports.LocalOAuth2Config:
+		provider, err := buildLocalProvider(cfg.TokenTTL, cfg.TokenClaimsExpression)
+		if err != nil {
+			return nil, err
+		}
+		grantHandler = enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
+		proceedHandler = enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
+		b.logger.Info("OAuth2 server mode: local — local token minting enabled",
+			"issuer_uri", localIssuerURI,
+			"token_ttl", cfg.TokenTTL,
+		)
+	case *ports.HybridOAuth2Config:
+		provider, err := buildLocalProvider(cfg.Local.TokenTTL, cfg.Local.TokenClaimsExpression)
+		if err != nil {
+			return nil, err
+		}
+		proxyGrant, proxyProceed := buildProxyStrategies(cfg.Proxy.UpstreamTokenEndpoint)
+		localGrant := enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
+		localProceed := enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
+
+		grantHandler = enduser.NewHybridTokenGrantStrategy(proxyGrant, localGrant, b.logger)
+		proceedHandler = enduser.NewHybridProceedStrategy(proxyProceed, localProceed, b.logger)
+		b.logger.Info("OAuth2 server mode: hybrid — proxy and local token minting enabled",
+			"issuer_uri", localIssuerURI,
+			"token_ttl", cfg.Local.TokenTTL,
+		)
+	case *ports.ProxyOAuth2Config:
+		grantHandler, proceedHandler = buildProxyStrategies(cfg.UpstreamTokenEndpoint)
+	default:
+		panic(fmt.Sprintf("BUG: unhandled OAuth2ModeConfig type %T — update strategy switch", oauthCfg))
+	}
+
+	oauth2MetadataHandler := &enduser.OAuth2MetadataHandler{
+		Service: app.OAuth2Service,
 	}
 
 	app.EnduserHandlers = &EnduserHandlers{
@@ -699,22 +813,21 @@ func (b *Builder) Build() (*App, error) {
 		Agents:         consent.NewAgentsHandler(app.ConsentService, b.logger),
 		AgentDetail:    agentDetailHandler,
 		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger, app.SessionTokenService),
-		AgentInfo:      consent.NewAgentInfoHandler(app.ConsentService, b.logger),
 		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
 		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{
 			Service:        app.OAuth2Service,
+			Logger:         b.logger,
 			ProceedHandler: proceedHandler,
 		},
 		OAuth2Token: &enduser.OAuth2TokenHandler{
 			TokenExchange: app.TokenExchangeService,
+			OAuth2Service: app.OAuth2Service,
 			Logger:        b.logger,
 			GrantHandler:  grantHandler,
 		},
-		OAuth2Metadata: &enduser.OAuth2MetadataHandler{
-			Service: app.OAuth2Service,
-		},
-		JWKS: jwksHandler,
-		SPA:  handlers.NewSPAHandler(b.staticWebResourcesPath, b.logger),
+		OAuth2Metadata: oauth2MetadataHandler,
+		JWKS:           jwksHandler,
+		SPA:            handlers.NewSPAHandler(b.staticWebResourcesPath, b.logger),
 	}
 
 	return app, nil

@@ -2,29 +2,28 @@
 
 ## Overview
 
-The identity broker can operate as a standalone OAuth2 authorization server using `issue_token` mode. In this mode, the broker mints its own JWT access tokens signed with managed asymmetric keys, supports both `client_credentials` and `authorization_code` (with PKCE) grant types, and exposes RFC 8414 discovery and JWKS endpoints.
+The identity broker can operate as a standalone OAuth2 authorization server using `local` mode. In this mode, the broker mints its own JWT access tokens signed with managed asymmetric keys, supports both `client_credentials` and `authorization_code` (with PKCE) grant types, and exposes RFC 8414 discovery and JWKS endpoints.
 
 ## Configuration
 
-Set `mode: issue_token` in the OAuth2 authorization server configuration:
+Set `mode: local` in the OAuth2 authorization server configuration:
 
 ```yaml
 oauth2:
   auth_server:
-    mode: "issue_token"
-    issuer_uri: "https://broker.example.com"
-    token_ttl: "1h"
-    token_claims_expression: '{"team": agent.display_name}'
+    mode: "local"
+    local:
+      token_ttl: "1h"
+      token_claims_expression: '{"team": agent.display_name}'
 ```
 
 ### Configuration Parameters
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `mode` | No | `proxy` | Operating mode: `proxy` or `issue_token` |
-| `issuer_uri` | Yes (issue_token) | — | Issuer identifier for JWTs and discovery |
-| `token_ttl` | No | `1h` | Access token validity period |
-| `token_claims_expression` | No | `""` | CEL expression for custom JWT claims |
+| `mode` | Yes (if any field set) | — | Operating mode: `proxy`, `local`, or `hybrid`. Disabled when absent. |
+| `local.token_ttl` | No | `1h` | Access token validity period |
+| `local.token_claims_expression` | No | `""` | CEL expression for custom JWT claims |
 
 ## Admin API
 

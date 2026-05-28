@@ -4,17 +4,19 @@ package ports
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
 // Session token sentinel errors — returned by SessionTokenValidator implementations and
 // handled by adapters that consume the port. Defined here so adapters do not need to import
 // the concrete sessiontoken package to interpret errors from the interface.
 var (
-	ErrSessionExpired          = errors.New("authorization session expired")
-	ErrSessionInvalidToken     = errors.New("authorization session token invalid")
-	ErrSessionAgentMismatch    = errors.New("authorization session does not match requested agent")
+	ErrSessionExpired           = errors.New("authorization session expired")
+	ErrSessionInvalidToken      = errors.New("authorization session token invalid")
+	ErrSessionAgentMismatch     = errors.New("authorization session does not match requested agent")
 	ErrSessionPrincipalMismatch = errors.New("authorization session does not belong to this user")
 )
 
@@ -34,8 +36,29 @@ type OAuth2Service interface {
 	// client validity and user consent status, returning a decision (redirect URL or error).
 	HandleAuthorization(ctx context.Context, req *AuthorizationRequest, principal id.Principal) (*AuthorizationDecision, error)
 
+	// ResolveForTokenGrant resolves the client_id, classifies the agent, and
+	// enforces mode boundaries for the token endpoint. Returns the resolved agent
+	// and an OAuth2 error if resolution or mode enforcement fails.
+	ResolveForTokenGrant(ctx context.Context, clientID id.ClientID) (*TokenGrantResolution, error)
+
 	// GenerateMetadata returns RFC 8414 OAuth2 metadata for auto-discovery.
 	GenerateMetadata(ctx context.Context) (*MetadataResponse, error)
+}
+
+// TokenGrantResolution is the result of client resolution for the token endpoint.
+type TokenGrantResolution struct {
+	AgentID    id.AgentID
+	ClientID   *id.ClientID // nil for local/CIMD agents
+	ClientType storage.ClientType
+}
+
+// NewTokenGrantResolution constructs a TokenGrantResolution and enforces that
+// ProxyClient always carries a non-nil ClientID.
+func NewTokenGrantResolution(agentID id.AgentID, clientID *id.ClientID, mode storage.ClientType) (*TokenGrantResolution, error) {
+	if mode == storage.ProxyClient && clientID == nil {
+		return nil, fmt.Errorf("TokenGrantResolution: ProxyClient requires a non-nil ClientID")
+	}
+	return &TokenGrantResolution{AgentID: agentID, ClientID: clientID, ClientType: mode}, nil
 }
 
 // AuthorizationRequest represents an OAuth2 authorization request (RFC 6749 Section 4.1.1).
@@ -72,17 +95,40 @@ type AuthorizationDecision struct {
 	// Action determines the response: "proceed", "redirect_to_consent", or "error".
 	// "proceed" means the user has an active grant and the request can continue.
 	// In proxy mode the handler redirects to the upstream OAuth2 server;
-	// in issue_token mode the handler issues a local authorization code.
+	// in local mode the handler issues a local authorization code.
 	Action string
 
 	// RedirectURL is the target URL for HTTP 302 redirect
 	RedirectURL string
+
+	// ClientType is the resolved agent classification (set on "proceed" actions only).
+	// Used by hybrid proceed strategy to dispatch to proxy or local sub-strategy explicitly.
+	ClientType storage.ClientType
 
 	// ErrorCode is the OAuth2 error code (if Action == "error")
 	ErrorCode string
 
 	// ErrorDesc is the human-readable error description
 	ErrorDesc string
+}
+
+// ProceedDecision returns a decision allowing the authorization request to proceed.
+// clientType is required so the hybrid strategy can dispatch to the correct sub-strategy.
+func ProceedDecision(redirectURL string, clientType storage.ClientType) *AuthorizationDecision {
+	return &AuthorizationDecision{Action: "proceed", RedirectURL: redirectURL, ClientType: clientType}
+}
+
+// ConsentDecision returns a decision that redirects the user to the consent UI.
+// ClientType is left as the zero value (UnknownClient); it is irrelevant for non-proceed actions.
+func ConsentDecision(consentURL string) *AuthorizationDecision {
+	return &AuthorizationDecision{Action: "redirect_to_consent", RedirectURL: consentURL}
+}
+
+// ErrorDecision returns a decision that signals an OAuth2 error.
+// redirectURL may be empty when the redirect URI has not yet been verified (RFC 6749 §4.1.2.1).
+// ClientType is left as the zero value (UnknownClient); it is irrelevant for non-proceed actions.
+func ErrorDecision(code, desc, redirectURL string) *AuthorizationDecision {
+	return &AuthorizationDecision{Action: "error", ErrorCode: code, ErrorDesc: desc, RedirectURL: redirectURL}
 }
 
 // MetadataResponse represents OAuth2 Authorization Server Metadata (RFC 8414).
@@ -112,17 +158,17 @@ type MetadataResponse struct {
 	// OPTIONAL: Claim types supported
 	ClaimTypesSupported []string `json:"claim_types_supported,omitempty"`
 
-	// OPTIONAL: JWKS URI for public key discovery (present in issue_token mode)
+	// OPTIONAL: JWKS URI for public key discovery (present in local mode)
 	JWKSURI string `json:"jwks_uri,omitempty"`
 
-	// OPTIONAL: Supported PKCE code challenge methods (present in issue_token mode)
+	// OPTIONAL: Supported PKCE code challenge methods (present in local mode)
 	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported,omitempty"`
 
 	// OPTIONAL: Whether CIMD-based client_id resolution is supported (RFC draft)
 	ClientIDMetadataDocumentSupported *bool `json:"client_id_metadata_document_supported,omitempty"`
 }
 
-// TokenMintingStrategy abstracts local token grant processing in issue_token mode.
+// TokenMintingStrategy abstracts local token grant processing in local mode.
 // Grants are processed locally by the oauth2server.Provider.
 // In proxy mode, grants are handled at the HTTP layer by proxyTokenGrantStrategy.
 type TokenMintingStrategy interface {
@@ -145,7 +191,7 @@ type TokenResponse struct {
 
 // AuthorizationCodeIssuer abstracts how the authorize endpoint issues authorization codes.
 // In proxy mode, this is nil and the handler redirects to an upstream OAuth2 server.
-// In issue_token mode, the endpoint issues authorization codes locally.
+// In local mode, the endpoint issues authorization codes locally.
 type AuthorizationCodeIssuer interface {
 	// IssueAuthorizationCode processes a validated authorization request and returns
 	// an authorization code. The handler is responsible for redirect_uri validation

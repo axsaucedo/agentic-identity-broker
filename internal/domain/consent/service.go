@@ -93,27 +93,78 @@ type ServiceRequirementStatus struct {
 	IsConnected     bool
 }
 
-// GetAgentWithServiceRequirements retrieves the agent and its service requirements enriched
-// with the authenticated user's session status for each required service.
+// ResolvedPermissionSetEntry represents a permission set that has been resolved from the agent's
+// PermissionSets array, paired with its requirement type (mandatory or optional).
+type ResolvedPermissionSetEntry struct {
+	PermissionSet   *storage.PermissionSet
+	RequirementType storage.RequirementType
+}
+
+// AgentConsentDetail is the unified result of GetAgentConsentDetail, containing everything
+// needed to render the consent screen: the agent, enriched service requirements with
+// connection status, resolved permission sets, and active session service IDs.
+type AgentConsentDetail struct {
+	Agent                   *storage.Agent
+	ServiceRequirements     []ServiceRequirementStatus
+	ResolvedPermissionSets  []ResolvedPermissionSetEntry
+	ActiveSessionServiceIDs []id.ServiceID
+}
+
+// GetAgentConsentDetail retrieves all information needed to render the consent screen
+// for the given agent and principal. This includes:
+//   - The agent entity
+//   - Service requirements enriched with user connection status
+//   - Resolved permission sets with requirement types
+//   - Active session service IDs for the principal
+//
 // Returns ErrAgentNotFound if the agent does not exist.
-func (s *Service) GetAgentWithServiceRequirements(
-	ctx context.Context,
-	userPrincipal id.Principal,
-	agentID id.AgentID,
-) (*storage.Agent, []ServiceRequirementStatus, error) {
+func (s *Service) GetAgentConsentDetail(ctx context.Context, agentID id.AgentID, principal id.Principal) (*AgentConsentDetail, error) {
 	agent, err := s.agentRepo.Get(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, ports.ErrNotFound) {
-			return nil, nil, ErrAgentNotFound
+			return nil, ErrAgentNotFound
 		}
-		return nil, nil, fmt.Errorf("failed to get agent: %w", err)
+		return nil, fmt.Errorf("failed to get agent: %w", err)
+	}
+	if agent == nil {
+		return nil, ErrAgentNotFound
 	}
 
+	// Enrich service requirements with connection status
+	requirements, err := s.resolveServiceRequirements(ctx, agent, principal)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resolve permission sets
+	resolvedPermissionSets, err := s.resolvePermissionSets(ctx, agent)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get active session service IDs
+	sessions, err := s.sessionRepo.ListActiveByPrincipal(ctx, principal)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sessions for principal: %w", err)
+	}
+	activeSessionServiceIDs := make([]id.ServiceID, len(sessions))
+	for i, session := range sessions {
+		activeSessionServiceIDs[i] = session.ServiceID
+	}
+
+	return &AgentConsentDetail{
+		Agent:                   agent.Copy(),
+		ServiceRequirements:     requirements,
+		ResolvedPermissionSets:  resolvedPermissionSets,
+		ActiveSessionServiceIDs: activeSessionServiceIDs,
+	}, nil
+}
+
+func (s *Service) resolveServiceRequirements(ctx context.Context, agent *storage.Agent, principal id.Principal) ([]ServiceRequirementStatus, error) {
 	if len(agent.ServiceRequirements) == 0 {
-		return agent, []ServiceRequirementStatus{}, nil
+		return []ServiceRequirementStatus{}, nil
 	}
 
-	// Deduplicate service IDs before loading to avoid redundant decryptions.
 	serviceIDs := make(map[id.ServiceID]bool, len(agent.ServiceRequirements))
 	for _, req := range agent.ServiceRequirements {
 		serviceIDs[req.ServiceID] = true
@@ -126,10 +177,10 @@ func (s *Service) GetAgentWithServiceRequirements(
 			if errors.Is(err, ports.ErrNotFound) {
 				s.logger.Warn("service not found for agent requirement",
 					"service_id", serviceID,
-					"agent_id", agentID)
+					"agent_id", agent.ID)
 				continue
 			}
-			return nil, nil, fmt.Errorf("loading service %s: %w", serviceID, err)
+			return nil, fmt.Errorf("loading service %s: %w", serviceID, err)
 		}
 		serviceMap[serviceID] = svc
 	}
@@ -141,9 +192,9 @@ func (s *Service) GetAgentWithServiceRequirements(
 			continue
 		}
 
-		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, userPrincipal, req.ServiceID)
+		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, principal, req.ServiceID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("checking session status for service %s: %w", req.ServiceID, err)
+			return nil, fmt.Errorf("checking session status for service %s: %w", req.ServiceID, err)
 		}
 
 		scopeDesc := make(map[string]string, len(svc.Scopes))
@@ -165,100 +216,40 @@ func (s *Service) GetAgentWithServiceRequirements(
 		})
 	}
 
-	return agent, requirements, nil
+	return requirements, nil
 }
 
-// ResolvedPermissionSetEntry represents a permission set that has been resolved from the agent's
-// PermissionSets array, paired with its requirement type (mandatory or optional).
-type ResolvedPermissionSetEntry struct {
-	PermissionSet   *storage.PermissionSet
-	RequirementType storage.RequirementType
-}
-
-// AgentConsentInfo contains all information needed for a user to make a consent decision.
-// Phase 4 US2: Extended to include resolved permission sets and active sessions.
-type AgentConsentInfo struct {
-	Agent                       *storage.Agent
-	AvailableThirdpartyServices []*model.ThirdpartyOAuth2ProviderEntity
-	ResolvedPermissionSets      []ResolvedPermissionSetEntry // NEW: Phase 4 US2
-	ActiveSessionServiceIDs     []id.ServiceID               // NEW: Phase 4 US2
-}
-
-// GetAgentConsentInfo retrieves agent metadata and all available third-party services.
-// This provides the information a user needs to make an informed consent decision (FR-009, FR-010, FR-025).
-// Phase 4 US2: Extended to include resolved permission sets, active sessions, and available services.
-// Returns ErrAgentNotFound if the agent doesn't exist.
-func (s *Service) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID, principal id.Principal) (*AgentConsentInfo, error) {
-	// Fetch agent
-	agent, err := s.agentRepo.Get(ctx, agentID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get agent: %w", err)
-	}
-	if agent == nil {
-		return nil, ErrAgentNotFound
+func (s *Service) resolvePermissionSets(ctx context.Context, agent *storage.Agent) ([]ResolvedPermissionSetEntry, error) {
+	if len(agent.PermissionSets) == 0 {
+		return []ResolvedPermissionSetEntry{}, nil
 	}
 
-	// Fetch all available third-party services (FR-025: all services available to all agents)
-	services, err := s.providerService.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list third-party services: %w", err)
-	}
-
-	// Redact client secrets in response (SR-003)
-	redactedServices := make([]*model.ThirdpartyOAuth2ProviderEntity, len(services))
-	for i, svc := range services {
-		redactedServices[i] = svc.RedactedCopy()
-	}
-
-	// Resolve permission sets from agent.PermissionSets
-	resolvedPermissionSets := make([]ResolvedPermissionSetEntry, 0)
-	activeSessionServiceIDs := make([]id.ServiceID, 0)
-
-	// Extract permission set IDs from agent.PermissionSets
 	psIDs := make([]id.PermissionSetID, len(agent.PermissionSets))
 	for i, entry := range agent.PermissionSets {
 		psIDs[i] = entry.PermissionSetID
 	}
 
-	// Resolve permission sets via service (includes caching).
-	// Failure is fatal: users must not consent without full permission information.
-	if len(psIDs) > 0 {
-		resolvedSets, err := s.psService.GetByIDs(ctx, psIDs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve permission sets for consent: %w", err)
-		}
-
-		// Match resolved permission sets with requirement types from agent.PermissionSets
-		requiredByID := make(map[id.PermissionSetID]storage.RequirementType)
-		for _, entry := range agent.PermissionSets {
-			requiredByID[entry.PermissionSetID] = entry.RequirementType
-		}
-
-		for _, ps := range resolvedSets {
-			if requirementType, exists := requiredByID[ps.ID]; exists {
-				resolvedPermissionSets = append(resolvedPermissionSets, ResolvedPermissionSetEntry{
-					PermissionSet:   ps,
-					RequirementType: requirementType,
-				})
-			}
-		}
-	}
-
-	// Get active session service IDs for the principal
-	sessions, err := s.sessionRepo.ListActiveByPrincipal(ctx, principal)
+	resolvedSets, err := s.psService.GetByIDs(ctx, psIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list sessions for principal: %w", err)
-	}
-	for _, session := range sessions {
-		activeSessionServiceIDs = append(activeSessionServiceIDs, session.ServiceID)
+		return nil, fmt.Errorf("failed to resolve permission sets for consent: %w", err)
 	}
 
-	return &AgentConsentInfo{
-		Agent:                       agent.Copy(),
-		AvailableThirdpartyServices: redactedServices,
-		ResolvedPermissionSets:      resolvedPermissionSets,
-		ActiveSessionServiceIDs:     activeSessionServiceIDs,
-	}, nil
+	requiredByID := make(map[id.PermissionSetID]storage.RequirementType)
+	for _, entry := range agent.PermissionSets {
+		requiredByID[entry.PermissionSetID] = entry.RequirementType
+	}
+
+	result := make([]ResolvedPermissionSetEntry, 0, len(resolvedSets))
+	for _, ps := range resolvedSets {
+		if requirementType, exists := requiredByID[ps.ID]; exists {
+			result = append(result, ResolvedPermissionSetEntry{
+				PermissionSet:   ps,
+				RequirementType: requirementType,
+			})
+		}
+	}
+
+	return result, nil
 }
 
 // GrantRequest represents a request to grant or update permissions.
@@ -715,89 +706,6 @@ type AgentDelegation struct {
 	ActiveGrantCount int        `json:"activeGrantCount"`
 	LastModifiedAt   time.Time  `json:"lastModifiedAt"`
 	ExpiresAt        *time.Time `json:"expiresAt,omitempty"`
-}
-
-// AgentDetail represents detailed information about an agent for User Story 2.
-// This provides all metadata needed for the agent-specific grants view.
-type AgentDetail struct {
-	AgentID              id.AgentID `json:"agentId"`
-	DisplayName          string     `json:"displayName"`
-	Description          string     `json:"description"`
-	LogoURL              *string    `json:"logoUrl,omitempty"`
-	GovernanceURL        *string    `json:"governanceUrl,omitempty"`
-	UserDocumentationURL *string    `json:"userDocumentationUrl,omitempty"`
-	AgentInterfaceURL    *string    `json:"agentInterfaceUrl,omitempty"`
-}
-
-// ServiceScope represents a permission scope within a third-party service.
-type ServiceScope struct {
-	Value       string `json:"value"`
-	Description string `json:"description"`
-}
-
-// ThirdpartyService represents a third-party service with its available scopes.
-// This is used in the agent detail view to show what services an agent can request.
-type ThirdpartyService struct {
-	ServiceID   id.ServiceID   `json:"serviceId"`
-	DisplayName string         `json:"displayName"`
-	LogoURL     *string        `json:"logoUrl,omitempty"`
-	Scopes      []ServiceScope `json:"scopes"`
-}
-
-// GetAgentDetail retrieves detailed information about an agent and its available services.
-// This is used for User Story 2: Review Agent-Specific Grants.
-// Returns agent metadata and all available third-party services with their scopes.
-// Returns ErrAgentNotFound if the agent doesn't exist.
-func (s *Service) GetAgentDetail(ctx context.Context, agentID id.AgentID) (*AgentDetail, []ThirdpartyService, error) {
-	// Fetch agent
-	agent, err := s.agentRepo.Get(ctx, agentID)
-	if err != nil {
-		if errors.Is(err, ports.ErrNotFound) {
-			return nil, nil, ErrAgentNotFound
-		}
-		return nil, nil, fmt.Errorf("failed to get agent: %w", err)
-	}
-	if agent == nil {
-		return nil, nil, ErrAgentNotFound
-	}
-
-	// Fetch all available third-party services (FR-025: all services available to all agents)
-	services, err := s.providerService.List(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to list third-party services: %w", err)
-	}
-
-	// Convert agent to AgentDetail
-	agentDetail := &AgentDetail{
-		AgentID:              agent.ID,
-		DisplayName:          agent.DisplayName,
-		Description:          agent.Description,
-		LogoURL:              nil, // TODO: add logo_url field to Agent entity
-		GovernanceURL:        agent.GovernanceURL,
-		UserDocumentationURL: agent.UserDocumentationURL,
-		AgentInterfaceURL:    agent.AgentInterfaceURL,
-	}
-
-	// Convert services to ThirdpartyService DTOs
-	thirdpartyServices := make([]ThirdpartyService, len(services))
-	for i, svc := range services {
-		scopes := make([]ServiceScope, len(svc.Scopes))
-		for j, scope := range svc.Scopes {
-			scopes[j] = ServiceScope{
-				Value:       scope.ScopeValue,
-				Description: scope.Description,
-			}
-		}
-
-		thirdpartyServices[i] = ThirdpartyService{
-			ServiceID:   svc.ID,
-			DisplayName: svc.DisplayName,
-			LogoURL:     nil, // TODO: add logo_url field to ThirdpartyOAuth2ProviderEntity
-			Scopes:      scopes,
-		}
-	}
-
-	return agentDetail, thirdpartyServices, nil
 }
 
 // GetUserGrants retrieves all grants for a specific principal and agent.

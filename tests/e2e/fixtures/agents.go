@@ -26,6 +26,21 @@ func ValidAgent() *storage.Agent {
 	}
 }
 
+// LocalAgent returns a valid test agent for local/hybrid mode testing.
+// It has NO upstream ClientID, so ClientType() returns LocalClient.
+// Use this for tests that exercise local token minting (not proxy forwarding).
+func LocalAgent() *storage.Agent {
+	now := time.Now()
+	return &storage.Agent{
+		ID:           id.NewAgentID(),
+		DisplayName:  "Test Agent Local",
+		Description:  "A local-mode test agent with no upstream client_id",
+		RedirectURIs: []string{"https://client.example.com/cb"},
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+}
+
 // AnotherAgent returns an alternative valid test agent.
 // ClientID: test-client-another
 // DisplayName: Test Agent Another

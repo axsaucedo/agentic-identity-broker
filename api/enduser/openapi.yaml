@@ -84,28 +84,28 @@ info:
   license:
     name: MIT
 servers:
-- url: http://localhost:8000
-  description: Local development server (end-user port)
-- url: https://broker.example.com
-  description: Production server
+  - url: http://localhost:8000
+    description: Local development server (end-user port)
+  - url: https://broker.example.com
+    description: Production server
 security:
-- SessionAuth: []
-- PrincipalHeader: []
+  - SessionAuth: []
+  - PrincipalHeader: []
 tags:
-- name: Health
-  description: Health check and monitoring endpoints (no authentication required)
-- name: User
-  description: Current user information
-- name: Consent
-  description: User consent and delegation management
-- name: OAuth2 Authorization
-  description: OAuth2 authorization endpoint for initiating authorization code flow (RFC 6749)
-- name: OAuth2 Token
-  description: Token endpoint for exchanging authorization codes for access tokens
-- name: OAuth2 Discovery
-  description: Server metadata discovery endpoint for OIDC compatibility (RFC 8414)
-- name: Third-Party Sessions
-  description: OAuth2 session management with third-party services
+  - name: Health
+    description: Health check and monitoring endpoints (no authentication required)
+  - name: User
+    description: Current user information
+  - name: Consent
+    description: User consent and delegation management
+  - name: OAuth2 Authorization
+    description: OAuth2 authorization endpoint for initiating authorization code flow (RFC 6749)
+  - name: OAuth2 Token
+    description: Token endpoint for exchanging authorization codes for access tokens
+  - name: OAuth2 Discovery
+    description: Server metadata discovery endpoint for OIDC compatibility (RFC 8414)
+  - name: Third-Party Sessions
+    description: OAuth2 session management with third-party services
 paths:
   /health:
     get:
@@ -133,46 +133,46 @@ paths:
         - `unhealthy`: Server encountered an error and requires restart
       operationId: getHealth
       tags:
-      - Health
+        - Health
       security: []
       responses:
-        '200':
+        "200":
           description: Server is healthy and accepting requests
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
+                $ref: "#/components/schemas/HealthResponse"
               examples:
                 healthy:
                   summary: Healthy server
                   value:
                     status: healthy
-                    timestamp: '2025-12-19T10:30:00Z'
+                    timestamp: "2025-12-19T10:30:00Z"
                     uptime_seconds: 3600
-        '503':
+        "503":
           description: Server is unavailable (starting, shutting down, or unhealthy)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
+                $ref: "#/components/schemas/HealthResponse"
               examples:
                 starting:
                   summary: Server starting up
                   value:
                     status: starting
-                    timestamp: '2025-12-19T10:25:00Z'
+                    timestamp: "2025-12-19T10:25:00Z"
                     uptime_seconds: 0
                 shutting_down:
                   summary: Server shutting down gracefully
                   value:
                     status: shutting_down
-                    timestamp: '2025-12-19T11:30:00Z'
+                    timestamp: "2025-12-19T11:30:00Z"
                     uptime_seconds: 7200
                 unhealthy:
                   summary: Server in unhealthy state
                   value:
                     status: unhealthy
-                    timestamp: '2025-12-19T10:35:00Z'
+                    timestamp: "2025-12-19T10:35:00Z"
                     uptime_seconds: 600
   /api/me:
     get:
@@ -198,12 +198,12 @@ paths:
       tags:
         - User
       responses:
-        '200':
+        "200":
           description: User information retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetUserInfoResponse'
+                $ref: "#/components/schemas/GetUserInfoResponse"
               examples:
                 userWithPicture:
                   summary: User with profile picture
@@ -218,10 +218,10 @@ paths:
                     data:
                       principal: alice@company.com
                       displayName: Alice Smith
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
   /api/consent/agents:
     get:
       summary: List agents with active delegations
@@ -252,12 +252,12 @@ paths:
       tags:
         - Consent
       responses:
-        '200':
+        "200":
           description: Agent delegations retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetAgentDelegationsResponse'
+                $ref: "#/components/schemas/GetAgentDelegationsResponse"
               examples:
                 multipleDelegations:
                   summary: User with multiple active delegations
@@ -267,21 +267,21 @@ paths:
                         displayName: Data Analysis Assistant
                         logoUrl: https://cdn.example.com/agents/data-assistant.png
                         activeGrantCount: 3
-                        lastModifiedAt: '2025-12-17T14:30:00Z'
+                        lastModifiedAt: "2025-12-17T14:30:00Z"
                         expiresAt: null
                       - agentId: 660e8400-e29b-41d4-a716-446655440001
                         displayName: Document Processor
                         activeGrantCount: 2
-                        lastModifiedAt: '2025-12-16T09:15:00Z'
-                        expiresAt: '2026-01-15T00:00:00Z'
+                        lastModifiedAt: "2025-12-16T09:15:00Z"
+                        expiresAt: "2026-01-15T00:00:00Z"
                 noDelegations:
                   summary: User with no delegations
                   value:
-                    data: [ ]
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                    data: []
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
   /api/consent/agents/{agent-id}:
     get:
       summary: Get agent detail and available services
@@ -312,7 +312,7 @@ paths:
       tags:
         - Consent
       parameters:
-        - $ref: '#/components/parameters/AgentIdParam'
+        - $ref: "#/components/parameters/AgentIdParam"
         - name: session_token
           in: query
           required: false
@@ -328,12 +328,12 @@ paths:
             minLength: 1
             example: eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0...
       responses:
-        '200':
+        "200":
           description: Agent detail retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetAgentDetailResponse'
+                $ref: "#/components/schemas/GetAgentDetailResponse"
               examples:
                 agentWithServices:
                   summary: Agent with multiple services
@@ -366,43 +366,14 @@ paths:
                             - name: write:repos
                               description: Write access to repositories
                           connectionStatus: not_connected
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/AgentNotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-  /api/consent/agents/{agent-id}/consent-info:
-    get:
-      summary: Get extended agent consent information with permission sets
-      description: 'Returns extended agent consent information including resolved permission sets,
-        active session service IDs, available services, and per-service requirement types.
-
-        Used by the consent UI to render the permission grant screen (Phase 4 US2).
-
-        '
-      operationId: getAgentConsentInfo
-      tags:
-      - Consent
-      parameters:
-      - $ref: '#/components/parameters/AgentIdParam'
-      responses:
-        '200':
-          description: Agent consent info retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AgentConsentInfoResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/AgentNotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/AgentNotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
   /api/consent/agents/{agent-id}/grants:
     get:
       summary: Get user's grants for an agent
@@ -434,43 +405,43 @@ paths:
       tags:
         - Consent
       parameters:
-        - $ref: '#/components/parameters/AgentIdParam'
+        - $ref: "#/components/parameters/AgentIdParam"
       responses:
-        '200':
+        "200":
           description: Grants retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetAgentGrantsResponse'
+                $ref: "#/components/schemas/GetAgentGrantsResponse"
               examples:
                 existingGrant:
                   summary: User has existing grant
                   value:
                     data:
-                    - id: 770e8400-e29b-41d4-a716-446655440002
-                      principal: user@example.com
-                      agent_id: 550e8400-e29b-41d4-a716-446655440000
-                      valid_until: '2026-06-01T00:00:00Z'
-                      granted_permission_sets:
-                        770e8400-e29b-41d4-a716-446655440001:
-                        - 880e8400-e29b-41d4-a716-446655440010
-                        - 880e8400-e29b-41d4-a716-446655440011
-                        770e8400-e29b-41d4-a716-446655440002:
-                        - 880e8400-e29b-41d4-a716-446655440012
-                      created_at: '2025-12-18T10:00:00Z'
-                      updated_at: '2025-12-18T10:00:00Z'
+                      - id: 770e8400-e29b-41d4-a716-446655440002
+                        principal: user@example.com
+                        agent_id: 550e8400-e29b-41d4-a716-446655440000
+                        valid_until: "2026-06-01T00:00:00Z"
+                        granted_permission_sets:
+                          770e8400-e29b-41d4-a716-446655440001:
+                            - 880e8400-e29b-41d4-a716-446655440010
+                            - 880e8400-e29b-41d4-a716-446655440011
+                          770e8400-e29b-41d4-a716-446655440002:
+                            - 880e8400-e29b-41d4-a716-446655440012
+                        created_at: "2025-12-18T10:00:00Z"
+                        updated_at: "2025-12-18T10:00:00Z"
                 noGrants:
                   summary: No existing grants
                   value:
-                    data: [ ]
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/AgentNotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                    data: []
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/AgentNotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
     post:
       summary: Create or update grant for an agent with optional redirect
       description: |
@@ -530,10 +501,10 @@ paths:
       tags:
         - Consent
       parameters:
-        - $ref: '#/components/parameters/AgentIdParam'
+        - $ref: "#/components/parameters/AgentIdParam"
         - name: session_token
           in: query
-          description: 'JWE authorization session token (FR-029). When present, the grant endpoint decrypts the token to resolve the redirect target. Returns 400 if the token is invalid or expired; 400 if the session agent does not match the requested agent; 403 if the session principal does not match the authenticated caller.'
+          description: "JWE authorization session token (FR-029). When present, the grant endpoint decrypts the token to resolve the redirect target. Returns 400 if the token is invalid or expired; 400 if the session agent does not match the requested agent; 403 if the session principal does not match the authenticated caller."
           required: false
           schema:
             type: string
@@ -543,41 +514,41 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateOrUpdateGrantRequest'
+              $ref: "#/components/schemas/CreateOrUpdateGrantRequest"
             examples:
               createIndefiniteGrant:
                 summary: Create indefinite grant
                 value:
                   granted_permission_sets:
                     770e8400-e29b-41d4-a716-446655440001:
-                    - 880e8400-e29b-41d4-a716-446655440010
-                    - 880e8400-e29b-41d4-a716-446655440011
+                      - 880e8400-e29b-41d4-a716-446655440010
+                      - 880e8400-e29b-41d4-a716-446655440011
                     770e8400-e29b-41d4-a716-446655440002:
-                    - 880e8400-e29b-41d4-a716-446655440012
+                      - 880e8400-e29b-41d4-a716-446655440012
               createExpiringGrant:
                 summary: Create grant with expiration
                 value:
                   granted_permission_sets:
                     770e8400-e29b-41d4-a716-446655440001:
-                    - 880e8400-e29b-41d4-a716-446655440010
-                  valid_until: '2026-06-01T00:00:00Z'
+                      - 880e8400-e29b-41d4-a716-446655440010
+                  valid_until: "2026-06-01T00:00:00Z"
               updateGrant:
                 summary: Update existing grant (replace permission sets)
                 value:
                   granted_permission_sets:
                     770e8400-e29b-41d4-a716-446655440002:
-                    - 880e8400-e29b-41d4-a716-446655440012
+                      - 880e8400-e29b-41d4-a716-446655440012
               revokeGrant:
                 summary: Revoke grant (empty permission sets)
                 value:
                   granted_permission_sets: {}
       responses:
-        '201':
+        "201":
           description: Grant created or updated. When session_token was provided, response includes redirect_url containing the original authorization URL for flow resumption.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateOrUpdateGrantResponse'
+                $ref: "#/components/schemas/CreateOrUpdateGrantResponse"
               examples:
                 grantCreatedStandalone:
                   summary: Grant created (no session_token — standalone consent management)
@@ -589,12 +560,12 @@ paths:
                       valid_until: null
                       granted_permission_sets:
                         770e8400-e29b-41d4-a716-446655440001:
-                        - 880e8400-e29b-41d4-a716-446655440010
-                        - 880e8400-e29b-41d4-a716-446655440011
+                          - 880e8400-e29b-41d4-a716-446655440010
+                          - 880e8400-e29b-41d4-a716-446655440011
                         770e8400-e29b-41d4-a716-446655440002:
-                        - 880e8400-e29b-41d4-a716-446655440012
-                      created_at: '2025-12-19T10:00:00Z'
-                      updated_at: '2025-12-19T10:00:00Z'
+                          - 880e8400-e29b-41d4-a716-446655440012
+                      created_at: "2025-12-19T10:00:00Z"
+                      updated_at: "2025-12-19T10:00:00Z"
                 grantCreatedWithSessionToken:
                   summary: Grant created with session_token (includes redirect_url for flow resumption)
                   value:
@@ -605,47 +576,47 @@ paths:
                       valid_until: null
                       granted_permission_sets:
                         770e8400-e29b-41d4-a716-446655440001:
-                        - 880e8400-e29b-41d4-a716-446655440010
-                      created_at: '2025-12-19T10:00:00Z'
-                      updated_at: '2025-12-19T10:00:00Z'
+                          - 880e8400-e29b-41d4-a716-446655440010
+                      created_at: "2025-12-19T10:00:00Z"
+                      updated_at: "2025-12-19T10:00:00Z"
                     redirect_url: /oauth2/authorize?client_id=550e8400-e29b-41d4-a716-446655440000&redirect_uri=https%3A%2F%2Fagent.example.com%2Fcb&response_type=code&state=abc123
-        '204':
+        "204":
           description: Grant revoked successfully (empty granted_permission_sets)
-        '400':
+        "400":
           description: Bad Request - Expired or invalid session token, or invalid grant data.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 sessionExpired:
                   summary: Session token expired or invalid
                   value:
                     error: session_expired
-                    message: 'authorization session has expired, please restart the authorization flow'
+                    message: "authorization session has expired, please restart the authorization flow"
                 invalidGrant:
                   summary: Invalid grant data
                   value:
                     error: invalid_permission_set
-                    message: 'invalid permission set: permission set <permission_set_id> is not assigned to this agent'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
+                    message: "invalid permission set: permission set <permission_set_id> is not assigned to this agent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
           description: Forbidden - Authorization session belongs to a different principal (session_token mismatch).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 principalMismatch:
                   summary: Session belongs to a different user
                   value:
                     error: forbidden
                     message: authorization session does not belong to this user
-        '404':
-          $ref: '#/components/responses/AgentNotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        "404":
+          $ref: "#/components/responses/AgentNotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
     delete:
       operationId: revokeAgentGrant
       summary: Revoke all agent permissions
@@ -668,27 +639,27 @@ paths:
       tags:
         - Consent
       security:
-        - preAuth: [ ]
+        - preAuth: []
       parameters:
-        - $ref: '#/components/parameters/AgentIdParam'
+        - $ref: "#/components/parameters/AgentIdParam"
       responses:
-        '204':
+        "204":
           description: Grant revoked successfully. The agent no longer has any active permissions for the authenticated user.
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
           description: No active grant exists for the authenticated user and specified agent.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 error: not found
                 message: no active grant exists for this agent
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        "500":
+          $ref: "#/components/responses/InternalServerError"
   /api/third-party/sessions:
     get:
       operationId: listThirdPartySessions
@@ -706,9 +677,9 @@ paths:
       tags:
         - Third-Party Sessions
       security:
-        - preAuth: [ ]
+        - preAuth: []
       responses:
-        '200':
+        "200":
           description: List of services with session status
           content:
             application/json:
@@ -720,7 +691,7 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/ThirdPartyServiceWithSession'
+                      $ref: "#/components/schemas/ThirdPartyServiceWithSession"
               example:
                 data:
                   - service:
@@ -734,9 +705,9 @@ paths:
                           description: Access user email addresses
                     session:
                       session_id: 660e8400-e29b-41d4-a716-446655440001
-                      initiated_at: '2025-12-20T10:30:00Z'
-                      access_token_expires_at: '2025-12-20T11:30:00Z'
-                      refresh_token_expires_at: '2026-01-20T10:30:00Z'
+                      initiated_at: "2025-12-20T10:30:00Z"
+                      access_token_expires_at: "2025-12-20T11:30:00Z"
+                      refresh_token_expires_at: "2026-01-20T10:30:00Z"
                       is_expired: false
                       has_refresh_token: true
                       scope:
@@ -752,10 +723,10 @@ paths:
                         - scope_value: calendar.readonly
                           description: Read calendar events
                     session: null
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/third-party/{serviceId}/oauth2/authorize:
     get:
       operationId: initiateOAuth2Flow
@@ -773,7 +744,7 @@ paths:
       tags:
         - Third-Party Sessions
       security:
-        - preAuth: [ ]
+        - preAuth: []
       parameters:
         - name: serviceId
           in: path
@@ -794,7 +765,7 @@ paths:
             format: uri
           example: https://broker.example.com/consent/sessions
       responses:
-        '302':
+        "302":
           description: Redirect to third-party authorization endpoint
           headers:
             Location:
@@ -802,28 +773,28 @@ paths:
               schema:
                 type: string
                 format: uri
-        '400':
+        "400":
           description: Invalid request (missing redirect_uri or origin mismatch)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
               example:
                 error: invalid_redirect_uri
                 message: redirect_uri must match the host of the request
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
           description: Service not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
               example:
                 error: not_found
                 message: Third-party service not found
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/third-party/{serviceId}/oauth2/callback:
     get:
       operationId: handleOAuth2Callback
@@ -851,7 +822,7 @@ paths:
       tags:
         - Third-Party Sessions
       security:
-        - preAuth: [ ]
+        - preAuth: []
       parameters:
         - name: serviceId
           in: path
@@ -887,7 +858,7 @@ paths:
             type: string
           example: The user denied the request
       responses:
-        '302':
+        "302":
           description: Redirect to sessions page with success or error status
           headers:
             Location:
@@ -897,12 +868,12 @@ paths:
               schema:
                 type: string
                 format: uri
-        '400':
+        "400":
           description: Invalid state token or callback parameters
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
               examples:
                 invalidState:
                   summary: State token validation failed
@@ -914,19 +885,19 @@ paths:
                   value:
                     error: service_id_mismatch
                     message: Service ID in callback does not match state token
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
           description: Principal mismatch (CSRF protection triggered)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
               example:
                 error: principal_mismatch
                 message: Authenticated user does not match flow initiator
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/third-party/{serviceId}/session:
     get:
       operationId: getSessionDetails
@@ -937,7 +908,7 @@ paths:
       tags:
         - Third-Party Sessions
       security:
-        - preAuth: [ ]
+        - preAuth: []
       parameters:
         - name: serviceId
           in: path
@@ -947,7 +918,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Session details retrieved successfully
           content:
             application/json:
@@ -963,18 +934,18 @@ paths:
                       - dependent_agents
                     properties:
                       session:
-                        $ref: '#/components/schemas/SessionStatus'
+                        $ref: "#/components/schemas/SessionStatus"
                       dependent_agents:
                         type: array
                         items:
-                          $ref: '#/components/schemas/AffectedAgent'
+                          $ref: "#/components/schemas/AffectedAgent"
               example:
                 data:
                   session:
                     session_id: 660e8400-e29b-41d4-a716-446655440001
-                    initiated_at: '2025-12-20T10:30:00Z'
-                    access_token_expires_at: '2025-12-20T11:30:00Z'
-                    refresh_token_expires_at: '2026-01-20T10:30:00Z'
+                    initiated_at: "2025-12-20T10:30:00Z"
+                    access_token_expires_at: "2025-12-20T11:30:00Z"
+                    refresh_token_expires_at: "2026-01-20T10:30:00Z"
                     is_expired: false
                     has_refresh_token: true
                     scope:
@@ -987,19 +958,19 @@ paths:
                       display_name: Code Assistant
                     - agent_id: 770e8400-e29b-41d4-a716-446655440001
                       display_name: PR Reviewer
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
           description: Session not found for this service
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
               example:
                 error: not_found
                 message: No session exists for this service
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "500":
+          $ref: "#/components/responses/InternalError"
     delete:
       operationId: terminateSession
       summary: Terminate third-party session
@@ -1013,7 +984,7 @@ paths:
       tags:
         - Third-Party Sessions
       security:
-        - preAuth: [ ]
+        - preAuth: []
       parameters:
         - name: serviceId
           in: path
@@ -1023,7 +994,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Session terminated successfully
           content:
             application/json:
@@ -1048,19 +1019,19 @@ paths:
                 data:
                   terminated: true
                   affected_agents: 3
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
           description: Session not found for this service
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
               example:
                 error: not_found
                 message: No session exists for this service
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/third-party/{serviceId}/session/affected-agents:
     get:
       operationId: getAffectedAgents
@@ -1071,7 +1042,7 @@ paths:
       tags:
         - Third-Party Sessions
       security:
-        - preAuth: [ ]
+        - preAuth: []
       parameters:
         - name: serviceId
           in: path
@@ -1081,7 +1052,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: List of affected agents
           content:
             application/json:
@@ -1098,7 +1069,7 @@ paths:
                       affected_agents:
                         type: array
                         items:
-                          $ref: '#/components/schemas/AffectedAgent'
+                          $ref: "#/components/schemas/AffectedAgent"
               example:
                 data:
                   affected_agents:
@@ -1106,30 +1077,30 @@ paths:
                       display_name: Code Assistant
                     - agent_id: 770e8400-e29b-41d4-a716-446655440001
                       display_name: PR Reviewer
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
           description: Session not found for this service
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /oauth2/authorize:
     get:
       summary: OAuth2 Authorization Endpoint (RFC 6749)
       description: |
         Initiates an OAuth2 authorization code flow. The broker validates the agent,
         checks consent, and either redirects to the upstream OAuth2 authorization server
-        or issues an authorization code directly (issue_token mode).
+        or issues an authorization code directly (local/hybrid mode).
 
-        **client_id semantics (Breaking Change — Feature 021)**:
-        The `client_id` parameter MUST be the agent's internal UUID (`agent.id`), NOT the
-        upstream OAuth2 `client_id`. This change enables multiple agents to share a single
-        upstream OAuth2 client credential.
+        **client_id semantics**:
+        In proxy mode the `client_id` MUST be the agent's internal UUID (`agent.id`).
+        In local/hybrid mode the `client_id` may also be an HTTPS URL identifying a
+        Client ID Metadata Document (CIMD) when CIMD is enabled.
 
-        **Issue Token Mode**:
+        **Local/Hybrid Mode**:
         When the broker acts as its own OAuth2 authorization server:
         - Validates the agent's registered `redirect_uris`
         - If user has an active grant, redirects to `redirect_uri` with `code` and `state`
@@ -1211,7 +1182,7 @@ paths:
             enum:
               - S256
       responses:
-        '302':
+        "302":
           description: |
             Redirect to upstream OAuth2 authorization server, redirect to consent UI
             if no active grant exists, or redirect to redirect_uri with authorization code.
@@ -1220,17 +1191,17 @@ paths:
               description: |
                 Destination URL:
                 - Upstream authorization URL with PKCE and agent ID parameters (proxy mode)
-                - Consent UI URL if user has no active grant (issue_token mode)
-                - redirect_uri with `code` and `state` query parameters (issue_token mode, active grant)
+                - Consent UI URL if user has no active grant (local/hybrid mode)
+                - redirect_uri with `code` and `state` query parameters (local/hybrid mode, active grant)
               schema:
                 type: string
                 format: uri
-        '400':
+        "400":
           description: Bad Request - Malformed client_id (not a valid UUID), unregistered client UUID, invalid redirect_uri, or missing required parameters; all client-identity errors return direct JSON (no redirect per RFC 6749 §4.1.2.1)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuth2ErrorResponse'
+                $ref: "#/components/schemas/OAuth2ErrorResponse"
               examples:
                 invalid_client:
                   summary: Invalid client_id
@@ -1242,12 +1213,12 @@ paths:
                   value:
                     error: "invalid_redirect_uri"
                     error_description: "redirect_uri is not registered for this client"
-        '500':
+        "500":
           description: Internal Server Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuth2Error'
+                $ref: "#/components/schemas/OAuth2Error"
   /oauth2/token:
     post:
       summary: Token Exchange (RFC 8693), Authorization Code Exchange, or Client Credentials
@@ -1310,7 +1281,7 @@ paths:
         content:
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/TokenExchangeRequest'
+              $ref: "#/components/schemas/TokenExchangeRequest"
             examples:
               client_credentials:
                 summary: Client Credentials Request (Issue Token Mode)
@@ -1346,12 +1317,12 @@ paths:
                   client_id: "550e8400-e29b-41d4-a716-446655440000"
                   client_secret: "secret-xyz"
       responses:
-        '200':
+        "200":
           description: Successful token exchange or authorization code exchange
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenExchangeResponse'
+                $ref: "#/components/schemas/TokenExchangeResponse"
               examples:
                 success:
                   summary: Successful Token Exchange Response
@@ -1360,12 +1331,12 @@ paths:
                     token_type: "Bearer"
                     issued_token_type: "urn:ietf:params:oauth:token-type:access_token"
                     expires_in: 3600
-        '400':
+        "400":
           description: Bad Request - Invalid parameters, invalid tokens, or no valid session
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuth2Error'
+                $ref: "#/components/schemas/OAuth2Error"
               examples:
                 invalid_request:
                   summary: Invalid Request
@@ -1387,12 +1358,12 @@ paths:
                   value:
                     error: "invalid_client"
                     error_description: "agent has no upstream client_id configured; proxy-mode OAuth2 flows require client_id"
-        '401':
+        "401":
           description: Unauthorized - Invalid client authentication (client_assertion or client credentials)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuth2Error'
+                $ref: "#/components/schemas/OAuth2Error"
               examples:
                 invalid_client:
                   summary: Invalid Client Assertion
@@ -1404,24 +1375,24 @@ paths:
                   value:
                     error: "invalid_client"
                     error_description: "Invalid client_id or client_secret"
-        '403':
+        "403":
           description: Forbidden - User has not granted access or CEL authorization failed
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuth2Error'
+                $ref: "#/components/schemas/OAuth2Error"
               examples:
                 access_denied:
                   summary: Access Denied
                   value:
                     error: "access_denied"
                     error_description: "User has not granted this agent access to the requested service"
-        '500':
+        "500":
           description: Internal Server Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuth2Error'
+                $ref: "#/components/schemas/OAuth2Error"
               examples:
                 server_error:
                   summary: Server Error
@@ -1437,6 +1408,10 @@ paths:
         Clients use these keys to verify the signatures of tokens issued by the broker.
         Only public key material is included — private keys are never exposed.
 
+        **Mode availability**: This endpoint is served in `local` and `hybrid` modes only.
+        In `proxy` mode, the upstream OAuth2 server is the issuer, so its JWKS is used.
+        Requests to this endpoint in proxy mode return 404.
+
         **Caching**: Responses include `Cache-Control: public, max-age=300` to allow
         clients to cache the key set for 5 minutes. Clients should respect this header
         and implement key rotation by periodically refreshing the JWKS.
@@ -1446,9 +1421,9 @@ paths:
       operationId: getJWKS
       tags:
         - OAuth2 Discovery
-      security: [ ]
+      security: []
       responses:
-        '200':
+        "200":
           description: JWK Set containing public signing keys
           headers:
             Cache-Control:
@@ -1459,7 +1434,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/JWKSetResponse'
+                $ref: "#/components/schemas/JWKSetResponse"
               example:
                 keys:
                   - kty: EC
@@ -1469,12 +1444,12 @@ paths:
                     alg: ES256
                     x: "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU"
                     y: "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
-        '500':
+        "500":
           description: Internal Server Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuth2Error'
+                $ref: "#/components/schemas/OAuth2Error"
   /.well-known/oauth-authorization-server:
     get:
       summary: RFC 8414 OAuth2 Authorization Server Metadata
@@ -1483,6 +1458,13 @@ paths:
         in RFC 8414. This enables dynamic client discovery of the broker's
         OAuth2 capabilities and endpoints.
 
+        **Mode-specific behavior**:
+        - `proxy` mode: `issuer` is the broker's own public URL. `jwks_uri` is absent (tokens are signed by the upstream server).
+        - `local` mode: `issuer` is the broker's own public URL. `jwks_uri` is present.
+        - `hybrid` mode: `issuer` is the broker's public URL. `jwks_uri` is present (both
+          proxy agents forwarded upstream and local/CIMD agents served locally). The metadata
+          reflects the union of capabilities for both proxy and local grant types.
+
         **Caching**: Responses include `Cache-Control: public, max-age=3600` to allow
         clients to cache metadata for 1 hour.
 
@@ -1490,9 +1472,9 @@ paths:
       operationId: getOAuth2ServerMetadata
       tags:
         - OAuth2 Discovery
-      security: [ ]
+      security: []
       responses:
-        '200':
+        "200":
           description: OAuth2 Authorization Server Metadata
           headers:
             Cache-Control:
@@ -1503,7 +1485,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuth2MetadataResponse'
+                $ref: "#/components/schemas/OAuth2MetadataResponse"
               example:
                 issuer: https://broker.example.com
                 authorization_endpoint: https://broker.example.com/oauth2/authorize
@@ -1516,21 +1498,19 @@ paths:
                   - client_credentials
                   - "urn:ietf:params:oauth:grant-type:token-exchange"
                 token_endpoint_auth_methods_supported:
-                  - client_secret_basic
                   - client_secret_post
-                  - private_key_jwt
                 code_challenge_methods_supported:
                   - S256
                 scopes_supported:
                   - openid
                   - profile
                   - email
-        '500':
+        "500":
           description: Internal Server Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuth2Error'
+                $ref: "#/components/schemas/OAuth2Error"
 components:
   securitySchemes:
     SessionAuth:
@@ -1605,7 +1585,7 @@ components:
           type: string
           format: date-time
           description: ISO 8601 timestamp of the health check (UTC)
-          example: '2025-12-19T10:30:00Z'
+          example: "2025-12-19T10:30:00Z"
         uptime_seconds:
           type: integer
           format: int64
@@ -1652,7 +1632,7 @@ components:
         - data
       properties:
         data:
-          $ref: '#/components/schemas/UserInfo'
+          $ref: "#/components/schemas/UserInfo"
     AgentDelegation:
       type: object
       required:
@@ -1679,11 +1659,12 @@ components:
         activeGrantCount:
           type: integer
           minimum: 0
-          description: 'Number of permission sets currently granted to this agent.
+          description:
+            "Number of permission sets currently granted to this agent.
 
             Reflects the count of granted_permission_sets in the active grant.
 
-            '
+            "
           example: 3
         lastModifiedAt:
           type: string
@@ -1691,7 +1672,7 @@ components:
           description: |
             ISO 8601 timestamp when the delegation was last modified.
             Corresponds to the grant's updated_at timestamp.
-          example: '2025-12-17T14:30:00Z'
+          example: "2025-12-17T14:30:00Z"
         expiresAt:
           type: string
           format: date-time
@@ -1699,7 +1680,7 @@ components:
           description: |
             Optional grant expiration timestamp (ISO 8601).
             Null value indicates indefinite grant (no expiration).
-          example: '2026-01-15T00:00:00Z'
+          example: "2026-01-15T00:00:00Z"
     GetAgentDelegationsResponse:
       type: object
       required:
@@ -1708,7 +1689,7 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/AgentDelegation'
+            $ref: "#/components/schemas/AgentDelegation"
           description: |
             Array of agent delegations. Empty array if user has no active delegations.
     AgentDetail:
@@ -1808,7 +1789,7 @@ components:
         scopes:
           type: array
           items:
-            $ref: '#/components/schemas/ServiceScope'
+            $ref: "#/components/schemas/ServiceScope"
           minItems: 1
           description: |
             Array of available scopes for this service.
@@ -1854,7 +1835,7 @@ components:
         requiredScopes:
           type: array
           items:
-            $ref: '#/components/schemas/ScopeWithDescription'
+            $ref: "#/components/schemas/ScopeWithDescription"
           description: OAuth2 scopes required for this service
         connectionStatus:
           type: string
@@ -1874,11 +1855,11 @@ components:
             - services
           properties:
             agent:
-              $ref: '#/components/schemas/AgentDetail'
+              $ref: "#/components/schemas/AgentDetail"
             services:
               type: array
               items:
-                $ref: '#/components/schemas/ServiceRequirementForUser'
+                $ref: "#/components/schemas/ServiceRequirementForUser"
               description: |
                 Array of service requirements for this agent with user connection status.
                 Includes mandatory and optional third-party services the agent needs,
@@ -1888,33 +1869,36 @@ components:
             permission_sets:
               type: array
               items:
-                $ref: '#/components/schemas/PermissionSetWithRequirement'
-              description: 'Phase 4 US2: Array of permission sets assigned to this agent with requirement types.
+                $ref: "#/components/schemas/PermissionSetWithRequirement"
+              description:
+                "Phase 4 US2: Array of permission sets assigned to this agent with requirement types.
 
                 Empty array if no permission sets are assigned.
 
-                '
+                "
             active_session_service_ids:
               type: array
               items:
                 type: string
                 format: uuid
-              description: 'Phase 4 US2: Array of service IDs for which the authenticated user has active sessions.
+              description:
+                "Phase 4 US2: Array of service IDs for which the authenticated user has active sessions.
 
                 Empty array if no active sessions.
 
-                '
+                "
             available_services:
               type: array
               items:
-                $ref: '#/components/schemas/AvailableService'
-              description: 'Phase 4 US2: Array of all available third-party services (redacted).
+                $ref: "#/components/schemas/AvailableService"
+              description:
+                "Phase 4 US2: Array of all available third-party services (redacted).
 
                 Same as services field but with reduced detail.
 
-                '
+                "
             cimd_metadata:
-              $ref: '#/components/schemas/CIMDMetadata'
+              $ref: "#/components/schemas/CIMDMetadata"
               nullable: true
               description: |
                 CIMD trust metadata present when the authorization request used a URL-format
@@ -1954,116 +1938,6 @@ components:
           nullable: true
           description: Logo URL from the CIMD document, if present. Always an absolute HTTPS URL.
           example: https://agent.example.com/logo.png
-    AgentConsentInfoResponse:
-      type: object
-      required:
-      - agent
-      - requested_services
-      - permission_sets
-      - active_session_service_ids
-      - available_services
-      - service_requirements
-      properties:
-        agent:
-          type: object
-          description: Agent metadata as emitted by the consent info handler (snake_case).
-          required:
-          - id
-          - client_id
-          - display_name
-          - description
-          - created_at
-          - updated_at
-          properties:
-            id:
-              type: string
-              format: uuid
-            client_id:
-              type: string
-            display_name:
-              type: string
-            description:
-              type: string
-            governance_url:
-              type: string
-              format: uri
-              nullable: true
-            user_documentation_url:
-              type: string
-              format: uri
-              nullable: true
-            agent_interface_url:
-              type: string
-              format: uri
-              nullable: true
-            created_at:
-              type: string
-              format: date-time
-            updated_at:
-              type: string
-              format: date-time
-        requested_services:
-          type: array
-          items:
-            type: object
-            required:
-            - id
-            - display_name
-            - scopes
-            properties:
-              id:
-                type: string
-                format: uuid
-              display_name:
-                type: string
-              scopes:
-                type: array
-                items:
-                  type: object
-                  required:
-                  - scope_value
-                  - description
-                  properties:
-                    scope_value:
-                      type: string
-                    description:
-                      type: string
-          description: All available third-party services with scopes.
-        permission_sets:
-          type: array
-          items:
-            $ref: '#/components/schemas/PermissionSetWithRequirement'
-          description: Resolved permission sets declared by the agent with requirement types.
-        active_session_service_ids:
-          type: array
-          items:
-            type: string
-            format: uuid
-          description: Service IDs for which the authenticated user has active sessions.
-        available_services:
-          type: array
-          items:
-            $ref: '#/components/schemas/AvailableService'
-          description: All available third-party services (redacted, ID + display name only).
-        service_requirements:
-          type: array
-          items:
-            type: object
-            required:
-            - service_id
-            - requirement_type
-            properties:
-              service_id:
-                type: string
-                format: uuid
-                description: OAuth2 service identifier
-              requirement_type:
-                type: string
-                enum:
-                - mandatory
-                - optional
-                description: Whether this service is required or optional for the agent
-          description: Per-service requirement types from the agent's service_requirements declaration.
     DelegatedToken:
       type: object
       required:
@@ -2086,21 +1960,21 @@ components:
             Array of OAuth2 scope values to delegate.
             Each scope must be valid for the specified service.
           example:
-          - read:files
-          - write:files
+            - read:files
+            - write:files
     PermissionSetWithRequirement:
       type: object
       required:
-      - permission_set
-      - requirement_type
+        - permission_set
+        - requirement_type
       properties:
         permission_set:
           type: object
           required:
-          - id
-          - name
-          - description
-          - service_scopes
+            - id
+            - name
+            - description
+            - service_scopes
           properties:
             id:
               type: string
@@ -2120,8 +1994,8 @@ components:
               items:
                 type: object
                 required:
-                - service_id
-                - requirement_type
+                  - service_id
+                  - requirement_type
                 properties:
                   service_id:
                     type: string
@@ -2130,22 +2004,22 @@ components:
                   requirement_type:
                     type: string
                     enum:
-                    - mandatory
-                    - optional
+                      - mandatory
+                      - optional
                     default: optional
                     description: Whether this service is mandatory or optional within the permission set. Raw scopes are intentionally omitted; the frontend uses this field to determine lock status (FR-007).
         requirement_type:
           type: string
           enum:
-          - mandatory
-          - optional
+            - mandatory
+            - optional
           description: Whether this permission set is mandatory or optional for the agent
           example: mandatory
     AvailableService:
       type: object
       required:
-      - id
-      - display_name
+        - id
+        - display_name
       properties:
         id:
           type: string
@@ -2159,12 +2033,12 @@ components:
     UserGrant:
       type: object
       required:
-      - id
-      - principal
-      - agent_id
-      - granted_permission_sets
-      - created_at
-      - updated_at
+        - id
+        - principal
+        - agent_id
+        - granted_permission_sets
+        - created_at
+        - updated_at
       properties:
         id:
           type: string
@@ -2188,7 +2062,7 @@ components:
             Optional grant expiration (ISO 8601 format).
             Null indicates indefinite grant (no expiration).
             Expired grants are filtered out automatically.
-          example: '2026-06-01T00:00:00Z'
+          example: "2026-06-01T00:00:00Z"
         granted_permission_sets:
           type: object
           additionalProperties:
@@ -2196,28 +2070,29 @@ components:
             items:
               type: string
               format: uuid
-          description: 'Map of granted permission sets. Keys are permission set UUIDs,
+          description:
+            "Map of granted permission sets. Keys are permission set UUIDs,
             values are arrays of service UUIDs included in that permission set grant.
 
             Empty object `{}` is only allowed when revoking (POST endpoint).
 
-            '
+            "
           example:
             770e8400-e29b-41d4-a716-446655440001:
-            - 880e8400-e29b-41d4-a716-446655440010
-            - 880e8400-e29b-41d4-a716-446655440011
+              - 880e8400-e29b-41d4-a716-446655440010
+              - 880e8400-e29b-41d4-a716-446655440011
             770e8400-e29b-41d4-a716-446655440002:
-            - 880e8400-e29b-41d4-a716-446655440012
+              - 880e8400-e29b-41d4-a716-446655440012
         created_at:
           type: string
           format: date-time
           description: ISO 8601 timestamp when grant was created
-          example: '2025-12-18T10:00:00Z'
+          example: "2025-12-18T10:00:00Z"
         updated_at:
           type: string
           format: date-time
           description: ISO 8601 timestamp when grant was last updated
-          example: '2025-12-19T14:30:00Z'
+          example: "2025-12-19T14:30:00Z"
     GetAgentGrantsResponse:
       type: object
       required:
@@ -2226,7 +2101,7 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/UserGrant'
+            $ref: "#/components/schemas/UserGrant"
           description: |
             Array of user grants for the specified agent.
             Typically contains one grant (upsert semantics).
@@ -2234,7 +2109,7 @@ components:
     CreateOrUpdateGrantRequest:
       type: object
       required:
-      - granted_permission_sets
+        - granted_permission_sets
       properties:
         granted_permission_sets:
           type: object
@@ -2243,7 +2118,8 @@ components:
             items:
               type: string
               format: uuid
-          description: 'Map of permission sets to grant to the agent. Keys are permission
+          description:
+            "Map of permission sets to grant to the agent. Keys are permission
             set UUIDs, values are arrays of service UUIDs included in each permission set grant.
 
 
@@ -2259,13 +2135,13 @@ components:
 
             - Each service ID must be valid for the specified permission set
 
-            '
+            "
           example:
             770e8400-e29b-41d4-a716-446655440001:
-            - 880e8400-e29b-41d4-a716-446655440010
-            - 880e8400-e29b-41d4-a716-446655440011
+              - 880e8400-e29b-41d4-a716-446655440010
+              - 880e8400-e29b-41d4-a716-446655440011
             770e8400-e29b-41d4-a716-446655440002:
-            - 880e8400-e29b-41d4-a716-446655440012
+              - 880e8400-e29b-41d4-a716-446655440012
         valid_until:
           type: string
           format: date-time
@@ -2282,18 +2158,18 @@ components:
 
             - Expired grants are automatically filtered out in queries
             - Users can extend expiration by updating the grant
-          example: '2026-06-01T00:00:00Z'
+          example: "2026-06-01T00:00:00Z"
     CreateOrUpdateGrantResponse:
       type: object
       required:
         - data
       properties:
         data:
-          $ref: '#/components/schemas/UserGrant'
+          $ref: "#/components/schemas/UserGrant"
         redirect_url:
           type: string
           format: uri-reference
-          description: 'Optional redirect URL returned when a valid session_token query parameter was present. Contains the original authorization request URL so the frontend can resume the OAuth2 flow via window.location.href (not XHR).'
+          description: "Optional redirect URL returned when a valid session_token query parameter was present. Contains the original authorization request URL so the frontend can resume the OAuth2 flow via window.location.href (not XHR)."
           example: /oauth2/authorize?client_id=example&redirect_uri=http://localhost:9002/callback
 
     # OAuth2 Schemas
@@ -2347,7 +2223,7 @@ components:
 
         token_type:
           type: string
-          enum: [ Bearer ]
+          enum: [Bearer]
           description: Token type (always "Bearer" for this implementation)
           example: Bearer
 
@@ -2422,28 +2298,28 @@ components:
           items:
             type: string
           description: OAuth2 response types supported by this server
-          example: [ code ]
+          example: [code]
 
         response_modes_supported:
           type: array
           items:
             type: string
           description: Response modes supported
-          example: [ query, fragment ]
+          example: [query, fragment]
 
         grant_types_supported:
           type: array
           items:
             type: string
           description: Grant types supported by this server
-          example: [ authorization_code, refresh_token ]
+          example: [authorization_code, refresh_token]
 
         token_endpoint_auth_methods_supported:
           type: array
           items:
             type: string
           description: Token endpoint authentication methods supported
-          example: [ client_secret_basic, client_secret_post ]
+          example: [client_secret_post]
 
         token_endpoint_auth_signing_alg_values_supported:
           type: array
@@ -2489,14 +2365,14 @@ components:
           description: |
             PKCE code challenge methods supported by this server.
             RFC 7636 compliance.
-          example: [ S256, plain ]
+          example: [S256, plain]
 
         scopes_supported:
           type: array
           items:
             type: string
           description: Scopes supported by this server
-          example: [ openid, profile, email ]
+          example: [openid, profile, email]
 
         client_id_metadata_document_supported:
           type: boolean
@@ -2585,9 +2461,9 @@ components:
         - service
       properties:
         service:
-          $ref: '#/components/schemas/ThirdPartyService'
+          $ref: "#/components/schemas/ThirdPartyService"
         session:
-          $ref: '#/components/schemas/SessionStatus'
+          $ref: "#/components/schemas/SessionStatus"
           nullable: true
           description: Session status if user has an active session, null otherwise
     ThirdPartyService:
@@ -2612,7 +2488,7 @@ components:
           type: array
           description: Available OAuth2 scopes
           items:
-            $ref: '#/components/schemas/OAuthScope'
+            $ref: "#/components/schemas/OAuthScope"
     OAuthScope:
       type: object
       required:
@@ -2706,7 +2582,7 @@ components:
         Required fields vary by grant_type:
 
         **client_credentials**: requires client_id, client_secret. Optional: scope.
-        **authorization_code** (issue_token): requires client_id, client_secret, code, redirect_uri. Optional: code_verifier.
+        **authorization_code** (local/hybrid): requires client_id, code, redirect_uri. client_secret required for confidential clients, optional for public clients. Optional: code_verifier.
         **authorization_code** (proxy): requires client_id, client_secret, code, redirect_uri.
         **token-exchange** (RFC 8693): requires subject_token, subject_token_type, resource, client_assertion_type, client_assertion.
       required:
@@ -2721,21 +2597,22 @@ components:
           description: |
             The OAuth2 grant type:
             - `urn:ietf:params:oauth:grant-type:token-exchange` for RFC 8693 token exchange
-            - `authorization_code` for standard OAuth2 authorization code flow (proxied or issue_token)
-            - `client_credentials` for broker-issued client credentials (issue_token mode)
+            - `authorization_code` for standard OAuth2 authorization code flow (proxied or local/hybrid)
+            - `client_credentials` for broker-issued client credentials (local/hybrid mode)
           example: "urn:ietf:params:oauth:grant-type:token-exchange"
         client_id:
           type: string
           description: |
-            The agent's internal UUID (`agent.id`) in all modes. The broker resolves
-            the upstream OAuth2 client ID internally from the agent record — callers
-            never send the upstream client ID directly.
+            In proxy mode: the agent's internal UUID (`agent.id`). In local/hybrid mode
+            with CIMD enabled: may also be an HTTPS URL identifying the agent's Client ID
+            Metadata Document. The broker resolves the upstream OAuth2 client ID internally.
           example: "550e8400-e29b-41d4-a716-446655440000"
         client_secret:
           type: string
           description: |
-            Broker-issued client secret (for client_credentials and authorization_code
-            grant types in issue_token mode) or upstream OAuth2 client secret (proxy mode).
+            Broker-issued client secret (for client_credentials in local/hybrid mode, and
+            for confidential-client authorization_code exchanges) or upstream OAuth2 client
+            secret (proxy mode). Optional for public authorization_code clients in local/hybrid mode.
           example: "brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
         code:
           type: string
@@ -2894,7 +2771,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             error: unauthorized
             message: authentication required
@@ -2916,7 +2793,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             missingAgentId:
               summary: Missing agent ID
@@ -2949,7 +2826,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             invalidScopes:
               summary: Invalid scopes for service
@@ -2984,7 +2861,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             error: not found
             message: agent not found
@@ -3008,16 +2885,16 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             error: internal server error
-            message: ''
+            message: ""
     InternalError:
       description: Internal server error
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
           example:
             error: internal_error
             message: An unexpected error occurred

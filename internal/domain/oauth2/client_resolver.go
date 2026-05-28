@@ -6,6 +6,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -88,6 +89,20 @@ func (r *AgentClientResolver) resolveOpaque(ctx context.Context, clientID id.Cli
 		}
 		r.logger.ErrorContext(ctx, "failed to look up agent by ID", "error", err, "agent_id", agentUUID)
 		return nil, &ports.ClientIDError{Code: "server_error", Desc: "Failed to validate client"}
+	}
+
+	// CIMD and ambiguous agents must not be addressed by bare UUID when CIMD is disabled.
+	// CIMDClient agents require URL-form client_id with CIMD document validation.
+	// AmbiguousClient agents are always invalid.
+	switch agent.ClientType() {
+	case storage.CIMDClient:
+		desc := "Client requires CIMD support (disabled)"
+		if r.cimdService != nil {
+			desc = "CIMD client must use URL-form client_id"
+		}
+		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: desc}
+	case storage.AmbiguousClient:
+		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
 	}
 
 	return ports.NewClientResolution(agent, nil), nil

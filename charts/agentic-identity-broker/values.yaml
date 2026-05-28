@@ -423,23 +423,27 @@ broker:
 
   # OAuth2 Authorization Server configuration
   oauth2AuthorizationServer:
-    # -- Upstream OAuth2 issuer URI
-    upstreamIssuerUri: ""
-    # -- Upstream authorize endpoint
-    upstreamAuthorizeEndpoint: ""
-    # -- Upstream token endpoint
-    upstreamTokenEndpoint: ""
-    # -- Supported OAuth2 response types
-    supportedResponseTypes:
-      - code
-    # -- Supported OAuth2 grant types
-    supportedGrantTypes:
-      - authorization_code
-      - refresh_token
-    # -- Upstream request timeout (seconds)
-    upstreamTimeoutSeconds: 10
-    # -- Operation mode (proxy or authorization_server)
-    mode: proxy
+    # -- Operation mode: "proxy", "local", or "hybrid". Required.
+    # proxy: forward all requests to an upstream OAuth2 server (proxy.* required)
+    # local: issue tokens locally (no proxy config required; token TTL defaults to 1h)
+    # hybrid: serve both proxy and local agents (both proxy.* and local.* required)
+    mode: "local"
+
+    # -- Upstream OAuth2 server configuration (required in proxy/hybrid mode)
+    proxy:
+      # -- Upstream OAuth2 issuer URI
+      upstreamIssuerUri: ""
+      # -- Upstream authorize endpoint
+      upstreamAuthorizeEndpoint: ""
+      # -- Upstream token endpoint
+      upstreamTokenEndpoint: ""
+      # -- Upstream request timeout in seconds (0 = use application default of 30s)
+      upstreamTimeoutSeconds: 0
+
+    # -- Supported OAuth2 response types (empty = use mode-specific defaults: ["code"])
+    supportedResponseTypes: []
+    # -- Supported OAuth2 grant types (empty = use mode-specific defaults per mode)
+    supportedGrantTypes: []
     # Client ID Metadata Document (CIMD) support
     # Enables AI agents to identify using HTTPS URLs as client_id.
     cimd:
@@ -459,6 +463,13 @@ broker:
         extraBlockedCidrs: []
       # -- Keyword blocklist for CIMD client_name values (case-insensitive). Default: [].
       clientNameBlocklist: []
+
+    # Local token issuance configuration (local/hybrid mode)
+    local:
+      # -- Access token TTL (e.g. "1h", "30m"). Defaults to 1h if empty.
+      tokenTtl: ""
+      # -- CEL expression for custom token claims. Empty means no extra claims.
+      tokenClaimsExpression: ""
 
     # Multi-agent client sharing (Feature 021)
     # When enabled, multiple agents may share the same upstream OAuth2 client_id.

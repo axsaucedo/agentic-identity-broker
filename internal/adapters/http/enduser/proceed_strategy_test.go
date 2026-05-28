@@ -2,9 +2,12 @@ package enduser
 
 import (
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,8 +16,15 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
+
+type captureProceedStrategy struct{ called bool }
+
+func (s *captureProceedStrategy) HandleProceed(_ http.ResponseWriter, _ *http.Request, _ *ports.AuthorizationDecision, _ *ports.AuthorizationRequest, _ id.Principal) {
+	s.called = true
+}
 
 func newProceedRequest(t *testing.T) *http.Request {
 	t.Helper()
@@ -28,10 +38,7 @@ func TestProxyProceedStrategy_RedirectsToDecisionURL(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := newProceedRequest(t)
 
-	decision := &ports.AuthorizationDecision{
-		Action:      "proceed",
-		RedirectURL: "https://auth.example.com/authorize?client_id=abc&response_type=code",
-	}
+	decision := ports.ProceedDecision("https://auth.example.com/authorize?client_id=abc&response_type=code", storage.ProxyClient)
 	req := &ports.AuthorizationRequest{RedirectURI: "https://client.example.com/callback"}
 
 	strategy.HandleProceed(w, r, decision, req, id.NewPrincipal("user@example.com"))
@@ -40,8 +47,40 @@ func TestProxyProceedStrategy_RedirectsToDecisionURL(t *testing.T) {
 	assert.Equal(t, decision.RedirectURL, w.Header().Get("Location"))
 }
 
-func TestIssueTokenProceedStrategy_Success_RedirectsWithCode(t *testing.T) {
-	strategy := NewIssueTokenProceedStrategy(&mockCodeIssuer{}, nil)
+func TestProxyProceedStrategy_EmptyRedirectURL_ReturnsServerError(t *testing.T) {
+	strategy := NewProxyProceedStrategy()
+	w := httptest.NewRecorder()
+	r := newProceedRequest(t)
+
+	decision := ports.ProceedDecision("", storage.ProxyClient)
+	req := &ports.AuthorizationRequest{RedirectURI: "https://client.example.com/callback"}
+
+	strategy.HandleProceed(w, r, decision, req, id.NewPrincipal("user@example.com"))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "server_error")
+	assert.Empty(t, w.Header().Get("Location"), "must not issue a redirect for empty URL")
+}
+
+// T045c: FR-008b / SR-004 — proxy proceed strategy passes the upstream authorize URL through as-is,
+// without modification or re-signing. The broker never alters the upstream redirect target.
+func TestProxyProceedStrategy_PassesThroughUpstreamURL(t *testing.T) {
+	strategy := NewProxyProceedStrategy()
+	w := httptest.NewRecorder()
+	r := newProceedRequest(t)
+
+	upstreamURL := "https://auth.upstream.example.com/authorize?client_id=upstream-abc&response_type=code&state=xyz&nonce=abc123&code_challenge=ABCDEF&code_challenge_method=S256"
+	decision := ports.ProceedDecision(upstreamURL, storage.ProxyClient)
+	req := &ports.AuthorizationRequest{RedirectURI: "https://client.example.com/callback"}
+
+	strategy.HandleProceed(w, r, decision, req, id.NewPrincipal("user@example.com"))
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, upstreamURL, w.Header().Get("Location"), "proxy strategy must forward upstream URL verbatim without any transformation")
+}
+
+func TestLocalProceedStrategy_Success_RedirectsWithCode(t *testing.T) {
+	strategy := NewLocalProceedStrategy(&mockCodeIssuer{}, nil)
 	w := httptest.NewRecorder()
 	r := newProceedRequest(t)
 
@@ -50,7 +89,7 @@ func TestIssueTokenProceedStrategy_Success_RedirectsWithCode(t *testing.T) {
 		State:       "xyz123",
 	}
 
-	strategy.HandleProceed(w, r, &ports.AuthorizationDecision{}, req, id.NewPrincipal("user@example.com"))
+	strategy.HandleProceed(w, r, ports.ProceedDecision("", storage.LocalClient), req, id.NewPrincipal("user@example.com"))
 
 	assert.Equal(t, http.StatusFound, w.Code)
 	loc := w.Header().Get("Location")
@@ -60,8 +99,8 @@ func TestIssueTokenProceedStrategy_Success_RedirectsWithCode(t *testing.T) {
 	assert.Equal(t, "xyz123", parsed.Query().Get("state"))
 }
 
-func TestIssueTokenProceedStrategy_Success_OmitsStateWhenEmpty(t *testing.T) {
-	strategy := NewIssueTokenProceedStrategy(&mockCodeIssuer{}, nil)
+func TestLocalProceedStrategy_Success_OmitsStateWhenEmpty(t *testing.T) {
+	strategy := NewLocalProceedStrategy(&mockCodeIssuer{}, nil)
 	w := httptest.NewRecorder()
 	r := newProceedRequest(t)
 
@@ -70,7 +109,7 @@ func TestIssueTokenProceedStrategy_Success_OmitsStateWhenEmpty(t *testing.T) {
 		State:       "",
 	}
 
-	strategy.HandleProceed(w, r, &ports.AuthorizationDecision{}, req, id.NewPrincipal("user@example.com"))
+	strategy.HandleProceed(w, r, ports.ProceedDecision("", storage.LocalClient), req, id.NewPrincipal("user@example.com"))
 
 	assert.Equal(t, http.StatusFound, w.Code)
 	loc := w.Header().Get("Location")
@@ -80,7 +119,7 @@ func TestIssueTokenProceedStrategy_Success_OmitsStateWhenEmpty(t *testing.T) {
 	assert.Empty(t, parsed.Query().Get("state"))
 }
 
-func TestIssueTokenProceedStrategy_Errors(t *testing.T) {
+func TestLocalProceedStrategy_Errors(t *testing.T) {
 	agentID := id.NewAgentID()
 	cases := []struct {
 		name        string
@@ -107,7 +146,7 @@ func TestIssueTokenProceedStrategy_Errors(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			strategy := NewIssueTokenProceedStrategy(&errCodeIssuer{err: tc.err}, nil)
+			strategy := NewLocalProceedStrategy(&errCodeIssuer{err: tc.err}, nil)
 			w := httptest.NewRecorder()
 			r := newProceedRequest(t)
 
@@ -117,7 +156,7 @@ func TestIssueTokenProceedStrategy_Errors(t *testing.T) {
 				State:       "xyz",
 			}
 
-			strategy.HandleProceed(w, r, &ports.AuthorizationDecision{}, req, id.NewPrincipal("user@example.com"))
+			strategy.HandleProceed(w, r, ports.ProceedDecision("", storage.LocalClient), req, id.NewPrincipal("user@example.com"))
 
 			assert.Equal(t, tc.wantStatus, w.Code)
 			if tc.isRedirect {
@@ -133,4 +172,83 @@ func TestIssueTokenProceedStrategy_Errors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHybridProceedStrategy_DispatchesByClientType(t *testing.T) {
+	cases := []struct {
+		name         string
+		clientType   storage.ClientType
+		expectsProxy bool
+	}{
+		{"ProxyClient routes to proxy sub-strategy", storage.ProxyClient, true},
+		{"LocalClient routes to local sub-strategy", storage.LocalClient, false},
+		{"CIMDClient routes to local sub-strategy", storage.CIMDClient, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			proxyMock := &captureProceedStrategy{}
+			localMock := &captureProceedStrategy{}
+			strategy := NewHybridProceedStrategy(proxyMock, localMock, nil)
+
+			decision := ports.ProceedDecision("", tc.clientType)
+			strategy.HandleProceed(httptest.NewRecorder(), newProceedRequest(t), decision, &ports.AuthorizationRequest{}, id.NewPrincipal("u@example.com"))
+
+			assert.Equal(t, tc.expectsProxy, proxyMock.called, "proxy strategy called")
+			assert.Equal(t, !tc.expectsProxy, localMock.called, "local strategy called")
+		})
+	}
+}
+
+// TestHybridProceedStrategy_RejectsAmbiguousClientType verifies that the hybrid proceed
+// strategy returns server_error for AmbiguousClient and UnknownClient rather than
+// silently dispatching to either sub-strategy.
+func TestHybridProceedStrategy_RejectsAmbiguousClientType(t *testing.T) {
+	for _, mode := range []storage.ClientType{storage.AmbiguousClient, storage.UnknownClient} {
+		t.Run(fmt.Sprintf("mode_%d", mode), func(t *testing.T) {
+			proxyMock := &captureProceedStrategy{}
+			localMock := &captureProceedStrategy{}
+			strategy := NewHybridProceedStrategy(proxyMock, localMock, nil)
+
+			w := httptest.NewRecorder()
+			decision := ports.ProceedDecision("", mode)
+			strategy.HandleProceed(w, newProceedRequest(t), decision, &ports.AuthorizationRequest{}, id.NewPrincipal("u@example.com"))
+
+			assert.Equal(t, http.StatusInternalServerError, w.Code)
+			assert.False(t, proxyMock.called, "proxy strategy must not be called")
+			assert.False(t, localMock.called, "local strategy must not be called")
+		})
+	}
+}
+
+// TestHybridProceedStrategy_DefaultBranchLogsError verifies that reaching the default
+// (unknown/ambiguous client type) branch emits an Error-level log with the client_type.
+func TestHybridProceedStrategy_DefaultBranchLogsError(t *testing.T) {
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+
+	decision := ports.ProceedDecision("", storage.AmbiguousClient)
+
+	strategy := NewHybridProceedStrategy(&captureProceedStrategy{}, &captureProceedStrategy{}, logger)
+	w := httptest.NewRecorder()
+	strategy.HandleProceed(w, newProceedRequest(t), decision, &ports.AuthorizationRequest{}, id.NewPrincipal("u@example.com"))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	logLine := buf.String()
+	assert.Contains(t, logLine, "ERROR")
+}
+
+// TestNewHybridProceedStrategy_NilArgsPanic verifies that nil proxy or local strategies
+// are caught at construction time rather than silently producing wrong-arg dispatches.
+func TestNewHybridProceedStrategy_NilArgsPanic(t *testing.T) {
+	t.Run("nil proxy panics", func(t *testing.T) {
+		assert.Panics(t, func() {
+			NewHybridProceedStrategy(nil, &captureProceedStrategy{}, nil)
+		})
+	})
+
+	t.Run("nil local panics", func(t *testing.T) {
+		assert.Panics(t, func() {
+			NewHybridProceedStrategy(&captureProceedStrategy{}, nil, nil)
+		})
+	})
 }

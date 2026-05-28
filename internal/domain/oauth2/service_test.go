@@ -3,6 +3,8 @@ package oauth2
 import (
 	"context"
 	"encoding/base64"
+	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -36,11 +38,11 @@ func newTestSessionTokenService() *sessiontoken.Service {
 	return sessiontoken.NewService(newServiceTestJWETokenService())
 }
 
-func newTestServiceWithJWE(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, cfg *OAuth2Config) ports.OAuth2Service {
+func newTestAuthorizationService(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, cfg *OAuth2Config) ports.OAuth2Service {
 	return NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), cfg, nil, newTestSessionTokenService())
 }
 
-func newTestServiceWithSessionsAndJWE(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, sessionRepo ports.UserSessionRepository, cfg *OAuth2Config) ports.OAuth2Service {
+func newTestAuthorizationServiceWithSessions(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, sessionRepo ports.UserSessionRepository, cfg *OAuth2Config) ports.OAuth2Service {
 	return NewAuthorizationService(grantRepo, sessionRepo, NewAgentClientResolver(agentRepo, nil), cfg, nil, newTestSessionTokenService())
 }
 
@@ -412,9 +414,10 @@ func TestService_HandleAuthorization(t *testing.T) {
 			tt.setupAgent(agentRepo)
 			tt.setupGrant(grantRepo)
 
-			svc := newTestServiceWithJWE(agentRepo, grantRepo, &OAuth2Config{
+			svc := newTestAuthorizationService(agentRepo, grantRepo, &OAuth2Config{
 				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 				PublicURL:                 "https://broker.example.com",
+				ModeStrategy:              NewProxyModeStrategy(),
 				SupportedResponseTypes:    []string{"code"},
 				SupportedGrantTypes:       []string{"authorization_code"},
 			})
@@ -453,6 +456,7 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 	cfg := &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 	}
 
 	authReq := &ports.AuthorizationRequest{
@@ -523,7 +527,7 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 			activeGrant(grantRepo)
 			tt.setupSession(sessionRepo)
 
-			svc := newTestServiceWithSessionsAndJWE(agentRepo, grantRepo, sessionRepo, cfg)
+			svc := newTestAuthorizationServiceWithSessions(agentRepo, grantRepo, sessionRepo, cfg)
 
 			decision, err := svc.HandleAuthorization(context.Background(), authReq, id.NewPrincipal("user@example.com"))
 
@@ -566,6 +570,7 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 	}, nil, newTestSessionTokenService())
 
 	authReq := &ports.AuthorizationRequest{
@@ -669,6 +674,7 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 			svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 				PublicURL:                 "https://broker.example.com",
+				ModeStrategy:              NewProxyModeStrategy(),
 				SupportedResponseTypes:    []string{"code"},
 			}, nil, newTestSessionTokenService())
 
@@ -723,6 +729,7 @@ func TestService_HandleAuthorization_UUIDResolution_UpstreamClientID(t *testing.
 	svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 	}, nil, newTestSessionTokenService())
 
 	req := &ports.AuthorizationRequest{
@@ -753,6 +760,7 @@ func TestService_GenerateMetadata(t *testing.T) {
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 		SupportedResponseTypes:    []string{"code"},
 		SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
 	}
@@ -836,6 +844,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 		svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
+			ModeStrategy:              NewProxyModeStrategy(),
 			MultiAgentClient: ports.MultiAgentClientConfig{
 				Enabled:          true,
 				AgentIDParamName: "x_agent_id",
@@ -855,6 +864,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 		svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
+			ModeStrategy:              NewProxyModeStrategy(),
 			MultiAgentClient:          ports.MultiAgentClientConfig{Enabled: false},
 		}, nil, newTestSessionTokenService())
 
@@ -925,8 +935,9 @@ func TestService_HandleAuthorization_RedirectURIValidation(t *testing.T) {
 			grantRepo := NewMockGrantRepository()
 			_ = agentRepo.Create(context.Background(), makeAgent(tt.redirectURIs))
 
-			svc := newTestServiceWithJWE(agentRepo, grantRepo, &OAuth2Config{
-				PublicURL: "https://broker.example.com",
+			svc := newTestAuthorizationService(agentRepo, grantRepo, &OAuth2Config{
+				PublicURL:    "https://broker.example.com",
+				ModeStrategy: NewProxyModeStrategy(),
 			})
 
 			req := &ports.AuthorizationRequest{
@@ -1011,8 +1022,9 @@ func TestService_HandleAuthorization_ScopeValidation(t *testing.T) {
 			grantRepo := NewMockGrantRepository()
 			_ = agentRepo.Create(context.Background(), makeAgent(tt.allowedScopes))
 
-			svc := newTestServiceWithJWE(agentRepo, grantRepo, &OAuth2Config{
-				PublicURL: "https://broker.example.com",
+			svc := newTestAuthorizationService(agentRepo, grantRepo, &OAuth2Config{
+				PublicURL:    "https://broker.example.com",
+				ModeStrategy: NewProxyModeStrategy(),
 			})
 
 			req := &ports.AuthorizationRequest{
@@ -1045,6 +1057,29 @@ func TestService_HandleAuthorization_ScopeValidation(t *testing.T) {
 	}
 }
 
+// TestService_GenerateMetadata_IssuerURIOverride verifies that when IssuerURI differs from
+// PublicURL, GenerateMetadata uses IssuerURI so the discovery document matches token iss claims.
+func TestService_GenerateMetadata_IssuerURIOverride(t *testing.T) {
+	agentRepo := NewMockAgentRepository()
+	grantRepo := NewMockGrantRepository()
+
+	config := &OAuth2Config{
+		PublicURL:              "https://broker.example.com",
+		IssuerURI:              "https://sso.example.com",
+		ModeStrategy:           NewLocalModeStrategy(),
+		SupportedResponseTypes: []string{"code"},
+		SupportedGrantTypes:    []string{"authorization_code"},
+	}
+	svc := newTestAuthorizationService(agentRepo, grantRepo, config)
+	metadata, err := svc.GenerateMetadata(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://sso.example.com", metadata.Issuer)
+	assert.Equal(t, "https://sso.example.com/oauth2/authorize", metadata.AuthorizationEndpoint)
+	assert.Equal(t, "https://sso.example.com/oauth2/token", metadata.TokenEndpoint)
+	assert.Equal(t, "https://sso.example.com/oauth2/jwks.json", metadata.JWKSURI)
+}
+
 // TestService_GenerateMetadata_RFC8414Compliance tests RFC 8414 compliance
 func TestService_GenerateMetadata_RFC8414Compliance(t *testing.T) {
 	agentRepo := NewMockAgentRepository()
@@ -1054,6 +1089,7 @@ func TestService_GenerateMetadata_RFC8414Compliance(t *testing.T) {
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 		SupportedResponseTypes:    []string{"code"},
 		SupportedGrantTypes:       []string{"authorization_code"},
 	}
@@ -1110,7 +1146,8 @@ func TestService_HandleAuthorization_GrantLookupError(t *testing.T) {
 	}
 
 	svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
-		PublicURL: "https://broker.example.com",
+		PublicURL:    "https://broker.example.com",
+		ModeStrategy: NewProxyModeStrategy(),
 	}, nil, newTestSessionTokenService())
 
 	req := &ports.AuthorizationRequest{
@@ -1141,6 +1178,7 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 	cfg := &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 	}
 
 	authReq := &ports.AuthorizationRequest{
@@ -1263,7 +1301,7 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 			setupGrant(grantRepo)
 			tt.setupSess(sessionRepo)
 
-			svc := newTestServiceWithSessionsAndJWE(agentRepo, grantRepo, sessionRepo, cfg)
+			svc := newTestAuthorizationServiceWithSessions(agentRepo, grantRepo, sessionRepo, cfg)
 			decision, err := svc.HandleAuthorization(context.Background(), authReq, id.NewPrincipal("user@example.com"))
 
 			require.NoError(t, err)
@@ -1303,6 +1341,7 @@ func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
 	svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "%",
 		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
 	}, nil, newTestSessionTokenService())
 
 	decision, err := svc.HandleAuthorization(context.Background(), &ports.AuthorizationRequest{
@@ -1320,6 +1359,349 @@ func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
 	assert.Contains(t, decision.RedirectURL, "error=server_error")
 }
 
+// TestService_HandleAuthorization_LocalClientInHybridMode verifies that a LocalClient
+// agent (nil ClientID) in hybrid mode proceeds to local token issuance even when
+// UpstreamAuthorizeEndpoint is configured (spec FR-008, scenario 2).
+func TestService_HandleAuthorization_LocalClientInHybridMode(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	agentRepo := NewMockAgentRepository()
+	grantRepo := NewMockGrantRepository()
+
+	// LocalClient: no ClientID, no ClientURIs — local token issuance.
+	require.NoError(t, agentRepo.Create(context.Background(), &storage.Agent{
+		ID:           agentID,
+		ClientID:     nil,
+		DisplayName:  "Local Agent",
+		RedirectURIs: []string{"https://client.example.com/callback"},
+	}))
+	require.NoError(t, grantRepo.Create(context.Background(), &storage.UserGrant{
+		ID:                    id.NewGrantID(),
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               agentID,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{},
+	}))
+
+	// Hybrid mode: UpstreamAuthorizeEndpoint set for proxy agents; local agents must not be blocked.
+	svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewHybridModeStrategy(),
+	}, nil, newTestSessionTokenService())
+
+	decision, err := svc.HandleAuthorization(context.Background(), &ports.AuthorizationRequest{
+		ClientID:     id.ClientID(agentID.String()),
+		RedirectURI:  "https://client.example.com/callback",
+		ResponseType: "code",
+		State:        "xyz",
+		OriginalURL:  "https://broker.example.com/oauth2/authorize",
+	}, id.NewPrincipal("user@example.com"))
+
+	require.NoError(t, err)
+	require.NotNil(t, decision)
+	assert.Equal(t, "proceed", decision.Action)
+	assert.Equal(t, "", decision.RedirectURL, "local agents must not get an upstream redirect URL")
+	assert.Equal(t, storage.LocalClient, decision.ClientType)
+}
+
+// TestService_HandleAuthorization_CIMDClientInHybridMode verifies that a CIMDClient
+// agent (client_uris set, no ClientID) in hybrid mode proceeds to local token issuance
+// even when UpstreamAuthorizeEndpoint is configured (spec FR-008, FR-009).
+func TestService_HandleAuthorization_CIMDClientInHybridMode(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	agentRepo := NewMockAgentRepository()
+	grantRepo := NewMockGrantRepository()
+
+	agent := &storage.Agent{
+		ID:           agentID,
+		ClientID:     nil,
+		ClientURIs:   []string{"https://cimd.example.com/agent.json"},
+		DisplayName:  "CIMD Agent",
+		RedirectURIs: []string{"https://cimd.example.com/callback"},
+	}
+	require.NoError(t, agentRepo.Create(context.Background(), agent))
+	agentRepo.RegisterURI("https://cimd.example.com/agent.json", agent)
+	require.NoError(t, grantRepo.Create(context.Background(), &storage.UserGrant{
+		ID:                    id.NewGrantID(),
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               agentID,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{},
+	}))
+
+	cimdBody := `{"client_id":"https://cimd.example.com/agent.json","client_name":"CIMD Agent","redirect_uris":["https://cimd.example.com/callback"]}`
+	cimdFetch := &ports.CIMDFetchResult{Body: []byte(cimdBody), CacheControl: "max-age=300"}
+	cimdSvc := cimdServiceForTest(t, cimdFetch, nil)
+
+	svc := NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolverWithCIMD(agentRepo, cimdSvc, nil), &OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewHybridModeStrategy(),
+	}, nil, newTestSessionTokenService())
+
+	decision, err := svc.HandleAuthorization(context.Background(), &ports.AuthorizationRequest{
+		ClientID:     id.ClientID("https://cimd.example.com/agent.json"),
+		RedirectURI:  "https://cimd.example.com/callback",
+		ResponseType: "code",
+		State:        "xyz",
+		OriginalURL:  "https://broker.example.com/oauth2/authorize",
+	}, id.NewPrincipal("user@example.com"))
+
+	require.NoError(t, err)
+	require.NotNil(t, decision)
+	assert.Equal(t, "proceed", decision.Action)
+	assert.Equal(t, "", decision.RedirectURL, "CIMD agents must not get an upstream redirect URL")
+	assert.Equal(t, storage.CIMDClient, decision.ClientType)
+}
+
+// TestService_GenerateMetadata_TokenExchangeGrant verifies that the token-exchange
+// grant type is included in discovery only when TokenExchangeEnabled is true, and
+// is filtered out when false — even if manually present in SupportedGrantTypes.
+func TestService_GenerateMetadata_TokenExchangeGrant(t *testing.T) {
+	const tokenExchangeGrant = "urn:ietf:params:oauth:grant-type:token-exchange"
+	baseGrants := []string{"authorization_code", "refresh_token"}
+
+	t.Run("enabled — appended when absent from SupportedGrantTypes", func(t *testing.T) {
+		svc := newTestAuthorizationService(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
+			PublicURL:            "https://broker.example.com",
+			ModeStrategy:         NewProxyModeStrategy(),
+			SupportedGrantTypes:  baseGrants,
+			TokenExchangeEnabled: true,
+		})
+		metadata, err := svc.GenerateMetadata(context.Background())
+		require.NoError(t, err)
+		assert.Contains(t, metadata.GrantTypesSupported, tokenExchangeGrant)
+	})
+
+	t.Run("enabled — not duplicated when already in SupportedGrantTypes", func(t *testing.T) {
+		svc := newTestAuthorizationService(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
+			PublicURL:            "https://broker.example.com",
+			ModeStrategy:         NewProxyModeStrategy(),
+			SupportedGrantTypes:  append(slices.Clone(baseGrants), tokenExchangeGrant),
+			TokenExchangeEnabled: true,
+		})
+		metadata, err := svc.GenerateMetadata(context.Background())
+		require.NoError(t, err)
+		count := 0
+		for _, g := range metadata.GrantTypesSupported {
+			if g == tokenExchangeGrant {
+				count++
+			}
+		}
+		assert.Equal(t, 1, count, "token-exchange grant must not be duplicated")
+	})
+
+	t.Run("disabled — removed when manually present in SupportedGrantTypes", func(t *testing.T) {
+		svc := newTestAuthorizationService(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
+			PublicURL:            "https://broker.example.com",
+			ModeStrategy:         NewProxyModeStrategy(),
+			SupportedGrantTypes:  append(slices.Clone(baseGrants), tokenExchangeGrant),
+			TokenExchangeEnabled: false,
+		})
+		metadata, err := svc.GenerateMetadata(context.Background())
+		require.NoError(t, err)
+		assert.NotContains(t, metadata.GrantTypesSupported, tokenExchangeGrant,
+			"token-exchange grant must not appear in discovery when service is not wired")
+	})
+
+	t.Run("disabled — fallback to mode baseline when token-exchange is the only configured grant", func(t *testing.T) {
+		svc := newTestAuthorizationService(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
+			PublicURL:            "https://broker.example.com",
+			ModeStrategy:         NewLocalModeStrategy(),
+			SupportedGrantTypes:  []string{tokenExchangeGrant},
+			TokenExchangeEnabled: false,
+		})
+		metadata, err := svc.GenerateMetadata(context.Background())
+		require.NoError(t, err)
+		assert.NotEmpty(t, metadata.GrantTypesSupported, "discovery must never return an empty grant list")
+		assert.NotContains(t, metadata.GrantTypesSupported, tokenExchangeGrant)
+		assert.Contains(t, metadata.GrantTypesSupported, "authorization_code")
+	})
+}
+
+// TestService_ResolveForTokenGrant_ModeBoundary verifies that ModeStrategy.AcceptsClientType
+// is enforced on the token endpoint: a proxy-mode server must reject LocalClient agents and
+// vice versa, while a nil strategy must accept all modes.
+func TestService_ResolveForTokenGrant_ModeBoundary(t *testing.T) {
+	ctx := context.Background()
+
+	proxyAgent := &storage.Agent{
+		ID:          id.NewAgentID(),
+		DisplayName: "Proxy Agent",
+		ClientID:    ptr.To(id.ClientID("upstream-client")),
+	}
+	localAgent := &storage.Agent{
+		ID:          id.NewAgentID(),
+		DisplayName: "Local Agent",
+	}
+	cimdAgent := &storage.Agent{
+		ID:          id.NewAgentID(),
+		DisplayName: "CIMD Agent",
+		ClientURIs:  []string{"https://agent.example.com/client"},
+	}
+
+	buildSvc := func(strategy ModeStrategy, agents ...*storage.Agent) ports.OAuth2Service {
+		repo := NewMockAgentRepository()
+		for _, a := range agents {
+			_ = repo.Create(ctx, a)
+		}
+		return newTestAuthorizationService(repo, NewMockGrantRepository(), &OAuth2Config{ModeStrategy: strategy})
+	}
+
+	cases := []struct {
+		name        string
+		strategy    ModeStrategy
+		agent       *storage.Agent
+		wantMode    storage.ClientType
+		wantErrCode string
+	}{
+		{
+			name:     "proxy-mode accepts ProxyClient",
+			strategy: NewProxyModeStrategy(),
+			agent:    proxyAgent,
+			wantMode: storage.ProxyClient,
+		},
+		{
+			name:        "proxy-mode rejects LocalClient",
+			strategy:    NewProxyModeStrategy(),
+			agent:       localAgent,
+			wantErrCode: "unauthorized_client",
+		},
+		{
+			// OpaqueClientResolver rejects CIMDClient agents by UUID before mode strategy
+			// fires — the agent returns invalid_client, not unauthorized_client.
+			name:        "proxy-mode: CIMD agent rejected by resolver before mode check",
+			strategy:    NewProxyModeStrategy(),
+			agent:       cimdAgent,
+			wantErrCode: "invalid_client",
+		},
+		{
+			name:     "local-mode accepts LocalClient",
+			strategy: NewLocalModeStrategy(),
+			agent:    localAgent,
+			wantMode: storage.LocalClient,
+		},
+		{
+			name:        "local-mode rejects ProxyClient",
+			strategy:    NewLocalModeStrategy(),
+			agent:       proxyAgent,
+			wantErrCode: "unauthorized_client",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := buildSvc(tc.strategy, tc.agent)
+			res, err := svc.ResolveForTokenGrant(ctx, id.ClientID(tc.agent.ID.String()))
+
+			if tc.wantErrCode != "" {
+				require.Error(t, err)
+				var clientErr *ports.ClientIDError
+				require.True(t, errors.As(err, &clientErr))
+				assert.Equal(t, tc.wantErrCode, clientErr.Code)
+				assert.Nil(t, res)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, res)
+				assert.Equal(t, tc.wantMode, res.ClientType)
+			}
+		})
+	}
+}
+
+// TestService_HandleAuthorization_ModeBoundary verifies that ModeStrategy.AcceptsClientType
+// is enforced on the authorize endpoint, mirroring TestService_ResolveForTokenGrant_ModeBoundary.
+func TestService_HandleAuthorization_ModeBoundary(t *testing.T) {
+	ctx := context.Background()
+
+	proxyAgent := &storage.Agent{
+		ID:           id.NewAgentID(),
+		DisplayName:  "Proxy Agent",
+		Description:  "proxy",
+		ClientID:     ptr.To(id.ClientID("upstream-client")),
+		RedirectURIs: []string{"https://app.example.com/callback"},
+	}
+	localAgent := &storage.Agent{
+		ID:           id.NewAgentID(),
+		DisplayName:  "Local Agent",
+		Description:  "local",
+		RedirectURIs: []string{"https://app.example.com/callback"},
+	}
+
+	principal := id.NewPrincipal("user@example.com")
+
+	buildSvc := func(strategy ModeStrategy, agents ...*storage.Agent) ports.OAuth2Service {
+		repo := NewMockAgentRepository()
+		grantRepo := NewMockGrantRepository()
+		for _, a := range agents {
+			_ = repo.Create(ctx, a)
+			_ = grantRepo.Create(ctx, &storage.UserGrant{
+				ID:        id.NewGrantID(),
+				Principal: principal,
+				AgentID:   a.ID,
+			})
+		}
+		return newTestAuthorizationService(repo, grantRepo, &OAuth2Config{ModeStrategy: strategy})
+	}
+
+	authReq := func(agentID id.AgentID) *ports.AuthorizationRequest {
+		return &ports.AuthorizationRequest{
+			ClientID:     id.ClientID(agentID.String()),
+			RedirectURI:  "https://app.example.com/callback",
+			ResponseType: "code",
+		}
+	}
+
+	cases := []struct {
+		name        string
+		strategy    ModeStrategy
+		agent       *storage.Agent
+		wantAction  string
+		wantErrCode string
+	}{
+		{
+			name:       "proxy-mode accepts ProxyClient",
+			strategy:   NewProxyModeStrategy(),
+			agent:      proxyAgent,
+			wantAction: "proceed",
+		},
+		{
+			name:        "proxy-mode rejects LocalClient",
+			strategy:    NewProxyModeStrategy(),
+			agent:       localAgent,
+			wantAction:  "error",
+			wantErrCode: "unauthorized_client",
+		},
+		{
+			name:       "local-mode accepts LocalClient",
+			strategy:   NewLocalModeStrategy(),
+			agent:      localAgent,
+			wantAction: "proceed",
+		},
+		{
+			name:        "local-mode rejects ProxyClient",
+			strategy:    NewLocalModeStrategy(),
+			agent:       proxyAgent,
+			wantAction:  "error",
+			wantErrCode: "unauthorized_client",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := buildSvc(tc.strategy, tc.agent)
+			decision, err := svc.HandleAuthorization(ctx, authReq(tc.agent.ID), principal)
+
+			require.NoError(t, err)
+			require.NotNil(t, decision)
+			assert.Equal(t, tc.wantAction, decision.Action)
+			if tc.wantErrCode != "" {
+				assert.Equal(t, tc.wantErrCode, decision.ErrorCode)
+			}
+		})
+	}
+}
+
 // TestBuildConsentURL_AlwaysProducesSessionToken verifies that buildConsentURL always
 // generates a session_token URL regardless of whether cimdMeta is nil (T008).
 func TestBuildConsentURL_AlwaysProducesSessionToken(t *testing.T) {
@@ -1329,7 +1711,7 @@ func TestBuildConsentURL_AlwaysProducesSessionToken(t *testing.T) {
 		NewMockGrantRepository(),
 		NewMockSessionRepository(),
 		NewAgentClientResolver(NewMockAgentRepository(), nil),
-		&OAuth2Config{PublicURL: "https://broker.example.com"},
+		&OAuth2Config{PublicURL: "https://broker.example.com", ModeStrategy: NewProxyModeStrategy()},
 		nil,
 		newTestSessionTokenService(),
 	)

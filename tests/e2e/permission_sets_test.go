@@ -56,6 +56,10 @@ func parsePS(resp *http.Response) map[string]interface{} {
 	defer func() { _ = resp.Body.Close() }()
 	var m map[string]interface{}
 	_ = json.NewDecoder(resp.Body).Decode(&m)
+	// Unwrap {"data": ...} envelope if present (unified response format)
+	if data, ok := m["data"].(map[string]interface{}); ok {
+		return data
+	}
 	return m
 }
 
@@ -503,7 +507,7 @@ var _ = Describe("Permission Sets (019)", func() {
 		It("renders mandatory sets locked and optional sets togglable on consent screen", func() {
 			// US2.S1 — consent-info returns permission_sets with correct requirement_type
 			resp, err := enduserServer.AuthenticatedGET(
-				fmt.Sprintf("/api/consent/agents/%s/consent-info", agentID),
+				fmt.Sprintf("/api/consent/agents/%s", agentID),
 				userPrincipal,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -528,7 +532,7 @@ var _ = Describe("Permission Sets (019)", func() {
 		It("displays human-readable description without raw OAuth2 scope strings", func() {
 			// US2.S2 — permission_set.description present; no raw scopes in top-level response
 			resp, err := enduserServer.AuthenticatedGET(
-				fmt.Sprintf("/api/consent/agents/%s/consent-info", agentID),
+				fmt.Sprintf("/api/consent/agents/%s", agentID),
 				userPrincipal,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -566,7 +570,7 @@ var _ = Describe("Permission Sets (019)", func() {
 			Expect(testStorage.UserSessions().Create(context.Background(), fixtures.SessionForService(userPrincipal, githubServiceID))).To(Succeed())
 
 			resp, err := enduserServer.AuthenticatedGET(
-				fmt.Sprintf("/api/consent/agents/%s/consent-info", agentID),
+				fmt.Sprintf("/api/consent/agents/%s", agentID),
 				userPrincipal,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -586,9 +590,9 @@ var _ = Describe("Permission Sets (019)", func() {
 
 		// US2.S4 from specs/019-permission-sets/spec.md
 		It("shows connect button with Required/Optional badge for service without active session", func() {
-			// US2.S4 — available_services present in consent-info for services without active sessions
+			// US2.S4 — service_requirements present in response for services without active sessions
 			resp, err := enduserServer.AuthenticatedGET(
-				fmt.Sprintf("/api/consent/agents/%s/consent-info", agentID),
+				fmt.Sprintf("/api/consent/agents/%s", agentID),
 				userPrincipal,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -596,9 +600,9 @@ var _ = Describe("Permission Sets (019)", func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
 			result := parsePS(resp)
-			availableServices, ok := result["available_services"].([]interface{})
-			Expect(ok).To(BeTrue(), "available_services must be present in consent-info response")
-			Expect(availableServices).ToNot(BeEmpty(), "expected at least one available service")
+			serviceRequirements, ok := result["service_requirements"].([]interface{})
+			Expect(ok).To(BeTrue(), "service_requirements must be present in response")
+			Expect(serviceRequirements).ToNot(BeEmpty(), "expected at least one service requirement")
 		})
 
 		// US2.S5 from specs/019-permission-sets/spec.md
@@ -660,7 +664,7 @@ var _ = Describe("Permission Sets (019)", func() {
 			Expect(testStorage.UserSessions().Create(context.Background(), fixtures.SessionForService(userPrincipal, githubServiceID))).To(Succeed())
 			Expect(testStorage.UserSessions().Create(context.Background(), fixtures.SessionForService(userPrincipal, googleServiceID))).To(Succeed())
 			resp, err := enduserServer.AuthenticatedGET(
-				fmt.Sprintf("/api/consent/agents/%s/consent-info", agentID),
+				fmt.Sprintf("/api/consent/agents/%s", agentID),
 				userPrincipal,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -807,7 +811,7 @@ var _ = Describe("Permission Sets (019)", func() {
 			agentID := parsePS(ar)["id"].(string)
 
 			resp, err := enduserServer.AuthenticatedGET(
-				fmt.Sprintf("/api/consent/agents/%s/consent-info", agentID),
+				fmt.Sprintf("/api/consent/agents/%s", agentID),
 				"user@example.com",
 			)
 			Expect(err).ToNot(HaveOccurred())

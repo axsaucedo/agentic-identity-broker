@@ -34,6 +34,7 @@ type LocalStackContainer struct {
 // Usage: In BeforeEach, `ls := bootstrap.StartLocalStack(ctx, GinkgoT())`
 // Usage: In AfterEach, `defer ls.Terminate(ctx)`
 func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
+	t.Helper()
 	// Use default bridge network to avoid network creation issues with testcontainers reaper
 	// The bridge network is always available and compatible with all Docker configurations
 	req := testcontainers.ContainerRequest{
@@ -50,10 +51,19 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 		WaitingFor:   wait.ForLog("Ready."),
 	}
 
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
+	// testcontainers panics (via sync.Once) when no Docker host is reachable.
+	// Narrow recovery to this call only to avoid masking panics from later steps.
+	container, err := func() (testcontainers.Container, error) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("Docker runtime unavailable — ensure Colima or Docker Desktop is running: %v", r)
+			}
+		}()
+		return testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+			ContainerRequest: req,
+			Started:          true,
+		})
+	}()
 	if err != nil {
 		t.Fatalf("failed to start LocalStack container: %v", err)
 	}

@@ -652,18 +652,36 @@
           "type": "object",
           "additionalProperties": false,
           "description": "OAuth2 Authorization Server configuration",
+          "required": ["mode"],
           "properties": {
-            "upstreamIssuerUri": {
+            "mode": {
               "type": "string",
-              "description": "Upstream OAuth2 issuer URI"
+              "enum": ["proxy", "local", "hybrid"],
+              "description": "Operation mode: proxy, local, or hybrid. Required."
             },
-            "upstreamAuthorizeEndpoint": {
-              "type": "string",
-              "description": "Upstream authorize endpoint"
-            },
-            "upstreamTokenEndpoint": {
-              "type": "string",
-              "description": "Upstream token endpoint"
+            "proxy": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Upstream OAuth2 server configuration (required in proxy/hybrid mode)",
+              "properties": {
+                "upstreamIssuerUri": {
+                  "type": "string",
+                  "description": "Upstream OAuth2 issuer URI"
+                },
+                "upstreamAuthorizeEndpoint": {
+                  "type": "string",
+                  "description": "Upstream authorize endpoint"
+                },
+                "upstreamTokenEndpoint": {
+                  "type": "string",
+                  "description": "Upstream token endpoint"
+                },
+                "upstreamTimeoutSeconds": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Upstream request timeout in seconds (0 = use application default of 30s)"
+                }
+              }
             },
             "supportedResponseTypes": {
               "type": "array",
@@ -679,14 +697,20 @@
               },
               "description": "Supported OAuth2 grant types"
             },
-            "upstreamTimeoutSeconds": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Upstream request timeout (seconds)"
-            },
-            "mode": {
-              "type": "string",
-              "description": "Operation mode (proxy, authorization_server)"
+            "local": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Local token issuance configuration (local/hybrid mode)",
+              "properties": {
+                "tokenTtl": {
+                  "type": "string",
+                  "description": "Access token TTL (e.g. '1h', '30m'). Defaults to 1h if empty."
+                },
+                "tokenClaimsExpression": {
+                  "type": "string",
+                  "description": "CEL expression for custom token claims"
+                }
+              }
             },
             "multiAgentClient": {
               "type": "object",
@@ -721,7 +745,7 @@
             "cimd": {
               "type": "object",
               "additionalProperties": false,
-              "description": "Client ID Metadata Document (CIMD) configuration. Only valid when mode is issue_token.",
+              "description": "Client ID Metadata Document (CIMD) configuration. Only valid when mode is 'local' or 'hybrid'.",
               "properties": {
                 "enabled": {
                   "type": "boolean",
@@ -771,21 +795,44 @@
               }
             }
           },
-          "if": {
-            "properties": {
-              "cimd": {
-                "properties": { "enabled": { "const": true } },
-                "required": ["enabled"]
+          "allOf": [
+            {
+              "if": {
+                "properties": { "mode": { "enum": ["proxy", "hybrid"] } },
+                "required": ["mode"]
+              },
+              "then": {
+                "required": ["proxy"],
+                "properties": {
+                  "proxy": {
+                    "required": ["upstreamIssuerUri", "upstreamAuthorizeEndpoint", "upstreamTokenEndpoint"],
+                    "properties": {
+                      "upstreamIssuerUri": { "minLength": 1 },
+                      "upstreamAuthorizeEndpoint": { "minLength": 1 },
+                      "upstreamTokenEndpoint": { "minLength": 1 }
+                    }
+                  }
+                }
               }
             },
-            "required": ["cimd"]
-          },
-          "then": {
-            "properties": {
-              "mode": { "const": "issue_token" }
-            },
-            "required": ["mode"]
-          }
+            {
+              "if": {
+                "properties": {
+                  "cimd": {
+                    "properties": { "enabled": { "const": true } },
+                    "required": ["enabled"]
+                  }
+                },
+                "required": ["cimd"]
+              },
+              "then": {
+                "properties": {
+                  "mode": { "enum": ["local", "hybrid"] }
+                },
+                "required": ["mode"]
+              }
+            }
+          ]
         },
         "tokenExchange": {
           "type": "object",

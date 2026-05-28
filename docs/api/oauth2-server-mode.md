@@ -1,6 +1,6 @@
 # OAuth2 Server Mode API Reference
 
-This document describes the API endpoints available when the broker operates in `issue_token` mode. For configuration details, see [OAuth2 Server Mode Feature Documentation](../features/oauth2-server-mode.md). For general configuration, see [Configuration Guide](../configuration.md).
+This document describes the API endpoints available when the broker operates in `local` mode. For configuration details, see [OAuth2 Server Mode Feature Documentation](../features/oauth2-server-mode.md). For general configuration, see [Configuration Guide](../configuration.md).
 
 ## End-User Endpoints (Port 8000)
 

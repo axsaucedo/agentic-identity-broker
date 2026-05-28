@@ -1,42 +1,38 @@
 # OAuth2 Server Mode Configuration
-# 
+#
 # Configures the identity broker to operate as a standalone OAuth2 authorization
 # server, issuing its own JWT access tokens signed with managed keys.
 #
-# In this mode ("issue_token"), the broker:
+# In this mode ("local"), the broker:
 #   - Issues JWT access tokens directly (no upstream OAuth2 server needed)
 #   - Supports client_credentials and authorization_code (with PKCE) grant types
 #   - Manages ES256 signing keys with encrypted private material
 #   - Exposes RFC 8414 discovery and JWKS endpoints
 #
-# Upstream OAuth2 URI fields are not required in issue_token mode.
+# Upstream OAuth2 URI fields are not required in local mode.
 
 # Dual-server architecture: end-user and admin on separate ports
-servers:
+server:
   enduser:
-    host: "0.0.0.0"
     port: 8000
+    bind: "0.0.0.0"
+    public_url: "https://broker.example.com"
     authentication:
       preauth:
         principal_header_name: "X-Remote-User"
   admin:
-    host: "0.0.0.0"
     port: 14000
+    bind: "0.0.0.0"
+    public_url: "https://broker.example.com:14000"
 
 # OAuth2 authorization server configuration
-oauth2:
-  auth_server:
-    # Mode: "proxy" (default) or "issue_token"
-    # In "issue_token" mode, the broker mints its own tokens.
-    # In "proxy" mode (default), the broker forwards to an upstream OAuth2 server.
-    mode: "issue_token"
+oauth2_authorization_server:
+  # Mode: "proxy" (default), "local", or "hybrid"
+  # In "local" mode, the broker mints its own tokens.
+  mode: "local"
 
-    # REQUIRED in issue_token mode: The issuer identifier for issued tokens.
-    # Must match the base URL where clients reach the broker.
-    # This value appears in the "iss" claim of issued JWTs and in the
-    # /.well-known/oauth-authorization-server discovery document.
-    issuer_uri: "https://broker.example.com"
-
+  # Local section: token issuance configuration (required in local/hybrid mode)
+  local:
     # Token TTL: How long issued access tokens are valid.
     # Default: 1h. Format: Go duration string (e.g., "30m", "2h", "1h30m").
     token_ttl: "1h"
@@ -54,9 +50,10 @@ storage:
 
 # Encryption for signing key private material
 encryption:
-  provider: "memory"  # Use "aws_kms" for production
+  memory:
+    raw_key: "base64-encoded-32-byte-key"  # Use "aws_kms" for production
 
 # Logging
-logging:
+log:
   level: "info"
   format: "json"

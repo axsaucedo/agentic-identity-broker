@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -25,6 +27,11 @@ type OAuth2Config struct {
 	// Broker's public URL (from enduser ServerInstanceConfig.PublicURL)
 	PublicURL string
 
+	// IssuerURI is the JWT iss claim for locally-minted tokens. Defaults to PublicURL when
+	// local.issuer_uri is not set. GenerateMetadata uses this so the RFC 8414 discovery
+	// document advertises the same issuer that tokens actually carry.
+	IssuerURI string
+
 	// Supported response types (default: ["code"])
 	SupportedResponseTypes []string
 
@@ -35,13 +42,17 @@ type OAuth2Config struct {
 	// When Enabled, multiple agents may share a single upstream OAuth2 client ID.
 	MultiAgentClient ports.MultiAgentClientConfig
 
-	// Mode indicates whether the broker operates in "proxy" or "issue_token" mode.
-	// In issue_token mode, JWKS and code_challenge_methods are included in metadata.
-	Mode string
-
 	// CIMDEnabled indicates whether CIMD-based client_id resolution is enabled.
 	// When true, client_id_metadata_document_supported is advertised in metadata.
 	CIMDEnabled bool
+
+	// TokenExchangeEnabled indicates whether the RFC 8693 token exchange service is wired.
+	// When true, the token-exchange grant type is appended to GrantTypesSupported in metadata.
+	TokenExchangeEnabled bool
+
+	// ModeStrategy enforces which agent client modes are permitted and drives metadata output.
+	// Always required — pass NewProxyModeStrategy(), NewLocalModeStrategy(), or NewHybridModeStrategy().
+	ModeStrategy ModeStrategy
 }
 
 // AuthorizationService implements the OAuth2Service port.
@@ -55,6 +66,7 @@ type AuthorizationService struct {
 }
 
 // NewAuthorizationService creates an AuthorizationService.
+// Panics if sessionTokenService, sessionRepo, or config.ModeStrategy is nil.
 func NewAuthorizationService(
 	grantRepo ports.UserGrantRepository,
 	sessionRepo ports.UserSessionRepository,
@@ -69,6 +81,9 @@ func NewAuthorizationService(
 	if sessionRepo == nil {
 		panic("oauth2.NewAuthorizationService: sessionRepo must not be nil")
 	}
+	if config == nil || config.ModeStrategy == nil {
+		panic("oauth2.NewAuthorizationService: config.ModeStrategy must not be nil")
+	}
 	return &AuthorizationService{
 		grantRepo:           grantRepo,
 		sessionRepo:         sessionRepo,
@@ -77,6 +92,36 @@ func NewAuthorizationService(
 		logger:              logger,
 		sessionTokenService: sessionTokenService,
 	}
+}
+
+// ResolveForTokenGrant resolves the client_id, classifies the agent, and enforces
+// mode boundaries for the token endpoint. Follows the same universal resolution as
+// HandleAuthorization (FR-003, FR-004, FR-005) but without authorization-specific
+// logic (redirect URI, scopes, consent).
+func (s *AuthorizationService) ResolveForTokenGrant(ctx context.Context, clientID id.ClientID) (*ports.TokenGrantResolution, error) {
+	resolution, resolveErr := s.clientResolver.ResolveClient(ctx, clientID)
+	if resolveErr != nil {
+		var clientErr *ports.ClientIDError
+		if errors.As(resolveErr, &clientErr) {
+			return nil, clientErr
+		}
+		if s.logger != nil {
+			s.logger.ErrorContext(ctx, "unexpected error from client resolver", "error", resolveErr)
+		}
+		return nil, &ports.ClientIDError{Code: "server_error", Desc: "client resolution failed"}
+	}
+
+	agent := resolution.Agent
+	mode := agent.ClientType()
+
+	if !s.config.ModeStrategy.AcceptsClientType(mode) {
+		return nil, &ports.ClientIDError{
+			Code: "unauthorized_client",
+			Desc: fmt.Sprintf("client mode not supported in %s mode", s.config.ModeStrategy.Mode()),
+		}
+	}
+
+	return ports.NewTokenGrantResolution(agent.ID, agent.ClientID, mode)
 }
 
 // HandleAuthorization processes an OAuth2 authorization request
@@ -98,14 +143,15 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 			code = clientErr.Code
 			desc = clientErr.Desc
 		}
-		return &ports.AuthorizationDecision{
-			Action:    "error",
-			ErrorCode: code,
-			ErrorDesc: desc,
-		}, nil
+		return ports.ErrorDecision(code, desc, ""), nil
 	}
 	agent = resolution.Agent
 	cimdMeta = resolution.CIMDMetadata
+
+	// Mode enforcement: reject agents whose ClientType is not permitted in this server mode.
+	if !s.config.ModeStrategy.AcceptsClientType(agent.ClientType()) {
+		return ports.ErrorDecision("unauthorized_client", fmt.Sprintf("client mode not supported in %s mode", s.config.ModeStrategy.Mode()), ""), nil
+	}
 
 	// Step 1b: Validate redirect_uri.
 	// For CIMD clients, validate against the document's redirect_uris.
@@ -126,11 +172,7 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 	}
 
 	if len(allowedRedirectURIs) == 0 {
-		return &ports.AuthorizationDecision{
-			Action:    "error",
-			ErrorCode: redirectURIErrCode,
-			ErrorDesc: "redirect_uri not registered for this client",
-		}, nil
+		return ports.ErrorDecision(redirectURIErrCode, "redirect_uri not registered for this client", ""), nil
 	}
 	uriAllowed := false
 	for _, allowed := range allowedRedirectURIs {
@@ -140,22 +182,14 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 		}
 	}
 	if !uriAllowed {
-		return &ports.AuthorizationDecision{
-			Action:    "error",
-			ErrorCode: redirectURIErrCode,
-			ErrorDesc: "redirect_uri not registered for this client",
-		}, nil
+		return ports.ErrorDecision(redirectURIErrCode, "redirect_uri not registered for this client", ""), nil
 	}
 
 	// Step 1b-runtime: Enforce HTTPS for non-loopback hosts even on legacy data.
 	// Write-time validation (Agent.Validate/ValidateForCreate) prevents new non-HTTPS
 	// registrations, but this guard closes the gap for pre-existing stored URIs.
 	if !storage.IsValidRedirectURI(req.RedirectURI) {
-		return &ports.AuthorizationDecision{
-			Action:    "error",
-			ErrorCode: "invalid_redirect_uri",
-			ErrorDesc: "redirect_uri must use HTTPS for non-local hosts",
-		}, nil
+		return ports.ErrorDecision("invalid_redirect_uri", "redirect_uri must use HTTPS for non-local hosts", ""), nil
 	}
 
 	// Step 1c: Validate requested scopes against agent's allowed scopes.
@@ -215,10 +249,7 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 				RedirectURL: errRedirect,
 			}, nil
 		}
-		return &ports.AuthorizationDecision{
-			Action:      "redirect_to_consent",
-			RedirectURL: consentURL,
-		}, nil
+		return ports.ConsentDecision(consentURL), nil
 	}
 
 	// Step 4: Check that sessions for all delegated services are not expired.
@@ -260,10 +291,7 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 				RedirectURL: errRedirect,
 			}, nil
 		}
-		return &ports.AuthorizationDecision{
-			Action:      "redirect_to_consent",
-			RedirectURL: consentURL,
-		}, nil
+		return ports.ConsentDecision(consentURL), nil
 	}
 
 	// Step 5: Validate mandatory service requirements.
@@ -313,18 +341,16 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 					RedirectURL: errRedirect,
 				}, nil
 			}
-			return &ports.AuthorizationDecision{
-				Action:      "redirect_to_consent",
-				RedirectURL: consentURL,
-			}, nil
+			return ports.ConsentDecision(consentURL), nil
 		}
 	}
 
 	// Active grant exists and all mandatory requirements satisfied — proceed.
-	// In proxy mode, the handler redirects to the upstream OAuth2 server.
-	// In issue_token mode, UpstreamAuthorizeEndpoint is empty — skip URL construction.
+	// For ProxyClient agents with an upstream endpoint, build the redirect URL.
+	// For CIMDClient/LocalClient agents (or when no upstream is configured), leave empty
+	// so the proceed strategy issues a local authorization code.
 	var upstreamURL string
-	if s.config.UpstreamAuthorizeEndpoint != "" {
+	if s.config.UpstreamAuthorizeEndpoint != "" && agent.ClientID != nil {
 		var urlErr error
 		upstreamURL, urlErr = s.buildUpstreamAuthorizeURL(req, agent)
 		if urlErr != nil {
@@ -340,10 +366,19 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 			}, nil
 		}
 	}
-	return &ports.AuthorizationDecision{
-		Action:      "proceed",
-		RedirectURL: upstreamURL,
-	}, nil
+	if upstreamURL == "" && s.config.UpstreamAuthorizeEndpoint != "" && agent.ClientType() == storage.ProxyClient {
+		errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "agent missing upstream client_id")
+		if buildURLErr != nil && s.logger != nil {
+			s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
+		}
+		return &ports.AuthorizationDecision{
+			Action:      "error",
+			ErrorCode:   "server_error",
+			ErrorDesc:   "Agent is not configured for upstream proxy (missing client_id)",
+			RedirectURL: errRedirect,
+		}, nil
+	}
+	return ports.ProceedDecision(upstreamURL, agent.ClientType()), nil
 }
 
 // buildUpstreamAuthorizeURL constructs the upstream authorization endpoint URL
@@ -427,24 +462,55 @@ func (s *AuthorizationService) buildConsentURL(_ context.Context, req *ports.Aut
 }
 
 // GenerateMetadata returns RFC 8414 OAuth2 metadata for this broker.
-// In issue_token mode, includes JWKS URI and code_challenge_methods.
+// In local and hybrid mode, includes JWKS URI and code_challenge_methods.
 func (s *AuthorizationService) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse, error) {
-	issuer := s.config.PublicURL
+	issuer := s.config.IssuerURI
+	if issuer == "" {
+		issuer = s.config.PublicURL
+	}
+
+	const tokenExchangeGrant = "urn:ietf:params:oauth:grant-type:token-exchange"
+	var grantTypes []string
+	if s.config.TokenExchangeEnabled {
+		if !slices.Contains(s.config.SupportedGrantTypes, tokenExchangeGrant) {
+			grantTypes = append(slices.Clone(s.config.SupportedGrantTypes), tokenExchangeGrant)
+		} else {
+			grantTypes = s.config.SupportedGrantTypes
+		}
+	} else {
+		grantTypes = slices.DeleteFunc(slices.Clone(s.config.SupportedGrantTypes), func(g string) bool {
+			return g == tokenExchangeGrant
+		})
+		if len(grantTypes) == 0 {
+			switch s.config.ModeStrategy.Mode() {
+			case servermode.Local, servermode.Hybrid:
+				grantTypes = []string{"authorization_code", "client_credentials"}
+			default:
+				grantTypes = []string{"authorization_code"}
+			}
+		}
+	}
 
 	metadata := &ports.MetadataResponse{
 		Issuer:                            issuer,
 		AuthorizationEndpoint:             fmt.Sprintf("%s/oauth2/authorize", issuer),
 		TokenEndpoint:                     fmt.Sprintf("%s/oauth2/token", issuer),
 		ResponseTypesSupported:            s.config.SupportedResponseTypes,
-		GrantTypesSupported:               s.config.SupportedGrantTypes,
+		GrantTypesSupported:               grantTypes,
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
 	}
 
-	// In issue_token mode, include JWKS URI and code challenge methods
-	if s.config.Mode == "issue_token" {
+	// In local and hybrid modes, include JWKS URI and code challenge methods (both serve the JWKS endpoint).
+	if mode := s.config.ModeStrategy.Mode(); mode == servermode.Local || mode == servermode.Hybrid {
 		metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
 		metadata.CodeChallengeMethodsSupported = []string{"S256"}
-		metadata.TokenEndpointAuthMethodsSupported = []string{"client_secret_post"}
+		// client_secret_post is always supported for confidential clients.
+		// none is included when CIMD is enabled: CIMD agents are public clients with no pre-registered secret.
+		methods := []string{"client_secret_post"}
+		if s.config.CIMDEnabled {
+			methods = append([]string{"none"}, methods...)
+		}
+		metadata.TokenEndpointAuthMethodsSupported = methods
 	}
 
 	if s.config.CIMDEnabled {

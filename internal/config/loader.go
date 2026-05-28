@@ -202,7 +202,12 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("telemetry.exporter.compression", "IDENTITY_BROKER_TELEMETRY_EXPORTER_COMPRESSION")
 
 	// Bind OAuth2 authorization server env vars
-	_ = l.v.BindEnv("oauth2_authorization_server.mode", "IDENTITY_BROKER_OAUTH2_MODE")
+	_ = l.v.BindEnv("oauth2_authorization_server.mode", "IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "IDENTITY_BROKER_OAUTH2_MODE")
+	_ = l.v.BindEnv("oauth2_authorization_server.proxy.upstream_issuer_uri", "IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI")
+	_ = l.v.BindEnv("oauth2_authorization_server.proxy.upstream_authorize_endpoint", "IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT")
+	_ = l.v.BindEnv("oauth2_authorization_server.proxy.upstream_token_endpoint", "IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT")
+	_ = l.v.BindEnv("oauth2_authorization_server.local.token_ttl", "IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_TTL")
+	_ = l.v.BindEnv("oauth2_authorization_server.local.token_claims_expression", "IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_CLAIMS_EXPRESSION")
 
 	// Set CIMD configuration defaults
 	cimdDefaults := ports.DefaultCIMDConfig()

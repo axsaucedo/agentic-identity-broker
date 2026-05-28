@@ -29,6 +29,7 @@ func TestConfigurationDefaults(t *testing.T) {
 		t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(t, 32))
 		t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Authenticated-User")
 		t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Admin-User")
+		t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "local")
 
 		loader := NewLoader()
 		cfg, err := loader.GetConfig(context.Background())
@@ -43,6 +44,7 @@ func TestConfigurationDefaults(t *testing.T) {
 		t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(t, 32))
 		t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
 		t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+		t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "local")
 		loader := NewLoader()
 		cfg, err := loader.GetConfig(context.Background())
 
@@ -72,6 +74,7 @@ func TestConfigurationPrecedence(t *testing.T) {
 		t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(t, 32))
 		t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Custom-Header")
 		t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Admin-Header")
+		t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "local")
 
 		loader := NewLoader()
 		cfg, err := loader.GetConfig(context.Background())
@@ -86,6 +89,7 @@ func TestConfigurationPrecedence(t *testing.T) {
 		t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(t, 32))
 		t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-User-Header")
 		t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Admin-Header")
+		t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "local")
 
 		loader := NewLoader()
 		cfg, err := loader.GetConfig(context.Background())
@@ -102,6 +106,7 @@ func TestConfigurationSources(t *testing.T) {
 	t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(t, 32))
 	t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
 	t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+	t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "local")
 
 	loader := NewLoader()
 	_, err := loader.GetConfig(context.Background())
@@ -140,6 +145,7 @@ func TestAWSKMSConfigurationEnvironmentVariables(t *testing.T) {
 		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(t, 32))
 		t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
 		t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+		t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "local")
 		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN", "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012")
 		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME", "MyBranchKeys")
 		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_REGION", "us-east-1")
@@ -172,6 +178,7 @@ func TestAWSKMSConfigurationEnvironmentVariables(t *testing.T) {
 		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(t, 32))
 		t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
 		t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+		t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "local")
 		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN", "arn:aws:kms:us-east-1:123456789012:key/12345678")
 		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_READ_TIMEOUT", "10s")
 		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_WRITE_TIMEOUT", "15s")
@@ -197,6 +204,23 @@ func setMinimalConfigEnv(t *testing.T) {
 	t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(t, 32))
 	t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
 	t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+	t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "local")
+}
+
+func TestConfigLoader_MissingOAuth2Mode(t *testing.T) {
+	t.Run("GetConfig fails when oauth2_authorization_server.mode is not set", func(t *testing.T) {
+		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(t, 32))
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(t, 32))
+		t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+		t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+		// Intentionally not setting IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE
+
+		loader := NewLoader()
+		_, err := loader.GetConfig(context.Background())
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "oauth2_authorization_server.mode")
+	})
 }
 
 func TestTokenExchangeExpectedAudienceConfiguration(t *testing.T) {

@@ -59,6 +59,10 @@ encryption:
   # AWS KMS backend not used in development
   # aws_kms: null
 
+oauth2_authorization_server:
+  # Development uses local mode — broker mints tokens directly, no upstream OAuth2 server needed
+  mode: local
+
 # Future sections for expanded configuration:
 # database:
 #   connection_string: postgresql://user:password@localhost:5432/identity_broker_dev

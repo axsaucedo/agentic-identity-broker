@@ -14,80 +14,109 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // OAuth2TokenHandler handles OAuth2 token endpoint requests.
 // Routes RFC 8693 token exchange to handleTokenExchange; all other grants are
-// delegated to GrantHandler (proxy mode or issue_token mode).
+// resolved via OAuth2Service.ResolveForTokenGrant then delegated to GrantHandler.
 type OAuth2TokenHandler struct {
 	TokenExchange *tokenexchange.TokenExchangeService
+	OAuth2Service ports.OAuth2Service
 	Logger        *slog.Logger
-	GrantHandler  TokenGrantStrategy // always non-nil: proxy or issue_token
+	GrantHandler  TokenGrantStrategy // always non-nil: proxy, local, or hybrid
 }
 
 // ServeHTTP implements http.Handler for the token endpoint.
 func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeOAuth2ErrorJSON(w, http.StatusMethodNotAllowed, "invalid_request", "method not allowed")
 		return
 	}
 
 	// OAuth 2.0 token endpoint must accept application/x-www-form-urlencoded per RFC 6749 Section 4.1.3
 	contentType := r.Header.Get("Content-Type")
 	if !strings.HasPrefix(contentType, "application/x-www-form-urlencoded") {
-		http.Error(w, "invalid Content-Type: expected application/x-www-form-urlencoded", http.StatusBadRequest)
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "invalid Content-Type: expected application/x-www-form-urlencoded")
 		return
 	}
+
+	defer func() { _ = r.Body.Close() }()
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to read request body: %v", err), http.StatusBadRequest)
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "failed to read request body")
 		return
 	}
-	defer func() { _ = r.Body.Close() }()
 
 	if len(body) == 0 {
-		http.Error(w, "request body cannot be empty", http.StatusBadRequest)
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "request body cannot be empty")
 		return
 	}
 
 	formData, err := url.ParseQuery(string(body))
 	if err != nil {
-		http.Error(w, "failed to parse form data", http.StatusBadRequest)
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "failed to parse form data")
 		return
 	}
 
 	grantType := formData.Get("grant_type")
-	if h.Logger != nil {
-		h.Logger.Info("Token endpoint request received",
-			"grant_type", grantType,
-			"expected_grant_type", tokenexchange.TokenExchangeGrantType,
-		)
+	if grantType == "" {
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "grant_type is required")
+		return
 	}
 
 	if grantType == tokenexchange.TokenExchangeGrantType {
-		if h.Logger != nil {
-			h.Logger.Info("Routing to token exchange handler")
-		}
 		h.handleTokenExchange(w, r, formData)
 		return
 	}
 
-	h.GrantHandler.HandleTokenGrant(w, r, grantType, formData)
+	rawClientID := formData.Get("client_id")
+	if rawClientID == "" {
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "client_id is required")
+		return
+	}
+
+	if h.OAuth2Service == nil || h.GrantHandler == nil {
+		if h.Logger != nil {
+			h.Logger.ErrorContext(r.Context(), "OAuth2 token handler invoked with nil OAuth2Service or GrantHandler — check builder wiring")
+		}
+		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "OAuth2 authorization server not configured")
+		return
+	}
+
+	resolution, resolveErr := h.OAuth2Service.ResolveForTokenGrant(r.Context(), id.ClientID(rawClientID))
+	if resolveErr != nil {
+		var clientErr *ports.ClientIDError
+		if errors.As(resolveErr, &clientErr) {
+			status := tokenEndpointStatus(clientErr.Code)
+			writeOAuth2ErrorJSON(w, status, clientErr.Code, clientErr.Desc)
+		} else {
+			if h.Logger != nil {
+				h.Logger.ErrorContext(r.Context(), "unexpected error during client resolution",
+					"error", resolveErr, "client_id", rawClientID)
+			}
+			writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "client resolution failed")
+		}
+		return
+	}
+
+	h.GrantHandler.HandleTokenGrant(w, r, grantType, formData, resolution)
 }
 
 // handleTokenExchange processes RFC 8693 token exchange requests.
 func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.Request, formData url.Values) {
 	if h.TokenExchange == nil {
 		if h.Logger != nil {
-			h.Logger.Error("Token exchange service not configured")
+			h.Logger.Info("token exchange not wired, returning unsupported_grant_type")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error":             "server_error",
-			"error_description": "token exchange service not configured",
+			"error":             "unsupported_grant_type",
+			"error_description": "token exchange is not available in this deployment mode",
 		})
 		return
 	}
@@ -114,14 +143,6 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 			"error_description": "resource parameter is required",
 		})
 		return
-	}
-
-	if h.Logger != nil {
-		h.Logger.Info("Calling TokenExchangeService.Exchange",
-			"resource", req.Resource,
-			"subject_token_present", req.SubjectToken != "",
-			"client_assertion_present", req.ClientAssertion != "",
-		)
 	}
 
 	ctx, span := otel.Tracer("tokenexchange").Start(r.Context(), "tokenexchange.exchange")
@@ -162,14 +183,17 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	body, err := json.Marshal(response)
+	if err != nil {
 		if h.Logger != nil {
 			h.Logger.Error("failed to encode token exchange response", "error", err)
 		}
+		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 
 	if h.Logger != nil {
 		h.Logger.InfoContext(r.Context(), "token_exchange_succeeded",
@@ -181,33 +205,54 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 
 // handleTokenExchangeError maps domain-layer token exchange errors to RFC 8693 error responses.
 func (h *OAuth2TokenHandler) handleTokenExchangeError(w http.ResponseWriter, err error) {
-	w.Header().Set("Content-Type", "application/json")
+	var (
+		status  int
+		errBody map[string]string
+	)
 
 	if tokenExchangeErr, ok := err.(*tokenexchange.TokenExchangeError); ok {
-		w.WriteHeader(tokenExchangeErr.HTTPStatus())
-		errBody := map[string]string{
+		status = tokenExchangeErr.HTTPStatus()
+		errBody = map[string]string{
 			"error":             tokenExchangeErr.Code(),
 			"error_description": tokenExchangeErr.Description(),
 		}
 		if tokenExchangeErr.ErrorURI() != "" {
 			errBody["error_uri"] = tokenExchangeErr.ErrorURI()
 		}
-		if err := json.NewEncoder(w).Encode(errBody); err != nil {
-			if h.Logger != nil {
-				h.Logger.Error("failed to encode token exchange error response", "error", err)
-			}
+	} else {
+		status = http.StatusInternalServerError
+		errBody = map[string]string{
+			"error":             "server_error",
+			"error_description": "internal server error during token exchange",
 		}
+	}
+
+	body, marshalErr := json.Marshal(errBody)
+	if marshalErr != nil {
+		if h.Logger != nil {
+			h.Logger.Error("failed to marshal token exchange error response", "error", marshalErr)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"server_error"}`))
 		return
 	}
 
-	w.WriteHeader(http.StatusInternalServerError)
-	if err := json.NewEncoder(w).Encode(map[string]string{
-		"error":             "server_error",
-		"error_description": "internal server error during token exchange",
-	}); err != nil {
-		if h.Logger != nil {
-			h.Logger.Error("failed to encode generic error response", "error", err)
-		}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
+}
+
+// tokenEndpointStatus maps an OAuth2 error code to the appropriate HTTP status for the token endpoint.
+// RFC 6749 §5.2: invalid_client → 401, server_error → 500, all other codes → 400.
+func tokenEndpointStatus(code string) int {
+	switch code {
+	case "invalid_client":
+		return http.StatusUnauthorized
+	case "server_error":
+		return http.StatusInternalServerError
+	default:
+		return http.StatusBadRequest
 	}
 }
 

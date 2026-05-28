@@ -87,6 +87,18 @@ encryption:
   #   # SECURITY: Must be set via environment variable, never hardcoded
   #   raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
 
+oauth2_authorization_server:
+  # Production uses proxy mode — all OAuth2 requests forwarded to upstream authorization server
+  # MUST be set to the correct mode for your deployment (proxy, local, or hybrid)
+  mode: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE:proxy}
+  proxy:
+    # Upstream OAuth2 server issuer URI (required in proxy/hybrid mode)
+    upstream_issuer_uri: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI}
+    # Upstream authorize endpoint
+    upstream_authorize_endpoint: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT}
+    # Upstream token endpoint
+    upstream_token_endpoint: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT}
+
 # Future sections for expanded configuration:
 # database:
 #   # Connection string MUST come from environment variable in production

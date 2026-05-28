@@ -9,11 +9,12 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // AuthorizationProceedStrategy handles the "proceed" action from an AuthorizationDecision.
-// This is the only part that differs between proxy mode and issue_token mode; all other
+// This is the only part that differs between proxy mode and local mode; all other
 // decision actions (redirect_to_consent, error) are handled by the shared ServeHTTP flow.
 type AuthorizationProceedStrategy interface {
 	HandleProceed(w http.ResponseWriter, r *http.Request, decision *ports.AuthorizationDecision, req *ports.AuthorizationRequest, principal id.Principal)
@@ -28,21 +29,25 @@ func NewProxyProceedStrategy() AuthorizationProceedStrategy {
 }
 
 func (s *proxyProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Request, decision *ports.AuthorizationDecision, _ *ports.AuthorizationRequest, _ id.Principal) {
+	if decision.RedirectURL == "" {
+		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "empty upstream redirect URL")
+		return
+	}
 	http.Redirect(w, r, decision.RedirectURL, http.StatusFound)
 }
 
-// issueTokenProceedStrategy issues a local authorization code and redirects back to the client.
-type issueTokenProceedStrategy struct {
+// localProceedStrategy issues a local authorization code and redirects back to the client.
+type localProceedStrategy struct {
 	issuer ports.AuthorizationCodeIssuer
 	logger *slog.Logger
 }
 
-// NewIssueTokenProceedStrategy returns a ProceedStrategy that issues authorization codes locally.
-func NewIssueTokenProceedStrategy(issuer ports.AuthorizationCodeIssuer, logger *slog.Logger) AuthorizationProceedStrategy {
-	return &issueTokenProceedStrategy{issuer: issuer, logger: logger}
+// NewLocalProceedStrategy returns a ProceedStrategy that issues authorization codes locally.
+func NewLocalProceedStrategy(issuer ports.AuthorizationCodeIssuer, logger *slog.Logger) AuthorizationProceedStrategy {
+	return &localProceedStrategy{issuer: issuer, logger: logger}
 }
 
-func (s *issueTokenProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Request, _ *ports.AuthorizationDecision, req *ports.AuthorizationRequest, principal id.Principal) {
+func (s *localProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Request, _ *ports.AuthorizationDecision, req *ports.AuthorizationRequest, principal id.Principal) {
 	code, err := s.issuer.IssueAuthorizationCode(r.Context(), req, principal)
 	if err != nil {
 		// Per RFC 6749 §4.1.2.1: never redirect when the client or redirect_uri is invalid/unverified.
@@ -102,6 +107,40 @@ func writeDirectOAuth2Error(w http.ResponseWriter, err error) {
 		writeOAuth2ErrorJSON(w, http.StatusUnauthorized, "invalid_client", "client authentication failed")
 	default:
 		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "request validation failed")
+	}
+}
+
+// hybridProceedStrategy dispatches to proxy or local based on the resolved ClientType.
+type hybridProceedStrategy struct {
+	proxy  AuthorizationProceedStrategy
+	local  AuthorizationProceedStrategy
+	logger *slog.Logger
+}
+
+// NewHybridProceedStrategy returns a ProceedStrategy that dispatches by client mode.
+// proxy handles ProxyClient agents; local handles LocalClient and CIMDClient agents.
+func NewHybridProceedStrategy(proxy, local AuthorizationProceedStrategy, logger *slog.Logger) AuthorizationProceedStrategy {
+	if proxy == nil {
+		panic("NewHybridProceedStrategy: proxy strategy must not be nil")
+	}
+	if local == nil {
+		panic("NewHybridProceedStrategy: local strategy must not be nil")
+	}
+	return &hybridProceedStrategy{proxy: proxy, local: local, logger: logger}
+}
+
+func (s *hybridProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Request, decision *ports.AuthorizationDecision, req *ports.AuthorizationRequest, principal id.Principal) {
+	switch decision.ClientType {
+	case storage.ProxyClient:
+		s.proxy.HandleProceed(w, r, decision, req, principal)
+	case storage.CIMDClient, storage.LocalClient:
+		s.local.HandleProceed(w, r, decision, req, principal)
+	default:
+		if s.logger != nil {
+			s.logger.ErrorContext(r.Context(), "unexpected client type in hybrid proceed dispatch",
+				"client_type", decision.ClientType)
+		}
+		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "unexpected client mode in hybrid dispatch")
 	}
 }
 

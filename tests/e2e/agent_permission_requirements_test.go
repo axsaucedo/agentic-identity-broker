@@ -17,8 +17,8 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
@@ -1188,52 +1188,6 @@ var _ = Describe("Agent Permission Requirements", func() {
 	})
 
 	// ===========================================================================
-	// User Story 5: Simplified Consent Screen Without Edit Mode (P2)
-	// ===========================================================================
-
-	Describe("User Story 5: Simplified Consent Screen Without Edit Mode", func() {
-		// Scenario 1: spec.md User Story 5, Scenario 1
-		// Spec: Show service connection actions immediately without edit button
-		// Status: Pending - Frontend implementation
-		It("should show service connection actions immediately without edit button", func() {
-			// Given: Consent screen rendered
-			// When: Screen loads
-			// Then: Service connection actions display immediately, no edit mode toggle
-			Skip("Requires frontend implementation of simplified UI without edit mode")
-		})
-
-		// Scenario 2: spec.md User Story 5, Scenario 2
-		// Spec: Display Login button for unconnected services
-		// Status: Pending - Frontend implementation
-		It("should display Login button for services user is not connected to", func() {
-			// Given: Service without active user session
-			// When: Consent screen renders service card
-			// Then: Login button is displayed to initiate connection
-			Skip("Requires frontend implementation of Login action")
-		})
-
-		// Scenario 3: spec.md User Story 5, Scenario 3
-		// Spec: Display Disconnect action for connected services
-		// Status: Pending - Frontend implementation
-		It("should display Disconnect action for connected services", func() {
-			// Given: Service with active user session
-			// When: Consent screen renders service card
-			// Then: Disconnect action is displayed
-			Skip("Requires frontend implementation of Disconnect action")
-		})
-
-		// Scenario 4: spec.md User Story 5, Scenario 4
-		// Spec: No edit mode toggle in updated consent screen
-		// Status: Pending - Frontend implementation
-		It("should not have edit mode toggle in updated consent screen", func() {
-			// Given: Consent screen redesigned for service requirements
-			// When: Screen renders
-			// Then: No edit mode toggle or button is visible
-			Skip("Requires frontend implementation confirming no edit mode")
-		})
-	})
-
-	// ===========================================================================
 	// User Story 6: Redirect URL for Seamless Flow Continuation (P1)
 	// ===========================================================================
 
@@ -1364,7 +1318,6 @@ var _ = Describe("Agent Permission Requirements", func() {
 			Expect(ok).To(BeTrue(), "redirect_url should be present in response body")
 			Expect(redirectUrl).To(ContainSubstring("/oauth2/callback"))
 		})
-
 
 		// Scenario 3: spec.md User Story 6, Scenario 3
 		// Spec: Return 200 OK with success response when no redirect_uri provided

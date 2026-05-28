@@ -5,6 +5,8 @@ package ports
 import (
 	"context"
 	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 )
 
 // ConfigPort defines the interface for accessing application configuration.
@@ -337,19 +339,32 @@ func DefaultCIMDConfig() CIMDConfig {
 	}
 }
 
+// ProxyModeConfig holds upstream OAuth2 server configuration for proxy mode.
+type ProxyModeConfig struct {
+	UpstreamIssuerURI         string `mapstructure:"upstream_issuer_uri"`
+	UpstreamAuthorizeEndpoint string `mapstructure:"upstream_authorize_endpoint"`
+	UpstreamTokenEndpoint     string `mapstructure:"upstream_token_endpoint"`
+	UpstreamTimeoutSeconds    int    `mapstructure:"upstream_timeout_seconds"`
+}
+
+// LocalModeConfig holds local token issuance configuration for local/hybrid mode.
+type LocalModeConfig struct {
+	// IssuerURI is the JWT iss claim for locally-minted tokens. Optional — defaults to
+	// server.enduser.public_url when empty, allowing independent control behind CDNs or proxies.
+	IssuerURI             string        `mapstructure:"issuer_uri"`
+	TokenTTL              time.Duration `mapstructure:"token_ttl"`
+	TokenClaimsExpression string        `mapstructure:"token_claims_expression"`
+}
+
 // OAuth2AuthServerConfig represents configuration for OAuth2 authorization server functionality.
 type OAuth2AuthServerConfig struct {
-	UpstreamIssuerURI         string   `mapstructure:"upstream_issuer_uri"`
-	UpstreamAuthorizeEndpoint string   `mapstructure:"upstream_authorize_endpoint"`
-	UpstreamTokenEndpoint     string   `mapstructure:"upstream_token_endpoint"`
-	SupportedResponseTypes    []string `mapstructure:"supported_response_types"`
-	SupportedGrantTypes       []string `mapstructure:"supported_grant_types"`
-	UpstreamTimeoutSeconds    int      `mapstructure:"upstream_timeout_seconds"`
-	Mode                      string   `mapstructure:"mode"`
+	Mode  servermode.Mode `mapstructure:"mode"`
+	Proxy ProxyModeConfig `mapstructure:"proxy"`
+	Local LocalModeConfig `mapstructure:"local"`
 
-	// issue_token mode fields (ignored when mode=proxy)
-	TokenTTL              time.Duration `mapstructure:"token_ttl"`               // Default: 1h
-	TokenClaimsExpression string        `mapstructure:"token_claims_expression"` // Optional CEL expression for custom claims
+	// SupportedResponseTypes and SupportedGrantTypes are shared; defaults differ by mode.
+	SupportedResponseTypes []string `mapstructure:"supported_response_types"`
+	SupportedGrantTypes    []string `mapstructure:"supported_grant_types"`
 
 	// MultiAgentClient holds optional multi-agent client sharing configuration.
 	MultiAgentClient MultiAgentClientConfig `mapstructure:"multi_agent_client"`
@@ -358,125 +373,188 @@ type OAuth2AuthServerConfig struct {
 	CIMD CIMDConfig `mapstructure:"cimd"`
 }
 
-// isZero reports whether the config is entirely unset (zero value for every field).
-// Only a truly zero config is skipped; any partial population must be validated.
-func (c *OAuth2AuthServerConfig) isZero() bool {
-	return c.Mode == "" &&
-		c.UpstreamIssuerURI == "" &&
-		c.UpstreamAuthorizeEndpoint == "" &&
-		c.UpstreamTokenEndpoint == "" &&
-		c.SupportedResponseTypes == nil &&
-		c.SupportedGrantTypes == nil &&
-		c.UpstreamTimeoutSeconds == 0 &&
-		c.TokenTTL == 0 &&
-		c.TokenClaimsExpression == "" &&
-		!c.MultiAgentClient.Enabled &&
-		c.MultiAgentClient.AgentIDParamName == "" &&
-		c.MultiAgentClient.AgentIDClaimName == "" &&
-		!c.CIMD.Enabled
-}
-
 // Validate validates the OAuth2AuthServerConfig structure.
 // Sets defaults for empty fields and returns an error for missing required fields.
-// Validation is mode-conditional: proxy mode requires upstream fields, issue_token
-// mode requires issuer_uri and has its own defaults.
-// Returns nil immediately when every field is at its zero value (unconfigured block).
+// oauth2_authorization_server is mandatory — an absent or zero-value block fails validation.
 func (c *OAuth2AuthServerConfig) Validate() error {
-	if c.isZero() {
-		return nil
+	if c.Mode == "issue_token" {
+		return c.newValidationError("oauth2_authorization_server.mode 'issue_token' has been renamed to 'local' — please update your configuration")
 	}
 
-	// Default mode to proxy if not set
 	if c.Mode == "" {
-		c.Mode = "proxy"
+		return c.newValidationError("oauth2_authorization_server.mode is required (use 'proxy', 'local', or 'hybrid')")
 	}
 
 	switch c.Mode {
-	case "issue_token":
-		return c.validateIssueTokenMode()
-	case "proxy":
+	case servermode.Local:
+		return c.validateLocalMode()
+	case servermode.Proxy:
 		return c.validateProxyMode()
+	case servermode.Hybrid:
+		return c.validateHybridMode()
 	default:
-		return c.newValidationError("oauth2_authorization_server.mode must be 'proxy' or 'issue_token'")
+		return c.newValidationError("oauth2_authorization_server.mode must be 'proxy', 'local', or 'hybrid'")
 	}
 }
 
 // validateProxyMode validates configuration for proxy mode (upstream OAuth2 server).
 func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 	if c.CIMD.Enabled {
-		return c.newValidationError("oauth2_authorization_server.cimd.enabled requires mode 'issue_token'; CIMD is incompatible with proxy mode")
+		return c.newValidationError("oauth2_authorization_server.cimd.enabled requires mode 'local' or 'hybrid'; CIMD is incompatible with proxy mode")
 	}
 
-	// Check required fields
-	if c.UpstreamIssuerURI == "" {
-		return c.newValidationError("oauth2_authorization_server.upstream_issuer_uri")
+	if c.Local.TokenTTL != 0 || c.Local.TokenClaimsExpression != "" || c.Local.IssuerURI != "" {
+		return c.newValidationError("oauth2_authorization_server.local must be empty in proxy mode")
 	}
 
-	if c.UpstreamAuthorizeEndpoint == "" {
-		return c.newValidationError("oauth2_authorization_server.upstream_authorize_endpoint")
+	if err := c.validateProxyFields(""); err != nil {
+		return err
+	}
+	c.applySharedDefaults([]string{"authorization_code"})
+	return c.validateMultiAgentClient()
+}
+
+// validateMultiAgentClient validates multi-agent client config if enabled.
+func (c *OAuth2AuthServerConfig) validateMultiAgentClient() error {
+	if !c.MultiAgentClient.Enabled {
+		return nil
+	}
+	if c.MultiAgentClient.AgentIDParamName == "" {
+		return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_param_name is required")
+	}
+	if c.MultiAgentClient.AgentIDClaimName == "" {
+		return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_claim_name is required")
+	}
+	return nil
+}
+
+// validateLocalMode validates configuration for local mode (local token minting).
+func (c *OAuth2AuthServerConfig) validateLocalMode() error {
+	if c.Proxy.UpstreamIssuerURI != "" || c.Proxy.UpstreamAuthorizeEndpoint != "" ||
+		c.Proxy.UpstreamTokenEndpoint != "" || c.Proxy.UpstreamTimeoutSeconds != 0 {
+		return c.newValidationError("oauth2_authorization_server.proxy must be empty in local mode")
 	}
 
-	if c.UpstreamTokenEndpoint == "" {
-		return c.newValidationError("oauth2_authorization_server.upstream_token_endpoint")
+	c.applyLocalDefaults()
+	c.applySharedDefaults([]string{"authorization_code", "client_credentials"})
+
+	if err := c.validateCIMDCache(); err != nil {
+		return err
 	}
 
-	// Set defaults for optional fields
-	if len(c.SupportedResponseTypes) == 0 {
-		c.SupportedResponseTypes = []string{"code"}
-	}
-
-	if len(c.SupportedGrantTypes) == 0 {
-		c.SupportedGrantTypes = []string{"authorization_code"}
-	}
-
-	if c.UpstreamTimeoutSeconds == 0 {
-		c.UpstreamTimeoutSeconds = 30
-	}
-
-	// Validate multi_agent_client fields when enabled
 	if c.MultiAgentClient.Enabled {
-		if c.MultiAgentClient.AgentIDParamName == "" {
-			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_param_name is required")
-		}
-		if c.MultiAgentClient.AgentIDClaimName == "" {
-			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_claim_name is required")
-		}
+		return c.newValidationError("oauth2_authorization_server.multi_agent_client is not supported in local mode")
 	}
 
 	return nil
 }
 
-// validateIssueTokenMode validates configuration for issue_token mode (local token minting).
-func (c *OAuth2AuthServerConfig) validateIssueTokenMode() error {
-	if c.TokenTTL == 0 {
-		c.TokenTTL = time.Hour
+// validateHybridMode validates configuration for hybrid mode (proxy + local token minting).
+func (c *OAuth2AuthServerConfig) validateHybridMode() error {
+	if err := c.validateProxyFields(" is required in hybrid mode"); err != nil {
+		return err
 	}
+	c.applyLocalDefaults()
+	c.applySharedDefaults([]string{"authorization_code", "client_credentials"})
+	if err := c.validateCIMDCache(); err != nil {
+		return err
+	}
+	return c.validateMultiAgentClient()
+}
 
-	// Set defaults for supported types in issue_token mode
+// validateProxyFields checks that the proxy section has all required upstream endpoints.
+func (c *OAuth2AuthServerConfig) validateProxyFields(suffix string) error {
+	if c.Proxy.UpstreamIssuerURI == "" {
+		return c.newValidationError("oauth2_authorization_server.proxy.upstream_issuer_uri" + suffix)
+	}
+	if c.Proxy.UpstreamAuthorizeEndpoint == "" {
+		return c.newValidationError("oauth2_authorization_server.proxy.upstream_authorize_endpoint" + suffix)
+	}
+	if c.Proxy.UpstreamTokenEndpoint == "" {
+		return c.newValidationError("oauth2_authorization_server.proxy.upstream_token_endpoint" + suffix)
+	}
+	if c.Proxy.UpstreamTimeoutSeconds == 0 {
+		c.Proxy.UpstreamTimeoutSeconds = 30
+	}
+	return nil
+}
+
+// applyLocalDefaults sets local-mode defaults (token TTL).
+func (c *OAuth2AuthServerConfig) applyLocalDefaults() {
+	if c.Local.TokenTTL == 0 {
+		c.Local.TokenTTL = time.Hour
+	}
+}
+
+// applySharedDefaults sets shared defaults for response types and grant types.
+func (c *OAuth2AuthServerConfig) applySharedDefaults(defaultGrantTypes []string) {
 	if len(c.SupportedResponseTypes) == 0 {
 		c.SupportedResponseTypes = []string{"code"}
 	}
-
 	if len(c.SupportedGrantTypes) == 0 {
-		c.SupportedGrantTypes = []string{"authorization_code", "client_credentials"}
+		c.SupportedGrantTypes = defaultGrantTypes
 	}
+}
 
-	// Validate CIMD cache TTL invariant early so wiring fails at config load, not startup.
+// validateCIMDCache validates CIMD cache TTL invariants when CIMD is enabled.
+func (c *OAuth2AuthServerConfig) validateCIMDCache() error {
 	if c.CIMD.Enabled && c.CIMD.Cache.MinTTL > c.CIMD.Cache.MaxTTL {
 		return c.newValidationError("oauth2_authorization_server.cimd.cache.min_ttl must not exceed max_ttl")
 	}
-
-	// Validate multi_agent_client fields when enabled
-	if c.MultiAgentClient.Enabled {
-		if c.MultiAgentClient.AgentIDParamName == "" {
-			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_param_name is required")
-		}
-		if c.MultiAgentClient.AgentIDClaimName == "" {
-			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_claim_name is required")
-		}
-	}
-
 	return nil
+}
+
+// Resolve validates the OAuth2AuthServerConfig and produces a concrete, mode-specific
+// OAuth2ModeConfig. The returned type is one of *ProxyOAuth2Config, *LocalOAuth2Config,
+// or *HybridOAuth2Config. Downstream code type-switches on the result — no scattered
+// mode checks needed.
+func (c *OAuth2AuthServerConfig) Resolve() (OAuth2ModeConfig, error) {
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+	switch c.Mode {
+	case servermode.Proxy:
+		return &ProxyOAuth2Config{
+			UpstreamIssuerURI:         c.Proxy.UpstreamIssuerURI,
+			UpstreamAuthorizeEndpoint: c.Proxy.UpstreamAuthorizeEndpoint,
+			UpstreamTokenEndpoint:     c.Proxy.UpstreamTokenEndpoint,
+			UpstreamTimeoutSeconds:    c.Proxy.UpstreamTimeoutSeconds,
+			SupportedResponseTypes:    c.SupportedResponseTypes,
+			SupportedGrantTypes:       c.SupportedGrantTypes,
+			MultiAgentClient:          c.MultiAgentClient,
+		}, nil
+	case servermode.Local:
+		return &LocalOAuth2Config{
+			IssuerURI:              c.Local.IssuerURI,
+			TokenTTL:               c.Local.TokenTTL,
+			TokenClaimsExpression:  c.Local.TokenClaimsExpression,
+			SupportedResponseTypes: c.SupportedResponseTypes,
+			SupportedGrantTypes:    c.SupportedGrantTypes,
+			CIMD:                   c.CIMD,
+		}, nil
+	case servermode.Hybrid:
+		return &HybridOAuth2Config{
+			Proxy: ProxyOAuth2Config{
+				UpstreamIssuerURI:         c.Proxy.UpstreamIssuerURI,
+				UpstreamAuthorizeEndpoint: c.Proxy.UpstreamAuthorizeEndpoint,
+				UpstreamTokenEndpoint:     c.Proxy.UpstreamTokenEndpoint,
+				UpstreamTimeoutSeconds:    c.Proxy.UpstreamTimeoutSeconds,
+				SupportedResponseTypes:    c.SupportedResponseTypes,
+				SupportedGrantTypes:       c.SupportedGrantTypes,
+				MultiAgentClient:          c.MultiAgentClient,
+			},
+			Local: LocalOAuth2Config{
+				IssuerURI:              c.Local.IssuerURI,
+				TokenTTL:               c.Local.TokenTTL,
+				TokenClaimsExpression:  c.Local.TokenClaimsExpression,
+				SupportedResponseTypes: c.SupportedResponseTypes,
+				SupportedGrantTypes:    c.SupportedGrantTypes,
+				CIMD:                   c.CIMD,
+			},
+		}, nil
+	default:
+		return nil, c.newValidationError("oauth2_authorization_server.mode must be 'proxy', 'local', or 'hybrid'")
+	}
 }
 
 // newValidationError creates a validation error for the given field.
@@ -607,6 +685,12 @@ type SecurityConfig struct {
 	// Allows HTTP connections and invalid HTTPS certificates.
 	// NEVER enable this in production.
 	SkipThirdpartyHTTPSValidation bool `mapstructure:"skip_thirdparty_https_validation"`
+
+	// SkipCIMDSSRFValidation disables the SSRF IP blocklist and TLS certificate verification
+	// for CIMD document fetches.
+	// WARNING: This is ONLY for development/test environments with a local mock CIMD server!
+	// NEVER enable this in production.
+	SkipCIMDSSRFValidation bool `mapstructure:"skip_cimd_ssrf_validation"`
 }
 
 // EncryptionConfig contains configuration for encryption operations.

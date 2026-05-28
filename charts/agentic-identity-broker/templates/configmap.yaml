@@ -98,14 +98,23 @@ data:
       {{- end }}
     {{- end }}
 
-    {{- if or .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri (eq .Values.broker.oauth2AuthorizationServer.mode "issue_token") }}
+    {{- $oauth2Mode := .Values.broker.oauth2AuthorizationServer.mode }}
+    {{- $proxyVals := .Values.broker.oauth2AuthorizationServer.proxy }}
+    {{- $localVals := .Values.broker.oauth2AuthorizationServer.local }}
+    {{- $macVals := .Values.broker.oauth2AuthorizationServer.multiAgentClient }}
+    {{- $oauth2Srv := .Values.broker.oauth2AuthorizationServer }}
+    {{- if $oauth2Mode }}
     # OAuth2 Authorization Server configuration
     oauth2_authorization_server:
-      mode: {{ .Values.broker.oauth2AuthorizationServer.mode }}
+      mode: {{ $oauth2Mode }}
+      {{- with .Values.broker.oauth2AuthorizationServer.supportedResponseTypes }}
       supported_response_types:
-        {{- toYaml .Values.broker.oauth2AuthorizationServer.supportedResponseTypes | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.broker.oauth2AuthorizationServer.supportedGrantTypes }}
       supported_grant_types:
-        {{- toYaml .Values.broker.oauth2AuthorizationServer.supportedGrantTypes | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.broker.oauth2AuthorizationServer.multiAgentClient }}
       multi_agent_client:
         enabled: {{ .enabled }}
@@ -116,13 +125,26 @@ data:
         agent_id_claim_name: {{ .agentIdClaimName | quote }}
         {{- end }}
       {{- end }}
-      {{- if .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
-      upstream_issuer_uri: {{ .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
-      upstream_authorize_endpoint: {{ .Values.broker.oauth2AuthorizationServer.upstreamAuthorizeEndpoint }}
-      upstream_token_endpoint: {{ .Values.broker.oauth2AuthorizationServer.upstreamTokenEndpoint }}
-      upstream_timeout_seconds: {{ .Values.broker.oauth2AuthorizationServer.upstreamTimeoutSeconds }}
+      {{- with .Values.broker.oauth2AuthorizationServer.proxy }}
+      {{- if or .upstreamIssuerUri .upstreamAuthorizeEndpoint .upstreamTokenEndpoint .upstreamTimeoutSeconds }}
+      proxy:
+        upstream_issuer_uri: {{ .upstreamIssuerUri }}
+        upstream_authorize_endpoint: {{ .upstreamAuthorizeEndpoint }}
+        upstream_token_endpoint: {{ .upstreamTokenEndpoint }}
+        upstream_timeout_seconds: {{ .upstreamTimeoutSeconds }}
       {{- end }}
-      {{- if eq .Values.broker.oauth2AuthorizationServer.mode "issue_token" }}
+      {{- end }}
+      {{- with .Values.broker.oauth2AuthorizationServer.local }}
+      {{- if or .tokenTtl .tokenClaimsExpression }}
+      local:
+        {{- if .tokenTtl }}
+        token_ttl: {{ .tokenTtl | quote }}
+        {{- end }}
+        {{- if .tokenClaimsExpression }}
+        token_claims_expression: {{ .tokenClaimsExpression | quote }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
       {{- with .Values.broker.oauth2AuthorizationServer.cimd }}
       cimd:
         enabled: {{ .enabled }}
@@ -134,7 +156,6 @@ data:
         ssrf:
           extra_blocked_cidrs: {{ toJson .ssrf.extraBlockedCidrs }}
         client_name_blocklist: {{ toJson .clientNameBlocklist }}
-      {{- end }}
       {{- end }}
     {{- end }}
 

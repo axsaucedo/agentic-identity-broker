@@ -9,11 +9,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 )
 
-var _ = Describe("US2: Server Mode Configuration (issue_token mode)", func() {
+var _ = Describe("US2: Server Mode Configuration (local mode)", func() {
 	var (
 		logger         *slog.Logger
 		storageFactory *bootstrap.StorageFactory
@@ -24,8 +25,8 @@ var _ = Describe("US2: Server Mode Configuration (issue_token mode)", func() {
 		storageFactory = bootstrap.NewStorageFactory(logger)
 	})
 
-	It("starts in issue_token mode", func() {
-		config := fixtures.IssueTokenConfig()
+	It("starts in local mode", func() {
+		config := fixtures.LocalConfig()
 		testStorage, err := storageFactory.NewTestStorage()
 		Expect(err).ToNot(HaveOccurred())
 		defer func() { _ = storageFactory.CloseStorage(testStorage) }()
@@ -36,10 +37,10 @@ var _ = Describe("US2: Server Mode Configuration (issue_token mode)", func() {
 		Expect(app).ToNot(BeNil())
 	})
 
-	It("no upstream URI needed in issue_token mode", func() {
-		config := fixtures.IssueTokenConfig()
-		Expect(config.OAuth2AuthServer.UpstreamIssuerURI).To(BeEmpty())
-		Expect(config.OAuth2AuthServer.UpstreamTokenEndpoint).To(BeEmpty())
+	It("no upstream URI needed in local mode", func() {
+		config := fixtures.LocalConfig()
+		Expect(config.OAuth2AuthServer.Proxy.UpstreamIssuerURI).To(BeEmpty())
+		Expect(config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint).To(BeEmpty())
 
 		testStorage, err := storageFactory.NewTestStorage()
 		Expect(err).ToNot(HaveOccurred())
@@ -53,11 +54,11 @@ var _ = Describe("US2: Server Mode Configuration (issue_token mode)", func() {
 
 	It("default is proxy mode", func() {
 		config := fixtures.DefaultOAuth2Config()
-		Expect(config.OAuth2AuthServer.Mode).To(Equal("proxy"))
+		Expect(config.OAuth2AuthServer.Mode).To(Equal(servermode.Proxy))
 	})
 
 	It("auto-generates signing key on startup", func() {
-		config := fixtures.IssueTokenConfig()
+		config := fixtures.LocalConfig()
 		testStorage, err := storageFactory.NewTestStorage()
 		Expect(err).ToNot(HaveOccurred())
 		defer func() { _ = storageFactory.CloseStorage(testStorage) }()

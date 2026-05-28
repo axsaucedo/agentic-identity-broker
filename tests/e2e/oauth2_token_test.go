@@ -305,7 +305,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			Expect(errResp["error"]).To(Equal("invalid_client"))
 		})
 
-		It("should reject missing client_id with 401 invalid_client (broker-level validation)", func() {
+		It("should reject missing client_id with 400 invalid_request (broker-level validation)", func() {
 			// The broker requires client_id (agent UUID) on every non-token-exchange request.
 
 			// When: POST to token endpoint without client_id
@@ -326,10 +326,10 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			// Then: Broker rejects with 401 before forwarding to upstream
-			Expect(resp.StatusCode).To(Equal(http.StatusUnauthorized))
+			// Then: Broker rejects with 400 — missing required parameter per RFC 6749 §5.2
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 
-			// Then: Response should contain invalid_client error
+			// Then: Response should contain invalid_request error
 			body, err := helpers.ReadResponseBody(resp)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -337,7 +337,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			err = json.Unmarshal([]byte(body), &errResp)
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(errResp["error"]).To(Equal("invalid_client"))
+			Expect(errResp["error"]).To(Equal("invalid_request"))
 		})
 
 		It("should handle server_error from upstream correctly", func() {

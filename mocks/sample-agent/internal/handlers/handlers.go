@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -21,16 +22,20 @@ import (
 
 // UserInfo represents user information retrieved from OAuth2
 type UserInfo struct {
-	Sub string `json:"sub"`
+	Sub    string
+	Claims map[string]interface{}
 }
 
 // Session represents a user session
 type Session struct {
-	Token     *oauth2.Token
-	UserInfo  *UserInfo
-	CreatedAt time.Time
-	ExpiresAt int64
-	CSRFState string // CSRF protection state
+	Token        *oauth2.Token
+	UserInfo     *UserInfo
+	CreatedAt    time.Time
+	ExpiresAt    int64
+	CSRFState    string
+	ClientType   string         // "proxy", "local", or "cimd"
+	OAuth2Config *oauth2.Config // per-flow config (correct client_id/secret)
+	PKCEVerifier string         // non-empty for local/cimd flows that require PKCE
 }
 
 // Handlers handles HTTP requests
@@ -69,36 +74,84 @@ func (h *Handlers) Home(w http.ResponseWriter, r *http.Request) {
 	h.sessionsMu.RUnlock()
 
 	if exists && session.Token.Valid() {
-		// User is logged in, show user info
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		slog.Info("Displaying user info",
 			"sub", session.UserInfo.Sub,
 			"expiresAt", session.ExpiresAt)
-		fmt.Fprint(w, renderUserPage(session.UserInfo, session.ExpiresAt))
+		rawToken := ""
+		if session.Token != nil {
+			rawToken = session.Token.AccessToken
+		}
+		keyID := ""
+		if rawToken != "" {
+			if header, err := extractTokenHeader(rawToken); err == nil {
+				if k, ok := header["kid"].(string); ok {
+					keyID = k
+				}
+			}
+		}
+		fmt.Fprint(w, renderUserPage(session.UserInfo, session.ExpiresAt, session.ClientType, rawToken, keyID))
 		return
 	}
 
-	// User is not logged in, show login page
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, renderLoginPage())
+	fmt.Fprint(w, renderSelectorPage(h.cfg))
 }
 
-// Login initiates the OAuth2 authorization flow
+// Login initiates the OAuth2 authorization flow for a chosen client type.
+// Accepts ?type=proxy|local|cimd; defaults to proxy.
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
-	// Generate state for CSRF protection
-	state := generateRandomString(32)
+	clientType := r.URL.Query().Get("type")
+	var agentID string
+	switch clientType {
+	case "local":
+		agentID = h.cfg.OAuth2.LocalAgentID
+	case "cimd":
+		// For CIMD, the client_id in the authorize URL is the metadata URI, not the broker UUID.
+		agentID = h.cfg.OAuth2.CIMDClientURI
+	default:
+		clientType = "proxy"
+		agentID = h.cfg.OAuth2.ProxyAgentID
+		if agentID == "" {
+			agentID = h.cfg.OAuth2.ClientID // fallback for non-compose environments
+		}
+	}
 
-	// Create session
+	if agentID == "" {
+		http.Error(w, "agent ID not available for type "+clientType+" — seed data may still be loading", http.StatusServiceUnavailable)
+		return
+	}
+
+	state := generateRandomString(32)
 	sessionID := generateRandomString(32)
+
+	// Build per-flow OAuth2 config with the selected agent's credentials.
+	flowConfig := *h.oauth2Config
+	flowConfig.ClientID = agentID
+	// Local and CIMD agents are public clients (no client secret).
+	if clientType == "local" || clientType == "cimd" {
+		flowConfig.ClientSecret = ""
+	}
+
+	// Generate PKCE verifier for local/CIMD flows (broker enforces S256).
+	var pkceVerifier string
+	if clientType == "local" || clientType == "cimd" {
+		pkceVerifier = oauth2.GenerateVerifier()
+	}
+
 	h.sessionsMu.Lock()
 	h.sessions[sessionID] = &Session{
-		CreatedAt: time.Now(),
+		CreatedAt:    time.Now(),
+		CSRFState:    state,
+		UserInfo:     &UserInfo{},
+		ClientType:   clientType,
+		OAuth2Config: &flowConfig,
+		PKCEVerifier: pkceVerifier,
 	}
 	h.sessionsMu.Unlock()
 
-	// Set session cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_id",
 		Value:    sessionID,
@@ -108,21 +161,18 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   86400,
 	})
 
-	// Store CSRF state in session for validation in callback
-	h.sessionsMu.Lock()
-	h.sessions[sessionID].CSRFState = state
-	h.sessions[sessionID].UserInfo = &UserInfo{}
-	h.sessionsMu.Unlock()
-
-	// Generate authorization URL
-	authURL := h.oauth2Config.AuthCodeURL(state, oauth2.AccessTypeOnline)
+	var authURL string
+	if pkceVerifier != "" {
+		authURL = flowConfig.AuthCodeURL(state, oauth2.AccessTypeOnline, oauth2.S256ChallengeOption(pkceVerifier))
+	} else {
+		authURL = flowConfig.AuthCodeURL(state, oauth2.AccessTypeOnline)
+	}
 
 	slog.Info("Initiating OAuth2 authorization flow",
-		"client_id", h.oauth2Config.ClientID,
-		"state", state[:8],
-		"auth_url_host", authURL[:50])
+		"client_type", clientType,
+		"client_id", agentID,
+		"state", state[:8])
 
-	// Redirect to authorization server
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 }
 
@@ -171,11 +221,24 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request) {
 		"code_length", len(code),
 		"state_length", len(state))
 
-	// Exchange code for token
+	// Exchange code for token using the per-flow config stored at login time.
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	token, err := h.oauth2Config.Exchange(ctx, code)
+	h.sessionsMu.RLock()
+	flowCfg := h.sessions[sessionID].OAuth2Config
+	pkceVerifier := h.sessions[sessionID].PKCEVerifier
+	h.sessionsMu.RUnlock()
+	if flowCfg == nil {
+		flowCfg = h.oauth2Config // fallback for sessions started before this change
+	}
+
+	var exchangeOpts []oauth2.AuthCodeOption
+	if pkceVerifier != "" {
+		exchangeOpts = append(exchangeOpts, oauth2.VerifierOption(pkceVerifier))
+	}
+
+	token, err := flowCfg.Exchange(ctx, code, exchangeOpts...)
 	if err != nil {
 		slog.Error("Failed to exchange code for token",
 			"error", err.Error())
@@ -196,14 +259,17 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try to extract sub claim from JWT token
-	// If token is not JWT format (opaque), fall back to "N/A"
+	// Decode JWT claims from access token (best-effort; opaque tokens get empty claims).
 	sub := "N/A"
-	if decodedSub, err := extractSubFromToken(accessToken); err == nil {
-		sub = decodedSub
-		slog.Info("Extracted sub claim from JWT token", "sub", sub)
+	var claims map[string]interface{}
+	if c, err := extractTokenClaims(accessToken); err == nil {
+		claims = c
+		if s, ok := c["sub"].(string); ok {
+			sub = s
+		}
+		slog.Info("Extracted JWT claims", "sub", sub)
 	} else {
-		slog.Info("Token is not JWT format (opaque token), using placeholder", "error", err.Error())
+		slog.Info("Token is not JWT format (opaque token)", "error", err.Error())
 	}
 
 	// Store token and user info in session
@@ -212,6 +278,7 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request) {
 		session.Token = token
 		session.ExpiresAt = token.Expiry.Unix()
 		session.UserInfo.Sub = sub
+		session.UserInfo.Claims = claims
 		slog.Info("Updated session in callback",
 			"sub", session.UserInfo.Sub,
 			"expiresAt", session.ExpiresAt)
@@ -415,18 +482,39 @@ func (h *Handlers) getSessionID(r *http.Request) string {
 	return cookie.Value
 }
 
-// extractSubFromToken extracts the 'sub' claim from a JWT access token without verification
-func extractSubFromToken(accessToken string) (string, error) {
-	// JWT format: header.payload.signature
+// extractTokenHeader decodes the header of a JWT access token without verification.
+func extractTokenHeader(accessToken string) (map[string]interface{}, error) {
 	parts := strings.Split(accessToken, ".")
 	if len(parts) < 2 {
-		return "", fmt.Errorf("invalid token format")
+		return nil, fmt.Errorf("invalid token format")
 	}
+	header := parts[0]
+	switch len(header) % 4 {
+	case 1:
+		header += "==="
+	case 2:
+		header += "=="
+	case 3:
+		header += "="
+	}
+	decoded, err := base64.URLEncoding.DecodeString(header)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode token header: %w", err)
+	}
+	var claims map[string]interface{}
+	if err := json.Unmarshal(decoded, &claims); err != nil {
+		return nil, fmt.Errorf("failed to parse token header: %w", err)
+	}
+	return claims, nil
+}
 
-	// Decode the payload (second part)
+// extractTokenClaims decodes the payload of a JWT access token without verification.
+func extractTokenClaims(accessToken string) (map[string]interface{}, error) {
+	parts := strings.Split(accessToken, ".")
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid token format")
+	}
 	payload := parts[1]
-
-	// Add padding if needed for base64 decoding
 	switch len(payload) % 4 {
 	case 1:
 		payload += "==="
@@ -435,25 +523,15 @@ func extractSubFromToken(accessToken string) (string, error) {
 	case 3:
 		payload += "="
 	}
-
 	decoded, err := base64.URLEncoding.DecodeString(payload)
 	if err != nil {
-		return "", fmt.Errorf("failed to decode token payload: %w", err)
+		return nil, fmt.Errorf("failed to decode token payload: %w", err)
 	}
-
-	// Parse the JSON payload
 	var claims map[string]interface{}
 	if err := json.Unmarshal(decoded, &claims); err != nil {
-		return "", fmt.Errorf("failed to parse token claims: %w", err)
+		return nil, fmt.Errorf("failed to parse token claims: %w", err)
 	}
-
-	// Extract the 'sub' claim
-	sub, ok := claims["sub"].(string)
-	if !ok {
-		return "", fmt.Errorf("'sub' claim not found or not a string")
-	}
-
-	return sub, nil
+	return claims, nil
 }
 
 // generateRandomString generates a cryptographically secure random string of given length
@@ -471,331 +549,201 @@ func generateRandomString(length int) string {
 	return string(b)
 }
 
-// renderLoginPage renders the login page HTML
-func renderLoginPage() string {
-	return `
-<!DOCTYPE html>
+// renderSelectorPage renders the client-type selector home page.
+func renderSelectorPage(cfg *config.Config) string {
+	proxyAvail := cfg.OAuth2.ProxyAgentID != ""
+	localAvail := cfg.OAuth2.LocalAgentID != ""
+	cimdAvail := cfg.OAuth2.CIMDClientURI != ""
+
+	btnProxy := `<a href="/login?type=proxy" class="btn btn-proxy">Login as Proxy Client<span class="badge">forwards to upstream OAuth2</span></a>`
+	if !proxyAvail {
+		btnProxy = `<span class="btn btn-disabled">Proxy Client<span class="badge">not seeded yet — reload in a moment</span></span>`
+	}
+	btnLocal := `<a href="/login?type=local" class="btn btn-local">Login as Local Client<span class="badge">broker issues JWT locally</span></a>`
+	if !localAvail {
+		btnLocal = `<span class="btn btn-disabled">Local Client<span class="badge">not seeded yet — reload in a moment</span></span>`
+	}
+	btnCIMD := `<a href="/login?type=cimd" class="btn btn-cimd">Login as CIMD Client<span class="badge">resolved via metadata doc (placeholder URL)</span></a>`
+	if !cimdAvail {
+		btnCIMD = `<span class="btn btn-disabled">CIMD Client<span class="badge">not seeded yet — reload in a moment</span></span>`
+	}
+
+	return `<!DOCTYPE html>
 <html>
 <head>
     <title>Sample OAuth2 Client</title>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            max-width: 600px;
-            margin: 100px auto;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 640px;
+            margin: 80px auto;
             padding: 20px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
         }
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 8px;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
-            text-align: center;
+        .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
+        h1 { color: #333; margin-bottom: 4px; }
+        .subtitle { color: #666; margin-bottom: 32px; }
+        .btn {
+            display: flex; flex-direction: column; align-items: flex-start;
+            width: 100%%; padding: 14px 20px; margin-bottom: 12px;
+            border-radius: 6px; font-size: 16px; font-weight: 600;
+            text-decoration: none; color: white; cursor: pointer;
+            transition: opacity 0.15s; box-sizing: border-box;
         }
-        h1 {
-            color: #333;
-            margin-bottom: 10px;
-        }
-        .subtitle {
-            color: #666;
-            margin-bottom: 30px;
-        }
-        .info {
-            background-color: #f5f5f5;
-            padding: 20px;
-            border-radius: 4px;
-            margin-bottom: 30px;
-            text-align: left;
-            border-left: 4px solid #667eea;
-        }
-        .info p {
-            margin: 8px 0;
-            color: #555;
-        }
-        .info strong {
-            color: #333;
-        }
-        a.button {
-            display: inline-block;
-            background-color: #667eea;
-            color: white;
-            padding: 12px 30px;
-            text-decoration: none;
-            border-radius: 4px;
-            font-weight: bold;
-            transition: background-color 0.2s;
-        }
-        a.button:hover {
-            background-color: #764ba2;
-        }
-        .flow-diagram {
-            margin-top: 30px;
-            padding-top: 30px;
-            border-top: 1px solid #eee;
-            text-align: left;
-        }
-        .flow-step {
-            margin: 10px 0;
-            padding: 8px;
-            background: #f9f9f9;
-            border-left: 3px solid #667eea;
-            padding-left: 15px;
-        }
+        .btn:hover { opacity: 0.88; }
+        .btn-proxy  { background: #667eea; }
+        .btn-local  { background: #27ae60; }
+        .btn-cimd   { background: #e67e22; }
+        .btn-disabled { background: #bdc3c7; cursor: default; }
+        .btn-disabled:hover { opacity: 1; }
+        .badge { font-size: 12px; font-weight: 400; opacity: 0.85; margin-top: 3px; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🔐 Sample OAuth2 Client</h1>
-        <p class="subtitle">End-to-End OAuth2 Flow Testing</p>
-
-        <div class="info">
-            <p><strong>This Sample Agent demonstrates the complete OAuth2 flow:</strong></p>
-            <div class="flow-diagram">
-                <div class="flow-step">① Sample Agent (this app) ← OAuth2 Client</div>
-                <div class="flow-step">② Identity Broker ← OAuth2 Authorization Server</div>
-                <div class="flow-step">③ Upstream OAuth2 Mock ← Actual Authorization Server</div>
-            </div>
-        </div>
-
-        <p style="margin-bottom: 30px; color: #666;">
-            Click "Login" to start the OAuth2 authorization flow through the identity broker.
-        </p>
-
-        <a href="/login" class="button">Login with OAuth2</a>
-
-        <div class="info" style="margin-top: 30px;">
-            <p><strong>Flow Details:</strong></p>
-            <p>• Client ID: upstream-oauth2-client</p>
-            <p>• Authorization Server: http://localhost:8000 (Identity Broker)</p>
-            <p>• Upstream Server: http://localhost:9001 (Mock OAuth2)</p>
-            <p>• Scopes: openid, profile, email</p>
-        </div>
+        <p class="subtitle">Select a client type to start an authorization flow through the identity broker</p>
+        ` + btnProxy + `
+        ` + btnLocal + `
+        ` + btnCIMD + `
     </div>
 </body>
-</html>
-`
+</html>`
 }
 
-// renderUserPage renders the user information page
-func renderUserPage(userInfo *UserInfo, expiresAt int64) string {
-	expiresTime := time.Unix(expiresAt, 0).Format(time.RFC3339)
-	slog.Info("renderUserPage called with",
-		"sub", userInfo.Sub,
-		"expiresTime", expiresTime)
-	return fmt.Sprintf(`
-<!DOCTYPE html>
+// renderUserPage renders the post-login user info page.
+func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType, rawToken, keyID string) string {
+	var flowLabel string
+	switch clientType {
+	case "local":
+		flowLabel = "Local Client — token issued directly by broker (no upstream)"
+	case "cimd":
+		flowLabel = "CIMD Client — agent resolved via Client ID Metadata Document"
+	default:
+		flowLabel = "Proxy Client — token forwarded from upstream OAuth2 server"
+	}
+
+	// Build claims rows: well-known claims first, then remaining alphabetically.
+	wellKnown := []string{"iss", "sub", "aud", "exp", "iat", "jti", "azp", "scope"}
+	seen := map[string]bool{}
+	var claimRows strings.Builder
+	if keyID != "" {
+		claimRows.WriteString(fmt.Sprintf(
+			`<tr><td class="ck">kid <span class="hdr">(header)</span></td><td class="cv">%s</td></tr>`,
+			keyID))
+	}
+	formatVal := func(v interface{}) string {
+		switch t := v.(type) {
+		case float64:
+			if t > 1e9 {
+				return fmt.Sprintf("%s (%g)", time.Unix(int64(t), 0).UTC().Format(time.RFC3339), t)
+			}
+			return fmt.Sprintf("%g", t)
+		case []interface{}:
+			b, _ := json.Marshal(t)
+			return string(b)
+		default:
+			return fmt.Sprintf("%v", v)
+		}
+	}
+	if userInfo.Claims != nil {
+		for _, k := range wellKnown {
+			if v, ok := userInfo.Claims[k]; ok {
+				seen[k] = true
+				claimRows.WriteString(fmt.Sprintf(
+					`<tr><td class="ck">%s</td><td class="cv">%s</td></tr>`,
+					k, formatVal(v)))
+			}
+		}
+		var extra []string
+		for k := range userInfo.Claims {
+			if !seen[k] {
+				extra = append(extra, k)
+			}
+		}
+		sort.Strings(extra)
+		for _, k := range extra {
+			claimRows.WriteString(fmt.Sprintf(
+				`<tr><td class="ck">%s</td><td class="cv">%s</td></tr>`,
+				k, formatVal(userInfo.Claims[k])))
+		}
+	}
+
+	return fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
     <title>User Info - Sample OAuth2 Client</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            max-width: 600px;
-            margin: 100px auto;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%);
-            min-height: 100vh;
-        }
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 8px;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 10px;
-        }
-        .success {
-            color: #27ae60;
-            margin-bottom: 30px;
-            font-size: 18px;
-        }
-        .user-info {
-            background: linear-gradient(135deg, #f5f7fa 0%%, #c3cfe2 100%%);
-            padding: 20px;
-            border-radius: 4px;
-            margin-bottom: 30px;
-        }
-        .info-row {
-            margin: 12px 0;
-            padding: 10px;
-            background: white;
-            border-radius: 4px;
-        }
-        .info-row strong {
-            color: #667eea;
-            min-width: 100px;
-            display: inline-block;
-        }
-        .info-row span {
-            color: #333;
-        }
-        .flow-success {
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-            padding: 15px;
-            border-radius: 4px;
-            margin-bottom: 30px;
-            color: #155724;
-        }
-        .buttons {
-            display: flex;
-            gap: 10px;
-        }
-        a, button {
-            display: inline-block;
-            padding: 10px 20px;
-            text-decoration: none;
-            border-radius: 4px;
-            font-weight: bold;
-            border: none;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        .btn-home {
-            background-color: #667eea;
-            color: white;
-            flex: 1;
-        }
-        .btn-home:hover {
-            background-color: #764ba2;
-        }
-        .btn-logout {
-            background-color: #e74c3c;
-            color: white;
-            flex: 1;
-        }
-        .btn-logout:hover {
-            background-color: #c0392b;
-        }
-        .btn-mcp {
-            background-color: #27ae60;
-            color: white;
-            width: 100%%;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-        .btn-mcp:hover {
-            background-color: #219a52;
-        }
-        .btn-mcp:disabled {
-            background-color: #95a5a6;
-            cursor: not-allowed;
-        }
-        .mcp-result {
-            margin-top: 15px;
-            padding: 15px;
-            border-radius: 4px;
-            display: none;
-        }
-        .mcp-result.success {
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
-        }
-        .mcp-result.error {
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
-        }
-        .mcp-result pre {
-            margin: 8px 0 0 0;
-            font-size: 13px;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 680px; margin: 60px auto; padding: 20px; background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); min-height: 100vh; }
+        .container { background: white; padding: 36px; border-radius: 8px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
+        h1 { color: #333; margin-bottom: 10px; }
+        .flow-badge { background: #eef0ff; border-left: 4px solid #667eea; padding: 10px 16px; border-radius: 4px; margin-bottom: 20px; color: #3d4db7; font-size: 14px; }
+        h2 { font-size: 15px; color: #555; margin: 20px 0 8px; }
+        table { width: 100%%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+        td { padding: 7px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+        .ck { color: #667eea; font-weight: 600; white-space: nowrap; width: 1%%; }
+        .cv { word-break: break-all; font-family: monospace; }
+        details { margin-bottom: 20px; }
+        summary { cursor: pointer; font-size: 13px; color: #667eea; font-weight: 600; margin-bottom: 6px; }
+        .raw { font-family: monospace; font-size: 12px; background: #f7f7f7; padding: 10px; border-radius: 4px; word-break: break-all; border: 1px solid #e0e0e0; }
+        .hdr { font-size: 11px; color: #999; font-weight: 400; }
+        .buttons { display: flex; gap: 10px; margin-top: 16px; }
+        a, button { display: inline-block; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; border: none; cursor: pointer; transition: background-color 0.2s; }
+        .btn-home { background: #667eea; color: white; flex: 1; }
+        .btn-home:hover { background: #764ba2; }
+        .btn-mcp { background: #27ae60; color: white; width: 100%%; margin-bottom: 10px; font-size: 14px; }
+        .btn-mcp:hover { background: #219a52; }
+        .btn-mcp:disabled { background: #95a5a6; cursor: not-allowed; }
+        .mcp-result { margin-top: 15px; padding: 15px; border-radius: 4px; display: none; }
+        .mcp-result.success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .mcp-result.error   { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .mcp-result pre { margin: 8px 0 0 0; font-size: 13px; white-space: pre-wrap; word-break: break-all; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>✓ OAuth2 Authentication Successful!</h1>
-        <p class="success">You have successfully completed the OAuth2 flow.</p>
-
-        <div class="flow-success">
-            <strong>✓ End-to-End Flow Completed:</strong><br>
-            Sample Agent → Identity Broker → Upstream OAuth2 Server
-        </div>
-
-        <div class="user-info">
-            <h2 style="margin-top: 0; color: #333;">User Information</h2>
-            <div class="info-row">
-                <strong>Subject:</strong>
-                <span>%s</span>
-            </div>
-            <div class="info-row">
-                <strong>Token Expires:</strong>
-                <span>%s</span>
-            </div>
-        </div>
-
-        <button id="mcp-btn" class="btn-mcp" onclick="callMCPTool()">
-            Call MCP Tool (Token Exchange)
-        </button>
-
+        <h1>&#x2713; OAuth2 Flow Successful</h1>
+        <div class="flow-badge">%s</div>
+        <h2>Access Token Claims</h2>
+        <table><tbody>%s</tbody></table>
+        <details>
+            <summary>Raw access token</summary>
+            <div class="raw">%s</div>
+        </details>
+        <button id="mcp-btn" class="btn-mcp" onclick="callMCPTool()">Call MCP Tool (Token Exchange)</button>
         <div id="mcp-result" class="mcp-result"></div>
-
         <div class="buttons">
-            <a href="/" class="btn-home">Home</a>
-            <a href="/logout" class="btn-logout">Logout</a>
+            <a href="/logout" class="btn-home">Switch Client</a>
         </div>
     </div>
-
     <script>
     function callMCPTool() {
         var btn = document.getElementById('mcp-btn');
         var result = document.getElementById('mcp-result');
-        btn.disabled = true;
-        btn.textContent = 'Calling...';
-        result.style.display = 'none';
-        result.className = 'mcp-result';
-
+        btn.disabled = true; btn.textContent = 'Calling...';
+        result.style.display = 'none'; result.className = 'mcp-result';
         fetch('/call-mcp', {method: 'POST'})
             .then(function(r) { return r.json(); })
             .then(function(d) {
                 result.style.display = 'block';
                 if (d.success) {
                     result.classList.add('success');
-                    var html = '<strong>Token Exchange Successful!</strong>' +
-                        '<pre>Tool: whoami\nResult: ' + esc(d.tool_result) +
-                        '\nGateway: ' + esc(d.gateway_url);
-
-                    // Add JWT claims if available
-                    if (d.jwt_claims && Object.keys(d.jwt_claims).length > 0) {
-                        html += '\n\nJWT Claims:\n' + formatJSON(d.jwt_claims);
-                    }
+                    var html = '<strong>Token Exchange Successful!</strong><pre>Tool: whoami\nResult: ' + esc(d.tool_result) + '\nGateway: ' + esc(d.gateway_url);
+                    if (d.jwt_claims && Object.keys(d.jwt_claims).length > 0) { html += '\n\nJWT Claims:\n' + formatJSON(d.jwt_claims); }
                     html += '</pre>';
                     result.innerHTML = html;
                 } else {
                     result.classList.add('error');
-                    result.innerHTML = '<strong>MCP Call Failed</strong>' +
-                        '<pre>' + esc(d.error) + '\nGateway: ' + esc(d.gateway_url) + '</pre>';
+                    result.innerHTML = '<strong>MCP Call Failed</strong><pre>' + esc(d.error) + '\nGateway: ' + esc(d.gateway_url) + '</pre>';
                 }
             })
-            .catch(function(e) {
-                result.style.display = 'block';
-                result.classList.add('error');
-                result.innerHTML = '<strong>Request Failed</strong><pre>' + esc(String(e)) + '</pre>';
-            })
-            .finally(function() {
-                btn.disabled = false;
-                btn.textContent = 'Call MCP Tool (Token Exchange)';
-            });
+            .catch(function(e) { result.style.display='block'; result.classList.add('error'); result.innerHTML='<strong>Request Failed</strong><pre>'+esc(String(e))+'</pre>'; })
+            .finally(function() { btn.disabled=false; btn.textContent='Call MCP Tool (Token Exchange)'; });
     }
-
-    function formatJSON(obj) {
-        return esc(JSON.stringify(obj, null, 2));
-    }
-
-    function esc(s) {
-        return String(s)
-            .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-            .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
+    function formatJSON(obj) { return esc(JSON.stringify(obj, null, 2)); }
+    function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
     </script>
 </body>
-</html>
-`, userInfo.Sub, expiresTime)
+</html>`, flowLabel, claimRows.String(), rawToken)
 }
