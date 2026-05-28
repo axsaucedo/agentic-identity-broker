@@ -416,11 +416,21 @@ func (b *Builder) Build() (*App, error) {
 		if ov.cimdEnabled {
 			activeFetcher := b.cimdFetcher
 			if activeFetcher == nil {
-				concreteFetcher, fetchErr := adaptercmd.NewFetcher(
-					ov.cimdConfig.FetchTimeout,
-					int64(ov.cimdConfig.MaxResponseBytes),
-					ov.cimdConfig.SSRF.ExtraBlockedCIDRs,
-				)
+				var concreteFetcher *adaptercmd.Fetcher
+				var fetchErr error
+				if b.config.Security.SkipCIMDSSRFValidation {
+					b.logger.Warn("CIMD SSRF validation disabled — dev/test only, never use in production")
+					concreteFetcher, fetchErr = adaptercmd.NewFetcherInsecure(
+						ov.cimdConfig.FetchTimeout,
+						int64(ov.cimdConfig.MaxResponseBytes),
+					)
+				} else {
+					concreteFetcher, fetchErr = adaptercmd.NewFetcher(
+						ov.cimdConfig.FetchTimeout,
+						int64(ov.cimdConfig.MaxResponseBytes),
+						ov.cimdConfig.SSRF.ExtraBlockedCIDRs,
+					)
+				}
 				if fetchErr != nil {
 					return nil, fmt.Errorf("failed to create CIMD fetcher: %w", fetchErr)
 				}

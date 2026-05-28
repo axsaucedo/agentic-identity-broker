@@ -685,6 +685,12 @@ type SecurityConfig struct {
 	// Allows HTTP connections and invalid HTTPS certificates.
 	// NEVER enable this in production.
 	SkipThirdpartyHTTPSValidation bool `mapstructure:"skip_thirdparty_https_validation"`
+
+	// SkipCIMDSSRFValidation disables the SSRF IP blocklist and TLS certificate verification
+	// for CIMD document fetches.
+	// WARNING: This is ONLY for development/test environments with a local mock CIMD server!
+	// NEVER enable this in production.
+	SkipCIMDSSRFValidation bool `mapstructure:"skip_cimd_ssrf_validation"`
 }
 
 // EncryptionConfig contains configuration for encryption operations.
