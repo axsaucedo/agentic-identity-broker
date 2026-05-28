@@ -259,13 +259,16 @@ func (s *FositeStorage) GetClient(ctx context.Context, clientID string) (fosite.
 		return &publicClient{clientID: clientID, agent: resolution.Agent, redirectURIs: resolution.CIMDMetadata.RedirectURIs}, nil
 	}
 
-	// LocalClient agents are public clients — no credential is registered for them.
-	if resolution.Agent.ClientType() == storage.LocalClient {
-		return &publicClient{clientID: clientID, agent: resolution.Agent, redirectURIs: resolution.Agent.RedirectURIs}, nil
-	}
-
+	// LocalClient agents may or may not have credentials registered.
+	// Try the credential store first; if none exist, treat as a public client
+	// (PKCE-only authorization_code flow). This allows the same agent to be used
+	// as a confidential client (client_credentials) when credentials are provisioned
+	// and as a public client (authorization_code + PKCE) when they are not.
 	cred, err := s.credRepo.GetByAgentID(ctx, resolution.Agent.ID)
 	if err != nil {
+		if isStorageNotFound(err) && resolution.Agent.ClientType() == storage.LocalClient {
+			return &publicClient{clientID: clientID, agent: resolution.Agent, redirectURIs: resolution.Agent.RedirectURIs}, nil
+		}
 		return nil, s.mapStorageError(ctx, err)
 	}
 	return &confidentialClient{clientID: clientID, agent: resolution.Agent, credential: cred}, nil
