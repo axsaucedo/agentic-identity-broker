@@ -91,8 +91,14 @@ func (s *FositeStorage) GetAuthorizeCodeSession(ctx context.Context, code string
 		return nil, s.mapStorageError(ctx, err)
 	}
 
-	// Look up the client (agent) — needed even for invalidated codes so fosite can revoke tokens.
-	client, err := s.GetClient(ctx, authCode.AgentID.String())
+	// Look up the client using the stored ClientID (the original client_id from the authorize
+	// request). For CIMD clients this is the metadata URL; for opaque clients it's the UUID.
+	// Using AgentID.String() would fail for CIMD clients whose resolver rejects UUID lookups.
+	clientLookupID := authCode.ClientID.String()
+	if clientLookupID == "" {
+		clientLookupID = authCode.AgentID.String()
+	}
+	client, err := s.GetClient(ctx, clientLookupID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up client: %w", err)
 	}
