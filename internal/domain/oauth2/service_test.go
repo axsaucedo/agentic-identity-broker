@@ -779,7 +779,7 @@ func TestService_GenerateMetadata(t *testing.T) {
 				TokenEndpoint:                     "https://broker.example.com/oauth2/token",
 				ResponseTypesSupported:            []string{"code"},
 				GrantTypesSupported:               []string{"authorization_code", "refresh_token"},
-				TokenEndpointAuthMethodsSupported: []string{"client_secret_post"},
+				TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
 			},
 		},
 	}
