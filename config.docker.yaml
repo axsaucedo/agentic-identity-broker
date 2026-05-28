@@ -14,7 +14,7 @@ server:
     port: 8000
     bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
     # use port 3000 which points to the Vite dev server for local development
-    public_url: http://localhost:3000 
+    public_url: http://localhost:3000
     # Authentication - preauth mode (trust principals from reverse proxy headers)
     authentication:
       preauth:
@@ -44,14 +44,31 @@ third_party_oauth2:
   # Load from environment variable (never commit actual keys!)
   jwe_signing_key: ${IDENTITY_BROKER_JWE_SIGNING_KEY}
 
-# OAuth2 Authorization Server (upstream provider)
+# OAuth2 Authorization Server
 oauth2_authorization_server:
-  # Upstream OAuth2 server configuration
-  # Uses internal container DNS names for server-to-server communication within Docker Compose network
-  upstream_issuer_uri: http://upstream-oauth2:9001
-  # The authorize endpoint is used for redirecting end-users to authenticate
-  upstream_authorize_endpoint: http://localhost:9001/oauth/authorize
-  upstream_token_endpoint: http://upstream-oauth2:9001/oauth/token
+  mode: hybrid
+
+  # Proxy path: agents with a ClientID are forwarded to the upstream OAuth2 server.
+  # Uses internal container DNS names for server-to-server communication.
+  proxy:
+    upstream_issuer_uri: http://upstream-oauth2:9001
+    upstream_authorize_endpoint: http://localhost:9001/oauth/authorize
+    upstream_token_endpoint: http://upstream-oauth2:9001/oauth/token
+    upstream_timeout_seconds: 10
+
+  # Local path: agents without a ClientID are issued tokens locally.
+  local:
+    token_ttl: 1h
+
+  # CIMD: resolve agents via Client ID Metadata Document URLs.
+  cimd:
+    enabled: true
+    fetch_timeout: 5s
+    max_response_bytes: 5120
+    cache:
+      min_ttl: 60s
+      max_ttl: 1h
+      max_entries: 100
 
   # Supported OAuth2 response types
   supported_response_types:
@@ -62,12 +79,6 @@ oauth2_authorization_server:
     - authorization_code
     - refresh_token
     - urn:ietf:params:oauth:grant-type:token-exchange
-
-  # Upstream request timeout
-  upstream_timeout_seconds: 10
-
-  # Operation mode: proxy (default) or authorization_server
-  mode: proxy
 
 # Security configuration
 security:
