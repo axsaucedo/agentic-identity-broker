@@ -44,7 +44,7 @@ func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository) {
 	require.NoError(t, err)
 
 	// Generate a signing key
-	signingKeySvc := NewSigningKeyService(signingKeyRepo, enc, logger)
+	signingKeySvc := NewSigningKeyService(signingKeyRepo, enc, nil, logger)
 	_, err = signingKeySvc.generateAndStore(context.Background(), "ES256", true, time.Now())
 	require.NoError(t, err)
 
@@ -676,7 +676,7 @@ func TestProvider_CEL_RequestGrantType(t *testing.T) {
 			"https://broker.example.com", time.Hour, expr, logger)
 		require.NoError(t, err)
 
-		svc := NewSigningKeyService(signingKeyRepo, enc, logger)
+		svc := NewSigningKeyService(signingKeyRepo, enc, nil, logger)
 		_, err = svc.generateAndStore(context.Background(), "ES256", true, time.Now())
 		require.NoError(t, err)
 		return p, agentRepo

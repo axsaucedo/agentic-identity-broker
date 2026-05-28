@@ -33,21 +33,24 @@ const jwksGracePeriod = 2 * jwksCacheMaxAge
 // SigningKeyService manages signing key lifecycle including generation,
 // encryption, storage, and JWKS building.
 type SigningKeyService struct {
-	repo       ports.SigningKeyRepository
-	encryption ports.EncryptionPort
-	logger     *slog.Logger
+	repo             ports.SigningKeyRepository
+	encryption       ports.EncryptionPort
+	branchKeyManager ports.BranchKeyManager // may be nil (memory/raw-AES backend)
+	logger           *slog.Logger
 }
 
 // NewSigningKeyService creates a new SigningKeyService.
 func NewSigningKeyService(
 	repo ports.SigningKeyRepository,
 	encryption ports.EncryptionPort,
+	branchKeyManager ports.BranchKeyManager,
 	logger *slog.Logger,
 ) *SigningKeyService {
 	return &SigningKeyService{
-		repo:       repo,
-		encryption: encryption,
-		logger:     logger,
+		repo:             repo,
+		encryption:       encryption,
+		branchKeyManager: branchKeyManager,
+		logger:           logger,
 	}
 }
 
@@ -83,6 +86,16 @@ func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm stri
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate key pair: %w", err)
+	}
+
+	if s.branchKeyManager != nil {
+		kidAsServiceID, parseErr := id.ParseServiceID(kid.String())
+		if parseErr != nil {
+			return nil, fmt.Errorf("failed to parse kid as service ID: %w", parseErr)
+		}
+		if _, err := s.branchKeyManager.Create(ctx, kidAsServiceID); err != nil {
+			return nil, fmt.Errorf("failed to provision branch key for signing key: %w", err)
+		}
 	}
 
 	encrypted, err := s.encryption.Encrypt(ctx, privKeyPEM, signingKeyEncCtx(kid))
@@ -209,13 +222,12 @@ func (s *SigningKeyService) DecryptPrivateKey(ctx context.Context, key *storage.
 
 // signingKeyEncCtx returns the encryption context AAD for a signing key.
 //
-// ADR 008 specifies service_id as a UUID identifying a ThirdpartyOAuth2Service.
-// Signing keys are not per-service entities, so we use a prefixed KID instead
-// of a bare UUID to avoid collisions with service IDs while keeping a single
-// context key. This is a documented deviation from the UUID-only invariant.
+// The kid UUID is used directly as service_id. This routes the hierarchical
+// keyring to the per-key branch key (service_<kid>_branch_key) and binds
+// the ciphertext to that specific key — satisfying ADR 008 with a plain UUID.
 func signingKeyEncCtx(kid id.KeyID) map[string]string {
 	return map[string]string{
-		"service_id": "signing_key:" + kid.String(),
+		"service_id": kid.String(),
 	}
 }
 

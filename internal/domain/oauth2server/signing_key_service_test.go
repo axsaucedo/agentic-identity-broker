@@ -42,7 +42,7 @@ func newTestSigningKeyService() (*SigningKeyService, *memory.SigningKeyStore) {
 	repo := memory.NewSigningKeyStore()
 	enc := &testEncryptor{}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	return NewSigningKeyService(repo, enc, logger), repo
+	return NewSigningKeyService(repo, enc, nil, logger), repo
 }
 
 func TestSigningKeyService_GenerateAndStoreKey(t *testing.T) {
@@ -172,7 +172,7 @@ func TestSigningKeyService_BuildJWKS(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		svc := NewSigningKeyService(repo, &testEncryptor{}, testSlogger())
+		svc := NewSigningKeyService(repo, &testEncryptor{}, nil, testSlogger())
 		jwks, err := svc.BuildJWKS(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, 0, jwks.Len(), "bad key should be skipped")

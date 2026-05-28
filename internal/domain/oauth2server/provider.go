@@ -55,7 +55,7 @@ func NewProvider(
 	}
 
 	// Build services
-	signingKeyService := NewSigningKeyService(signingKeyRepo, encryption, logger)
+	signingKeyService := NewSigningKeyService(signingKeyRepo, encryption, nil, logger)
 	clientAuth := NewClientAuthService(credRepo, clientResolver, logger)
 
 	// Our strategies

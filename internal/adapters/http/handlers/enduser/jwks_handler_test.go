@@ -39,7 +39,7 @@ func newTestJWKSHandler(t *testing.T) *JWKSHandler {
 	repo := memory.NewSigningKeyStore()
 	enc := &testEncryptor{}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	svc := oauth2server.NewSigningKeyService(repo, enc, logger)
+	svc := oauth2server.NewSigningKeyService(repo, enc, nil, logger)
 
 	// Generate a signing key so the JWKS is non-empty
 	_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)

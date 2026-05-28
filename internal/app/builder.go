@@ -731,7 +731,7 @@ func (b *Builder) Build() (*App, error) {
 	// buildLocalProvider constructs the local token issuance infrastructure.
 	// Used in both "local" and "hybrid" modes.
 	buildLocalProvider := func(tokenTTL time.Duration, claimsExpr string) (*oauth2server.Provider, error) {
-		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, b.logger)
+		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, app.BranchKeyManager, b.logger)
 		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), clientResolver, b.logger)
 		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
 		app.AdminHandlers.SigningKeys = admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger)
