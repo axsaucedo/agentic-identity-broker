@@ -14,7 +14,7 @@
  * - Smooth scroll to errors on validation failure
  */
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@components/layout/AppLayout';
 import { PageTransition } from '@components/ui/PageTransition';
@@ -49,7 +49,9 @@ export function AgentGrantDetailPage() {
 
   // Restore consent state from URL (survives third-party OAuth2 redirects).
   // Currently contains permission set selections, encoded as base64url JSON in `consent_state`.
-  const restoredSelections = useMemo((): Record<string, string[]> | undefined => {
+  const restoredSelections = useMemo(():
+    | Record<string, string[]>
+    | undefined => {
     const params = new URLSearchParams(location.search);
     const encoded = params.get('consent_state');
     if (!encoded) return undefined;
@@ -57,7 +59,12 @@ export function AgentGrantDetailPage() {
       const padded = encoded + '='.repeat((4 - (encoded.length % 4)) % 4);
       const json = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
       const parsed = JSON.parse(json);
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+      if (
+        typeof parsed !== 'object' ||
+        parsed === null ||
+        Array.isArray(parsed)
+      )
+        return undefined;
       const result: Record<string, string[]> = {};
       for (const [k, v] of Object.entries(parsed)) {
         if (Array.isArray(v) && v.every((s) => typeof s === 'string')) {
@@ -83,8 +90,16 @@ export function AgentGrantDetailPage() {
   );
 
   // Fetch agent data and grants
-  const { agent, services, cimdMeta, grants, loading, error, sessionExpired, refetch } =
-    useAgentGrants(resolvedAgentId, agentGrantOptions);
+  const {
+    agent,
+    services,
+    cimdMeta,
+    grants,
+    loading,
+    error,
+    sessionExpired,
+    refetch,
+  } = useAgentGrants(resolvedAgentId, agentGrantOptions);
 
   // Grant toggle hook for permission sets
   const {
@@ -103,9 +118,9 @@ export function AgentGrantDetailPage() {
   } = useUpdateValidity(grants || null);
 
   // Track per-PS per-service inclusion from PermissionSetsList (FR-008, FR-011)
-  const [perPsIncludedServiceIds, setPerPsIncludedServiceIds] = useState<Record<string, string[]>>(
-    {},
-  );
+  const [perPsIncludedServiceIds, setPerPsIncludedServiceIds] = useState<
+    Record<string, string[]>
+  >({});
 
   // Validation errors
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -163,13 +178,17 @@ export function AgentGrantDetailPage() {
 
     // Fallback before PermissionSetsList has mounted and emitted:
     // include mandatory PSes with service_scopes intersected with agent's SR (FR-011)
-    const srServiceIds = new Set(agent?.service_requirements?.map((sr) => sr.service_id) ?? []);
+    const srServiceIds = new Set(
+      agent?.service_requirements?.map((sr) => sr.service_id) ?? [],
+    );
     const result: Record<string, string[]> = {};
     agent?.permission_sets
       ?.filter((ps) => ps.requirement_type === 'mandatory')
       .forEach((ps) => {
         const serviceIds = ps.permission_set.service_scopes
-          .filter((ss) => srServiceIds.size === 0 || srServiceIds.has(ss.service_id))
+          .filter(
+            (ss) => srServiceIds.size === 0 || srServiceIds.has(ss.service_id),
+          )
           .map((ss) => ss.service_id);
         result[ps.permission_set.id] = serviceIds;
       });
@@ -194,7 +213,10 @@ export function AgentGrantDetailPage() {
     try {
       grant = await submit(validUntil, submitOptions, grantedPS);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to update grant', 'error');
+      showToast(
+        err instanceof Error ? err.message : 'Failed to update grant',
+        'error',
+      );
       return;
     }
 
@@ -229,7 +251,10 @@ export function AgentGrantDetailPage() {
       // Explicitly delete stale consent_state when no services are selected.
       if (Object.keys(perPsIncludedServiceIds).length > 0) {
         const json = JSON.stringify(perPsIncludedServiceIds);
-        const encoded = btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        const encoded = btoa(json)
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/, '');
         currentUrl.searchParams.set('consent_state', encoded);
       } else {
         currentUrl.searchParams.delete('consent_state');
@@ -281,7 +306,9 @@ export function AgentGrantDetailPage() {
 
     // Fallback before PermissionSetsList has reported state:
     // include services from mandatory PSes intersected with agent's SR (FR-009)
-    const srServiceIds = new Set(agent.service_requirements?.map((sr) => sr.service_id) ?? []);
+    const srServiceIds = new Set(
+      agent.service_requirements?.map((sr) => sr.service_id) ?? [],
+    );
     const serviceIds = new Set<string>();
     agent.permission_sets
       .filter((ps) => ps.requirement_type === 'mandatory')
@@ -301,7 +328,8 @@ export function AgentGrantDetailPage() {
   const servicesWithoutActiveSessions = useMemo(() => {
     return services.filter(
       (service) =>
-        (dynamicServiceIds === null || dynamicServiceIds.has(service.serviceId)) &&
+        (dynamicServiceIds === null ||
+          dynamicServiceIds.has(service.serviceId)) &&
         !agent?.active_session_service_ids?.includes(service.serviceId),
     );
   }, [services, dynamicServiceIds, agent]);
@@ -323,7 +351,9 @@ export function AgentGrantDetailPage() {
             ?.filter((p) => p.requirement_type === 'mandatory')
             .map((p) => p.permission_set.id) ?? []);
     for (const psId of activePsIds) {
-      const psEntry = agent?.permission_sets?.find((p) => p.permission_set.id === psId);
+      const psEntry = agent?.permission_sets?.find(
+        (p) => p.permission_set.id === psId,
+      );
       if (!psEntry) continue;
       for (const ss of psEntry.permission_set.service_scopes) {
         if (ss.requirement_type === 'mandatory') {
@@ -454,7 +484,6 @@ export function AgentGrantDetailPage() {
       </AppLayout>
     );
   }
-
 
   return (
     <AppLayout>
@@ -628,10 +657,15 @@ export function AgentGrantDetailPage() {
               permissionSets={agent.permission_sets}
               availableServices={services.map((s) => ({
                 id: s.serviceId,
-                display_name: s.kind === 'requirement' ? s.serviceName : (s.displayName ?? s.serviceId),
+                display_name:
+                  s.kind === 'requirement'
+                    ? s.serviceName
+                    : (s.displayName ?? s.serviceId),
               }))}
               serviceRequirements={agent.service_requirements}
-              initialGrantedPermissionSets={restoredSelections ?? grants?.granted_permission_sets ?? {}}
+              initialGrantedPermissionSets={
+                restoredSelections ?? grants?.granted_permission_sets ?? {}
+              }
               onSelectionChange={(_optionalIds, perPsIncluded) => {
                 setPerPsIncludedServiceIds(perPsIncluded);
               }}
@@ -649,8 +683,9 @@ export function AgentGrantDetailPage() {
                   </span>
                 </h2>
                 <p className="mt-1 text-sm text-neutral-600">
-                  {agent.displayName} needs access to the following services. Click{' '}
-                  <strong>Login</strong> to authorise each one before approving.
+                  {agent.displayName} needs access to the following services.
+                  Click <strong>Login</strong> to authorise each one before
+                  approving.
                 </p>
               </div>
 
@@ -673,7 +708,9 @@ export function AgentGrantDetailPage() {
                       onRevoke={() => {}}
                       inStack
                       isFirst={index === 0}
-                      isLast={index === servicesWithoutActiveSessions.length - 1}
+                      isLast={
+                        index === servicesWithoutActiveSessions.length - 1
+                      }
                     />
                   </React.Fragment>
                 ))}
@@ -684,22 +721,26 @@ export function AgentGrantDetailPage() {
           {/* Action buttons */}
           <div className="flex items-center justify-between gap-3 pt-4">
             {/* Revoke All Access — only visible when user has an active grant */}
-            {grants !== null && grants.granted_permission_sets && Object.keys(grants.granted_permission_sets).length > 0 && (
-              <RevokeGrantButton
-                agentId={resolvedAgentId}
-                agentName={agent.displayName}
-                onRevoked={handleGrantRevoked}
-              />
-            )}
+            {grants !== null &&
+              grants.granted_permission_sets &&
+              Object.keys(grants.granted_permission_sets).length > 0 && (
+                <RevokeGrantButton
+                  agentId={resolvedAgentId}
+                  agentName={agent.displayName}
+                  onRevoked={handleGrantRevoked}
+                />
+              )}
 
             <Button
               variant="primary"
               onClick={handleSubmit}
               isLoading={isSubmitting}
               disabled={isApproveDisabled}
-              title={isApproveDisabled
-                ? "Connect all required services before approving"
-                : "Approve and delegate these permissions"}
+              title={
+                isApproveDisabled
+                  ? 'Connect all required services before approving'
+                  : 'Approve and delegate these permissions'
+              }
             >
               Approve & Delegate
             </Button>

@@ -32,6 +32,12 @@ type OAuth2Config struct {
 	ClientSecret string   `yaml:"client_secret"`
 	RedirectURI  string   `yaml:"redirect_uri"`
 	Scopes       []string `yaml:"scopes"`
+
+	// Per-type agent UUIDs populated at runtime from env vars set by start-sample-agent.sh.
+	ProxyAgentID  string
+	LocalAgentID  string
+	CIMDAgentID   string
+	CIMDClientURI string // The client_uri used as client_id in the authorize request
 }
 
 // BrokerInfoConfig holds identity broker information
@@ -58,11 +64,16 @@ func Load(configDir string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
-	// BROKER_AGENT_ID overrides oauth2.client_id so the sample agent uses the broker's
-	// internal agent UUID as client_id (required since Feature 021).
+	// BROKER_AGENT_ID overrides oauth2.client_id (legacy single-agent mode).
 	if agentID := os.Getenv("BROKER_AGENT_ID"); agentID != "" {
 		cfg.OAuth2.ClientID = agentID
 	}
+
+	// Per-type agent UUIDs injected by start-sample-agent.sh.
+	cfg.OAuth2.ProxyAgentID = os.Getenv("BROKER_PROXY_AGENT_ID")
+	cfg.OAuth2.LocalAgentID = os.Getenv("BROKER_LOCAL_AGENT_ID")
+	cfg.OAuth2.CIMDAgentID = os.Getenv("BROKER_CIMD_AGENT_ID")
+	cfg.OAuth2.CIMDClientURI = os.Getenv("BROKER_CIMD_CLIENT_URI")
 
 	// Set defaults if not specified
 	if cfg.Server.Bind == "" {
