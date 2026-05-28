@@ -83,7 +83,15 @@ func (h *Handlers) Home(w http.ResponseWriter, r *http.Request) {
 		if session.Token != nil {
 			rawToken = session.Token.AccessToken
 		}
-		fmt.Fprint(w, renderUserPage(session.UserInfo, session.ExpiresAt, session.ClientType, rawToken))
+		keyID := ""
+		if rawToken != "" {
+			if header, err := extractTokenHeader(rawToken); err == nil {
+				if k, ok := header["kid"].(string); ok {
+					keyID = k
+				}
+			}
+		}
+		fmt.Fprint(w, renderUserPage(session.UserInfo, session.ExpiresAt, session.ClientType, rawToken, keyID))
 		return
 	}
 
@@ -474,6 +482,32 @@ func (h *Handlers) getSessionID(r *http.Request) string {
 	return cookie.Value
 }
 
+// extractTokenHeader decodes the header of a JWT access token without verification.
+func extractTokenHeader(accessToken string) (map[string]interface{}, error) {
+	parts := strings.Split(accessToken, ".")
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid token format")
+	}
+	header := parts[0]
+	switch len(header) % 4 {
+	case 1:
+		header += "==="
+	case 2:
+		header += "=="
+	case 3:
+		header += "="
+	}
+	decoded, err := base64.URLEncoding.DecodeString(header)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode token header: %w", err)
+	}
+	var claims map[string]interface{}
+	if err := json.Unmarshal(decoded, &claims); err != nil {
+		return nil, fmt.Errorf("failed to parse token header: %w", err)
+	}
+	return claims, nil
+}
+
 // extractTokenClaims decodes the payload of a JWT access token without verification.
 func extractTokenClaims(accessToken string) (map[string]interface{}, error) {
 	parts := strings.Split(accessToken, ".")
@@ -579,7 +613,7 @@ func renderSelectorPage(cfg *config.Config) string {
 }
 
 // renderUserPage renders the post-login user info page.
-func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType, rawToken string) string {
+func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType, rawToken, keyID string) string {
 	var flowLabel string
 	switch clientType {
 	case "local":
@@ -594,6 +628,11 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType, rawToken st
 	wellKnown := []string{"iss", "sub", "aud", "exp", "iat", "jti", "azp", "scope"}
 	seen := map[string]bool{}
 	var claimRows strings.Builder
+	if keyID != "" {
+		claimRows.WriteString(fmt.Sprintf(
+			`<tr><td class="ck">kid <span class="hdr">(header)</span></td><td class="cv">%s</td></tr>`,
+			keyID))
+	}
 	formatVal := func(v interface{}) string {
 		switch t := v.(type) {
 		case float64:
@@ -631,11 +670,6 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType, rawToken st
 		}
 	}
 
-	tokenDisplay := rawToken
-	if len(tokenDisplay) > 80 {
-		tokenDisplay = tokenDisplay[:40] + "..." + tokenDisplay[len(tokenDisplay)-20:]
-	}
-
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
@@ -653,6 +687,7 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType, rawToken st
         details { margin-bottom: 20px; }
         summary { cursor: pointer; font-size: 13px; color: #667eea; font-weight: 600; margin-bottom: 6px; }
         .raw { font-family: monospace; font-size: 12px; background: #f7f7f7; padding: 10px; border-radius: 4px; word-break: break-all; border: 1px solid #e0e0e0; }
+        .hdr { font-size: 11px; color: #999; font-weight: 400; }
         .buttons { display: flex; gap: 10px; margin-top: 16px; }
         a, button { display: inline-block; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; border: none; cursor: pointer; transition: background-color 0.2s; }
         .btn-home { background: #667eea; color: white; flex: 1; }
@@ -674,7 +709,7 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType, rawToken st
         <table><tbody>%s</tbody></table>
         <details>
             <summary>Raw access token</summary>
-            <div class="raw" title="%s">%s</div>
+            <div class="raw">%s</div>
         </details>
         <button id="mcp-btn" class="btn-mcp" onclick="callMCPTool()">Call MCP Tool (Token Exchange)</button>
         <div id="mcp-result" class="mcp-result"></div>
@@ -710,5 +745,5 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType, rawToken st
     function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
     </script>
 </body>
-</html>`, flowLabel, claimRows.String(), rawToken, tokenDisplay)
+</html>`, flowLabel, claimRows.String(), rawToken)
 }
