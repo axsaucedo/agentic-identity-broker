@@ -33,6 +33,7 @@ type Session struct {
 	CSRFState    string
 	ClientType   string         // "proxy", "local", or "cimd"
 	OAuth2Config *oauth2.Config // per-flow config (correct client_id/secret)
+	PKCEVerifier string         // non-empty for local/cimd flows that require PKCE
 }
 
 // Handlers handles HTTP requests
@@ -120,6 +121,12 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		flowConfig.ClientSecret = ""
 	}
 
+	// Generate PKCE verifier for local/CIMD flows (broker enforces S256).
+	var pkceVerifier string
+	if clientType == "local" || clientType == "cimd" {
+		pkceVerifier = oauth2.GenerateVerifier()
+	}
+
 	h.sessionsMu.Lock()
 	h.sessions[sessionID] = &Session{
 		CreatedAt:    time.Now(),
@@ -127,6 +134,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		UserInfo:     &UserInfo{},
 		ClientType:   clientType,
 		OAuth2Config: &flowConfig,
+		PKCEVerifier: pkceVerifier,
 	}
 	h.sessionsMu.Unlock()
 
@@ -139,7 +147,12 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   86400,
 	})
 
-	authURL := flowConfig.AuthCodeURL(state, oauth2.AccessTypeOnline)
+	var authURL string
+	if pkceVerifier != "" {
+		authURL = flowConfig.AuthCodeURL(state, oauth2.AccessTypeOnline, oauth2.S256ChallengeOption(pkceVerifier))
+	} else {
+		authURL = flowConfig.AuthCodeURL(state, oauth2.AccessTypeOnline)
+	}
 
 	slog.Info("Initiating OAuth2 authorization flow",
 		"client_type", clientType,
@@ -200,12 +213,18 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request) {
 
 	h.sessionsMu.RLock()
 	flowCfg := h.sessions[sessionID].OAuth2Config
+	pkceVerifier := h.sessions[sessionID].PKCEVerifier
 	h.sessionsMu.RUnlock()
 	if flowCfg == nil {
 		flowCfg = h.oauth2Config // fallback for sessions started before this change
 	}
 
-	token, err := flowCfg.Exchange(ctx, code)
+	var exchangeOpts []oauth2.AuthCodeOption
+	if pkceVerifier != "" {
+		exchangeOpts = append(exchangeOpts, oauth2.VerifierOption(pkceVerifier))
+	}
+
+	token, err := flowCfg.Exchange(ctx, code, exchangeOpts...)
 	if err != nil {
 		slog.Error("Failed to exchange code for token",
 			"error", err.Error())
@@ -614,8 +633,6 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType string) stri
         }
         .btn-home  { background: #667eea; color: white; flex: 1; }
         .btn-home:hover  { background: #764ba2; }
-        .btn-logout { background: #e74c3c; color: white; flex: 1; }
-        .btn-logout:hover { background: #c0392b; }
         .btn-mcp {
             background: #27ae60; color: white; width: 100%%;
             margin-bottom: 10px; font-size: 14px;
@@ -639,8 +656,7 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType string) stri
         <button id="mcp-btn" class="btn-mcp" onclick="callMCPTool()">Call MCP Tool (Token Exchange)</button>
         <div id="mcp-result" class="mcp-result"></div>
         <div class="buttons">
-            <a href="/" class="btn-home">Switch Client</a>
-            <a href="/logout" class="btn-logout">Logout</a>
+            <a href="/logout" class="btn-home">Switch Client</a>
         </div>
     </div>
     <script>
