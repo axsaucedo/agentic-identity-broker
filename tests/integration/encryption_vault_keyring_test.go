@@ -10,6 +10,7 @@ import (
 
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/integration/bootstrap"
 )
 
@@ -291,6 +292,134 @@ func TestEncryption_KeyRotationBackwardCompatibility(t *testing.T) {
 	decrypted, err := adapter.Decrypt(ctx, ciphertext, encCtx)
 	require.NoError(t, err, "decryption after key rotation failed — backward compatibility broken")
 	assert.Equal(t, string(plaintext), string(decrypted))
+}
+
+// TestEncryption_BranchKeyManagerCreate verifies that BranchKeyManager.Create provisions a
+// branch key in real DynamoDB and that the new service can subsequently encrypt and decrypt.
+func TestEncryption_BranchKeyManagerCreate(t *testing.T) {
+	ctx := context.Background()
+	ls := requireSharedLS(t)
+
+	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+	adapter, manager, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+
+	// Use a service ID not pre-provisioned in bootstrap so we exercise real creation.
+	newServiceID := id.MustParseServiceID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+	branchKeyID, err := manager.Create(ctx, newServiceID)
+	require.NoError(t, err, "BranchKeyManager.Create should succeed for a new service")
+	require.NotEmpty(t, branchKeyID, "returned branch key ID should not be empty")
+
+	// The new service must now be usable for encrypt/decrypt.
+	plaintext := []byte("token-for-new-service")
+	encCtx := map[string]string{"service_id": newServiceID.String()}
+
+	ct, err := adapter.Encrypt(ctx, plaintext, encCtx)
+	require.NoError(t, err, "encryption after Create should succeed")
+
+	decrypted, err := adapter.Decrypt(ctx, ct, encCtx)
+	require.NoError(t, err, "decryption after Create should succeed")
+	assert.Equal(t, string(plaintext), string(decrypted))
+}
+
+// TestEncryption_BranchKeyManagerCreate_Idempotent verifies that calling Create twice for the
+// same service ID is idempotent: the second call succeeds (or returns the existing key) and the
+// original ciphertext remains decryptable.
+func TestEncryption_BranchKeyManagerCreate_Idempotent(t *testing.T) {
+	ctx := context.Background()
+	ls := requireSharedLS(t)
+
+	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+	adapter, manager, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+
+	// Use a distinct service ID so this test doesn't share state with the creation test.
+	duplicateServiceID := id.MustParseServiceID("bbbbbbbb-cccc-dddd-eeee-ffffffffffff")
+	encCtx := map[string]string{"service_id": duplicateServiceID.String()}
+
+	// First creation.
+	id1, err := manager.Create(ctx, duplicateServiceID)
+	require.NoError(t, err, "first Create should succeed")
+
+	// Encrypt with the first key.
+	plaintext := []byte("idempotency-test-token")
+	ct, err := adapter.Encrypt(ctx, plaintext, encCtx)
+	require.NoError(t, err)
+
+	// Second creation — must not error and must not invalidate the existing ciphertext.
+	id2, err := manager.Create(ctx, duplicateServiceID)
+	require.NoError(t, err, "second Create (duplicate) should succeed idempotently")
+	assert.Equal(t, id1, id2, "idempotent Create should return the same branch key ID")
+
+	// Original ciphertext must still decrypt correctly.
+	decrypted, err := adapter.Decrypt(ctx, ct, encCtx)
+	require.NoError(t, err, "ciphertext encrypted before duplicate Create must still decrypt")
+	assert.Equal(t, string(plaintext), string(decrypted))
+}
+
+// TestEncryption_CancelledContextClassifiedAsKEKUnavailable verifies that a pre-cancelled or
+// expired context returns ErrorKindKEKUnavailable against real KMS — not ErrorKindContextMismatch.
+// This is a regression guard: both context.Canceled and context.DeadlineExceeded produce error
+// messages containing "context", which the error-classification code must not misroute.
+func TestEncryption_CancelledContextClassifiedAsKEKUnavailable(t *testing.T) {
+	ctx := context.Background()
+	ls := requireSharedLS(t)
+
+	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+	adapter := newAdapter(t)
+
+	// Produce valid ciphertext with a live context.
+	plaintext := []byte("regression-token")
+	encCtx := map[string]string{"service_id": testServiceOAuth2}
+	ct, err := adapter.Encrypt(ctx, plaintext, encCtx)
+	require.NoError(t, err, "setup: encryption with live context should succeed")
+	_ = kmsARN
+
+	cases := []struct {
+		name  string
+		mkCtx func() (context.Context, context.CancelFunc)
+	}{
+		{
+			"already cancelled",
+			func() (context.Context, context.CancelFunc) {
+				c, cancel := context.WithCancel(context.Background())
+				cancel()
+				return c, cancel
+			},
+		},
+		{
+			"already expired deadline",
+			func() (context.Context, context.CancelFunc) {
+				return context.WithTimeout(context.Background(), 0)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			deadCtx, cancel := tc.mkCtx()
+			defer cancel()
+
+			_, encErr := adapter.Encrypt(deadCtx, plaintext, encCtx)
+			require.Error(t, encErr)
+			var encryptionErr *encryption.EncryptionError
+			require.ErrorAs(t, encErr, &encryptionErr)
+			assert.Equal(t, encryption.ErrorKindKEKUnavailable, encryptionErr.Kind,
+				"cancelled context must yield KEKUnavailable, not %s", encryptionErr.Kind)
+
+			deadCtx2, cancel2 := tc.mkCtx()
+			defer cancel2()
+
+			_, decErr := adapter.Decrypt(deadCtx2, ct, encCtx)
+			require.Error(t, decErr)
+			require.ErrorAs(t, decErr, &encryptionErr)
+			assert.Equal(t, encryption.ErrorKindKEKUnavailable, encryptionErr.Kind,
+				"cancelled context must yield KEKUnavailable, not %s", encryptionErr.Kind)
+		})
+	}
 }
 
 // ---- helpers ----------------------------------------------------------------
