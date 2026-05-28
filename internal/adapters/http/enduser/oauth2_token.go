@@ -68,17 +68,7 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.Logger != nil {
-		h.Logger.Info("Token endpoint request received",
-			"grant_type", grantType,
-			"expected_grant_type", tokenexchange.TokenExchangeGrantType,
-		)
-	}
-
 	if grantType == tokenexchange.TokenExchangeGrantType {
-		if h.Logger != nil {
-			h.Logger.Info("Routing to token exchange handler")
-		}
 		h.handleTokenExchange(w, r, formData)
 		return
 	}
@@ -153,14 +143,6 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 			"error_description": "resource parameter is required",
 		})
 		return
-	}
-
-	if h.Logger != nil {
-		h.Logger.Info("Calling TokenExchangeService.Exchange",
-			"resource", req.Resource,
-			"subject_token_present", req.SubjectToken != "",
-			"client_assertion_present", req.ClientAssertion != "",
-		)
 	}
 
 	ctx, span := otel.Tracer("tokenexchange").Start(r.Context(), "tokenexchange.exchange")
