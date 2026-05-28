@@ -1,9 +1,0 @@
-broker:
-  oauth2AuthorizationServer:
-    mode: "proxy"
-    proxy:
-      upstreamIssuerUri: "https://auth.example.com"
-      upstreamAuthorizeEndpoint: "https://auth.example.com/oauth/authorize"
-      upstreamTokenEndpoint: "https://auth.example.com/oauth/token"
-storage:
-  type: memory
