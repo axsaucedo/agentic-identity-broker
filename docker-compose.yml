@@ -11,6 +11,7 @@ volumes:
   broker-tmp:
   aib-frontend-node-modules:  # Preserves containerized npm dependencies to avoid host/container conflicts
   sample-agent-tmp:
+  cimd-certs:  # Shared volume for CIMD mock's self-signed CA cert
 
 services:
   # Primary application: Identity broker with hot-reload
@@ -58,6 +59,34 @@ services:
         condition: service_started
       third-party-oauth2:
         condition: service_started
+      cimd-mock:
+        condition: service_healthy
+
+  # Mock CIMD (Client ID Metadata Document) server
+  # Serves a self-signed TLS CIMD document for the CIMD Demo Agent.
+  cimd-mock:
+    build:
+      context: .
+      dockerfile: Dockerfile.cimd
+    container_name: aib-cimd-mock
+    ports:
+      - "9004:443"
+    environment:
+      - CIMD_HOST=cimd-mock
+      - CIMD_PORT=443
+      - CIMD_DOC_PATH=/oauth/client-metadata.json
+      - CIMD_REDIRECT_URIS=http://localhost:9002/oauth2/callback
+      - CIMD_CLIENT_NAME=CIMD Demo Agent
+      - CIMD_CA_CERT_PATH=/certs/cimd-ca.crt
+    volumes:
+      - cimd-certs:/certs
+    networks:
+      - aib-network
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-f", "https://localhost:443/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
 
   # Mock upstream OAuth2 server
   upstream-oauth2:

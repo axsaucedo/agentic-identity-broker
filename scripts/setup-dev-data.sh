@@ -10,6 +10,8 @@ BROKER_HEALTH_URL="${BROKER_HEALTH_URL:-http://localhost:14000/health}"
 # Separate token and authorize endpoints to support service names in Docker Compose
 MOCK_SERVER_TOKEN_URL="${MOCK_SERVER_TOKEN_URL:-http://localhost:9000}"
 MOCK_SERVER_AUTHORIZE_URL="${MOCK_SERVER_AUTHORIZE_URL:-http://localhost:9000}"
+# CIMD mock server hostname (container DNS name in Docker Compose, localhost otherwise)
+CIMD_SERVER_HOST="${CIMD_SERVER_HOST:-cimd-mock}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -541,8 +543,7 @@ echo ""
 # Step 6: Create Local and CIMD Agents
 # Local agent: no client_id, no client_uris -> broker issues tokens locally.
 # CIMD agent:  no client_id, client_uris set -> broker resolves via CIMD fetch.
-#   NOTE: client_uris points to a placeholder HTTPS URL. CIMD fetch will fail
-#   at runtime until a real metadata server is available.
+#   client_uris points to the cimd-mock container (https://cimd-mock/oauth/client-metadata.json).
 # ==========================================
 echo "========================================="
 echo "Step 6: Creating Local and CIMD Agents"
@@ -606,7 +607,7 @@ AGENT_RESPONSE=$(curl -s -X POST "${ADMIN_API}/agents" \
     \"governance_url\": \"https://example.com/cimd-agent/governance\",
     \"user_documentation_url\": \"https://example.com/cimd-agent/docs\",
     \"redirect_uris\": [\"http://localhost:9002/oauth2/callback\"],
-    \"client_uris\": [\"https://cimd-demo.example.com/oauth/client-metadata.json\"]${CIMD_SR_FIELD}${CIMD_PS_FIELD}
+    \"client_uris\": [\"https://${CIMD_SERVER_HOST}/oauth/client-metadata.json\"]${CIMD_SR_FIELD}${CIMD_PS_FIELD}
   }")
 
 HTTP_CODE=$(echo "$AGENT_RESPONSE" | tail -n1)
@@ -640,7 +641,7 @@ else
 	echo "        (permission sets skipped — endpoint not available)"
 fi
 echo "    - Local Research Agent   (no client_id, local token issuance)"
-echo "    - CIMD Demo Agent        (client_uris set, placeholder URL)"
+echo "    - CIMD Demo Agent        (client_uris: https://${CIMD_SERVER_HOST}/oauth/client-metadata.json)"
 echo ""
 echo "  Services:"
 echo "    - Mock OAuth2 Service    (mock-oauth2-client-dev)"
