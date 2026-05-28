@@ -233,7 +233,7 @@ test-integration-junit:
     @mkdir -p test-results
     @go test -json -tags=integration -p {{NUM_CPUS}} ./tests/integration/storage/... ./internal/adapters/storage/postgres/... > test-results/integration-test-output.json; TEST_EXIT=$$?; go-junit-report -parser gojson < test-results/integration-test-output.json > test-results/integration-junit.xml; REPORT_EXIT=$$?; if [ $$REPORT_EXIT -ne 0 ]; then echo "go-junit-report failed (exit $$REPORT_EXIT)" >&2; exit $$REPORT_EXIT; fi; echo "JUnit report generated at test-results/integration-junit.xml"; exit $$TEST_EXIT
 
-# Run all tests (unit, integration, E2E, E2E frontend) and generate consolidated JUnit XML report
+# Run all tests (unit, integration, E2E, E2E frontend, web unit, CDK, mocks) and generate consolidated JUnit XML report
 test-all-junit:
     #!/usr/bin/env bash
     set +e  # Don't exit on errors; we'll handle them at the end
@@ -281,6 +281,26 @@ test-all-junit:
     FRONTEND_PID=$!
     echo "  [frontend]    PID $FRONTEND_PID"
 
+    (cd web && npm ci --silent && npm test -- --run --reporter=junit) \
+        > test-results/web-unit-junit.xml 2>test-results/web-unit.log &
+    WEB_UNIT_PID=$!
+    echo "  [web-unit]    PID $WEB_UNIT_PID"
+
+    (cd infra/cdk && go test -json -race ./...) \
+        > test-results/cdk-tests-output.json 2>&1 &
+    CDK_PID=$!
+    echo "  [cdk]         PID $CDK_PID"
+
+    (cd mocks/sample-agent && go test -json ./...) \
+        > test-results/mock-sample-agent-output.json 2>&1 &
+    MOCK_AGENT_PID=$!
+    echo "  [mock-agent]  PID $MOCK_AGENT_PID"
+
+    (cd mocks/upstream-oauth2-server && go test -json ./internal/handlers/...) \
+        > test-results/mock-oauth2-output.json 2>&1 &
+    MOCK_OAUTH2_PID=$!
+    echo "  [mock-oauth2] PID $MOCK_OAUTH2_PID"
+
     # ===== WAIT FOR ALL SUITES =====
     echo ""
     echo "==> Waiting for all test suites to complete..."
@@ -291,6 +311,10 @@ test-all-junit:
     wait $E2E_PID;         E2E_EXIT=$?
     wait $EXTPROC_PID;     EXTPROC_EXIT=$?
     wait $FRONTEND_PID;    FRONTEND_EXIT=$?
+    wait $WEB_UNIT_PID;    WEB_UNIT_EXIT=$?
+    wait $CDK_PID;         CDK_EXIT=$?
+    wait $MOCK_AGENT_PID;  MOCK_AGENT_EXIT=$?
+    wait $MOCK_OAUTH2_PID; MOCK_OAUTH2_EXIT=$?
 
     # ===== GENERATE JUNIT XML FROM JSON OUTPUT =====
     # Ginkgo wrote its own --junit-report files directly; only go test suites need conversion
@@ -300,6 +324,12 @@ test-all-junit:
         < test-results/integration-tests-output.json > test-results/integration-junit.xml || true
     go-junit-report -parser gojson \
         < test-results/storage-tests-output.json > test-results/storage-junit.xml || true
+    go-junit-report -parser gojson \
+        < test-results/cdk-tests-output.json > test-results/cdk-junit.xml || true
+    go-junit-report -parser gojson \
+        < test-results/mock-sample-agent-output.json > test-results/mock-agent-junit.xml || true
+    go-junit-report -parser gojson \
+        < test-results/mock-oauth2-output.json > test-results/mock-oauth2-junit.xml || true
 
     # ===== PRINT LOGS FOR FAILED SUITES (inline for CDP console) =====
     if [ $UNIT_EXIT -ne 0 ]; then
@@ -332,6 +362,26 @@ test-all-junit:
         echo "--- E2E Frontend test output (FAILED) ---"
         cat test-results/frontend.log
     fi
+    if [ $WEB_UNIT_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- Web unit test output (FAILED) ---"
+        cat test-results/web-unit.log
+    fi
+    if [ $CDK_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- CDK test output (FAILED) ---"
+        cat test-results/cdk-tests-output.json
+    fi
+    if [ $MOCK_AGENT_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- Mock sample-agent test output (FAILED) ---"
+        cat test-results/mock-sample-agent-output.json
+    fi
+    if [ $MOCK_OAUTH2_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- Mock upstream-OAuth2 test output (FAILED) ---"
+        cat test-results/mock-oauth2-output.json
+    fi
 
     # ===== MERGE JUNIT REPORTS =====
     echo ""
@@ -353,16 +403,22 @@ test-all-junit:
     # ===== FINAL SUMMARY =====
     echo ""
     echo "=== Test Summary ==="
-    [ $UNIT_EXIT -eq 0 ]        && echo "✓ Unit tests"        || echo "✗ Unit tests ($UNIT_EXIT)"
-    [ $INTEGRATION_EXIT -eq 0 ] && echo "✓ Integration tests" || echo "✗ Integration tests ($INTEGRATION_EXIT)"
-    [ $STORAGE_EXIT -eq 0 ]     && echo "✓ Storage tests"     || echo "✗ Storage tests ($STORAGE_EXIT)"
-    [ $E2E_EXIT -eq 0 ]         && echo "✓ E2E tests"         || echo "✗ E2E tests ($E2E_EXIT)"
-    [ $EXTPROC_EXIT -eq 0 ]     && echo "✓ E2E ExtProc tests" || echo "✗ E2E ExtProc tests ($EXTPROC_EXIT)"
-    [ $FRONTEND_EXIT -eq 0 ]    && echo "✓ E2E Frontend tests" || echo "✗ E2E Frontend tests ($FRONTEND_EXIT)"
+    [ $UNIT_EXIT -eq 0 ]        && echo "✓ Unit tests"                 || echo "✗ Unit tests ($UNIT_EXIT)"
+    [ $INTEGRATION_EXIT -eq 0 ] && echo "✓ Integration tests"           || echo "✗ Integration tests ($INTEGRATION_EXIT)"
+    [ $STORAGE_EXIT -eq 0 ]     && echo "✓ Storage tests"               || echo "✗ Storage tests ($STORAGE_EXIT)"
+    [ $E2E_EXIT -eq 0 ]         && echo "✓ E2E tests"                   || echo "✗ E2E tests ($E2E_EXIT)"
+    [ $EXTPROC_EXIT -eq 0 ]     && echo "✓ E2E ExtProc tests"           || echo "✗ E2E ExtProc tests ($EXTPROC_EXIT)"
+    [ $FRONTEND_EXIT -eq 0 ]    && echo "✓ E2E Frontend tests"          || echo "✗ E2E Frontend tests ($FRONTEND_EXIT)"
+    [ $WEB_UNIT_EXIT -eq 0 ]    && echo "✓ Web unit tests"              || echo "✗ Web unit tests ($WEB_UNIT_EXIT)"
+    [ $CDK_EXIT -eq 0 ]         && echo "✓ CDK tests"                   || echo "✗ CDK tests ($CDK_EXIT)"
+    [ $MOCK_AGENT_EXIT -eq 0 ]  && echo "✓ Mock sample-agent tests"     || echo "✗ Mock sample-agent tests ($MOCK_AGENT_EXIT)"
+    [ $MOCK_OAUTH2_EXIT -eq 0 ] && echo "✓ Mock upstream-OAuth2 tests"  || echo "✗ Mock upstream-OAuth2 tests ($MOCK_OAUTH2_EXIT)"
     echo ""
 
     if [ $UNIT_EXIT -ne 0 ] || [ $INTEGRATION_EXIT -ne 0 ] || [ $STORAGE_EXIT -ne 0 ] || \
        [ $E2E_EXIT -ne 0 ] || [ $EXTPROC_EXIT -ne 0 ] || [ $FRONTEND_EXIT -ne 0 ] || \
+       [ $WEB_UNIT_EXIT -ne 0 ] || [ $CDK_EXIT -ne 0 ] || \
+       [ $MOCK_AGENT_EXIT -ne 0 ] || [ $MOCK_OAUTH2_EXIT -ne 0 ] || \
        [ $MERGER_EXIT -ne 0 ]; then
         echo "✗ Some tests failed"
         exit 1
