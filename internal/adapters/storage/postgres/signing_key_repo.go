@@ -41,7 +41,7 @@ func (r *SigningKeyRepo) Create(ctx context.Context, key *storage.SigningKey) er
 		key.IsCurrent, key.ActivatesAt, key.CreatedAt, key.RemovedAt,
 	)
 	if err != nil {
-		return storage.NewStorageError("SigningKeyRepo.Create", storage.ErrorKindUnknown, err, "failed to create signing key")
+		return classifySigningKeyRepoError("SigningKeyRepo.Create", err, "failed to create signing key")
 	}
 	return nil
 }
@@ -56,14 +56,14 @@ func (r *SigningKeyRepo) CreateAndSetCurrent(ctx context.Context, key *storage.S
 
 	tx, err := r.adapter.db.BeginTxx(execCtx, nil)
 	if err != nil {
-		return storage.NewStorageError("SigningKeyRepo.CreateAndSetCurrent", storage.ErrorKindUnknown, err, "failed to begin transaction")
+		return classifySigningKeyRepoError("SigningKeyRepo.CreateAndSetCurrent", err, "failed to begin transaction")
 	}
 	defer tx.Rollback() //nolint:errcheck
 
 	// Demote all existing current keys before inserting the new one.
 	_, err = tx.ExecContext(execCtx, `UPDATE signing_keys SET is_current = false WHERE is_current = true`)
 	if err != nil {
-		return storage.NewStorageError("SigningKeyRepo.CreateAndSetCurrent", storage.ErrorKindUnknown, err, "failed to demote existing keys")
+		return classifySigningKeyRepoError("SigningKeyRepo.CreateAndSetCurrent", err, "failed to demote existing keys")
 	}
 
 	_, err = tx.ExecContext(execCtx,
@@ -73,10 +73,13 @@ func (r *SigningKeyRepo) CreateAndSetCurrent(ctx context.Context, key *storage.S
 		key.ActivatesAt, key.CreatedAt, key.RemovedAt,
 	)
 	if err != nil {
-		return storage.NewStorageError("SigningKeyRepo.CreateAndSetCurrent", storage.ErrorKindUnknown, err, "failed to insert signing key")
+		return classifySigningKeyRepoError("SigningKeyRepo.CreateAndSetCurrent", err, "failed to insert signing key")
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return classifySigningKeyRepoError("SigningKeyRepo.CreateAndSetCurrent", err, "failed to commit transaction")
+	}
+	return nil
 }
 
 func (r *SigningKeyRepo) GetByKID(ctx context.Context, kid id.KeyID) (*storage.SigningKey, error) {
@@ -149,7 +152,7 @@ func (r *SigningKeyRepo) ListActive(ctx context.Context) ([]*storage.SigningKey,
 		`SELECT id, kid, algorithm, private_key_encrypted, is_current, activates_at, created_at, removed_at
 		 FROM signing_keys WHERE removed_at IS NULL ORDER BY created_at DESC`)
 	if err != nil {
-		return nil, storage.NewStorageError("SigningKeyRepo.ListActive", storage.ErrorKindUnknown, err, "failed to list signing keys")
+		return nil, classifySigningKeyRepoError("SigningKeyRepo.ListActive", err, "failed to list signing keys")
 	}
 	return keys, nil
 }
@@ -166,27 +169,30 @@ func (r *SigningKeyRepo) SetCurrent(ctx context.Context, kid id.KeyID) error {
 
 	tx, err := r.adapter.db.BeginTxx(execCtx, nil)
 	if err != nil {
-		return storage.NewStorageError("SigningKeyRepo.SetCurrent", storage.ErrorKindUnknown, err, "failed to begin transaction")
+		return classifySigningKeyRepoError("SigningKeyRepo.SetCurrent", err, "failed to begin transaction")
 	}
 	defer tx.Rollback() //nolint:errcheck
 
 	// Demote all current keys
 	_, err = tx.ExecContext(execCtx, `UPDATE signing_keys SET is_current = false WHERE is_current = true`)
 	if err != nil {
-		return storage.NewStorageError("SigningKeyRepo.SetCurrent", storage.ErrorKindUnknown, err, "failed to demote keys")
+		return classifySigningKeyRepoError("SigningKeyRepo.SetCurrent", err, "failed to demote keys")
 	}
 
 	// Promote the target key and reset activates_at to NOW() so it starts signing immediately.
 	result, err := tx.ExecContext(execCtx,
 		`UPDATE signing_keys SET is_current = true, activates_at = NOW() WHERE kid = $1 AND removed_at IS NULL`, kid)
 	if err != nil {
-		return storage.NewStorageError("SigningKeyRepo.SetCurrent", storage.ErrorKindUnknown, err, "failed to promote key")
+		return classifySigningKeyRepoError("SigningKeyRepo.SetCurrent", err, "failed to promote key")
 	}
 	if err := checkRowsAffected("SigningKeyRepo.SetCurrent", result, "signing key not found"); err != nil {
 		return err
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return classifySigningKeyRepoError("SigningKeyRepo.SetCurrent", err, "failed to commit transaction")
+	}
+	return nil
 }
 
 func (r *SigningKeyRepo) Delete(ctx context.Context, kid id.KeyID) error {
@@ -201,7 +207,7 @@ func (r *SigningKeyRepo) Delete(ctx context.Context, kid id.KeyID) error {
 	result, err := r.adapter.db.ExecContext(execCtx,
 		`UPDATE signing_keys SET removed_at = $1 WHERE kid = $2 AND removed_at IS NULL`, now, kid)
 	if err != nil {
-		return storage.NewStorageError("SigningKeyRepo.Delete", storage.ErrorKindUnknown, err, "failed to delete signing key")
+		return classifySigningKeyRepoError("SigningKeyRepo.Delete", err, "failed to delete signing key")
 	}
 	return checkRowsAffected("SigningKeyRepo.Delete", result, "signing key not found")
 }
@@ -224,4 +230,11 @@ func (r *SigningKeyRepo) CountActive(ctx context.Context) (int, error) {
 		return 0, storage.NewStorageError("SigningKeyRepo.CountActive", storage.ErrorKindConnection, err, "failed to count signing keys")
 	}
 	return count, nil
+}
+
+func classifySigningKeyRepoError(operation string, err error, message string) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return storage.NewStorageError(operation, storage.ErrorKindTimeout, err, "operation exceeded timeout")
+	}
+	return storage.NewStorageError(operation, storage.ErrorKindConnection, err, message)
 }
