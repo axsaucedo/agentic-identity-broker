@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -34,9 +33,7 @@ var _ = Describe("Multi-Agent Client Delegation", func() {
 	)
 
 	BeforeEach(func() {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
-		}))
+		logger = bootstrap.TestLogger(slog.LevelInfo)
 		mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 		storageFactory = bootstrap.NewStorageFactory(logger)
 		var err error

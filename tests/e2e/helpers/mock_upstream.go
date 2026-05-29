@@ -11,6 +11,33 @@ import (
 	"time"
 )
 
+// sharedRSAKeyPair holds the single RSA key pair generated once per test process.
+// Reusing it avoids ~2-5ms key-generation overhead per MockUpstreamOAuth2Server instantiation.
+// This is safe because the key is used only for signature verification, not for isolation.
+var sharedRSAKeyPair struct {
+	sync.Once
+	privateKeyPEM string
+	publicKeyPEM  string
+	jwksSet       map[string]interface{}
+}
+
+func sharedKeyPair() (string, string, map[string]interface{}) {
+	sharedRSAKeyPair.Do(func() {
+		privateKeyPEM, publicKeyPEM, err := GenerateTestRSAKeyPair()
+		if err != nil {
+			panic(fmt.Sprintf("failed to generate shared test RSA key pair: %v", err))
+		}
+		jwksSet, err := GenerateJWKSFromPublicKey(publicKeyPEM)
+		if err != nil {
+			panic(fmt.Sprintf("failed to generate JWKS from shared public key: %v", err))
+		}
+		sharedRSAKeyPair.privateKeyPEM = privateKeyPEM
+		sharedRSAKeyPair.publicKeyPEM = publicKeyPEM
+		sharedRSAKeyPair.jwksSet = jwksSet
+	})
+	return sharedRSAKeyPair.privateKeyPEM, sharedRSAKeyPair.publicKeyPEM, sharedRSAKeyPair.jwksSet
+}
+
 // MockUpstreamOAuth2Server provides a mock upstream OAuth2 server using httptest.Server.
 // It captures requests for assertion and supports both successful and error responses.
 // This is stable because it only depends on HTTP contract, not internal implementation.
@@ -52,23 +79,8 @@ func NewMockUpstreamOAuth2Server() *MockUpstreamOAuth2Server {
 		expiresIn:    3600,
 	}
 
-	// Generate RSA key pair for JWT signing in E2E tests
-	// This allows tests to create real, signed JWTs that the validator can verify
-	privateKeyPEM, publicKeyPEM, err := GenerateTestRSAKeyPair()
-	if err != nil {
-		// Panic only in test setup - this is a test infrastructure failure, not a runtime error
-		panic(fmt.Sprintf("failed to generate test RSA key pair: %v", err))
-	}
-
-	m.privateKeyPEM = privateKeyPEM
-	m.publicKeyPEM = publicKeyPEM
-
-	// Generate JWKS Set from public key for /.well-known/jwks.json endpoint
-	jwksSet, err := GenerateJWKSFromPublicKey(publicKeyPEM)
-	if err != nil {
-		panic(fmt.Sprintf("failed to generate JWKS from public key: %v", err))
-	}
-	m.jwksSet = jwksSet
+	// Reuse the package-level RSA key pair (generated once per test process).
+	m.privateKeyPEM, m.publicKeyPEM, m.jwksSet = sharedKeyPair()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/oauth/authorize", m.handleAuthorize)

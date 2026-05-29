@@ -16,6 +16,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
@@ -1331,6 +1332,88 @@ func (f *failingReadCloser) Close() error {
 		f.onClose()
 	}
 	return nil
+}
+
+// TestHandleTokenExchangeError_WrappedError verifies that handleTokenExchangeError
+// correctly handles wrapped TokenExchangeErrors using errors.As rather than a direct
+// type assertion. A wrapped error must return the domain-specified HTTP status and
+// error code, not a 500 server_error.
+func TestHandleTokenExchangeError_WrappedError(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			name:       "direct TokenExchangeError returns correct status",
+			err:        tokenexchange.NewInvalidRequestError("bad token"),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "invalid_request",
+		},
+		{
+			name:       "wrapped TokenExchangeError returns correct status (not 500)",
+			err:        fmt.Errorf("context: %w", tokenexchange.NewInvalidRequestError("bad token")),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "invalid_request",
+		},
+		{
+			name:       "wrapped invalid_client returns 401",
+			err:        fmt.Errorf("context: %w", tokenexchange.NewInvalidClientError("client rejected")),
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   "invalid_client",
+		},
+		{
+			name:       "non-TokenExchangeError returns 500",
+			err:        errors.New("unexpected failure"),
+			wantStatus: http.StatusInternalServerError,
+			wantCode:   "server_error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &OAuth2TokenHandler{}
+			w := httptest.NewRecorder()
+			h.handleTokenExchangeError(w, tt.err)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			var body map[string]string
+			_ = json.NewDecoder(w.Body).Decode(&body)
+			assert.Equal(t, tt.wantCode, body["error"])
+		})
+	}
+}
+
+// TestHandleTokenExchangeError_UnrecognizedErrorLogged verifies that when a non-TokenExchangeError
+// reaches handleTokenExchangeError, an Error-level log is emitted so it isn't silently swallowed.
+func TestHandleTokenExchangeError_UnrecognizedErrorLogged(t *testing.T) {
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+
+	h := &OAuth2TokenHandler{Logger: logger}
+	w := httptest.NewRecorder()
+	h.handleTokenExchangeError(w, errors.New("unexpected db failure"))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	logLine := buf.String()
+	assert.Contains(t, logLine, "ERROR", "unexpected error must be logged at Error level")
+}
+
+// TestHandleTokenExchange_WrappedTokenExchangeErrorMapsCorrectly verifies that
+// handleTokenExchangeError maps wrapped TokenExchangeErrors to the correct HTTP status.
+func TestHandleTokenExchange_WrappedTokenExchangeErrorMapsCorrectly(t *testing.T) {
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+
+	wrapped := fmt.Errorf("context: %w",
+		tokenexchange.NewInvalidRequestErrorWithDetails("bad token", "details about the failure"))
+
+	h := &OAuth2TokenHandler{Logger: logger}
+	w := httptest.NewRecorder()
+	h.handleTokenExchangeError(w, wrapped)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code, "wrapped error must map to 400, not 500")
 }
 
 // TestTokenEndpointStatus_RFC6749Mapping verifies the HTTP status code mapping for

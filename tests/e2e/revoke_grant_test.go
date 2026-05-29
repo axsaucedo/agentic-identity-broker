@@ -21,7 +21,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -51,9 +50,7 @@ var _ = Describe("Revoke Agent Grant", func() {
 	)
 
 	BeforeEach(func() {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
-		}))
+		logger = bootstrap.TestLogger(slog.LevelInfo)
 
 		mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 		config := fixtures.OAuth2ConfigWithUpstream(mockUpstream.Server.URL)

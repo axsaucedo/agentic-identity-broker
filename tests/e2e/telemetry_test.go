@@ -3,7 +3,6 @@ package e2e_test
 import (
 	"context"
 	"log/slog"
-	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -31,9 +30,7 @@ var _ = Describe("OpenTelemetry Instrumentation", func() {
 	)
 
 	BeforeEach(func() {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: slog.LevelWarn,
-		}))
+		logger = bootstrap.TestLogger(slog.LevelWarn)
 
 		storageFactory = bootstrap.NewStorageFactory(logger)
 		var err error
