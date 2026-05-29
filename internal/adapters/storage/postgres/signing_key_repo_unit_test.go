@@ -264,7 +264,7 @@ func TestSigningKeyRepo_ErrorClassification(t *testing.T) {
 			call: func(repo *SigningKeyRepo) error {
 				return repo.SetCurrent(context.Background(), id.NewKeyID("kid-set-current"))
 			},
-			},
+		},
 		{
 			name:      "SetCurrent maps commit generic error to connection",
 			cfg:       signingKeyRepoTestConfig{commitErr: errors.New("commit failed")},
