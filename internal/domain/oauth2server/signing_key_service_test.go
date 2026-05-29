@@ -487,6 +487,7 @@ func TestSigningKeyService_OrphanedBranchKeyWarning(t *testing.T) {
 		logOutput := logBuf.String()
 		assert.Contains(t, logOutput, "orphaned branch key", "warn log must identify the orphaned entry")
 		assert.Contains(t, logOutput, "kid", "warn log must include the kid field")
+		assert.Contains(t, logOutput, "branch-key-id", "warn log must include the branch key ID for operator cleanup")
 	})
 
 	t.Run("warns with kid when repo.Create fails after branch key created", func(t *testing.T) {
@@ -509,6 +510,7 @@ func TestSigningKeyService_OrphanedBranchKeyWarning(t *testing.T) {
 		logOutput := logBuf.String()
 		assert.Contains(t, logOutput, "orphaned branch key", "warn log must identify the orphaned entry")
 		assert.Contains(t, logOutput, "kid", "warn log must include the kid field")
+		assert.Contains(t, logOutput, "branch-key-id", "warn log must include the branch key ID for operator cleanup")
 	})
 
 	t.Run("NoopBranchKeyManager never causes provisioning failure", func(t *testing.T) {

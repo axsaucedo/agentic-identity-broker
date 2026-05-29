@@ -87,21 +87,18 @@ func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm stri
 		return nil, fmt.Errorf("failed to generate key pair: %w", err)
 	}
 
-	var branchKeyProvisioned bool
 	kidAsServiceID, parseErr := id.ParseServiceID(kid.String())
 	if parseErr != nil {
 		return nil, fmt.Errorf("failed to parse kid %q as service ID: %w", kid, parseErr)
 	}
-	if _, err := s.branchKeyManager.Create(ctx, kidAsServiceID); err != nil {
+	branchKeyID, err := s.branchKeyManager.Create(ctx, kidAsServiceID)
+	if err != nil {
 		return nil, fmt.Errorf("failed to provision branch key for signing key: %w", err)
 	}
-	branchKeyProvisioned = true
 
 	encrypted, err := s.encryption.Encrypt(ctx, privKeyPEM, signingKeyEncCtx(kid))
 	if err != nil {
-		if branchKeyProvisioned {
-			s.logger.Warn("orphaned branch key after encryption failure; manual cleanup required", "kid", kid)
-		}
+		s.logger.Warn("orphaned branch key after encryption failure; manual cleanup required", "kid", kid, "branch_key_id", branchKeyID)
 		return nil, fmt.Errorf("failed to encrypt private key: %w", err)
 	}
 
@@ -117,16 +114,12 @@ func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm stri
 
 	if makeCurrent {
 		if err := s.repo.CreateAndSetCurrent(ctx, key); err != nil {
-			if branchKeyProvisioned {
-				s.logger.Warn("orphaned branch key after storage failure; manual cleanup required", "kid", kid)
-			}
+			s.logger.Warn("orphaned branch key after storage failure; manual cleanup required", "kid", kid, "branch_key_id", branchKeyID)
 			return nil, fmt.Errorf("failed to store and promote signing key: %w", err)
 		}
 	} else {
 		if err := s.repo.Create(ctx, key); err != nil {
-			if branchKeyProvisioned {
-				s.logger.Warn("orphaned branch key after storage failure; manual cleanup required", "kid", kid)
-			}
+			s.logger.Warn("orphaned branch key after storage failure; manual cleanup required", "kid", kid, "branch_key_id", branchKeyID)
 			return nil, fmt.Errorf("failed to store signing key: %w", err)
 		}
 	}
