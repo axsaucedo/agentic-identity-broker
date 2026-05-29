@@ -135,7 +135,7 @@ func (b *Builder) WithStaticWebResourcesPath(path string) *Builder {
 
 // WithTracerProvider sets a custom TracerProvider for testing.
 // When set, this provider is registered as the global provider instead of
-// the one created by NewProvider(). Mirrors the WithEncryption precedent.
+// the one created by NewProvider().
 func (b *Builder) WithTracerProvider(tp *sdktrace.TracerProvider) *Builder {
 	b.tracerProvider = tp
 	return b

@@ -19,13 +19,13 @@ import (
 // service level.
 //
 // Encryption lifecycle:
-//   - Create: validates entity, provisions branch key (if manager present),
+//   - Create: validates entity, provisions the branch key,
 //     encrypts Secret{plaintext} → Secret{ciphertext}, stores entity
 //   - Get/List/Find: retrieves entity with Secret{ciphertext}, decrypts to Secret{plaintext}
-//   - Update: validates entity (requires plaintext Secret), provisions branch key (if manager
-//     present, idempotent — safe for already-provisioned services), encrypts Secret{plaintext} →
-//     Secret{ciphertext}, stores entity. Encrypted state is rejected to ensure re-encryption
-//     always runs (e.g. during key rotation or after switching encryption backends).
+//   - Update: validates entity (requires plaintext Secret), provisions the branch key
+//     idempotently, encrypts Secret{plaintext} → Secret{ciphertext}, stores entity.
+//     Encrypted state is rejected to ensure re-encryption always runs (e.g. during
+//     key rotation or after switching encryption backends).
 //
 // The repository (ThirdpartyOAuth2ProviderRepository) is unaware of encryption mechanics
 // and treats Secret ciphertext as opaque binary data.
@@ -39,7 +39,7 @@ type ThirdpartyOAuth2ProviderService struct {
 }
 
 // NewThirdpartyOAuth2ProviderService creates a new provider service.
-// branchKeyManager may be nil if no KMS backend is configured.
+// branchKeyManager must not be nil; inject the noop BranchKeyManager when no KMS store is configured.
 // skipHTTPSValidation allows HTTP issuer/metadata URLs in development or test environments;
 // set from config.Security.SkipThirdpartyHTTPSValidation.
 func NewThirdpartyOAuth2ProviderService(
@@ -172,11 +172,11 @@ func (s *ThirdpartyOAuth2ProviderService) Get(
 // always supply the secret. Passing encrypted state is rejected by ValidateForUpdate.
 // On success, entity.Secret is in encrypted state.
 //
-// If a branchKeyManager is configured, Update provisions the branch key before
-// encrypting. This handles the migration case where a service was originally created
-// with a different encryption backend (e.g. raw AES in-memory) that has no branch key
-// entry in the current KMS key store. branchKeyManager.Create is idempotent: it is safe
-// to call on services whose branch key already exists.
+// Update provisions the branch key before encrypting. This handles the migration case
+// where a service was originally created with a different encryption backend (e.g. raw
+// AES in-memory) that has no branch key entry in the current KMS key store.
+// branchKeyManager.Create is idempotent: it is safe to call on services whose branch
+// key already exists.
 func (s *ThirdpartyOAuth2ProviderService) Update(
 	ctx context.Context,
 	entity *model.ThirdpartyOAuth2ProviderEntity,
