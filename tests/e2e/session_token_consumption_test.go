@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -40,7 +39,7 @@ var _ = Describe("Session Token Grant Submission", func() {
 	)
 
 	BeforeEach(func() {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		logger = bootstrap.TestLogger(slog.LevelInfo)
 		storageFactory = bootstrap.NewStorageFactory(logger)
 		var err error
 		testStorage, err = storageFactory.NewTestStorage()

@@ -155,13 +155,14 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		if tokenErr, ok := err.(*tokenexchange.TokenExchangeError); ok {
-			if details := tokenErr.Details(); details != "" {
+		var tokenErrForSpan *tokenexchange.TokenExchangeError
+		if errors.As(err, &tokenErrForSpan) {
+			if details := tokenErrForSpan.Details(); details != "" {
 				span.SetAttributes(attribute.String("token_exchange.validation_details", truncateSpanAttribute(details, 512)))
 			}
 			span.SetAttributes(
-				attribute.String("token_exchange.error_code", tokenErr.Code()),
-				attribute.String("token_exchange.error_description", tokenErr.Description()),
+				attribute.String("token_exchange.error_code", tokenErrForSpan.Code()),
+				attribute.String("token_exchange.error_description", tokenErrForSpan.Description()),
 			)
 		}
 		if h.Logger != nil {
@@ -169,11 +170,12 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 				"error", err.Error(),
 				"error_type", fmt.Sprintf("%T", err),
 			}
-			if tokenErr, ok := err.(*tokenexchange.TokenExchangeError); ok {
-				if cause := errors.Unwrap(tokenErr); cause != nil {
+			var tokenErrForLog *tokenexchange.TokenExchangeError
+			if errors.As(err, &tokenErrForLog) {
+				if cause := errors.Unwrap(tokenErrForLog); cause != nil {
 					logAttrs = append(logAttrs, "cause", cause.Error())
 				}
-				if details := tokenErr.Details(); details != "" {
+				if details := tokenErrForLog.Details(); details != "" {
 					logAttrs = append(logAttrs, "details", details)
 				}
 			}
@@ -210,7 +212,8 @@ func (h *OAuth2TokenHandler) handleTokenExchangeError(w http.ResponseWriter, err
 		errBody map[string]string
 	)
 
-	if tokenExchangeErr, ok := err.(*tokenexchange.TokenExchangeError); ok {
+	var tokenExchangeErr *tokenexchange.TokenExchangeError
+	if errors.As(err, &tokenExchangeErr) {
 		status = tokenExchangeErr.HTTPStatus()
 		errBody = map[string]string{
 			"error":             tokenExchangeErr.Code(),
@@ -220,6 +223,9 @@ func (h *OAuth2TokenHandler) handleTokenExchangeError(w http.ResponseWriter, err
 			errBody["error_uri"] = tokenExchangeErr.ErrorURI()
 		}
 	} else {
+		if h.Logger != nil {
+			h.Logger.Error("unrecognized token exchange error", "error", err)
+		}
 		status = http.StatusInternalServerError
 		errBody = map[string]string{
 			"error":             "server_error",

@@ -3,7 +3,6 @@ package e2e_test
 import (
 	"context"
 	"log/slog"
-	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -38,9 +37,7 @@ var _ = Describe("Encryption Vault for OAuth Tokens - Environment Variable KEK M
 		ctx = context.Background()
 
 		// Setup logger
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
-		}))
+		logger = bootstrap.TestLogger(slog.LevelInfo)
 
 		// Create storage factory and build fresh storage
 		storageFactory = bootstrap.NewStorageFactory(logger)

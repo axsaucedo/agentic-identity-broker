@@ -30,11 +30,26 @@ type LocalStackContainer struct {
 	OriginalEndpoint string // Original AWS_ENDPOINT_URL_KMS value
 }
 
+// StartLocalStackForSuite starts a LocalStack container intended to be shared across a
+// test suite. Returns an error instead of calling t.Fatal so that TestMain can handle
+// startup failures gracefully.
+func StartLocalStackForSuite(ctx context.Context) (*LocalStackContainer, error) {
+	return startLocalStack(ctx, nil)
+}
+
 // StartLocalStack creates and starts a LocalStack container with KMS + DynamoDB
 // Usage: In BeforeEach, `ls := bootstrap.StartLocalStack(ctx, GinkgoT())`
 // Usage: In AfterEach, `defer ls.Terminate(ctx)`
 func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 	t.Helper()
+	ls, err := startLocalStack(ctx, t)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	return ls
+}
+
+func startLocalStack(ctx context.Context, t *testing.T) (*LocalStackContainer, error) {
 	// Use default bridge network to avoid network creation issues with testcontainers reaper
 	// The bridge network is always available and compatible with all Docker configurations
 	req := testcontainers.ContainerRequest{
@@ -53,10 +68,11 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 
 	// testcontainers panics (via sync.Once) when no Docker host is reachable.
 	// Narrow recovery to this call only to avoid masking panics from later steps.
+	var startErr error
 	container, err := func() (testcontainers.Container, error) {
 		defer func() {
 			if r := recover(); r != nil {
-				t.Fatalf("Docker runtime unavailable — ensure Colima or Docker Desktop is running: %v", r)
+				startErr = fmt.Errorf("docker runtime unavailable — ensure Colima or Docker Desktop is running: %v", r)
 			}
 		}()
 		return testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -64,20 +80,23 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 			Started:          true,
 		})
 	}()
+	if startErr != nil {
+		return nil, startErr
+	}
 	if err != nil {
-		t.Fatalf("failed to start LocalStack container: %v", err)
+		return nil, fmt.Errorf("failed to start LocalStack container: %w", err)
 	}
 
 	host, err := container.Host(ctx)
 	if err != nil {
 		_ = container.Terminate(ctx)
-		t.Fatalf("failed to get container host: %v", err)
+		return nil, fmt.Errorf("failed to get container host: %w", err)
 	}
 
 	port, err := container.MappedPort(ctx, "4566")
 	if err != nil {
 		_ = container.Terminate(ctx)
-		t.Fatalf("failed to get mapped port: %v", err)
+		return nil, fmt.Errorf("failed to get mapped port: %w", err)
 	}
 
 	endpoint := fmt.Sprintf("http://%s:%s", host, port.Port())
@@ -86,7 +105,7 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 	kmsConfig, err := awsConfigForLocalStack(ctx, endpoint)
 	if err != nil {
 		_ = container.Terminate(ctx)
-		t.Fatalf("failed to load AWS config for KMS: %v", err)
+		return nil, fmt.Errorf("failed to load AWS config for KMS: %w", err)
 	}
 	kmsClient := kms.NewFromConfig(kmsConfig)
 	keyOutput, err := kmsClient.CreateKey(ctx, &kms.CreateKeyInput{
@@ -94,7 +113,7 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 	})
 	if err != nil {
 		_ = container.Terminate(ctx)
-		t.Fatalf("failed to create KMS key: %v", err)
+		return nil, fmt.Errorf("failed to create KMS key: %w", err)
 	}
 
 	keyID := *keyOutput.KeyMetadata.KeyId
@@ -106,7 +125,7 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 	dynamoConfig, err := awsConfigForLocalStack(ctx, endpoint)
 	if err != nil {
 		_ = container.Terminate(ctx)
-		t.Fatalf("failed to load AWS config for DynamoDB: %v", err)
+		return nil, fmt.Errorf("failed to load AWS config for DynamoDB: %w", err)
 	}
 	dynamoClient := dynamodb.NewFromConfig(dynamoConfig)
 	_, err = dynamoClient.CreateTable(ctx, &dynamodb.CreateTableInput{
@@ -132,11 +151,10 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 			},
 		},
 		BillingMode: types.BillingModePayPerRequest,
-		// TTL can be configured separately via UpdateTimeToLive if needed
 	})
 	if err != nil {
 		_ = container.Terminate(ctx)
-		t.Fatalf("failed to create DynamoDB table: %v", err)
+		return nil, fmt.Errorf("failed to create DynamoDB table: %w", err)
 	}
 
 	// Pre-populate branch keys in DynamoDB for test services
@@ -144,35 +162,17 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 	err = preBranchKeysForLocalStack(ctx, kmsClient, dynamoClient, keyID)
 	if err != nil {
 		_ = container.Terminate(ctx)
-		t.Fatalf("failed to pre-populate branch keys: %v", err)
+		return nil, fmt.Errorf("failed to pre-populate branch keys: %w", err)
 	}
 
-	// Set environment variables so AWS SDK client code uses LocalStack endpoint
-	if err := os.Setenv("AWS_ENDPOINT_URL", endpoint); err != nil {
-		t.Fatalf("failed to set AWS_ENDPOINT_URL: %v", err)
-	}
-	if err := os.Setenv("AWS_ENDPOINT_URL_KMS", endpoint); err != nil {
-		t.Fatalf("failed to set AWS_ENDPOINT_URL_KMS: %v", err)
-	}
-	if err := os.Setenv("AWS_ENDPOINT_URL_DYNAMODB", endpoint); err != nil {
-		t.Fatalf("failed to set AWS_ENDPOINT_URL_DYNAMODB: %v", err)
-	}
-	if err := os.Setenv("AWS_ACCESS_KEY_ID", "test"); err != nil {
-		t.Fatalf("failed to set AWS_ACCESS_KEY_ID: %v", err)
-	}
-	if err := os.Setenv("AWS_SECRET_ACCESS_KEY", "test"); err != nil {
-		t.Fatalf("failed to set AWS_SECRET_ACCESS_KEY: %v", err)
-	}
-	if err := os.Setenv("AWS_DEFAULT_REGION", "eu-central-1"); err != nil {
-		t.Fatalf("failed to set AWS_DEFAULT_REGION: %v", err)
-	}
-
-	return &LocalStackContainer{
+	ls := &LocalStackContainer{
 		Container:        container,
 		Endpoint:         endpoint,
 		KMSKeyID:         keyID,
 		OriginalEndpoint: os.Getenv("AWS_ENDPOINT_URL"),
 	}
+	ls.SetupLocalStackEnvironment()
+	return ls, nil
 }
 
 // SetupLocalStackEnvironment configures the AWS SDK to use LocalStack endpoint for the test
