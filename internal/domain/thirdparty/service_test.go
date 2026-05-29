@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -98,6 +97,16 @@ func (m *MockBranchKeyManager) Create(ctx context.Context, serviceID id.ServiceI
 	return args.String(0), args.Error(1)
 }
 
+type noopBranchKeyManager struct{}
+
+func newNoopBranchKeyManager() *noopBranchKeyManager {
+	return &noopBranchKeyManager{}
+}
+
+func (m *noopBranchKeyManager) Create(_ context.Context, _ id.ServiceID) (string, error) {
+	return "", nil
+}
+
 // minimalValidEntity returns the smallest ThirdpartyOAuth2ProviderEntity that passes
 // ValidateForCreate. Use this as the base for tests focused on service behavior
 // (encryption, branch keys, storage) rather than validation logic.
@@ -120,7 +129,7 @@ func minimalValidEntity(svcID id.ServiceID, secret model.Secret) *model.Thirdpar
 func TestThirdpartyOAuth2ProviderService_Create_ValidationRejectsBeforeIDGeneration(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	// Entity missing required DisplayName — validation must reject before ID is assigned
@@ -163,7 +172,7 @@ func TestThirdpartyOAuth2ProviderService_Create_ValidationRejectsBeforeBranchKey
 func TestThirdpartyOAuth2ProviderService_Create_HTTPIssuerRejectedByDefault(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	entity := minimalValidEntity(id.NewServiceID(), model.NewPlaintextSecret("secret"))
@@ -179,7 +188,7 @@ func TestThirdpartyOAuth2ProviderService_Create_HTTPIssuerRejectedByDefault(t *t
 func TestThirdpartyOAuth2ProviderService_Create_HTTPIssuerAllowedWithSkipHTTPS(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, true, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, true, slog.Default())
 
 	ctx := context.Background()
 	entity := minimalValidEntity(id.NewServiceID(), model.NewPlaintextSecret("secret"))
@@ -197,7 +206,7 @@ func TestThirdpartyOAuth2ProviderService_Create_HTTPIssuerAllowedWithSkipHTTPS(t
 func TestThirdpartyOAuth2ProviderService_Update_ValidationRejectsBeforeEncryption(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	// Entity missing required DisplayName — encryption must NOT be attempted
@@ -221,7 +230,7 @@ func TestThirdpartyOAuth2ProviderService_Update_ValidationRejectsBeforeEncryptio
 func TestThirdpartyOAuth2ProviderService_Create_EncryptsAndStores(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	entity := minimalValidEntity(id.NewServiceID(), model.NewPlaintextSecret("supersecret"))
@@ -246,7 +255,7 @@ func TestThirdpartyOAuth2ProviderService_Create_EncryptsAndStores(t *testing.T) 
 func TestThirdpartyOAuth2ProviderService_Create_GeneratesIDIfEmpty(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	entity := minimalValidEntity(id.ServiceID{}, model.NewPlaintextSecret("my-secret"))
@@ -321,7 +330,7 @@ func TestThirdpartyOAuth2ProviderService_Create_BranchKeyFailure_AbortCreate(t *
 func TestThirdpartyOAuth2ProviderService_Create_EncryptionFailure(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	entity := minimalValidEntity(id.NewServiceID(), model.NewPlaintextSecret("secret"))
@@ -338,7 +347,7 @@ func TestThirdpartyOAuth2ProviderService_Create_EncryptionFailure(t *testing.T) 
 func TestThirdpartyOAuth2ProviderService_Create_EncryptedSecretFails(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	// Entity with encrypted secret — ValidateForCreate requires plaintext state
@@ -359,7 +368,7 @@ func TestThirdpartyOAuth2ProviderService_Create_EncryptedSecretFails(t *testing.
 func TestThirdpartyOAuth2ProviderService_Get_DecryptsSecret(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svcID := id.NewServiceID()
@@ -388,7 +397,7 @@ func TestThirdpartyOAuth2ProviderService_Get_DecryptsSecret(t *testing.T) {
 func TestThirdpartyOAuth2ProviderService_Get_NotFound(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	nonexistentID := id.NewServiceID()
@@ -409,7 +418,7 @@ func TestThirdpartyOAuth2ProviderService_Get_NotFound(t *testing.T) {
 func TestThirdpartyOAuth2ProviderService_CrossServiceProtection(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 
@@ -443,7 +452,7 @@ func TestThirdpartyOAuth2ProviderService_CrossServiceProtection(t *testing.T) {
 func TestThirdpartyOAuth2ProviderService_Get_DecryptionFailure_ReturnsEncryptedEntity(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svcID := id.NewServiceID()
@@ -475,7 +484,7 @@ func TestThirdpartyOAuth2ProviderService_Get_DecryptionFailure_ReturnsEncryptedE
 func TestThirdpartyOAuth2ProviderService_Update_WithNewSecret(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svcID := id.NewServiceID()
@@ -566,7 +575,7 @@ func TestThirdpartyOAuth2ProviderService_Update_BranchKeyProvisioningFailure_Abo
 func TestThirdpartyOAuth2ProviderService_Update_EncryptedSecretFails(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	// Passing an already-encrypted secret must be rejected — callers must always supply
@@ -589,7 +598,7 @@ func TestThirdpartyOAuth2ProviderService_Update_EncryptedSecretFails(t *testing.
 func TestThirdpartyOAuth2ProviderService_List_DecryptsAll(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svc1ID := id.NewServiceID()
@@ -619,7 +628,7 @@ func TestThirdpartyOAuth2ProviderService_List_DecryptsAll(t *testing.T) {
 func TestThirdpartyOAuth2ProviderService_List_GracefulDecryptionFailure(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svc1ID := id.NewServiceID()
@@ -659,7 +668,7 @@ func TestThirdpartyOAuth2ProviderService_List_GracefulDecryptionFailure(t *testi
 func TestThirdpartyOAuth2ProviderService_Delete(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svcID := id.NewServiceID()
@@ -679,7 +688,7 @@ func TestThirdpartyOAuth2ProviderService_Delete(t *testing.T) {
 func TestThirdpartyOAuth2ProviderService_FindByProtectedResource_DecryptsSecret(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svcID := id.NewServiceID()
@@ -703,7 +712,7 @@ func TestThirdpartyOAuth2ProviderService_FindByProtectedResource_DecryptsSecret(
 func TestThirdpartyOAuth2ProviderService_FindByProtectedResource_DecryptionFailure_ReturnsEncryptedEntity(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svcID := id.NewServiceID()
@@ -729,7 +738,7 @@ func TestThirdpartyOAuth2ProviderService_FindByProtectedResource_DecryptionFailu
 func TestThirdpartyOAuth2ProviderService_Create_ServiceIDOnlyContext(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svcID := id.NewServiceID()
@@ -753,7 +762,7 @@ func TestThirdpartyOAuth2ProviderService_Create_ServiceIDOnlyContext(t *testing.
 func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_Empty(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	err := svc.ValidateServiceRequirements(context.Background(), nil)
 	assert.NoError(t, err)
@@ -767,7 +776,7 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_Empty(t *te
 func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_ValidScopes(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svcID := id.NewServiceID()
@@ -798,7 +807,7 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_ValidScopes
 func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_MultipleServices(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	githubID := id.NewServiceID()
@@ -831,7 +840,7 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_MultipleSer
 func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_ServiceNotFound(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	missingSvcID := id.NewServiceID()
@@ -857,7 +866,7 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_ServiceNotF
 func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_InvalidScope(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svcID := id.NewServiceID()
@@ -888,7 +897,7 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_InvalidScop
 func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_SecondIndexError(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svc1ID := id.NewServiceID()
@@ -921,7 +930,7 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_SecondIndex
 func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_StorageError(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svc1ID := id.NewServiceID()
@@ -945,7 +954,7 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_StorageErro
 func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_CaseSensitiveScopes(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
-	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
 
 	ctx := context.Background()
 	svcID := id.NewServiceID()

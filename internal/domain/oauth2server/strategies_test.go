@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -24,7 +23,7 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken_DecryptFailure(t *testing.T)
 	t.Run("decrypt failure returns wrapped error", func(t *testing.T) {
 		// Use failingDecryptor so Encrypt succeeds (key is stored) but Decrypt always fails.
 		repo := memory.NewSigningKeyStore()
-		svc := NewSigningKeyService(repo, &failingDecryptor{}, &encryptionnoop.BranchKeyManager{}, testSlogger())
+		svc := NewSigningKeyService(repo, &failingDecryptor{}, newNoopBranchKeyManager(), testSlogger())
 		ctx := context.Background()
 
 		// generateAndStore with time.Now() so activates_at is in the past and GetCurrent returns the key.
@@ -363,7 +362,7 @@ func TestJWXAccessTokenStrategy_GetCurrent_NonNotFoundError(t *testing.T) {
 	t.Run("connection error does not produce 'no signing key provisioned' message", func(t *testing.T) {
 		repo := &connectionErrorSigningKeyRepo{SigningKeyStore: memory.NewSigningKeyStore()}
 		enc := &testEncryptor{}
-		svc := NewSigningKeyService(repo, enc, &encryptionnoop.BranchKeyManager{}, testSlogger())
+		svc := NewSigningKeyService(repo, enc, newNoopBranchKeyManager(), testSlogger())
 		strategy, err := NewJWXAccessTokenStrategy(svc, "https://issuer.example.com", time.Hour, nil, testSlogger())
 		require.NoError(t, err)
 

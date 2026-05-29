@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
@@ -259,7 +258,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	providerService1 := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo1,
 		newTestEncryption(t),
-		&encryptionnoop.BranchKeyManager{},
+		newNoopBranchKeyManager(),
 		nil,
 		false,
 		slog.Default(),
@@ -294,7 +293,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	providerService2 := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo2,
 		newTestEncryption(t),
-		&encryptionnoop.BranchKeyManager{},
+		newNoopBranchKeyManager(),
 		nil,
 		false,
 		slog.Default(),
