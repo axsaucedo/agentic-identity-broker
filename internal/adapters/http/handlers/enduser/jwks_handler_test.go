@@ -15,6 +15,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // testEncryptor is a minimal encryption stub for testing.
@@ -39,7 +40,7 @@ func newTestJWKSHandler(t *testing.T) *JWKSHandler {
 	repo := memory.NewSigningKeyStore()
 	enc := &testEncryptor{}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	svc := oauth2server.NewSigningKeyService(repo, enc, nil, logger)
+	svc := oauth2server.NewSigningKeyService(repo, enc, &ports.NoopBranchKeyManager{}, logger)
 
 	// Generate a signing key so the JWKS is non-empty
 	_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)

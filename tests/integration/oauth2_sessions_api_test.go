@@ -1594,7 +1594,7 @@ func createOAuth2SessionService(
 	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo,
 		encryption,
-		nil,
+		&ports.NoopBranchKeyManager{},
 		nil,
 		false,
 		slog.Default(),

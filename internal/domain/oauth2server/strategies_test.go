@@ -342,7 +342,7 @@ func TestJWXAccessTokenStrategy_GetCurrent_NonNotFoundError(t *testing.T) {
 	t.Run("connection error does not produce 'no signing key provisioned' message", func(t *testing.T) {
 		repo := &connectionErrorSigningKeyRepo{SigningKeyStore: memory.NewSigningKeyStore()}
 		enc := &testEncryptor{}
-		svc := NewSigningKeyService(repo, enc, nil, testSlogger())
+		svc := NewSigningKeyService(repo, enc, &ports.NoopBranchKeyManager{}, testSlogger())
 		strategy, err := NewJWXAccessTokenStrategy(svc, "https://issuer.example.com", time.Hour, nil, testSlogger())
 		require.NoError(t, err)
 

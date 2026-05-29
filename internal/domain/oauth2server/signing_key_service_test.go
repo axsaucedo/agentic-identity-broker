@@ -70,7 +70,7 @@ func newTestSigningKeyService() (*SigningKeyService, *memory.SigningKeyStore) {
 	repo := memory.NewSigningKeyStore()
 	enc := &testEncryptor{}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	return NewSigningKeyService(repo, enc, nil, logger), repo
+	return NewSigningKeyService(repo, enc, &ports.NoopBranchKeyManager{}, logger), repo
 }
 
 func newTestSigningKeyServiceWithBranchKeyManager(bkm ports.BranchKeyManager) (*SigningKeyService, *memory.SigningKeyStore) {
@@ -218,7 +218,7 @@ func TestSigningKeyService_BuildJWKS(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		svc := NewSigningKeyService(repo, &testEncryptor{}, nil, testSlogger())
+		svc := NewSigningKeyService(repo, &testEncryptor{}, &ports.NoopBranchKeyManager{}, testSlogger())
 		jwks, err := svc.BuildJWKS(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, 0, jwks.Len(), "bad key should be skipped")
@@ -511,20 +511,17 @@ func TestSigningKeyService_OrphanedBranchKeyWarning(t *testing.T) {
 		assert.Contains(t, logOutput, "kid", "warn log must include the kid field")
 	})
 
-	t.Run("no orphan warning when branchKeyManager is nil", func(t *testing.T) {
-		var logBuf bytes.Buffer
-		// No branch key manager — warnings must not fire.
-		repo := &mockFailingSigningKeyRepo{
-			SigningKeyStore: memory.NewSigningKeyStore(),
-			createErr:       errors.New("storage unavailable"),
-		}
-		logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-		svc := NewSigningKeyService(repo, &testEncryptor{}, nil, logger)
+	t.Run("NoopBranchKeyManager never causes provisioning failure", func(t *testing.T) {
+		// NoopBranchKeyManager.Create always succeeds — it must never block key generation.
+		bkm := &ports.NoopBranchKeyManager{}
+		svc, repo := newTestSigningKeyServiceWithBranchKeyManager(bkm)
 
 		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", false)
-		require.Error(t, err)
+		require.NoError(t, err)
 
-		assert.NotContains(t, logBuf.String(), "orphaned branch key")
+		count, countErr := repo.CountActive(context.Background())
+		require.NoError(t, countErr)
+		assert.Equal(t, 1, count)
 	})
 }
 

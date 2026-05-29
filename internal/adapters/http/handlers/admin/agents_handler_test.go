@@ -89,7 +89,7 @@ func (m *MockAgentRepository) ExistsOtherWithClientID(ctx context.Context, clien
 // MockProviderRepository and newTestEncryption are defined in services_handler_test.go
 // and are available here because both files share the same package admin.
 func newAgentsHandlerForTest(mockRepo *MockAgentRepository, mockServiceRepo *MockProviderRepository, logger *slog.Logger) *AgentsHandler {
-	providerSvc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, nil, false, logger)
+	providerSvc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), &ports.NoopBranchKeyManager{}, nil, false, logger)
 	// Use multiAgentEnabled=true so existing CRUD tests don't need ExistsOtherWithClientID expectations.
 	// T033 tests use newAgentsHandlerForTestWithMultiAgent with explicit flags.
 	agentSvc := agents.NewService(mockRepo, providerSvc, logger, true)
@@ -98,7 +98,7 @@ func newAgentsHandlerForTest(mockRepo *MockAgentRepository, mockServiceRepo *Moc
 
 // newAgentsHandlerForTestWithMultiAgent creates an AgentsHandler with the given multiAgentEnabled flag.
 func newAgentsHandlerForTestWithMultiAgent(mockRepo *MockAgentRepository, mockServiceRepo *MockProviderRepository, logger *slog.Logger, multiAgentEnabled bool) *AgentsHandler {
-	providerSvc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, nil, false, logger)
+	providerSvc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), &ports.NoopBranchKeyManager{}, nil, false, logger)
 	agentSvc := agents.NewService(mockRepo, providerSvc, logger, multiAgentEnabled)
 	return NewAgentsHandler(agentSvc, providerSvc, nil, logger)
 }
@@ -1134,7 +1134,7 @@ func newAgentsHandlerForFR019Test(
 	mockPS *MockPermissionSetValidator,
 	logger *slog.Logger,
 ) *AgentsHandler {
-	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, nil, false, logger)
+	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), &ports.NoopBranchKeyManager{}, nil, false, logger)
 	agentSvc := agents.NewService(mockRepo, svc, logger, true)
 	return NewAgentsHandler(agentSvc, svc, mockPS, logger)
 }

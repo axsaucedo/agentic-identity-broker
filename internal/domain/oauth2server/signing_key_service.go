@@ -35,7 +35,7 @@ const jwksGracePeriod = 2 * jwksCacheMaxAge
 type SigningKeyService struct {
 	repo             ports.SigningKeyRepository
 	encryption       ports.EncryptionPort
-	branchKeyManager ports.BranchKeyManager // may be nil (memory/raw-AES backend)
+	branchKeyManager ports.BranchKeyManager
 	logger           *slog.Logger
 }
 
@@ -88,16 +88,14 @@ func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm stri
 	}
 
 	var branchKeyProvisioned bool
-	if s.branchKeyManager != nil {
-		kidAsServiceID, parseErr := id.ParseServiceID(kid.String())
-		if parseErr != nil {
-			return nil, fmt.Errorf("failed to parse kid %q as service ID: %w", kid, parseErr)
-		}
-		if _, err := s.branchKeyManager.Create(ctx, kidAsServiceID); err != nil {
-			return nil, fmt.Errorf("failed to provision branch key for signing key: %w", err)
-		}
-		branchKeyProvisioned = true
+	kidAsServiceID, parseErr := id.ParseServiceID(kid.String())
+	if parseErr != nil {
+		return nil, fmt.Errorf("failed to parse kid %q as service ID: %w", kid, parseErr)
 	}
+	if _, err := s.branchKeyManager.Create(ctx, kidAsServiceID); err != nil {
+		return nil, fmt.Errorf("failed to provision branch key for signing key: %w", err)
+	}
+	branchKeyProvisioned = true
 
 	encrypted, err := s.encryption.Encrypt(ctx, privKeyPEM, signingKeyEncCtx(kid))
 	if err != nil {

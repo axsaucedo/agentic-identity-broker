@@ -32,7 +32,7 @@ import (
 type ThirdpartyOAuth2ProviderService struct {
 	repo                ports.ThirdpartyOAuth2ProviderRepository
 	encryption          ports.EncryptionPort
-	branchKeyManager    ports.BranchKeyManager        // may be nil
+	branchKeyManager    ports.BranchKeyManager
 	permissionSetRepo   ports.PermissionSetRepository // may be nil
 	skipHTTPSValidation bool
 	logger              *slog.Logger
@@ -82,19 +82,17 @@ func (s *ThirdpartyOAuth2ProviderService) Create(
 	}
 
 	// Provision branch key before creating service (fail-fast on error)
-	if s.branchKeyManager != nil {
-		s.logger.Info("provisioning branch key for service", "service_id", entity.ID)
-		branchKeyID, err := s.branchKeyManager.Create(ctx, entity.ID)
-		if err != nil {
-			s.logger.Error("failed to provision branch key",
-				"service_id", entity.ID,
-				"error", err)
-			return fmt.Errorf("branch key provisioning failed: %w", err)
-		}
-		s.logger.Info("branch key provisioned",
+	s.logger.Info("provisioning branch key for service", "service_id", entity.ID)
+	branchKeyID, err := s.branchKeyManager.Create(ctx, entity.ID)
+	if err != nil {
+		s.logger.Error("failed to provision branch key",
 			"service_id", entity.ID,
-			"branch_key_id", branchKeyID)
+			"error", err)
+		return fmt.Errorf("branch key provisioning failed: %w", err)
 	}
+	s.logger.Info("branch key provisioned",
+		"service_id", entity.ID,
+		"branch_key_id", branchKeyID)
 
 	// Extract plaintext secret
 	plaintext, err := entity.Secret.GetPlaintext()
@@ -191,19 +189,20 @@ func (s *ThirdpartyOAuth2ProviderService) Update(
 	// Provision branch key before encrypting (idempotent — safe for already-provisioned services).
 	// Required when updating a service that was created with a different encryption backend and
 	// therefore has no branch key in the current KMS key store.
-	if s.branchKeyManager != nil {
-		s.logger.Info("ensuring branch key exists for service update", "service_id", entity.ID)
-		branchKeyID, err := s.branchKeyManager.Create(ctx, entity.ID)
-		if err != nil {
-			s.logger.Error("failed to ensure branch key for update",
-				"service_id", entity.ID,
-				"error", err)
-			return fmt.Errorf("branch key provisioning failed: %w", err)
-		}
-		s.logger.Info("branch key ready for update",
+	// Provision branch key before encrypting (idempotent — safe for already-provisioned services).
+	// Required when updating a service that was created with a different encryption backend and
+	// therefore has no branch key in the current KMS key store.
+	s.logger.Info("ensuring branch key exists for service update", "service_id", entity.ID)
+	branchKeyID, err := s.branchKeyManager.Create(ctx, entity.ID)
+	if err != nil {
+		s.logger.Error("failed to ensure branch key for update",
 			"service_id", entity.ID,
-			"branch_key_id", branchKeyID)
+			"error", err)
+		return fmt.Errorf("branch key provisioning failed: %w", err)
 	}
+	s.logger.Info("branch key ready for update",
+		"service_id", entity.ID,
+		"branch_key_id", branchKeyID)
 
 	plaintext, err := entity.Secret.GetPlaintext()
 	if err != nil {

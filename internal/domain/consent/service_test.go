@@ -48,7 +48,7 @@ func (e *testEncryption) Decrypt(_ context.Context, ciphertext []byte, _ map[str
 // with a non-identity test double for encryption. Used in domain-layer tests that exercise
 // consent business logic, not encryption correctness.
 func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &testEncryption{}, nil, nil, false, nil)
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &testEncryption{}, &ports.NoopBranchKeyManager{}, nil, false, nil)
 }
 
 // Mock implementations for testing

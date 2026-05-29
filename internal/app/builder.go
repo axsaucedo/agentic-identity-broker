@@ -312,15 +312,15 @@ func (b *Builder) Build() (*App, error) {
 			"dynamodb_region", b.config.Encryption.AWSKMS.DynamoDBRegion,
 			"branch_key_ttl", b.config.Encryption.AWSKMS.BranchKeyTTL,
 			"dynamodb_read_timeout", b.config.Encryption.AWSKMS.DynamoDBReadTimeout,
-			"dynamodb_write_timeout", b.config.Encryption.AWSKMS.DynamoDBWriteTimeout,
-			"branch_key_manager_wired", branchKeyManager != nil)
+			"dynamodb_write_timeout", b.config.Encryption.AWSKMS.DynamoDBWriteTimeout)
 	} else {
-		b.logger.Info("Memory encryption adapter initialized",
-			"branch_key_manager_wired", branchKeyManager != nil)
+		b.logger.Info("Memory encryption adapter initialized")
 	}
 
 	if branchKeyManager != nil {
 		app.BranchKeyManager = branchKeyManager
+	} else {
+		app.BranchKeyManager = &ports.NoopBranchKeyManager{}
 	}
 
 	// Decode and import JWE signing key — required for both OAuth2SessionService and OAuth2Service
@@ -366,7 +366,7 @@ func (b *Builder) Build() (*App, error) {
 		app.ProviderService = thirdparty.NewThirdpartyOAuth2ProviderService(
 			b.storage.Services(),
 			encryptor,
-			branchKeyManager, // May be nil if memory backend (no branch key store)
+			app.BranchKeyManager,
 			b.storage.PermissionSets(),
 			b.config.Security.SkipThirdpartyHTTPSValidation,
 			b.logger,
