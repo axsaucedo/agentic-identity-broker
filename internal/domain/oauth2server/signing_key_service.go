@@ -91,7 +91,7 @@ func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm stri
 	if s.branchKeyManager != nil {
 		kidAsServiceID, parseErr := id.ParseServiceID(kid.String())
 		if parseErr != nil {
-			return nil, fmt.Errorf("failed to parse kid as service ID: %w", parseErr)
+			return nil, fmt.Errorf("failed to parse kid %q as service ID: %w", kid, parseErr)
 		}
 		if _, err := s.branchKeyManager.Create(ctx, kidAsServiceID); err != nil {
 			return nil, fmt.Errorf("failed to provision branch key for signing key: %w", err)
