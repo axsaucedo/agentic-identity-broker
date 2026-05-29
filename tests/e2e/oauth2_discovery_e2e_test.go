@@ -36,6 +36,7 @@ var _ = Describe("US6: Discovery and JWKS (local mode)", func() {
 		Expect(err).ToNot(HaveOccurred())
 		adminSrv, err := bootstrap.NewAdminTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(adminSrv.Close)
 		Expect(helpers.ProvisionSigningKey(adminSrv.BaseURL())).ToNot(HaveOccurred())
 		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())

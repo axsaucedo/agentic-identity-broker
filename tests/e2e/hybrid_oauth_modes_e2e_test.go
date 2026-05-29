@@ -57,6 +57,7 @@ var _ = Describe("US2: Hybrid Mode Agent Coexistence", func() {
 
 		adminSrv, err := bootstrap.NewAdminTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(adminSrv.Close)
 		Expect(helpers.ProvisionSigningKey(adminSrv.BaseURL())).ToNot(HaveOccurred())
 
 		server, err = bootstrap.NewEndUserTestServer(app, logger)
@@ -196,6 +197,7 @@ var _ = Describe("US2+US3: Hybrid Mode with CIMD", func() {
 
 		adminSrv, err := bootstrap.NewAdminTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(adminSrv.Close)
 		Expect(helpers.ProvisionSigningKey(adminSrv.BaseURL())).ToNot(HaveOccurred())
 
 		server, err = bootstrap.NewEndUserTestServer(app, logger)

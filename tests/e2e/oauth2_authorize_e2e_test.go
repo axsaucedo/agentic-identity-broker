@@ -354,6 +354,7 @@ var _ = Describe("US4b: Authorization Code Flow — LocalClient as public client
 		Expect(err).ToNot(HaveOccurred())
 		adminSrv, err := bootstrap.NewAdminTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(adminSrv.Close)
 		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(helpers.ProvisionSigningKey(adminSrv.BaseURL())).ToNot(HaveOccurred())
