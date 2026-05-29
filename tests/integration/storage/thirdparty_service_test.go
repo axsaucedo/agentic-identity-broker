@@ -13,6 +13,7 @@ import (
 	"time"
 
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/postgres"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
@@ -245,7 +246,7 @@ func TestFindByProtectedResource_SingleMatch(t *testing.T) {
 
 	encryption := newTestEncryption(t)
 	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &ports.NoopBranchKeyManager{}, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
 
 	// Create service with protected resources
 	entity := createTestService(
@@ -290,7 +291,7 @@ func TestFindByProtectedResource_NoMatch(t *testing.T) {
 
 	encryption := newTestEncryption(t)
 	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &ports.NoopBranchKeyManager{}, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
 
 	// Create service without matching resource
 	entity := createTestService(
@@ -337,7 +338,7 @@ func TestFindByProtectedResource_AmbiguousMatch(t *testing.T) {
 
 	encryption := newTestEncryption(t)
 	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &ports.NoopBranchKeyManager{}, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
 
 	// Create two services with overlapping resources (misconfiguration)
 	service1 := createTestService(
@@ -392,7 +393,7 @@ func TestFindByProtectedResource_URINormalization(t *testing.T) {
 
 	encryption := newTestEncryption(t)
 	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &ports.NoopBranchKeyManager{}, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
 
 	// Create service with normalized URI (no trailing slash)
 	entity := createTestService(
@@ -436,7 +437,7 @@ func TestFindByProtectedResource_MultipleServicesNonOverlapping(t *testing.T) {
 
 	encryption := newTestEncryption(t)
 	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &ports.NoopBranchKeyManager{}, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
 
 	// Create three services with different resources
 	service1 := createTestService(
@@ -526,7 +527,7 @@ func TestFindByProtectedResource_EmptyProtectedResources(t *testing.T) {
 
 	encryption := newTestEncryption(t)
 	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &ports.NoopBranchKeyManager{}, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
 
 	// Create service without protected_resources
 	entity := createTestService(
@@ -571,7 +572,7 @@ func TestFindByProtectedResource_CaseSensitive(t *testing.T) {
 
 	encryption := newTestEncryption(t)
 	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &ports.NoopBranchKeyManager{}, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
 
 	// Create service with specific case
 	entity := createTestService(
@@ -617,7 +618,7 @@ func TestFindByProtectedResource_MixedScenarios(t *testing.T) {
 
 	encryption := newTestEncryption(t)
 	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &ports.NoopBranchKeyManager{}, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
 
 	// Service 1: has resources
 	service1 := createTestService(
@@ -718,7 +719,7 @@ func TestFindByProtectedResource_ClientSecretDecrypted(t *testing.T) {
 
 	encryption := newTestEncryption(t)
 	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &ports.NoopBranchKeyManager{}, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
 
 	// Create service with a specific secret
 	entity := createTestService(
@@ -799,7 +800,7 @@ func TestFindByProtectedResource_GINIndexQuery(t *testing.T) {
 
 	encryption := newTestEncryption(t)
 	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &ports.NoopBranchKeyManager{}, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
 
 	// Create multiple services to test query efficiency
 	servicesByName := make(map[string]*model.ThirdpartyOAuth2ProviderEntity)
