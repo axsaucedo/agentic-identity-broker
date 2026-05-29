@@ -20,6 +20,26 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
+func TestJWXAccessTokenStrategy_GenerateAccessToken_DecryptFailure(t *testing.T) {
+	t.Run("decrypt failure returns wrapped error", func(t *testing.T) {
+		// Use failingDecryptor so Encrypt succeeds (key is stored) but Decrypt always fails.
+		repo := memory.NewSigningKeyStore()
+		svc := NewSigningKeyService(repo, &failingDecryptor{}, &encryptionnoop.BranchKeyManager{}, testSlogger())
+		ctx := context.Background()
+
+		// generateAndStore with time.Now() so activates_at is in the past and GetCurrent returns the key.
+		_, err := svc.generateAndStore(ctx, "ES256", true, time.Now())
+		require.NoError(t, err)
+
+		strategy, err := NewJWXAccessTokenStrategy(svc, "https://issuer.example.com", time.Hour, nil, testSlogger())
+		require.NoError(t, err)
+
+		_, _, err = strategy.GenerateAccessToken(ctx, buildTestRequest("agent", "user@example.com", []string{"read"}))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to decrypt signing key")
+	})
+}
+
 func TestRandomCodeStrategy_GenerateAuthorizeCode(t *testing.T) {
 	strategy := &RandomCodeStrategy{}
 

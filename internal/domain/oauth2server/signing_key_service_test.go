@@ -513,8 +513,9 @@ func TestSigningKeyService_BranchKeyProvisioning(t *testing.T) {
 	})
 
 	t.Run("ordering regression: branch key Created before Encrypt is called", func(t *testing.T) {
-		// Verifies Create is called before Encrypt. If the ordering were reversed,
-		// the failingEncryptor would error before Create is reached and createCalls would stay 0.
+		// Verifies branchKeyManager.Create is called before Encrypt.
+		// Because failingEncryptor always errors on Encrypt, if Create were called after Encrypt
+		// (or not at all), createCalls would be 0. createCalls == 1 proves Create ran first.
 		bkm := &mockBranchKeyManager{
 			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
 				return "branch-key-id", nil
@@ -589,6 +590,29 @@ func TestSigningKeyService_OrphanedBranchKeyWarning(t *testing.T) {
 		assert.Contains(t, logOutput, "branch-key-id", "warn log must include the branch key ID for operator cleanup")
 	})
 
+	t.Run("warns with kid when repo.CreateAndSetCurrent fails after branch key created", func(t *testing.T) {
+		var logBuf bytes.Buffer
+		bkm := &mockBranchKeyManager{
+			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
+				return "branch-key-id", nil
+			},
+		}
+		repo := &mockFailingSigningKeyRepo{
+			SigningKeyStore: memory.NewSigningKeyStore(),
+			createErr:       errors.New("storage unavailable"),
+		}
+		logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		svc := NewSigningKeyService(repo, &testEncryptor{}, bkm, logger)
+
+		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
+		require.Error(t, err)
+
+		logOutput := logBuf.String()
+		assert.Contains(t, logOutput, "orphaned branch key", "warn log must identify the orphaned entry")
+		assert.Contains(t, logOutput, "kid", "warn log must include the kid field")
+		assert.Contains(t, logOutput, "branch-key-id", "warn log must include the branch key ID for operator cleanup")
+	})
+
 	t.Run("NoopBranchKeyManager never causes provisioning failure", func(t *testing.T) {
 		// NoopBranchKeyManager.Create always succeeds — it must never block key generation.
 		bkm := &encryptionnoop.BranchKeyManager{}
@@ -600,6 +624,16 @@ func TestSigningKeyService_OrphanedBranchKeyWarning(t *testing.T) {
 		count, countErr := repo.CountActive(context.Background())
 		require.NoError(t, countErr)
 		assert.Equal(t, 1, count)
+	})
+}
+
+func TestSigningKeyEncCtx(t *testing.T) {
+	t.Run("value is bare kid UUID with no prefix", func(t *testing.T) {
+		kid := id.NewKeyID("550e8400-e29b-41d4-a716-446655440000")
+		ctx := signingKeyEncCtx(kid)
+		require.Len(t, ctx, 1, "encryption context must contain exactly one key")
+		assert.Equal(t, "550e8400-e29b-41d4-a716-446655440000", ctx["service_id"],
+			"service_id must be the bare kid string — no signing_key: prefix")
 	})
 }
 
