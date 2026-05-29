@@ -756,7 +756,7 @@ func (b *Builder) Build() (*App, error) {
 			return nil, fmt.Errorf("failed to check signing keys: %w", err)
 		}
 		if count == 0 {
-			b.logger.Warn("no signing key provisioned — local token issuance will fail until a key is created",
+			b.logger.Error("no signing key provisioned — local token issuance will fail until a key is created",
 				"hint", "POST /api/oauth2-server/signing-keys")
 		}
 		return provider, nil
