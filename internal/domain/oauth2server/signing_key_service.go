@@ -67,7 +67,6 @@ func (s *SigningKeyService) GenerateAndStoreKey(ctx context.Context, algorithm s
 }
 
 // generateAndStore creates and persists a signing key with an explicit activatesAt timestamp.
-// Called directly by EnsureKeyExists to bypass the grace period at startup (no clients yet).
 func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm string, makeCurrent bool, activatesAt time.Time) (*storage.SigningKey, error) {
 	if algorithm == "" {
 		algorithm = "ES256"
@@ -174,23 +173,14 @@ func (s *SigningKeyService) BuildJWKS(ctx context.Context) (jwk.Set, error) {
 	return set, nil
 }
 
-// EnsureKeyExists checks if any signing key exists and auto-generates one if not.
-// The generated key activates immediately (no grace period) because no clients have
-// cached a previous JWKS yet.
-func (s *SigningKeyService) EnsureKeyExists(ctx context.Context) error {
-	count, err := s.repo.CountActive(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to count signing keys: %w", err)
-	}
+// GetCurrent returns the active signing key used for token signing.
+func (s *SigningKeyService) GetCurrent(ctx context.Context) (*storage.SigningKey, error) {
+	return s.repo.GetCurrent(ctx)
+}
 
-	if count == 0 {
-		_, err := s.generateAndStore(ctx, "ES256", true, time.Now().UTC())
-		if err != nil {
-			return fmt.Errorf("failed to auto-generate signing key: %w", err)
-		}
-		s.logger.Info("auto-generated initial signing key at startup")
-	}
-	return nil
+// CountActive returns the number of non-removed signing keys.
+func (s *SigningKeyService) CountActive(ctx context.Context) (int, error) {
+	return s.repo.CountActive(ctx)
 }
 
 // DeleteKey removes a non-current signing key.

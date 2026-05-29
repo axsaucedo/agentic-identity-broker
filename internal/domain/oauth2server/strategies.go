@@ -17,8 +17,6 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/ory/fosite"
 	fositeOAuth2 "github.com/ory/fosite/handler/oauth2"
-
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // Compile-time interface checks
@@ -36,7 +34,6 @@ var baseClaims = map[string]bool{
 // JWXAccessTokenStrategy implements fosite's AccessTokenStrategy using lestrrat-go/jwx.
 type JWXAccessTokenStrategy struct {
 	signingKeyService *SigningKeyService
-	signingKeyRepo    ports.SigningKeyRepository
 	issuerURI         string
 	tokenTTL          time.Duration
 	customClaimsEval  *TokenClaimsEvaluator
@@ -48,7 +45,6 @@ type JWXAccessTokenStrategy struct {
 // tokenTTL must be positive.
 func NewJWXAccessTokenStrategy(
 	signingKeyService *SigningKeyService,
-	signingKeyRepo ports.SigningKeyRepository,
 	issuerURI string,
 	tokenTTL time.Duration,
 	customClaimsEval *TokenClaimsEvaluator,
@@ -63,7 +59,6 @@ func NewJWXAccessTokenStrategy(
 	}
 	return &JWXAccessTokenStrategy{
 		signingKeyService: signingKeyService,
-		signingKeyRepo:    signingKeyRepo,
 		issuerURI:         normalized,
 		tokenTTL:          tokenTTL,
 		customClaimsEval:  customClaimsEval,
@@ -74,8 +69,11 @@ func NewJWXAccessTokenStrategy(
 // GenerateAccessToken creates a signed JWT access token.
 func (s *JWXAccessTokenStrategy) GenerateAccessToken(ctx context.Context, requester fosite.Requester) (string, string, error) {
 	// 1. Get current signing key
-	key, err := s.signingKeyRepo.GetCurrent(ctx)
+	key, err := s.signingKeyService.GetCurrent(ctx)
 	if err != nil {
+		if isStorageNotFound(err) {
+			return "", "", fmt.Errorf("no signing key provisioned: create one via the admin API (POST /api/oauth2-server/signing-keys)")
+		}
 		return "", "", fmt.Errorf("failed to get current signing key: %w", err)
 	}
 
