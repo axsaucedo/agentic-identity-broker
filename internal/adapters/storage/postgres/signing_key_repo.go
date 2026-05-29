@@ -218,7 +218,10 @@ func (r *SigningKeyRepo) CountActive(ctx context.Context) (int, error) {
 	err := r.adapter.db.GetContext(queryCtx, &count,
 		`SELECT COUNT(*) FROM signing_keys WHERE removed_at IS NULL`)
 	if err != nil {
-		return 0, storage.NewStorageError("SigningKeyRepo.CountActive", storage.ErrorKindUnknown, err, "failed to count signing keys")
+		if errors.Is(err, context.DeadlineExceeded) {
+			return 0, storage.NewStorageError("SigningKeyRepo.CountActive", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+		}
+		return 0, storage.NewStorageError("SigningKeyRepo.CountActive", storage.ErrorKindConnection, err, "failed to count signing keys")
 	}
 	return count, nil
 }
