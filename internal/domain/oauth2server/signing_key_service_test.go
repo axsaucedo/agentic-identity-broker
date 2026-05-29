@@ -527,3 +527,43 @@ func TestSigningKeyService_OrphanedBranchKeyWarning(t *testing.T) {
 		assert.NotContains(t, logBuf.String(), "orphaned branch key")
 	})
 }
+
+func TestSigningKeyService_CountActive(t *testing.T) {
+	t.Run("returns zero when no keys exist", func(t *testing.T) {
+		svc, _ := newTestSigningKeyService()
+		count, err := svc.CountActive(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("reflects number of active keys", func(t *testing.T) {
+		svc, _ := newTestSigningKeyService()
+		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", false)
+		require.NoError(t, err)
+		_, err = svc.GenerateAndStoreKey(context.Background(), "ES256", false)
+		require.NoError(t, err)
+
+		count, err := svc.CountActive(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, 2, count)
+	})
+}
+
+func TestSigningKeyService_GetCurrent(t *testing.T) {
+	t.Run("returns error when no keys exist", func(t *testing.T) {
+		svc, _ := newTestSigningKeyService()
+		_, err := svc.GetCurrent(context.Background())
+		assert.Error(t, err)
+	})
+
+	t.Run("returns the current active key", func(t *testing.T) {
+		svc, _ := newTestSigningKeyService()
+		// Use generateAndStore with time.Now() so activates_at is in the past.
+		key, err := svc.generateAndStore(context.Background(), "ES256", true, time.Now())
+		require.NoError(t, err)
+
+		got, err := svc.GetCurrent(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, key.KID, got.KID)
+	})
+}
