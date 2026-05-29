@@ -10,12 +10,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // T075: Security tests for state token expiration rejection
@@ -259,7 +259,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	providerService1 := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo1,
 		newTestEncryption(t),
-		&ports.NoopBranchKeyManager{},
+		&encryptionnoop.BranchKeyManager{},
 		nil,
 		false,
 		slog.Default(),
@@ -294,7 +294,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	providerService2 := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo2,
 		newTestEncryption(t),
-		&ports.NoopBranchKeyManager{},
+		&encryptionnoop.BranchKeyManager{},
 		nil,
 		false,
 		slog.Default(),

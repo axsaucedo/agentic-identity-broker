@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -84,7 +85,7 @@ func newTestSigningKeyService() (*SigningKeyService, *memory.SigningKeyStore) {
 	repo := memory.NewSigningKeyStore()
 	enc := &testEncryptor{}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	return NewSigningKeyService(repo, enc, &ports.NoopBranchKeyManager{}, logger), repo
+	return NewSigningKeyService(repo, enc, &encryptionnoop.BranchKeyManager{}, logger), repo
 }
 
 func newTestSigningKeyServiceWithBranchKeyManager(bkm ports.BranchKeyManager) (*SigningKeyService, *memory.SigningKeyStore) {
@@ -232,7 +233,7 @@ func TestSigningKeyService_BuildJWKS(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		svc := NewSigningKeyService(repo, &testEncryptor{}, &ports.NoopBranchKeyManager{}, testSlogger())
+		svc := NewSigningKeyService(repo, &testEncryptor{}, &encryptionnoop.BranchKeyManager{}, testSlogger())
 		_, err = svc.BuildJWKS(ctx)
 		require.Error(t, err, "all active keys failed processing — should return error")
 		assert.Contains(t, err.Error(), "failed to build JWKS")
@@ -254,7 +255,7 @@ func TestSigningKeyService_BuildJWKS(t *testing.T) {
 		require.NoError(t, err)
 
 		// failingDecryptor simulates KMS unavailability.
-		svc := NewSigningKeyService(repo, &failingDecryptor{}, &ports.NoopBranchKeyManager{}, testSlogger())
+		svc := NewSigningKeyService(repo, &failingDecryptor{}, &encryptionnoop.BranchKeyManager{}, testSlogger())
 		_, buildErr := svc.BuildJWKS(ctx)
 		require.Error(t, buildErr, "KMS down — all decrypts fail — should return error")
 		assert.Contains(t, buildErr.Error(), "failed to build JWKS")
@@ -288,7 +289,7 @@ func TestSigningKeyService_BuildJWKS(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		svc := NewSigningKeyService(repo, &testEncryptor{}, &ports.NoopBranchKeyManager{}, testSlogger())
+		svc := NewSigningKeyService(repo, &testEncryptor{}, &encryptionnoop.BranchKeyManager{}, testSlogger())
 		jwks, buildErr := svc.BuildJWKS(ctx)
 		require.NoError(t, buildErr, "at least one key succeeded — should not return error")
 		assert.Equal(t, 1, jwks.Len(), "only the good key should be in the set")
@@ -590,7 +591,7 @@ func TestSigningKeyService_OrphanedBranchKeyWarning(t *testing.T) {
 
 	t.Run("NoopBranchKeyManager never causes provisioning failure", func(t *testing.T) {
 		// NoopBranchKeyManager.Create always succeeds — it must never block key generation.
-		bkm := &ports.NoopBranchKeyManager{}
+		bkm := &encryptionnoop.BranchKeyManager{}
 		svc, repo := newTestSigningKeyServiceWithBranchKeyManager(bkm)
 
 		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", false)

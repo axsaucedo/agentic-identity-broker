@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
@@ -30,7 +31,7 @@ func newTestEncryption() ports.EncryptionPort {
 // newTestProviderService wraps a ThirdpartyOAuth2ProviderRepository in a domain service
 // with test encryption. Used in tests across the consent handler package.
 func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, newTestEncryption(), &ports.NoopBranchKeyManager{}, nil, false, slog.Default())
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, newTestEncryption(), &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
 }
 
 // mockAgentDetailService is a configurable mock implementation of ConsentService for testing.

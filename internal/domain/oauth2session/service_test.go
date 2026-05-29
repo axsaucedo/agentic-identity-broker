@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
@@ -1047,7 +1048,7 @@ func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.In
 	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo,
 		encryption,
-		&ports.NoopBranchKeyManager{},
+		&encryptionnoop.BranchKeyManager{},
 		nil,
 		false,
 		slog.Default(),
@@ -1546,7 +1547,7 @@ func TestHandleCallback_PKCEValidationFailure_EmitsAuditLog(t *testing.T) {
 	encryption := newTestEncryption(t)
 
 	// Create ThirdpartyOAuth2ProviderService to handle encryption context binding (simulates domain layer)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, encryption, &ports.NoopBranchKeyManager{}, nil, false, logger)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, encryption, &encryptionnoop.BranchKeyManager{}, nil, false, logger)
 
 	// Create service with capturing logger
 	config := oauth2session.DefaultConfig()

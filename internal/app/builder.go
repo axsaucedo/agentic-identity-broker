@@ -21,6 +21,7 @@ import (
 
 	adaptercmd "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/cimd"
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
@@ -320,7 +321,7 @@ func (b *Builder) Build() (*App, error) {
 	if branchKeyManager != nil {
 		app.BranchKeyManager = branchKeyManager
 	} else {
-		app.BranchKeyManager = &ports.NoopBranchKeyManager{}
+		app.BranchKeyManager = &encryptionnoop.BranchKeyManager{}
 	}
 
 	// Decode and import JWE signing key — required for both OAuth2SessionService and OAuth2Service

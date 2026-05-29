@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
@@ -1594,7 +1595,7 @@ func createOAuth2SessionService(
 	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo,
 		encryption,
-		&ports.NoopBranchKeyManager{},
+		&encryptionnoop.BranchKeyManager{},
 		nil,
 		false,
 		slog.Default(),

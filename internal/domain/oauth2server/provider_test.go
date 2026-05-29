@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	dstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -29,7 +30,7 @@ func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository, *Signing
 	enc := &testEncryptor{}
 	logger := testSlogger()
 
-	signingKeySvc := NewSigningKeyService(signingKeyRepo, enc, &ports.NoopBranchKeyManager{}, logger)
+	signingKeySvc := NewSigningKeyService(signingKeyRepo, enc, &encryptionnoop.BranchKeyManager{}, logger)
 
 	provider, err := NewProvider(
 		codeRepo,
@@ -671,7 +672,7 @@ func TestProvider_CEL_RequestGrantType(t *testing.T) {
 		enc := &testEncryptor{}
 		logger := testSlogger()
 
-		svc := NewSigningKeyService(signingKeyRepo, enc, &ports.NoopBranchKeyManager{}, logger)
+		svc := NewSigningKeyService(signingKeyRepo, enc, &encryptionnoop.BranchKeyManager{}, logger)
 		p, err := NewProvider(codeRepo, memory.NewPKCESessionStore(), credRepo, &testClientResolver{agentRepo: agentRepo}, svc,
 			"https://broker.example.com", time.Hour, expr, logger)
 		require.NoError(t, err)

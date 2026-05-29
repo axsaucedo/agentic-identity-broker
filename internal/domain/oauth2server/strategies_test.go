@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -342,7 +343,7 @@ func TestJWXAccessTokenStrategy_GetCurrent_NonNotFoundError(t *testing.T) {
 	t.Run("connection error does not produce 'no signing key provisioned' message", func(t *testing.T) {
 		repo := &connectionErrorSigningKeyRepo{SigningKeyStore: memory.NewSigningKeyStore()}
 		enc := &testEncryptor{}
-		svc := NewSigningKeyService(repo, enc, &ports.NoopBranchKeyManager{}, testSlogger())
+		svc := NewSigningKeyService(repo, enc, &encryptionnoop.BranchKeyManager{}, testSlogger())
 		strategy, err := NewJWXAccessTokenStrategy(svc, "https://issuer.example.com", time.Hour, nil, testSlogger())
 		require.NoError(t, err)
 

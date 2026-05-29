@@ -12,13 +12,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // setupImplementedService creates a service with full encryption support for testing the implementation.
@@ -48,7 +48,7 @@ func setupImplementedService(t *testing.T) (*oauth2session.OAuth2SessionService,
 	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo,
 		encryption,
-		&ports.NoopBranchKeyManager{},
+		&encryptionnoop.BranchKeyManager{},
 		nil,
 		false,
 		slog.Default(),

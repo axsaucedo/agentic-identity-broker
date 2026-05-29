@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/permissionset"
@@ -48,7 +49,7 @@ func (e *testEncryption) Decrypt(_ context.Context, ciphertext []byte, _ map[str
 // with a non-identity test double for encryption. Used in domain-layer tests that exercise
 // consent business logic, not encryption correctness.
 func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &testEncryption{}, &ports.NoopBranchKeyManager{}, nil, false, nil)
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &testEncryption{}, &encryptionnoop.BranchKeyManager{}, nil, false, nil)
 }
 
 // Mock implementations for testing

@@ -65,12 +65,3 @@ type BranchKeyIdProvider interface {
 // - Simple, focused branch key provisioning interface
 // - Easy testing and mocking of provisioning logic separately from encryption
 type BranchKeyManager = BranchKeyRepository
-
-// NoopBranchKeyManager is a null-object implementation of BranchKeyManager.
-// It is injected by constructors when no real branch key store is configured
-// (memory / raw-AES backend), eliminating nil guards in domain services.
-type NoopBranchKeyManager struct{}
-
-func (n *NoopBranchKeyManager) Create(_ context.Context, _ id.ServiceID) (string, error) {
-	return "", nil
-}
