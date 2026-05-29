@@ -512,8 +512,8 @@ func TestSigningKeyService_BranchKeyProvisioning(t *testing.T) {
 	})
 
 	t.Run("ordering regression: branch key Created before Encrypt is called", func(t *testing.T) {
-		// If someone moves branchKeyManager.Create after Encrypt, this test catches it:
-		// the failingEncryptor errors before Create is reached, so createCalls stays 0.
+		// Verifies Create is called before Encrypt. If the ordering were reversed,
+		// the failingEncryptor would error before Create is reached and createCalls would stay 0.
 		bkm := &mockBranchKeyManager{
 			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
 				return "branch-key-id", nil
