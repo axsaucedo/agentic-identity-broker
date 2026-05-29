@@ -52,6 +52,20 @@ func (m *mockBranchKeyManager) Create(ctx context.Context, serviceID id.ServiceI
 	return m.createFn(ctx, serviceID)
 }
 
+// failingDecryptor always errors on Decrypt, simulating KMS unavailability.
+type failingDecryptor struct{}
+
+func (e *failingDecryptor) Encrypt(_ context.Context, plaintext []byte, _ map[string]string) ([]byte, error) {
+	result := make([]byte, 0, len(plaintext)+4)
+	result = append(result, []byte("ENC:")...)
+	result = append(result, plaintext...)
+	return result, nil
+}
+
+func (e *failingDecryptor) Decrypt(_ context.Context, _ []byte, _ map[string]string) ([]byte, error) {
+	return nil, errors.New("decrypt: KMS unavailable")
+}
+
 // failingEncryptor always returns an error on Encrypt, used to verify ordering.
 type failingEncryptor struct{}
 
@@ -198,7 +212,7 @@ func TestSigningKeyService_BuildJWKS(t *testing.T) {
 		assert.Equal(t, 0, jwks.Len())
 	})
 
-	t.Run("unrecognized algorithm skips key and returns empty JWKS", func(t *testing.T) {
+	t.Run("returns error when all active keys fail processing", func(t *testing.T) {
 		_, repo := newTestSigningKeyService()
 		ctx := context.Background()
 
@@ -219,9 +233,70 @@ func TestSigningKeyService_BuildJWKS(t *testing.T) {
 		require.NoError(t, err)
 
 		svc := NewSigningKeyService(repo, &testEncryptor{}, &ports.NoopBranchKeyManager{}, testSlogger())
-		jwks, err := svc.BuildJWKS(ctx)
+		_, err = svc.BuildJWKS(ctx)
+		require.Error(t, err, "all active keys failed processing — should return error")
+		assert.Contains(t, err.Error(), "failed to build JWKS")
+	})
+
+	t.Run("returns error when KMS is down and all decrypts fail", func(t *testing.T) {
+		ctx := context.Background()
+		repo := memory.NewSigningKeyStore()
+
+		// Store a key that cannot be decrypted (KMS-down scenario).
+		kid := id.NewKeyID(uuid.New().String())
+		err := repo.Create(ctx, &storage.SigningKey{
+			ID:                  id.NewSigningKeyID(),
+			KID:                 kid,
+			Algorithm:           "ES256",
+			PrivateKeyEncrypted: []byte("ciphertext-that-will-fail-decrypt"),
+			IsCurrent:           true,
+		})
 		require.NoError(t, err)
-		assert.Equal(t, 0, jwks.Len(), "bad key should be skipped")
+
+		// failingDecryptor simulates KMS unavailability.
+		svc := NewSigningKeyService(repo, &failingDecryptor{}, &ports.NoopBranchKeyManager{}, testSlogger())
+		_, buildErr := svc.BuildJWKS(ctx)
+		require.Error(t, buildErr, "KMS down — all decrypts fail — should return error")
+		assert.Contains(t, buildErr.Error(), "failed to build JWKS")
+	})
+
+	t.Run("partial failure: one bad key skipped, set returned with remaining key", func(t *testing.T) {
+		ctx := context.Background()
+		repo := memory.NewSigningKeyStore()
+
+		// Key 1: valid, decryptable.
+		privPEM, err := generateES256KeyPEM()
+		require.NoError(t, err)
+		goodKID := id.NewKeyID(uuid.New().String())
+		err = repo.Create(ctx, &storage.SigningKey{
+			ID:                  id.NewSigningKeyID(),
+			KID:                 goodKID,
+			Algorithm:           "ES256",
+			PrivateKeyEncrypted: append([]byte("ENC:"), privPEM...),
+			IsCurrent:           false,
+		})
+		require.NoError(t, err)
+
+		// Key 2: bogus algorithm — will fail processing.
+		badKID := id.NewKeyID(uuid.New().String())
+		err = repo.Create(ctx, &storage.SigningKey{
+			ID:                  id.NewSigningKeyID(),
+			KID:                 badKID,
+			Algorithm:           "BOGUS",
+			PrivateKeyEncrypted: append([]byte("ENC:"), privPEM...),
+			IsCurrent:           true,
+		})
+		require.NoError(t, err)
+
+		svc := NewSigningKeyService(repo, &testEncryptor{}, &ports.NoopBranchKeyManager{}, testSlogger())
+		jwks, buildErr := svc.BuildJWKS(ctx)
+		require.NoError(t, buildErr, "at least one key succeeded — should not return error")
+		assert.Equal(t, 1, jwks.Len(), "only the good key should be in the set")
+
+		k, ok := jwks.Key(0)
+		require.True(t, ok)
+		kid, _ := k.KeyID()
+		assert.Equal(t, goodKID.String(), kid)
 	})
 }
 

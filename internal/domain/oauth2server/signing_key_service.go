@@ -172,6 +172,10 @@ func (s *SigningKeyService) BuildJWKS(ctx context.Context) (jwk.Set, error) {
 		}
 	}
 
+	if len(keys) > 0 && set.Len() == 0 {
+		return nil, fmt.Errorf("failed to build JWKS: all %d active key(s) failed processing", len(keys))
+	}
+
 	return set, nil
 }
 
