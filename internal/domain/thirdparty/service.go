@@ -189,9 +189,6 @@ func (s *ThirdpartyOAuth2ProviderService) Update(
 	// Provision branch key before encrypting (idempotent — safe for already-provisioned services).
 	// Required when updating a service that was created with a different encryption backend and
 	// therefore has no branch key in the current KMS key store.
-	// Provision branch key before encrypting (idempotent — safe for already-provisioned services).
-	// Required when updating a service that was created with a different encryption backend and
-	// therefore has no branch key in the current KMS key store.
 	s.logger.Info("ensuring branch key exists for service update", "service_id", entity.ID)
 	branchKeyID, err := s.branchKeyManager.Create(ctx, entity.ID)
 	if err != nil {
