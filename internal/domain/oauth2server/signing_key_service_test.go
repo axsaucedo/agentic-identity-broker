@@ -1,7 +1,9 @@
 package oauth2server
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"testing"
@@ -15,6 +17,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // testEncryptor is a minimal encryption implementation for testing.
@@ -38,11 +41,54 @@ func (e *testEncryptor) Decrypt(_ context.Context, ciphertext []byte, _ map[stri
 	return ciphertext[4:], nil
 }
 
+// mockBranchKeyManager is a hand-rolled mock for ports.BranchKeyManager.
+type mockBranchKeyManager struct {
+	createFn    func(ctx context.Context, serviceID id.ServiceID) (string, error)
+	createCalls int
+}
+
+func (m *mockBranchKeyManager) Create(ctx context.Context, serviceID id.ServiceID) (string, error) {
+	m.createCalls++
+	return m.createFn(ctx, serviceID)
+}
+
+// failingEncryptor always returns an error on Encrypt, used to verify ordering.
+type failingEncryptor struct{}
+
+func (e *failingEncryptor) Encrypt(_ context.Context, _ []byte, _ map[string]string) ([]byte, error) {
+	return nil, errors.New("encrypt: simulated failure")
+}
+
+func (e *failingEncryptor) Decrypt(_ context.Context, ciphertext []byte, _ map[string]string) ([]byte, error) {
+	if len(ciphertext) < 4 || string(ciphertext[:4]) != "ENC:" {
+		return nil, assert.AnError
+	}
+	return ciphertext[4:], nil
+}
+
 func newTestSigningKeyService() (*SigningKeyService, *memory.SigningKeyStore) {
 	repo := memory.NewSigningKeyStore()
 	enc := &testEncryptor{}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	return NewSigningKeyService(repo, enc, nil, logger), repo
+}
+
+func newTestSigningKeyServiceWithBranchKeyManager(bkm ports.BranchKeyManager) (*SigningKeyService, *memory.SigningKeyStore) {
+	repo := memory.NewSigningKeyStore()
+	enc := &testEncryptor{}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+	return NewSigningKeyService(repo, enc, bkm, logger), repo
+}
+
+func newTestSigningKeyServiceWithBranchKeyManagerAndEncryptor(bkm ports.BranchKeyManager, enc ports.EncryptionPort, logBuf *bytes.Buffer) (*SigningKeyService, *memory.SigningKeyStore) {
+	repo := memory.NewSigningKeyStore()
+	var logger *slog.Logger
+	if logBuf != nil {
+		logger = slog.New(slog.NewJSONHandler(logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	} else {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+	}
+	return NewSigningKeyService(repo, enc, bkm, logger), repo
 }
 
 func TestSigningKeyService_GenerateAndStoreKey(t *testing.T) {
@@ -342,5 +388,71 @@ func TestSigningKeyService_AdminOperations(t *testing.T) {
 		// Attempt to remove the only key via service — should fail
 		err = svc.DeleteKey(ctx, key1.KID)
 		assert.Error(t, err, "should not allow removing the last active signing key")
+	})
+}
+
+func TestSigningKeyService_BranchKeyProvisioning(t *testing.T) {
+	t.Run("happy path: branch key created, key stored and decryptable", func(t *testing.T) {
+		bkm := &mockBranchKeyManager{
+			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
+				return "branch-key-id", nil
+			},
+		}
+		svc, repo := newTestSigningKeyServiceWithBranchKeyManager(bkm)
+
+		key, err := svc.GenerateAndStoreKey(context.Background(), "ES256", false)
+		require.NoError(t, err)
+		require.NotNil(t, key)
+
+		// Branch key was provisioned exactly once.
+		assert.Equal(t, 1, bkm.createCalls)
+
+		// Key was stored in the repo.
+		stored, err := repo.GetByKID(context.Background(), key.KID)
+		require.NoError(t, err)
+		assert.Equal(t, key.KID, stored.KID)
+
+		// Private key material is decryptable.
+		decrypted, err := svc.DecryptPrivateKey(context.Background(), stored)
+		require.NoError(t, err)
+		assert.Contains(t, string(decrypted), "-----BEGIN PRIVATE KEY-----")
+	})
+
+	t.Run("Create failure: error propagates, nothing stored", func(t *testing.T) {
+		bkm := &mockBranchKeyManager{
+			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
+				return "", errors.New("dynamo down")
+			},
+		}
+		svc, repo := newTestSigningKeyServiceWithBranchKeyManager(bkm)
+
+		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to provision branch key")
+
+		// Nothing should have been stored.
+		count, countErr := repo.CountActive(context.Background())
+		require.NoError(t, countErr)
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("ordering regression: branch key Created before Encrypt is called", func(t *testing.T) {
+		// If someone moves branchKeyManager.Create after Encrypt, this test catches it:
+		// the failingEncryptor errors before Create is reached, so createCalls stays 0.
+		bkm := &mockBranchKeyManager{
+			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
+				return "branch-key-id", nil
+			},
+		}
+		repo := memory.NewSigningKeyStore()
+		enc := &failingEncryptor{}
+		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+		svc := NewSigningKeyService(repo, enc, bkm, logger)
+
+		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", false)
+		require.Error(t, err)
+
+		// Create must have been called before Encrypt was attempted.
+		assert.Equal(t, 1, bkm.createCalls, "branchKeyManager.Create must be called before Encrypt")
 	})
 }
