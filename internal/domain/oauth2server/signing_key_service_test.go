@@ -619,6 +619,52 @@ func TestSigningKeyService_OrphanedBranchKeyWarning(t *testing.T) {
 		assert.Contains(t, logOutput, "branch-key-id", "warn log must include the branch key ID for operator cleanup")
 	})
 
+	t.Run("noop branch key manager does not warn about cleanup when Encrypt fails", func(t *testing.T) {
+		var logBuf bytes.Buffer
+		svc, _ := newTestSigningKeyServiceWithBranchKeyManagerAndEncryptor(newNoopBranchKeyManager(), &failingEncryptor{}, &logBuf)
+
+		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", false)
+		require.Error(t, err)
+
+		logOutput := logBuf.String()
+		assert.NotContains(t, logOutput, "orphaned branch key", "noop branch key managers must not emit manual-cleanup warnings")
+		assert.NotContains(t, logOutput, "branch_key_id", "noop branch key managers must not log an empty branch_key_id")
+	})
+
+	t.Run("noop branch key manager does not warn about cleanup when repo.Create fails", func(t *testing.T) {
+		var logBuf bytes.Buffer
+		repo := &mockFailingSigningKeyRepo{
+			SigningKeyStore: memory.NewSigningKeyStore(),
+			createErr:       errors.New("storage unavailable"),
+		}
+		logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		svc := NewSigningKeyService(repo, &testEncryptor{}, newNoopBranchKeyManager(), logger)
+
+		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", false)
+		require.Error(t, err)
+
+		logOutput := logBuf.String()
+		assert.NotContains(t, logOutput, "orphaned branch key", "noop branch key managers must not emit manual-cleanup warnings")
+		assert.NotContains(t, logOutput, "branch_key_id", "noop branch key managers must not log an empty branch_key_id")
+	})
+
+	t.Run("noop branch key manager does not warn about cleanup when repo.CreateAndSetCurrent fails", func(t *testing.T) {
+		var logBuf bytes.Buffer
+		repo := &mockFailingSigningKeyRepo{
+			SigningKeyStore: memory.NewSigningKeyStore(),
+			createErr:       errors.New("storage unavailable"),
+		}
+		logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		svc := NewSigningKeyService(repo, &testEncryptor{}, newNoopBranchKeyManager(), logger)
+
+		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
+		require.Error(t, err)
+
+		logOutput := logBuf.String()
+		assert.NotContains(t, logOutput, "orphaned branch key", "noop branch key managers must not emit manual-cleanup warnings")
+		assert.NotContains(t, logOutput, "branch_key_id", "noop branch key managers must not log an empty branch_key_id")
+	})
+
 	t.Run("default mock branch key manager never causes provisioning failure", func(t *testing.T) {
 		// The default mock returns success and must never block key generation.
 		bkm := newNoopBranchKeyManager()

@@ -98,7 +98,7 @@ func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm stri
 
 	encrypted, err := s.encryption.Encrypt(ctx, privKeyPEM, signingKeyEncCtx(kid))
 	if err != nil {
-		s.logger.Warn("orphaned branch key after encryption failure; manual cleanup required", "kid", kid, "branch_key_id", branchKeyID)
+		s.warnOrphanedBranchKey("orphaned branch key after encryption failure; manual cleanup required", kid, branchKeyID)
 		return nil, fmt.Errorf("failed to encrypt private key: %w", err)
 	}
 
@@ -114,12 +114,12 @@ func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm stri
 
 	if makeCurrent {
 		if err := s.repo.CreateAndSetCurrent(ctx, key); err != nil {
-			s.logger.Warn("orphaned branch key after storage failure; manual cleanup required", "kid", kid, "branch_key_id", branchKeyID)
+			s.warnOrphanedBranchKey("orphaned branch key after storage failure; manual cleanup required", kid, branchKeyID)
 			return nil, fmt.Errorf("failed to store and promote signing key: %w", err)
 		}
 	} else {
 		if err := s.repo.Create(ctx, key); err != nil {
-			s.logger.Warn("orphaned branch key after storage failure; manual cleanup required", "kid", kid, "branch_key_id", branchKeyID)
+			s.warnOrphanedBranchKey("orphaned branch key after storage failure; manual cleanup required", kid, branchKeyID)
 			return nil, fmt.Errorf("failed to store signing key: %w", err)
 		}
 	}
@@ -214,6 +214,13 @@ func (s *SigningKeyService) DeleteKey(ctx context.Context, kid id.KeyID) error {
 // DecryptPrivateKey decrypts the private key material of a signing key.
 func (s *SigningKeyService) DecryptPrivateKey(ctx context.Context, key *storage.SigningKey) ([]byte, error) {
 	return s.encryption.Decrypt(ctx, key.PrivateKeyEncrypted, signingKeyEncCtx(key.KID))
+}
+
+func (s *SigningKeyService) warnOrphanedBranchKey(message string, kid id.KeyID, branchKeyID string) {
+	if branchKeyID == "" {
+		return
+	}
+	s.logger.Warn(message, "kid", kid, "branch_key_id", branchKeyID)
 }
 
 // signingKeyEncCtx returns the encryption context AAD for a signing key.
