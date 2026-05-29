@@ -456,3 +456,74 @@ func TestSigningKeyService_BranchKeyProvisioning(t *testing.T) {
 		assert.Equal(t, 1, bkm.createCalls, "branchKeyManager.Create must be called before Encrypt")
 	})
 }
+
+// mockFailingSigningKeyRepo wraps memory.SigningKeyStore and fails Create/CreateAndSetCurrent.
+type mockFailingSigningKeyRepo struct {
+	*memory.SigningKeyStore
+	createErr error
+}
+
+func (r *mockFailingSigningKeyRepo) Create(_ context.Context, _ *storage.SigningKey) error {
+	return r.createErr
+}
+
+func (r *mockFailingSigningKeyRepo) CreateAndSetCurrent(_ context.Context, _ *storage.SigningKey) error {
+	return r.createErr
+}
+
+func TestSigningKeyService_OrphanedBranchKeyWarning(t *testing.T) {
+	t.Run("warns with kid when Encrypt fails after branch key created", func(t *testing.T) {
+		var logBuf bytes.Buffer
+		bkm := &mockBranchKeyManager{
+			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
+				return "branch-key-id", nil
+			},
+		}
+		svc, _ := newTestSigningKeyServiceWithBranchKeyManagerAndEncryptor(bkm, &failingEncryptor{}, &logBuf)
+
+		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", false)
+		require.Error(t, err)
+
+		logOutput := logBuf.String()
+		assert.Contains(t, logOutput, "orphaned branch key", "warn log must identify the orphaned entry")
+		assert.Contains(t, logOutput, "kid", "warn log must include the kid field")
+	})
+
+	t.Run("warns with kid when repo.Create fails after branch key created", func(t *testing.T) {
+		var logBuf bytes.Buffer
+		bkm := &mockBranchKeyManager{
+			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
+				return "branch-key-id", nil
+			},
+		}
+		repo := &mockFailingSigningKeyRepo{
+			SigningKeyStore: memory.NewSigningKeyStore(),
+			createErr:       errors.New("storage unavailable"),
+		}
+		logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		svc := NewSigningKeyService(repo, &testEncryptor{}, bkm, logger)
+
+		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", false)
+		require.Error(t, err)
+
+		logOutput := logBuf.String()
+		assert.Contains(t, logOutput, "orphaned branch key", "warn log must identify the orphaned entry")
+		assert.Contains(t, logOutput, "kid", "warn log must include the kid field")
+	})
+
+	t.Run("no orphan warning when branchKeyManager is nil", func(t *testing.T) {
+		var logBuf bytes.Buffer
+		// No branch key manager — warnings must not fire.
+		repo := &mockFailingSigningKeyRepo{
+			SigningKeyStore: memory.NewSigningKeyStore(),
+			createErr:       errors.New("storage unavailable"),
+		}
+		logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		svc := NewSigningKeyService(repo, &testEncryptor{}, nil, logger)
+
+		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", false)
+		require.Error(t, err)
+
+		assert.NotContains(t, logBuf.String(), "orphaned branch key")
+	})
+}
