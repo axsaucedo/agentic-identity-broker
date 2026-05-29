@@ -12,6 +12,11 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 func TestRandomCodeStrategy_GenerateAuthorizeCode(t *testing.T) {
@@ -303,6 +308,54 @@ func TestJWXAccessTokenStrategy_ValidateAccessToken(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Error(t, strategy.ValidateAccessToken(ctx, nil, tokenStr))
+	})
+}
+
+// connectionErrorSigningKeyRepo returns a connection-kind StorageError from GetCurrent
+// (and GetByKID) to simulate a DB outage or timeout. All other methods delegate to
+// an in-memory store so the rest of the service is functional.
+type connectionErrorSigningKeyRepo struct {
+	*memory.SigningKeyStore
+}
+
+var _ ports.SigningKeyRepository = (*connectionErrorSigningKeyRepo)(nil)
+
+func (r *connectionErrorSigningKeyRepo) GetCurrent(_ context.Context) (*storage.SigningKey, error) {
+	return nil, storage.NewStorageError(
+		"SigningKeyRepo.GetCurrent",
+		storage.ErrorKindConnection,
+		nil,
+		"connection refused",
+	)
+}
+
+func (r *connectionErrorSigningKeyRepo) GetByKID(_ context.Context, _ id.KeyID) (*storage.SigningKey, error) {
+	return nil, storage.NewStorageError(
+		"SigningKeyRepo.GetByKID",
+		storage.ErrorKindConnection,
+		nil,
+		"connection refused",
+	)
+}
+
+func TestJWXAccessTokenStrategy_GetCurrent_NonNotFoundError(t *testing.T) {
+	t.Run("connection error does not produce 'no signing key provisioned' message", func(t *testing.T) {
+		repo := &connectionErrorSigningKeyRepo{SigningKeyStore: memory.NewSigningKeyStore()}
+		enc := &testEncryptor{}
+		svc := NewSigningKeyService(repo, enc, nil, testSlogger())
+		strategy, err := NewJWXAccessTokenStrategy(svc, "https://issuer.example.com", time.Hour, nil, testSlogger())
+		require.NoError(t, err)
+
+		_, _, err = strategy.GenerateAccessToken(
+			context.Background(),
+			buildTestRequest("agent", "user@example.com", []string{"read"}),
+		)
+		require.Error(t, err)
+		// Must NOT produce the misleading "no signing key provisioned" message.
+		assert.NotContains(t, err.Error(), "no signing key provisioned",
+			"connection errors must not be misreported as missing keys")
+		// Must propagate the real error so operators see 'failed to get current signing key'.
+		assert.Contains(t, err.Error(), "failed to get current signing key")
 	})
 }
 

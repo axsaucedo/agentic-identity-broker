@@ -2,7 +2,11 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
+
+	pgx "github.com/jackc/pgx/v5"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -88,7 +92,13 @@ func (r *SigningKeyRepo) GetByKID(ctx context.Context, kid id.KeyID) (*storage.S
 		`SELECT id, kid, algorithm, private_key_encrypted, is_current, activates_at, created_at, removed_at
 		 FROM signing_keys WHERE kid = $1 AND removed_at IS NULL`, kid)
 	if err != nil {
-		return nil, storage.NewStorageError("SigningKeyRepo.GetByKID", storage.ErrorKindNotFound, err, "signing key not found")
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+			return nil, storage.NewStorageError("SigningKeyRepo.GetByKID", storage.ErrorKindNotFound, err, "signing key not found")
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, storage.NewStorageError("SigningKeyRepo.GetByKID", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+		}
+		return nil, storage.NewStorageError("SigningKeyRepo.GetByKID", storage.ErrorKindConnection, err, "failed to query signing key")
 	}
 	return &key, nil
 }
@@ -115,7 +125,13 @@ func (r *SigningKeyRepo) GetCurrent(ctx context.Context) (*storage.SigningKey, e
 		   activates_at DESC
 		 LIMIT 1`)
 	if err != nil {
-		return nil, storage.NewStorageError("SigningKeyRepo.GetCurrent", storage.ErrorKindNotFound, err, "no current signing key")
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+			return nil, storage.NewStorageError("SigningKeyRepo.GetCurrent", storage.ErrorKindNotFound, err, "no current signing key")
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, storage.NewStorageError("SigningKeyRepo.GetCurrent", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+		}
+		return nil, storage.NewStorageError("SigningKeyRepo.GetCurrent", storage.ErrorKindConnection, err, "failed to query current signing key")
 	}
 	return &key, nil
 }
