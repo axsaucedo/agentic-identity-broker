@@ -12,6 +12,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 )
 
 var _ = Describe("US2: Server Mode Configuration (local mode)", func() {
@@ -57,7 +58,7 @@ var _ = Describe("US2: Server Mode Configuration (local mode)", func() {
 		Expect(config.OAuth2AuthServer.Mode).To(Equal(servermode.Proxy))
 	})
 
-	It("auto-generates signing key on startup", func() {
+	It("starts with no signing keys until one is provisioned via the admin API", func() {
 		config := fixtures.LocalConfig()
 		testStorage, err := storageFactory.NewTestStorage()
 		Expect(err).ToNot(HaveOccurred())
@@ -71,15 +72,25 @@ var _ = Describe("US2: Server Mode Configuration (local mode)", func() {
 		Expect(err).ToNot(HaveOccurred())
 		defer adminServer.Close()
 
+		// Before provisioning: no keys.
 		resp, err := http.Get(adminServer.BaseURL() + "/api/oauth2-server/signing-keys")
 		Expect(err).ToNot(HaveOccurred())
 		defer func() { _ = resp.Body.Close() }()
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+		var before map[string]interface{}
+		Expect(json.NewDecoder(resp.Body).Decode(&before)).ToNot(HaveOccurred())
+		Expect(before["items"].([]interface{})).To(BeEmpty())
 
-		var body map[string]interface{}
-		Expect(json.NewDecoder(resp.Body).Decode(&body)).ToNot(HaveOccurred())
-		items, ok := body["items"].([]interface{})
-		Expect(ok).To(BeTrue())
-		Expect(len(items)).To(BeNumerically(">=", 1))
+		// Provision via admin API.
+		Expect(helpers.ProvisionSigningKey(adminServer.BaseURL())).ToNot(HaveOccurred())
+
+		// After provisioning: one key present.
+		resp2, err := http.Get(adminServer.BaseURL() + "/api/oauth2-server/signing-keys")
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = resp2.Body.Close() }()
+		Expect(resp2.StatusCode).To(Equal(http.StatusOK))
+		var after map[string]interface{}
+		Expect(json.NewDecoder(resp2.Body).Decode(&after)).ToNot(HaveOccurred())
+		Expect(len(after["items"].([]interface{}))).To(BeNumerically(">=", 1))
 	})
 })

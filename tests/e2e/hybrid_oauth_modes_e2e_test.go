@@ -55,6 +55,10 @@ var _ = Describe("US2: Hybrid Mode Agent Coexistence", func() {
 		app, err := serverFactory.BuildApp(testStorage)
 		Expect(err).ToNot(HaveOccurred())
 
+		adminSrv, err := bootstrap.NewAdminTestServer(app, logger)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(helpers.ProvisionSigningKey(adminSrv.BaseURL())).ToNot(HaveOccurred())
+
 		server, err = bootstrap.NewEndUserTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
 	})
@@ -189,6 +193,10 @@ var _ = Describe("US2+US3: Hybrid Mode with CIMD", func() {
 
 		app, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
 		Expect(err).ToNot(HaveOccurred())
+
+		adminSrv, err := bootstrap.NewAdminTestServer(app, logger)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(helpers.ProvisionSigningKey(adminSrv.BaseURL())).ToNot(HaveOccurred())
 
 		server, err = bootstrap.NewEndUserTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
@@ -390,6 +398,8 @@ var _ = Describe("US2: Hybrid Mode — Local Agent Full Authorization Code Journ
 		Expect(err).ToNot(HaveOccurred())
 		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
+
+		Expect(helpers.ProvisionSigningKey(adminServer.BaseURL())).ToNot(HaveOccurred())
 
 		credResp, err := http.Post(
 			adminServer.BaseURL()+"/api/agents/"+agent.ID.String()+"/client-credentials",

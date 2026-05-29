@@ -751,8 +751,13 @@ func (b *Builder) Build() (*App, error) {
 		}
 
 		jwksHandler = enduserHandlers.NewJWKSHandler(signingKeyService, b.logger)
-		if err := signingKeyService.EnsureKeyExists(context.Background()); err != nil {
-			return nil, fmt.Errorf("failed to ensure signing key exists: %w", err)
+		count, err := signingKeyService.CountActive(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("failed to check signing keys: %w", err)
+		}
+		if count == 0 {
+			b.logger.Warn("no signing key provisioned — local token issuance will fail until a key is created",
+				"hint", "POST /api/oauth2-server/signing-keys")
 		}
 		return provider, nil
 	}

@@ -16,6 +16,7 @@ import (
 	domainstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 )
 
 var _ = Describe("US3: Client Credentials Grant (local mode)", func() {
@@ -48,6 +49,8 @@ var _ = Describe("US3: Client Credentials Grant (local mode)", func() {
 		Expect(err).ToNot(HaveOccurred())
 		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
+
+		Expect(helpers.ProvisionSigningKey(adminServer.BaseURL())).ToNot(HaveOccurred())
 
 		// Generate credentials via admin API
 		resp, err := http.Post(

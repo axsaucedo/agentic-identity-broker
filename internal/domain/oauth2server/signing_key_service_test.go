@@ -199,35 +199,6 @@ func TestAlgorithmToJWA(t *testing.T) {
 	})
 }
 
-func TestSigningKeyService_EnsureKeyExists(t *testing.T) {
-	t.Run("generates key when none exist", func(t *testing.T) {
-		svc, repo := newTestSigningKeyService()
-
-		err := svc.EnsureKeyExists(context.Background())
-		require.NoError(t, err)
-
-		count, err := repo.CountActive(context.Background())
-		require.NoError(t, err)
-		assert.Equal(t, 1, count)
-	})
-
-	t.Run("no-op when keys already exist", func(t *testing.T) {
-		svc, repo := newTestSigningKeyService()
-
-		// Generate a key first
-		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
-		require.NoError(t, err)
-
-		// EnsureKeyExists should be a no-op
-		err = svc.EnsureKeyExists(context.Background())
-		require.NoError(t, err)
-
-		count, err := repo.CountActive(context.Background())
-		require.NoError(t, err)
-		assert.Equal(t, 1, count, "should still have exactly 1 key")
-	})
-}
-
 func TestSigningKeyService_GenerateAndStoreKey_Atomic(t *testing.T) {
 	t.Run("CreateAndSetCurrent demotes previous current key", func(t *testing.T) {
 		svc, repo := newTestSigningKeyService()

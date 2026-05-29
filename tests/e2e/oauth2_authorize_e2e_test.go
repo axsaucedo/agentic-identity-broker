@@ -62,6 +62,8 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (local mode)", func() {
 		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
 
+		Expect(helpers.ProvisionSigningKey(adminServer.BaseURL())).ToNot(HaveOccurred())
+
 		// Generate credentials
 		resp, err := http.Post(
 			adminServer.BaseURL()+"/api/agents/"+agent.ID.String()+"/client-credentials",
@@ -350,10 +352,11 @@ var _ = Describe("US4b: Authorization Code Flow — LocalClient as public client
 		serverFactory := bootstrap.NewServerFactory(fixtures.LocalConfig(), logger)
 		app, err := serverFactory.BuildApp(testStorage)
 		Expect(err).ToNot(HaveOccurred())
-		_, err = bootstrap.NewAdminTestServer(app, logger)
+		adminSrv, err := bootstrap.NewAdminTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
 		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
+		Expect(helpers.ProvisionSigningKey(adminSrv.BaseURL())).ToNot(HaveOccurred())
 	})
 
 	AfterEach(func() {

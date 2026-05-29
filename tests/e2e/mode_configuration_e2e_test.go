@@ -150,6 +150,10 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			app, err := serverFactory.BuildApp(testStorage)
 			Expect(err).ToNot(HaveOccurred())
 
+			adminSrv, err := bootstrap.NewAdminTestServer(app, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(helpers.ProvisionSigningKey(adminSrv.BaseURL())).ToNot(HaveOccurred())
+
 			server, err = bootstrap.NewEndUserTestServer(app, logger)
 			Expect(err).ToNot(HaveOccurred())
 		})

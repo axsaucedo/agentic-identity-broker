@@ -12,6 +12,7 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 )
 
 var _ = Describe("US6: Discovery and JWKS (local mode)", func() {
@@ -33,6 +34,9 @@ var _ = Describe("US6: Discovery and JWKS (local mode)", func() {
 		serverFactory := bootstrap.NewServerFactory(config, logger)
 		app, err := serverFactory.BuildApp(testStorage)
 		Expect(err).ToNot(HaveOccurred())
+		adminSrv, err := bootstrap.NewAdminTestServer(app, logger)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(helpers.ProvisionSigningKey(adminSrv.BaseURL())).ToNot(HaveOccurred())
 		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
 	})
