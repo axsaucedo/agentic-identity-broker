@@ -1028,7 +1028,7 @@ Remove placeholder comments and implement actual assertions for all scenarios.
 cd tests/e2e/extproc && ginkgo -v ./...
 
 # Or add justfile target
-just test-extproc-e2e
+just test-e2e-extproc
 ```
 
 ---

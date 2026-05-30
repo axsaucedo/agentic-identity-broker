@@ -166,12 +166,12 @@
 - [X] T032 Verify all 7 spec scenarios have passing E2E tests
 - [X] T033 Verify E2E tests changed minimally during implementation
 - [X] T034 Run full E2E test suite: `ginkgo -v ./tests/e2e/` (all tests must pass)
-- [X] T035 Run full unit test suite: `just test`
+- [X] T035 Run full verification gate: `just verify`
 
 ### Additional Polish
 
 - [X] T036 Remove any dead code left by redirect_uri removal (unused imports, helper functions)
-- [X] T037 Run `just check` (fmt → vet → lint → test) — all must pass
+- [X] T037 Run `just check` (fmt → vet → lint) and `just verify` — all must pass
 
 ---
 
@@ -210,4 +210,4 @@
 6. Write unit tests for consent handler session_token requirements (T014–T017b) — red
 7. Implement US3: remove `redirect_uri` fallback from `agent_detail_handler` and `grants_handler` (T018, T019)
 8. Verify all E2E green (T020, T032–T035)
-9. Constitution compliance, dead-code removal, and `just check` (T021–T037)
+9. Constitution compliance, dead-code removal, and `just check` + `just verify` (T021–T037)

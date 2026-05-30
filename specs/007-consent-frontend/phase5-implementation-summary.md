@@ -288,9 +288,9 @@ GET /api/consent/agent/{agent-id}/grants
 
 ## Testing Commands
 
-### Run All Tests
+### Run Full Verification Gate
 ```bash
-just test
+just verify
 ```
 
 ### Run Grant Handler Tests

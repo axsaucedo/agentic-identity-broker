@@ -243,7 +243,7 @@ After this plan is approved and Phase 1 design artifacts are generated:
 
 1. Run `/speckit.tasks` to generate `tasks.md` from this plan
 2. Implement per tasks.md (Phase 3: Implementation)
-3. Run tests: `just test`
+3. Run the verification gate: `just verify`
 4. Update documentation: `docs/configuration.md`, `ARCHITECTURE.md`
 5. Create PR for review
 

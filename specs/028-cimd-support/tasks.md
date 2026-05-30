@@ -328,7 +328,7 @@
 
 ### Additional Polish
 
-- [X] T104 Run `just check` (fmt → vet → lint → test) — all must pass
+- [X] T104 Run `just check` (fmt → vet → lint) and `just verify` — all must pass
 - [X] T105 Verify zero regression in existing authorization flows (SC-004) — full existing E2E suite green
 
 ---

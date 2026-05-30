@@ -355,7 +355,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
-      - run: just test
+      - run: just verify
 ```
 
 ---

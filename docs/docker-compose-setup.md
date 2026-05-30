@@ -393,7 +393,7 @@ Inside devcontainer:
 just dev-docker     # Start all services
 just compose-logs   # View logs
 just compose-health # Check health
-just test           # Run tests
+just verify         # Run the full verification gate
 just fmt            # Format code
 ```
 
@@ -567,7 +567,7 @@ Key Features:
 
 - **Modify code**: Edit `.go` or `.tsx` files → auto-rebuild
 - **Check logs**: `just compose-logs` to debug
-- **Run tests**: `just test` (inside devcontainer or on host)
+- **Run tests**: `just verify` (inside devcontainer or on host)
 - **Build for prod**: `just docker-build-prod`
 
 Happy developing!

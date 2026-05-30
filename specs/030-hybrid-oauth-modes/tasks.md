@@ -235,7 +235,7 @@
 - [x] T075 Verify unit tests written first and failed before implementation (Principle VIII)
 - [x] T076 Verify E2E tests map 1:1 to the 21 behavioral spec scenarios (US1-US3); US4's 2 structural scenarios verified via unit tests in builder_test.go (Principle XIII)
 - [x] T077 Run full E2E test suite: `ginkgo -v ./tests/e2e/` (all tests must pass)
-- [x] T078 Run full unit test suite: `just test` (all tests must pass)
+- [x] T078 Run full verification gate: `just verify` (all tests must pass)
 
 ### Additional Polish
 
