@@ -10,7 +10,6 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,39 +83,10 @@ func TestAgentRepository_Get_EmitsSpan(t *testing.T) {
 	assert.True(t, foundSpan, "expected a span named 'storage.get.agent' to be recorded")
 }
 
-// setupAgentTestDB creates a test database with migrations applied.
+// setupAgentTestDB creates an isolated migrated test database backed by the shared PostgreSQL container.
 func setupAgentTestDB(t *testing.T) (*Adapter, func()) {
 	t.Helper()
-
-	container, connString, cleanup := setupTestContainer(t)
-	t.Cleanup(cleanup)
-
-	// Apply migrations
-	applyMigrations(t, container)
-
-	// Create adapter
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connString,
-		},
-		Timeouts: ports.StorageTimeouts{
-			Read:  5 * time.Second,
-			Write: 10 * time.Second,
-		},
-	}
-
-	adapter, err := NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-
-	return adapter, func() {
-		adapter.Close(ctx)
-		cleanup()
-	}
+	return setupMigratedAdapter(t)
 }
 
 func TestAgentRepository_Create(t *testing.T) {

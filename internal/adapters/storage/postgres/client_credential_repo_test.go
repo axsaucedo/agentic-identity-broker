@@ -18,19 +18,7 @@ import (
 
 func setupCredentialTestDB(t *testing.T) (*Adapter, func()) {
 	t.Helper()
-	container, connString, cleanup := setupTestContainer(t)
-	t.Cleanup(cleanup)
-	applyMigrations(t, container)
-	config := testStorageConfig(connString)
-	adapter, err := NewAdapter(config)
-	require.NoError(t, err)
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-	return adapter, func() {
-		adapter.Close(ctx)
-		cleanup()
-	}
+	return setupMigratedAdapter(t)
 }
 
 func createTestAgent(t *testing.T, adapter *Adapter) *storage.Agent {

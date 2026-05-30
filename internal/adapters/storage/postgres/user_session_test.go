@@ -10,42 +10,14 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// setupUserSessionTestDB creates a test database with all migrations applied.
+// setupUserSessionTestDB creates an isolated migrated test database backed by the shared PostgreSQL container.
 func setupUserSessionTestDB(t *testing.T) (*Adapter, func()) {
 	t.Helper()
-
-	container, connString, cleanup := setupTestContainer(t)
-	t.Cleanup(cleanup)
-
-	applyMigrations(t, container)
-
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connString,
-		},
-		Timeouts: ports.StorageTimeouts{
-			Read:  5 * time.Second,
-			Write: 10 * time.Second,
-		},
-	}
-
-	adapter, err := NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-
-	return adapter, func() {
-		adapter.Close(ctx)
-		cleanup()
-	}
+	return setupMigratedAdapter(t)
 }
 
 // insertTestService inserts a minimal thirdparty_oauth2_services row to satisfy the
