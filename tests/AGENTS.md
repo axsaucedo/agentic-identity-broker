@@ -71,9 +71,9 @@ go test -tags=integration -v ./tests/integration/infra/... \
   ./tests/integration/migrations/... \
   ./tests/integration/storage/infra/... \
   ./internal/adapters/storage/postgres/...                       # Infra-backed integration suites
-just test-integration-self-contained                             # Via justfile
+just test-integration                                            # Via justfile (self-contained default)
 just test-integration-infra                                      # Via justfile
-just test-integration                                            # Runs both layers
+just test-integration-all                                        # Runs both layers
 ```
 
 ### LocalStack Bootstrap

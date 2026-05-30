@@ -6,6 +6,7 @@ NUM_CPUS := num_cpus()
 VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
 GO_FAST_TEST_PACKAGES := `go list ./... | grep -Ev '(/specs/|/web/node_modules/|/tests/e2e$|/tests/e2e/frontend$|/tests/e2e/extproc$|/tests/integration($|/))' | tr '\n' ' '`
 INTEGRATION_INFRA_TEST_PACKAGES := "./tests/integration/infra/... ./tests/integration/migrations/... ./tests/integration/storage/infra/... ./internal/adapters/storage/postgres/..."
+INTEGRATION_INFRA_PACKAGE_PROCS := env_var_or_default("INTEGRATION_INFRA_PACKAGE_PROCS", "1")
 
 # Determine container runtime (docker or podman)
 # Prefer docker over podman when both are available for better multi-arch support
@@ -260,18 +261,18 @@ setup-hooks:
     @echo "✓ Git hooks configured to use .githooks directory"
     @echo "Pre-commit hook will run: fmt, vet, lint"
 
-# Run self-contained integration tests that do not require external infrastructure
-test-integration-self-contained:
+# Run the default self-contained integration tests that do not require external infrastructure
+test-integration:
     @echo "Running self-contained integration suites..."
     go test -v ./tests/integration/...
 
 # Run infra-backed integration tests that require build tags and external infrastructure
 test-integration-infra:
     @echo "Running infra-backed integration suites..."
-    go test -tags=integration -v {{INTEGRATION_INFRA_TEST_PACKAGES}}
+    go test -tags=integration -p {{INTEGRATION_INFRA_PACKAGE_PROCS}} -v {{INTEGRATION_INFRA_TEST_PACKAGES}}
 
-# Run all integration tests, including both self-contained and infra-backed suites
-test-integration: test-integration-self-contained test-integration-infra
+# Run both self-contained and infra-backed integration suites
+test-integration-all: test-integration test-integration-infra
     @echo "All integration suites completed"
 
 # Run all integration tests and generate JUnit XML reports
@@ -286,7 +287,7 @@ test-integration-junit:
         > test-results/integration-self-contained-output.json 2>&1
     SELF_CONTAINED_EXIT=$?
 
-    go test -json -tags=integration -p {{NUM_CPUS}} \
+    go test -json -tags=integration -p {{INTEGRATION_INFRA_PACKAGE_PROCS}} \
         {{INTEGRATION_INFRA_TEST_PACKAGES}} \
         > test-results/integration-infra-output.json 2>&1
     INFRA_EXIT=$?
@@ -415,19 +416,16 @@ verify-junit:
     echo ""
     echo "==> Stage 2: integration suites"
 
+    echo "  [integration-self]   running"
     go test -json ./tests/integration/... \
-        > test-results/integration-self-contained-output.json 2>&1 &
-    INTEGRATION_SELF_CONTAINED_PID=$!
-    echo "  [integration-self]   PID $INTEGRATION_SELF_CONTAINED_PID"
+        > test-results/integration-self-contained-output.json 2>&1
+    INTEGRATION_SELF_CONTAINED_EXIT=$?
 
-    go test -json -tags=integration -p {{NUM_CPUS}} \
+    echo "  [integration-infra]  running"
+    go test -json -tags=integration -p {{INTEGRATION_INFRA_PACKAGE_PROCS}} \
         {{INTEGRATION_INFRA_TEST_PACKAGES}} \
-        > test-results/integration-infra-output.json 2>&1 &
-    INTEGRATION_INFRA_PID=$!
-    echo "  [integration-infra]  PID $INTEGRATION_INFRA_PID"
-
-    wait $INTEGRATION_SELF_CONTAINED_PID; INTEGRATION_SELF_CONTAINED_EXIT=$?
-    wait $INTEGRATION_INFRA_PID;          INTEGRATION_INFRA_EXIT=$?
+        > test-results/integration-infra-output.json 2>&1
+    INTEGRATION_INFRA_EXIT=$?
 
     go-junit-report -parser gojson \
         < test-results/integration-self-contained-output.json > test-results/integration-self-contained-junit.xml || true
@@ -549,7 +547,7 @@ verify-junit:
     echo "✓ Verification JUnit report generated at test-results/all-tests-junit.xml"
 
 # Run the full local verification gate with E2E as the final guard layer
-verify: check test web-test cdk-test mock-sample-agent-test mock-upstream-oauth2-test test-integration test-e2e
+verify: check test web-test cdk-test mock-sample-agent-test mock-upstream-oauth2-test test-integration-all test-e2e
     @echo "Verification suite completed"
 
 # Run static quality checks (format, vet, lint; no tests)

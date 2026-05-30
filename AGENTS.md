@@ -151,7 +151,9 @@ Read full ADRs in `adrs/` before implementing. Pre-existing ADRs are authoritati
 | `just verify` | Full verification gate with E2E as the final guard layer |
 | `just build-all` | Backend + frontend build |
 | `just test-e2e` | All backend, ExtProc, and frontend E2E suites |
-| `just test-integration` | All integration suites: self-contained + infra-backed (`just test-integration-infra` requires Docker/Podman) |
+| `just test-integration` | Default self-contained integration suites |
+| `just test-integration-infra` | Infra-backed integration suites (Docker/Podman required) |
+| `just test-integration-all` | Both integration layers |
 | `just cdk-test` | CDK unit tests |
 
 ## Code Style

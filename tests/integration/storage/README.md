@@ -68,7 +68,7 @@ tests/integration/storage/
 Run with standard `go test`:
 ```bash
 go test -v ./tests/integration/storage/...
-# or just test-integration-self-contained
+# or just test-integration
 ```
 
 Tests:

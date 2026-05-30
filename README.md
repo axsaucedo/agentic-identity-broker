@@ -155,9 +155,9 @@ All development tasks are managed using [just](https://github.com/casey/just). R
 - `just test` - Run the fast Go/package test loop (no E2E or integration suites)
 - `just test-coverage` - Generate HTML coverage report for the fast Go/package suite
 - `just test-coverage-summary` - Display coverage summary for the fast Go/package suite
-- `just test-integration` - Run all integration suites (self-contained + infra-backed)
-- `just test-integration-self-contained` - Run self-contained integration suites only
+- `just test-integration` - Run the default self-contained integration suites
 - `just test-integration-infra` - Run infra-backed integration suites only (Docker/Podman required)
+- `just test-integration-all` - Run both integration layers
 - `just test-e2e` - Run all backend, ExtProc, and frontend E2E suites
 - `just verify` - Run the full verification gate with E2E last
 - `just check` - Run static quality checks only (fmt, vet, lint)
@@ -353,9 +353,9 @@ Run `just --list` to see all available commands:
 - `just test` - Run the fast Go/package test loop (no E2E or integration suites)
 - `just test-coverage` - Generate HTML coverage report for the fast Go/package suite (coverage/coverage.html)
 - `just test-coverage-summary` - Display coverage summary for the fast Go/package suite
-- `just test-integration` - Run all integration suites (self-contained + infra-backed)
-- `just test-integration-self-contained` - Run self-contained integration suites only
+- `just test-integration` - Run the default self-contained integration suites
 - `just test-integration-infra` - Run infra-backed integration suites only (Docker/Podman required)
+- `just test-integration-all` - Run both integration layers
 - `just test-e2e` - Run all backend, ExtProc, and frontend E2E suites
 - `just verify` - Run the full verification gate with E2E last
 - `just check` - Run static quality checks only: fmt, vet, lint
