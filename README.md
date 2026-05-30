@@ -98,14 +98,20 @@ See [docs/docker-compose-setup.md](docs/docker-compose-setup.md) for advanced do
 ### 4. Run Tests & Quality Checks
 
 ```bash
-# Run all tests with race detection
+# Run the fast Go/package test loop
 just test
 
-# Generate coverage report
-just test-coverage
+# Run all integration suites
+just test-integration
 
-# Run all quality checks (format, vet, lint, test)
+# Run all E2E acceptance suites
+just test-e2e
+
+# Run static quality checks (format, vet, lint)
 just check
+
+# Run the full verification gate with E2E last
+just verify
 ```
 
 ## Configuration
@@ -146,10 +152,15 @@ All development tasks are managed using [just](https://github.com/casey/just). R
 - `just clean` - Remove build artifacts
 
 ### Testing & Quality
-- `just test` - Run all tests with race detection
-- `just test-coverage` - Generate HTML coverage report
-- `just test-coverage-summary` - Display coverage summary in terminal
-- `just check` - Run all quality checks (fmt, vet, lint, test)
+- `just test` - Run the fast Go/package test loop (no E2E or integration suites)
+- `just test-coverage` - Generate HTML coverage report for the fast Go/package suite
+- `just test-coverage-summary` - Display coverage summary for the fast Go/package suite
+- `just test-integration` - Run all integration suites (self-contained + infra-backed)
+- `just test-integration-self-contained` - Run self-contained integration suites only
+- `just test-integration-infra` - Run infra-backed integration suites only (Docker/Podman required)
+- `just test-e2e` - Run all backend, ExtProc, and frontend E2E suites
+- `just verify` - Run the full verification gate with E2E last
+- `just check` - Run static quality checks only (fmt, vet, lint)
 
 ### Code Quality
 - `just fmt` - Format code with gofmt
@@ -167,12 +178,27 @@ All development tasks are managed using [just](https://github.com/casey/just). R
 
 ## Testing
 
-Run all tests:
+Run the fast Go/package test loop:
 ```bash
 just test
 ```
 
-Generate coverage report:
+Run all integration suites:
+```bash
+just test-integration
+```
+
+Run all E2E acceptance suites:
+```bash
+just test-e2e
+```
+
+Run the full verification gate:
+```bash
+just verify
+```
+
+Generate coverage for the fast Go/package suite:
 ```bash
 just test-coverage
 ```
@@ -324,10 +350,15 @@ Run `just --list` to see all available commands:
 - `just clean` - Remove build artifacts
 
 **Testing & Quality**:
-- `just test` - Run all tests with race detection
-- `just test-coverage` - Generate HTML coverage report (coverage/coverage.html)
-- `just test-coverage-summary` - Display coverage summary
-- `just check` - Run all checks: fmt, vet, lint, test (run before committing)
+- `just test` - Run the fast Go/package test loop (no E2E or integration suites)
+- `just test-coverage` - Generate HTML coverage report for the fast Go/package suite (coverage/coverage.html)
+- `just test-coverage-summary` - Display coverage summary for the fast Go/package suite
+- `just test-integration` - Run all integration suites (self-contained + infra-backed)
+- `just test-integration-self-contained` - Run self-contained integration suites only
+- `just test-integration-infra` - Run infra-backed integration suites only (Docker/Podman required)
+- `just test-e2e` - Run all backend, ExtProc, and frontend E2E suites
+- `just verify` - Run the full verification gate with E2E last
+- `just check` - Run static quality checks only: fmt, vet, lint
 
 **Code Quality**:
 - `just fmt` - Format code with gofmt
@@ -355,13 +386,14 @@ Before committing any code, always run:
 
 ```bash
 just check
+just verify
 ```
 
 This ensures:
 1. Code is properly formatted (`gofmt`)
 2. No obvious bugs are detected (`go vet`)
 3. Code quality standards are met (`golangci-lint`)
-4. All tests pass with race detection enabled
+4. The full verification gate passes, with E2E as the final guard layer
 
 ### Feature Development with Specifications
 
@@ -387,7 +419,7 @@ We welcome contributions! Please follow these governance-compliant guidelines:
    - For APIs: Document in OpenAPI first, get user confirmation for design changes
    - For backend: Follow hexagonal architecture patterns
    - For frontend: Use design system components from `web/src/design-system/`
-5. **Run quality checks** (`just check`) - all checks must pass
+5. **Run static checks and the verification gate** (`just check` and `just verify`) - both must pass
 6. **Update architecture docs** if your changes affect system design ([ARCHITECTURE.md](ARCHITECTURE.md))
 7. **Commit your changes** with clear, descriptive messages
 8. **Push to your branch** (`git push origin feature/amazing-feature`)
@@ -397,7 +429,7 @@ We welcome contributions! Please follow these governance-compliant guidelines:
 
 - **Security-First**: Never disable security controls. If security is an issue, escalate rather than bypass.
 - **API-First**: Document APIs in OpenAPI format before implementation
-- **Tests Required**: New features must include tests. Run `just test` to verify.
+- **Tests Required**: New features must include tests. Run `just verify` before opening a PR.
 - **No Architecture Deviations**: Follow established ADRs (Architecture Decision Records). Deviations require new ADRs.
 - **Database Changes**: Use go-migrate naming conventions for all migrations
 - **Design System**: All frontend components must use the design system (web/src/design-system/)

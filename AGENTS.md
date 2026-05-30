@@ -145,12 +145,13 @@ Read full ADRs in `adrs/` before implementing. Pre-existing ADRs are authoritati
 
 | Command | Purpose |
 |---|---|
-| `just check` | **Pre-commit**: fmt → vet → lint → test (all must pass) |
+| `just check` | **Static checks**: fmt → vet → lint |
 | `just build` | Build Go binary → `./bin/agentic-identity-broker` |
-| `just test` | All tests (verbose, race detection) |
+| `just test` | Fast Go/package tests (no E2E or integration suites) |
+| `just verify` | Full verification gate with E2E as the final guard layer |
 | `just build-all` | Backend + frontend build |
-| `just test-e2e` | E2E tests only |
-| `just test-integration` | Integration tests (requires Docker) |
+| `just test-e2e` | All backend, ExtProc, and frontend E2E suites |
+| `just test-integration` | All integration suites: self-contained + infra-backed (`just test-integration-infra` requires Docker/Podman) |
 | `just cdk-test` | CDK unit tests |
 
 ## Code Style

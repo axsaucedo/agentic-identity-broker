@@ -27,8 +27,8 @@ func TestMigrationLifecycle(t *testing.T) {
 	assert.False(t, dirty, "Migration should not be dirty")
 	assert.Greater(t, version, uint(0), "Should have applied at least one migration")
 
-	// Step 2: Verify some tables exist
-	tables := []string{"agents", "thirdparty_oauth2_services", "user_sessions", "authorization_sessions"}
+	// Step 2: Verify representative tables from across the migration history exist.
+	tables := []string{"agents", "thirdparty_oauth2_services", "user_sessions", "authorization_codes"}
 	for _, table := range tables {
 		exists, err := f.TableExists(t, table)
 		require.NoError(t, err)

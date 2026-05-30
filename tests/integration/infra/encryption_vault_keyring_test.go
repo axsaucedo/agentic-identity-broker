@@ -1,3 +1,6 @@
+//go:build integration
+// +build integration
+
 package integration
 
 import (
@@ -13,6 +16,8 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/integration/bootstrap"
 )
+
+var sharedLS *bootstrap.LocalStackContainer
 
 // Test service UUIDs — must match the IDs provisioned in bootstrap/localstack.go:preBranchKeysForLocalStack
 // and the UUIDs in fixtures.TestServices().

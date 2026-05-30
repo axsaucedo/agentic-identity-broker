@@ -144,14 +144,17 @@ Expect(resp.StatusCode).To(Equal(http.StatusFound))
 ### Quick Start
 
 ```bash
-# Run all E2E tests
+# Run the backend E2E suite
+just test-e2e-backend
+
+# Run the backend suite with coverage report
+just test-e2e-backend-coverage
+
+# Watch the backend suite during development (auto-rerun on changes)
+just test-e2e-backend-watch
+
+# Run all backend, ExtProc, and frontend E2E suites
 just test-e2e
-
-# Run with coverage report
-just test-e2e-coverage
-
-# Watch tests during development (auto-rerun on changes)
-just test-e2e-watch
 
 # Run specific test suite
 ginkgo -v ./tests/e2e/oauth2_authorize_test.go
@@ -170,8 +173,8 @@ ginkgo -v ./tests/e2e/
 ginkgo -v --cover ./tests/e2e/
 
 # Generate HTML coverage report
-ginkgo -v --coverprofile=coverage/e2e.out ./tests/e2e/
-go tool cover -html=coverage/e2e.out -o coverage/e2e.html
+ginkgo -v --coverprofile=coverage/e2e-backend.out ./tests/e2e/
+go tool cover -html=coverage/e2e-backend.out -o coverage/e2e-backend.html
 
 # Watch mode: auto-rerun on file changes
 ginkgo watch -v ./tests/e2e/
@@ -209,13 +212,13 @@ ginkgo -v --seed=12345 ./tests/e2e/
 2. **Run tests from project root**:
    ```bash
    cd /path/to/agentic-identity-broker
-   just test-e2e
+   just test-e2e-backend
    ```
 
 3. **View coverage**:
    ```bash
-   just test-e2e-coverage
-   # Opens coverage/e2e.html in your browser
+   just test-e2e-backend-coverage
+   # Opens coverage/e2e-backend.html in your browser
    ```
 
 ## Test Organization & Structure
@@ -1008,15 +1011,15 @@ var _ = Describe("OAuth2 Device Authorization Flow", func() {
    ginkgo -v ./tests/e2e/oauth2_authorize_test.go
 
    # Run all E2E tests
-   just test-e2e
+   just test-e2e-backend
    ```
 
 2. **Check coverage**:
    ```bash
    # Generate coverage report
-   just test-e2e-coverage
+   just test-e2e-backend-coverage
 
-   # View in browser (coverage/e2e.html)
+   # View in browser (coverage/e2e-backend.html)
    ```
 
 3. **Verify spec mapping**:
@@ -1123,7 +1126,7 @@ resp, err := server.PublicGET(path)
 **Solution**:
 - These packages should have unit tests in `internal/**/*_test.go`
 - E2E tests verify integration, not individual packages
-- Run full test suite: `just test` (includes unit + integration tests)
+- Run the full verification gate: `just verify` (static checks → fast/package tests → integration suites → E2E suites)
 
 ## Performance & CI/CD
 
@@ -1357,14 +1360,17 @@ Expect(body).To(matchers.ContainOAuth2Metadata("issuer", "https://..."))
 ### Running Tests
 
 ```bash
-# Run all E2E tests
+# Run the backend E2E suite
+just test-e2e-backend
+
+# Run the backend suite with coverage
+just test-e2e-backend-coverage
+
+# Watch the backend suite (auto-rerun on changes)
+just test-e2e-backend-watch
+
+# Run all backend, ExtProc, and frontend E2E suites
 just test-e2e
-
-# Run with coverage
-just test-e2e-coverage
-
-# Watch mode (auto-rerun on changes)
-just test-e2e-watch
 
 # Run specific test
 ginkgo -v --focus="should redirect to consent" ./tests/e2e/
@@ -2101,10 +2107,10 @@ This section covers E2E testing for the frontend UI using Playwright and Ginkgo.
 
 ```bash
 # Run all frontend E2E tests (built mode with headless browser)
-just test-frontend-e2e
+just test-e2e-frontend
 
 # Run with browser visible for debugging
-HEADLESS=false just test-frontend-e2e
+HEADLESS=false just test-e2e-frontend
 
 # Run with visible browser AND verbose output
 HEADLESS=false ginkgo -v ./tests/e2e/frontend/

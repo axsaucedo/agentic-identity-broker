@@ -5,6 +5,7 @@ package migrations_test
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -299,7 +300,41 @@ func (f *MigrationTestFramework) QuerySQL(t *testing.T, query string) (string, e
 		return "", fmt.Errorf("failed to read psql output: %v", err)
 	}
 
-	return string(output), nil
+	return string(decodeExecOutput(output)), nil
+}
+
+// decodeExecOutput strips Docker's multiplexed exec stream headers when present.
+// Podman typically returns plain output, so we fall back to the original bytes when
+// the stream does not match the Docker stdcopy framing format.
+func decodeExecOutput(raw []byte) []byte {
+	if len(raw) < 8 {
+		return raw
+	}
+
+	decoded := make([]byte, 0, len(raw))
+	for offset := 0; offset < len(raw); {
+		if offset+8 > len(raw) {
+			return raw
+		}
+		if raw[offset] > 2 || raw[offset+1] != 0 || raw[offset+2] != 0 || raw[offset+3] != 0 {
+			return raw
+		}
+
+		frameLen := int(binary.BigEndian.Uint32(raw[offset+4 : offset+8]))
+		offset += 8
+		if frameLen < 0 || offset+frameLen > len(raw) {
+			return raw
+		}
+
+		decoded = append(decoded, raw[offset:offset+frameLen]...)
+		offset += frameLen
+	}
+
+	if len(decoded) == 0 {
+		return raw
+	}
+
+	return decoded
 }
 
 // ExecuteSQL executes a SQL statement (no output)

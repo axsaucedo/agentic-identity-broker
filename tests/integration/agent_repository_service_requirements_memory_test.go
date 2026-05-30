@@ -1,6 +1,3 @@
-//go:build integration
-// +build integration
-
 package integration
 
 import (
@@ -17,13 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAgentRepositoryServiceRequirements_Memory tests service requirements with in-memory adapter
+// TestAgentRepositoryServiceRequirements_Memory tests service requirements with the in-memory adapter.
 func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// Create memory adapter using production factory
 	config := &ports.StorageConfig{
 		Backend: "memory",
 		Timeouts: ports.StorageTimeouts{
@@ -60,7 +56,6 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		err := adapter.Agents().Create(ctx, agent)
 		require.NoError(t, err)
 
-		// Retrieve and verify
 		retrieved, err := adapter.Agents().Get(ctx, agent.ID)
 		require.NoError(t, err)
 		require.NotNil(t, retrieved)
@@ -79,7 +74,6 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		serviceID1 := id.MustParseServiceID("c1234567-0001-0001-0001-000000000001")
 		serviceID2 := id.MustParseServiceID("c1234567-0002-0002-0002-000000000002")
 
-		// Create initial agent with one requirement
 		agent := &domainStorage.Agent{
 			ID:          agentID,
 			ClientID:    ptr.To(id.ClientID("client-sr-2")),
@@ -99,7 +93,6 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		err := adapter.Agents().Create(ctx, agent)
 		require.NoError(t, err)
 
-		// Update with different requirements
 		agent.ServiceRequirements = []domainStorage.ServiceRequirement{
 			{
 				ServiceID:       serviceID2,
@@ -112,7 +105,6 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		err = adapter.Agents().Update(ctx, agent)
 		require.NoError(t, err)
 
-		// Verify update
 		retrieved, err := adapter.Agents().Get(ctx, agent.ID)
 		require.NoError(t, err)
 		assert.Len(t, retrieved.ServiceRequirements, 1)
@@ -124,7 +116,6 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		// Create agent without service requirements
 		agent := &domainStorage.Agent{
 			ID:          id.MustParseAgentID("a1234567-0003-0003-0003-000000000003"),
 			ClientID:    ptr.To(id.ClientID("client-sr-3")),
@@ -132,13 +123,11 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 			Description: "Agent without service requirements",
 			CreatedAt:   time.Now().UTC(),
 			UpdatedAt:   time.Now().UTC(),
-			// ServiceRequirements is nil (NULL in DB)
 		}
 
 		err := adapter.Agents().Create(ctx, agent)
 		require.NoError(t, err)
 
-		// Retrieve and verify it's nil
 		retrieved, err := adapter.Agents().Get(ctx, agent.ID)
 		require.NoError(t, err)
 		assert.Nil(t, retrieved.ServiceRequirements)
@@ -208,22 +197,10 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, retrieved.ServiceRequirements, 3)
 
-		// Verify each requirement
 		for i, req := range retrieved.ServiceRequirements {
 			assert.Equal(t, agent.ServiceRequirements[i].ServiceID, req.ServiceID)
 			assert.Equal(t, agent.ServiceRequirements[i].RequirementType, req.RequirementType)
 			assert.Equal(t, agent.ServiceRequirements[i].RequiredScopes, req.RequiredScopes)
 		}
 	})
-}
-
-// TestAgentRepositoryServiceRequirements_PostgreSQL tests service requirements with PostgreSQL adapter
-// This requires container setup and will be skipped if no Docker available
-// NOTE: PostgreSQL integration tests are tested separately in agent_service_requirements_migration_test.go
-func TestAgentRepositoryServiceRequirements_PostgreSQL(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	t.Skip("PostgreSQL integration tests covered in agent_service_requirements_migration_test.go")
 }
