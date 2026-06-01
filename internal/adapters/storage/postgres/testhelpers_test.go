@@ -89,7 +89,6 @@ func startSharedTestContainer(ctx context.Context) (testcontainers.Container, st
 		WaitingFor: wait.ForLog("database system is ready to accept connections").
 			WithOccurrence(2).
 			WithStartupTimeout(30 * time.Second),
-		Networks: []string{"podman"},
 	}
 
 	genericReq := testcontainers.GenericContainerRequest{
@@ -177,7 +176,7 @@ func execContainerCommand(t *testing.T, args ...string) string {
 
 func createDatabase(t *testing.T, dbName string, templateName string) {
 	t.Helper()
-	args := []string{"createdb", "-U", "testuser"}
+	args := []string{"createdb", "-U", "testuser", "--maintenance-db=postgres"}
 	if templateName != "" {
 		args = append(args, "-T", templateName)
 	}
@@ -188,7 +187,7 @@ func createDatabase(t *testing.T, dbName string, templateName string) {
 func dropDatabase(t *testing.T, dbName string) {
 	t.Helper()
 	terminateDatabaseConnections(t, dbName)
-	execContainerCommand(t, "dropdb", "--if-exists", "-U", "testuser", dbName)
+	execContainerCommand(t, "dropdb", "--if-exists", "-U", "testuser", "--maintenance-db=postgres", dbName)
 }
 
 func terminateDatabaseConnections(t *testing.T, dbName string) {
