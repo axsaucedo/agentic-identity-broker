@@ -26,16 +26,20 @@ func generateSigningKeyBranchKeyID(signingKeyID string) string {
 }
 
 // GenerateBranchKeyId generates a deterministic branch key ID from a typed branch key subject.
-func GenerateBranchKeyId(subject domainencryption.BranchKeySubject) string {
+func GenerateBranchKeyId(subject domainencryption.BranchKeySubject) (string, error) {
+	if err := subject.Validate(); err != nil {
+		return "", fmt.Errorf("invalid branch key subject: %w", err)
+	}
+
 	switch subject.Kind() {
 	case domainencryption.BranchKeySubjectKindService:
 		serviceID, _ := subject.ServiceID()
-		return generateServiceBranchKeyID(serviceID.String())
+		return generateServiceBranchKeyID(serviceID.String()), nil
 	case domainencryption.BranchKeySubjectKindSigningKey:
 		keyID, _ := subject.KeyID()
-		return generateSigningKeyBranchKeyID(keyID.String())
+		return generateSigningKeyBranchKeyID(keyID.String()), nil
 	default:
-		return ""
+		return "", fmt.Errorf("unsupported branch key subject kind: %q", subject.Kind())
 	}
 }
 

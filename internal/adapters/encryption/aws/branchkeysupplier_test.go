@@ -17,9 +17,9 @@ type fakeBranchKeyIDProvider struct {
 	lastSubject domainencryption.BranchKeySubject
 }
 
-func (f *fakeBranchKeyIDProvider) GenerateBranchKeyId(subject domainencryption.BranchKeySubject) string {
+func (f *fakeBranchKeyIDProvider) GenerateBranchKeyId(subject domainencryption.BranchKeySubject) (string, error) {
 	f.lastSubject = subject
-	return f.generatedID
+	return f.generatedID, nil
 }
 
 func (f *fakeBranchKeyIDProvider) ExtractSubjectFromBranchKey(branchKeyID string) (domainencryption.BranchKeySubject, error) {

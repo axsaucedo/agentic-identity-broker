@@ -12,7 +12,9 @@ import (
 
 func TestGenerateBranchKeyId_SigningKeySubject(t *testing.T) {
 	subject := domainencryption.NewSigningKeyBranchKeySubject(id.NewKeyID("kid-123"))
-	assert.Equal(t, "key_kid-123_branch_key", GenerateBranchKeyId(subject))
+	branchKeyID, err := GenerateBranchKeyId(subject)
+	require.NoError(t, err)
+	assert.Equal(t, "key_kid-123_branch_key", branchKeyID)
 }
 
 func TestExtractSubject_SigningKeySubject(t *testing.T) {

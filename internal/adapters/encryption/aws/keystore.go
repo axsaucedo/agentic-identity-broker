@@ -146,9 +146,9 @@ func (ks *KeyStore) CreateBranchKey(ctx context.Context, subject encryption.Bran
 		return "", encryption.NewKEKUnavailableError(fmt.Sprintf("invalid branch key subject: %v", err), err)
 	}
 
-	branchKeyID := branchkey.GenerateBranchKeyId(subject)
-	if branchKeyID == "" {
-		return "", encryption.NewKEKUnavailableError("failed to generate branch key ID from subject", nil)
+	branchKeyID, err := branchkey.GenerateBranchKeyId(subject)
+	if err != nil {
+		return "", encryption.NewKEKUnavailableError(fmt.Sprintf("failed to generate branch key ID from subject: %v", err), err)
 	}
 
 	// Idempotency check: if the branch key already exists, return it without creating a duplicate.

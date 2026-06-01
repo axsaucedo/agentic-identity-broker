@@ -41,7 +41,9 @@ func TestDefaultProvider_GenerateBranchKeyId(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, provider.GenerateBranchKeyId(tt.subject))
+			branchKeyID, err := provider.GenerateBranchKeyId(tt.subject)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, branchKeyID)
 		})
 	}
 }
@@ -117,7 +119,8 @@ func TestDefaultProvider_SymmetricOperations(t *testing.T) {
 
 	for _, subject := range testSubjects {
 		t.Run(subject.Identifier(), func(t *testing.T) {
-			branchKeyID := provider.GenerateBranchKeyId(subject)
+			branchKeyID, err := provider.GenerateBranchKeyId(subject)
+			require.NoError(t, err)
 			extracted, err := provider.ExtractSubjectFromBranchKey(branchKeyID)
 			require.NoError(t, err)
 			assert.Equal(t, subject.Kind(), extracted.Kind())
@@ -133,5 +136,7 @@ func TestNewDefaultProvider(t *testing.T) {
 	}
 
 	serviceSubject := domainencryption.NewServiceBranchKeySubject(id.MustParseServiceID(testUUID6))
-	assert.Equal(t, "service_"+testUUID6+"_branch_key", provider.GenerateBranchKeyId(serviceSubject))
+	branchKeyID, err := provider.GenerateBranchKeyId(serviceSubject)
+	require.NoError(t, err)
+	assert.Equal(t, "service_"+testUUID6+"_branch_key", branchKeyID)
 }

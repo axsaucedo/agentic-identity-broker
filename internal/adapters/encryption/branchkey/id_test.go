@@ -20,15 +20,23 @@ func TestGenerateBranchKeyId_ServiceSubject(t *testing.T) {
 			expected: "service_550e8400-e29b-41d4-a716-446655440001_branch_key",
 		},
 		{
-			name:     "zero service subject returns empty",
-			subject:  domainencryption.BranchKeySubject{},
-			expected: "",
+			name:    "zero service subject returns error",
+			subject: domainencryption.BranchKeySubject{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := GenerateBranchKeyId(tt.subject)
+			result, err := GenerateBranchKeyId(tt.subject)
+			if tt.expected == "" {
+				if err == nil {
+					t.Fatalf("GenerateBranchKeyId(%q) expected error but got none", tt.subject.Identifier())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("GenerateBranchKeyId(%q) unexpected error: %v", tt.subject.Identifier(), err)
+			}
 			if result != tt.expected {
 				t.Errorf("GenerateBranchKeyId(%q) = %q, expected %q", tt.subject.Identifier(), result, tt.expected)
 			}
@@ -112,7 +120,10 @@ func TestSymmetricOperations(t *testing.T) {
 	for _, tt := range testServiceIDs {
 		t.Run(tt.name, func(t *testing.T) {
 			subject := domainencryption.NewServiceBranchKeySubject(id.MustParseServiceID(tt.uuid))
-			branchKeyID := GenerateBranchKeyId(subject)
+			branchKeyID, err := GenerateBranchKeyId(subject)
+			if err != nil {
+				t.Fatalf("GenerateBranchKeyId failed for %q: %v", tt.uuid, err)
+			}
 			extractedSubject, err := ExtractSubject(branchKeyID)
 
 			if err != nil {

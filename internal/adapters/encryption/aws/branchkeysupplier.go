@@ -32,17 +32,17 @@ func (d *BranchKeyIdSupplier) GetBranchKeyId(input mpltypes.GetBranchKeyIdInput)
 		return nil, fmt.Errorf("invalid branch key subject in encryption context: %w", err)
 	}
 
-	branchKeyID := d.provider.GenerateBranchKeyId(subject)
-	if branchKeyID == "" {
-		return nil, fmt.Errorf("failed to derive branch key ID from branch key subject")
+	branchKeyID, err := d.provider.GenerateBranchKeyId(subject)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive branch key ID from branch key subject: %w", err)
 	}
 
 	return &mpltypes.GetBranchKeyIdOutput{BranchKeyId: branchKeyID}, nil
 }
 
-func (d *BranchKeyIdSupplier) GenerateBranchKeyId(subject domainencryption.BranchKeySubject) string {
+func (d *BranchKeyIdSupplier) GenerateBranchKeyId(subject domainencryption.BranchKeySubject) (string, error) {
 	if d.provider == nil {
-		return ""
+		return "", fmt.Errorf("branch key ID provider not configured")
 	}
 	return d.provider.GenerateBranchKeyId(subject)
 }

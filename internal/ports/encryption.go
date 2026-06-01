@@ -39,7 +39,7 @@ type BranchKeyRepository interface {
 // This abstraction eliminates duplicate branch key ID logic across different encryption adapters.
 type BranchKeyIdProvider interface {
 	// GenerateBranchKeyId generates a deterministic branch key ID from a branch key subject.
-	GenerateBranchKeyId(subject domainencryption.BranchKeySubject) string
+	GenerateBranchKeyId(subject domainencryption.BranchKeySubject) (string, error)
 
 	// ExtractSubjectFromBranchKey parses a branch key ID back into its subject.
 	ExtractSubjectFromBranchKey(branchKeyID string) (domainencryption.BranchKeySubject, error)

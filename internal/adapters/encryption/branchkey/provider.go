@@ -9,7 +9,7 @@ func NewDefaultProvider() *DefaultProvider {
 	return &DefaultProvider{}
 }
 
-func (p *DefaultProvider) GenerateBranchKeyId(subject domainencryption.BranchKeySubject) string {
+func (p *DefaultProvider) GenerateBranchKeyId(subject domainencryption.BranchKeySubject) (string, error) {
 	return GenerateBranchKeyId(subject)
 }
 

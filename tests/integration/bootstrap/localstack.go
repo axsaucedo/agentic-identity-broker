@@ -244,9 +244,12 @@ func preBranchKeysForLocalStack(ctx context.Context, kmsClient *kms.Client, dyna
 	branchKeyIdProvider := awsencryption.NewBranchKeyIdSupplier(branchkey.NewDefaultProvider())
 	for _, serviceID := range testServiceIDs {
 		serviceSubject := domainencryption.NewServiceBranchKeySubject(serviceID)
-		branchKeyID := branchKeyIdProvider.GenerateBranchKeyId(serviceSubject)
+		branchKeyID, err := branchKeyIdProvider.GenerateBranchKeyId(serviceSubject)
+		if err != nil {
+			return fmt.Errorf("failed to derive branch key ID for service %s: %w", serviceID, err)
+		}
 		encryptionCtx := serviceSubject.EncryptionContext()
-		_, err := keystoreClient.CreateKey(ctx, keystoretypes.CreateKeyInput{
+		_, err = keystoreClient.CreateKey(ctx, keystoretypes.CreateKeyInput{
 			BranchKeyIdentifier: &branchKeyID,
 			EncryptionContext:   encryptionCtx,
 		})
