@@ -90,7 +90,7 @@ func (s BranchKeySubject) Identifier() string {
 	case BranchKeySubjectKindSigningKey:
 		return s.signingKeyID.String()
 	default:
-		return ""
+		return "<unknown>"
 	}
 }
 

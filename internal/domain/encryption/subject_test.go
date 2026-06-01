@@ -41,6 +41,10 @@ func TestBranchKeySubject_SigningKey(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestBranchKeySubject_IdentifierZeroValue(t *testing.T) {
+	assert.Equal(t, "<unknown>", BranchKeySubject{}.Identifier())
+}
+
 func TestBranchKeySubjectFromEncryptionContext(t *testing.T) {
 	tests := []struct {
 		name              string
