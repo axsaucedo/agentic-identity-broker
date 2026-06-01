@@ -24,17 +24,17 @@ func NewBranchKeyIdSupplier(provider ports.BranchKeyIdProvider) *BranchKeyIdSupp
 // Called by the AWS Encryption SDK hierarchical keyring during encryption/decryption.
 func (d *BranchKeyIdSupplier) GetBranchKeyId(input mpltypes.GetBranchKeyIdInput) (*mpltypes.GetBranchKeyIdOutput, error) {
 	if d.provider == nil {
-		return nil, fmt.Errorf("branch key ID provider not configured")
+		return nil, mpltypes.OpaqueError{ErrObject: fmt.Errorf("branch key ID provider not configured")}
 	}
 
 	subject, err := domainencryption.BranchKeySubjectFromEncryptionContext(input.EncryptionContext)
 	if err != nil {
-		return nil, fmt.Errorf("invalid branch key subject in encryption context: %w", err)
+		return nil, mpltypes.OpaqueError{ErrObject: fmt.Errorf("invalid branch key subject in encryption context: %w", err)}
 	}
 
 	branchKeyID, err := d.provider.GenerateBranchKeyId(subject)
 	if err != nil {
-		return nil, fmt.Errorf("failed to derive branch key ID from branch key subject: %w", err)
+		return nil, mpltypes.OpaqueError{ErrObject: fmt.Errorf("failed to derive branch key ID from branch key subject: %w", err)}
 	}
 
 	return &mpltypes.GetBranchKeyIdOutput{BranchKeyId: branchKeyID}, nil
