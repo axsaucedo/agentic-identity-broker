@@ -726,6 +726,19 @@ func TestSigningKeyEncCtx(t *testing.T) {
 		assert.Equal(t, "550e8400-e29b-41d4-a716-446655440000", ctx["kid"],
 			"kid must be the signing key identifier used in AAD")
 	})
+
+	t.Run("round trips through BranchKeySubjectFromEncryptionContext", func(t *testing.T) {
+		kid := id.NewKeyID("550e8400-e29b-41d4-a716-446655440000")
+		ctx := signingKeyEncCtx(kid)
+
+		subject, err := domainencryption.BranchKeySubjectFromEncryptionContext(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, domainencryption.BranchKeySubjectKindSigningKey, subject.Kind())
+
+		extractedKID, ok := subject.KeyID()
+		require.True(t, ok)
+		assert.Equal(t, kid, extractedKID)
+	})
 }
 
 func TestSigningKeyService_CountActive(t *testing.T) {
