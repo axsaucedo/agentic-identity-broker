@@ -7,7 +7,6 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// BranchKeyManager is a null-object BranchKeyManager.
 // Injected when no real branch key store is configured (memory / raw-AES backend),
 // eliminating nil guards in domain services.
 type BranchKeyManager struct{}
