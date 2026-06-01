@@ -133,9 +133,8 @@ func createKeyStore(ctx context.Context, ksCfg KeyStoreConfig, awsCfg *ports.AWS
 }
 
 // CreateBranchKey creates a branch key in DynamoDB for the provided subject.
-// This operation is idempotent: if a branch key with the given subject already exists it is
-// returned without creating a new one. This allows callers (including service Update paths
-// where a service was originally created with a different encryption backend) to call
+// This operation first checks for an existing branch key and returns it when the lookup
+// succeeds. If the lookup fails, CreateKey is attempted so callers can invoke
 // CreateBranchKey unconditionally without failing on pre-existing keys.
 func (ks *KeyStore) CreateBranchKey(ctx context.Context, subject encryption.BranchKeySubject) (string, error) {
 	if ks == nil || ks.client == nil {
