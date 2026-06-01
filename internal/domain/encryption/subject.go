@@ -20,8 +20,8 @@ const (
 // BranchKeySubject identifies the logical namespace that should map to a branch key.
 //
 // Third-party OAuth2 services keep using ServiceID-backed subjects so their existing
-// branch key IDs remain unchanged. Signing keys use a dedicated signing_key_id subject
-// and therefore no longer masquerade as services.
+// branch key IDs remain unchanged. Signing keys use a dedicated `signing_key` subject
+// keyed by the JWT `kid` term and therefore no longer masquerade as services.
 type BranchKeySubject struct {
 	kind         BranchKeySubjectKind
 	serviceID    id.ServiceID
