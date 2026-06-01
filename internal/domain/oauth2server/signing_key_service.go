@@ -68,8 +68,8 @@ func (s *SigningKeyService) GenerateAndStoreKey(ctx context.Context, algorithm s
 }
 
 // generateAndStore creates and persists a signing key with an explicit activatesAt timestamp.
-// The caller controls the activation time, allowing tests and future provisioning
-// paths to bypass the jwksGracePeriod that GenerateAndStoreKey applies.
+// The caller controls the activation time, allowing tests to bypass the
+// jwksGracePeriod that GenerateAndStoreKey applies.
 func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm string, makeCurrent bool, activatesAt time.Time) (*storage.SigningKey, error) {
 	if algorithm == "" {
 		algorithm = "ES256"
