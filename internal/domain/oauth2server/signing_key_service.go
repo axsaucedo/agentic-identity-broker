@@ -216,6 +216,7 @@ func (s *SigningKeyService) DecryptPrivateKey(ctx context.Context, key *storage.
 
 func (s *SigningKeyService) warnOrphanedBranchKey(message string, kid id.KeyID, branchKeyID string) {
 	if branchKeyID == "" {
+		s.logger.Debug("skipping orphan warning: branch key ID is empty (noop backend or unexpected empty return)", "kid", kid)
 		return
 	}
 	s.logger.Warn(message, "kid", kid, "branch_key_id", branchKeyID)

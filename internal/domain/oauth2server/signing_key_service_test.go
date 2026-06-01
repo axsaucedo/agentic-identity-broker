@@ -628,6 +628,20 @@ func TestSigningKeyService_OrphanedBranchKeyWarning(t *testing.T) {
 		assert.Contains(t, logOutput, "branch-key-id", "warn log must include the branch key ID for operator cleanup")
 	})
 
+	t.Run("logs debug breadcrumb when branch key id is empty", func(t *testing.T) {
+		var logBuf bytes.Buffer
+		svc, _ := newTestSigningKeyServiceWithBranchKeyManagerAndEncryptor(newNoopBranchKeyManager(), &failingEncryptor{}, &logBuf)
+
+		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", false)
+		require.Error(t, err)
+
+		logOutput := logBuf.String()
+		assert.Contains(t, logOutput, "branch key ID is empty", "empty branch key IDs must leave a diagnostic breadcrumb")
+		assert.Contains(t, logOutput, "kid", "debug breadcrumb must retain the signing key kid")
+		assert.NotContains(t, logOutput, "orphaned branch key", "empty branch key IDs must not emit manual-cleanup warnings")
+		assert.NotContains(t, logOutput, "branch_key_id", "empty branch key IDs must not log a branch_key_id field")
+	})
+
 	t.Run("noop branch key manager does not warn about cleanup when Encrypt fails", func(t *testing.T) {
 		var logBuf bytes.Buffer
 		svc, _ := newTestSigningKeyServiceWithBranchKeyManagerAndEncryptor(newNoopBranchKeyManager(), &failingEncryptor{}, &logBuf)
