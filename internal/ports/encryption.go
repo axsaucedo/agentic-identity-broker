@@ -46,12 +46,11 @@ type BranchKeyIdProvider interface {
 }
 
 // BranchKeyManager is an alias for BranchKeyRepository, consolidating branch key lifecycle management.
-// This provides a unified interface for branch key provisioning during service creation.
+// This provides a unified interface for branch key provisioning during subject creation.
 //
 // Architecture:
-// - Create: Provisions a new branch key for a service in DynamoDB
-// - Get: Retrieves an existing branch key (future use)
-// - ID resolution at runtime happens via BranchKeyIdSupplier (not this interface)
+// - Create: Provisions a branch key for a typed subject in DynamoDB
+// - Runtime ID resolution happens via BranchKeyIdSupplier (not this interface)
 //
 // This separation enables:
 // - Clean EncryptionPort that handles only Encrypt/Decrypt operations
