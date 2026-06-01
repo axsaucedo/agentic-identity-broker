@@ -4,6 +4,7 @@ package app
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -755,6 +756,16 @@ func (b *Builder) Build() (*App, error) {
 		if count == 0 {
 			b.logger.Error("no signing key provisioned — local token issuance will fail until a key is created",
 				"hint", "POST /api/oauth2-server/signing-keys")
+			return provider, nil
+		}
+		if _, err := signingKeyService.GetCurrent(context.Background()); err != nil {
+			var storageErr *domstorage.StorageError
+			if errors.As(err, &storageErr) && storageErr.Kind == domstorage.ErrorKindNotFound {
+				b.logger.Error("no currently-active signing key available — local token issuance will fail until a key activates or is promoted",
+					"hint", "wait for activates_at or PUT /api/oauth2-server/signing-keys/{kid}/current")
+				return provider, nil
+			}
+			return nil, fmt.Errorf("failed to check current signing key: %w", err)
 		}
 		return provider, nil
 	}
