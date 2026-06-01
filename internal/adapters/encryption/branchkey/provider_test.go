@@ -3,6 +3,10 @@ package branchkey
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
@@ -19,129 +23,115 @@ func TestDefaultProvider_GenerateBranchKeyId(t *testing.T) {
 	provider := NewDefaultProvider()
 
 	tests := []struct {
-		name      string
-		serviceID id.ServiceID
-		expected  string
+		name     string
+		subject  domainencryption.BranchKeySubject
+		expected string
 	}{
 		{
-			name:      "first service",
-			serviceID: id.MustParseServiceID(testUUID1),
-			expected:  "service_" + testUUID1 + "_branch_key",
+			name:     "service subject",
+			subject:  domainencryption.NewServiceBranchKeySubject(id.MustParseServiceID(testUUID1)),
+			expected: "service_" + testUUID1 + "_branch_key",
 		},
 		{
-			name:      "second service",
-			serviceID: id.MustParseServiceID(testUUID2),
-			expected:  "service_" + testUUID2 + "_branch_key",
+			name:     "signing key subject",
+			subject:  domainencryption.NewSigningKeyBranchKeySubject(id.NewKeyID("kid-123")),
+			expected: "key_kid-123_branch_key",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := provider.GenerateBranchKeyId(tt.serviceID)
-			if result != tt.expected {
-				t.Errorf("GenerateBranchKeyId(%q) = %q, expected %q", tt.serviceID, result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, provider.GenerateBranchKeyId(tt.subject))
 		})
 	}
 }
 
-func TestDefaultProvider_ExtractServiceIdFromBranchKey(t *testing.T) {
+func TestDefaultProvider_ExtractSubjectFromBranchKey(t *testing.T) {
 	provider := NewDefaultProvider()
 
 	tests := []struct {
 		name        string
 		branchKeyID string
-		expected    id.ServiceID
+		assertFn    func(t *testing.T, subject domainencryption.BranchKeySubject)
+		wantErr     string
 	}{
 		{
-			name:        "valid first service",
+			name:        "service branch key",
 			branchKeyID: "service_" + testUUID1 + "_branch_key",
-			expected:    id.MustParseServiceID(testUUID1),
+			assertFn: func(t *testing.T, subject domainencryption.BranchKeySubject) {
+				t.Helper()
+				assert.Equal(t, domainencryption.BranchKeySubjectKindService, subject.Kind())
+				serviceID, ok := subject.ServiceID()
+				require.True(t, ok)
+				assert.Equal(t, id.MustParseServiceID(testUUID1), serviceID)
+			},
 		},
 		{
-			name:        "valid second service",
-			branchKeyID: "service_" + testUUID2 + "_branch_key",
-			expected:    id.MustParseServiceID(testUUID2),
+			name:        "signing key branch key",
+			branchKeyID: "key_kid-123_branch_key",
+			assertFn: func(t *testing.T, subject domainencryption.BranchKeySubject) {
+				t.Helper()
+				assert.Equal(t, domainencryption.BranchKeySubjectKindSigningKey, subject.Kind())
+				signingKeyID, ok := subject.KeyID()
+				require.True(t, ok)
+				assert.Equal(t, id.NewKeyID("kid-123"), signingKeyID)
+			},
 		},
 		{
-			name:        "invalid format returns zero",
+			name:        "invalid format",
 			branchKeyID: "invalid_format",
-			expected:    id.ServiceID{},
+			wantErr:     "invalid branch key ID format",
 		},
 		{
-			name:        "missing prefix returns zero",
-			branchKeyID: testUUID1 + "_branch_key",
-			expected:    id.ServiceID{},
-		},
-		{
-			name:        "missing suffix returns zero",
-			branchKeyID: "service_" + testUUID1,
-			expected:    id.ServiceID{},
-		},
-		{
-			name:        "non-uuid service ID returns zero",
+			name:        "non uuid service subject",
 			branchKeyID: "service_not-a-uuid_branch_key",
-			expected:    id.ServiceID{},
-		},
-		{
-			name:        "empty service ID returns zero",
-			branchKeyID: "service__branch_key",
-			expected:    id.ServiceID{},
-		},
-		{
-			name:        "empty string returns zero",
-			branchKeyID: "",
-			expected:    id.ServiceID{},
+			wantErr:     "invalid service subject",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := provider.ExtractServiceIdFromBranchKey(tt.branchKeyID)
-			if result != tt.expected {
-				t.Errorf("ExtractServiceIdFromBranchKey(%q) = %q, expected %q", tt.branchKeyID, result, tt.expected)
+			subject, err := provider.ExtractSubjectFromBranchKey(tt.branchKeyID)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
 			}
+
+			require.NoError(t, err)
+			tt.assertFn(t, subject)
 		})
 	}
 }
 
-// TestDefaultProvider_SymmetricOperations verifies that the provider's methods are inverse operations
 func TestDefaultProvider_SymmetricOperations(t *testing.T) {
 	provider := NewDefaultProvider()
 
-	testServiceIDs := []id.ServiceID{
-		id.MustParseServiceID(testUUID1),
-		id.MustParseServiceID(testUUID2),
-		id.MustParseServiceID(testUUID3),
-		id.MustParseServiceID(testUUID4),
-		id.MustParseServiceID(testUUID5),
+	testSubjects := []domainencryption.BranchKeySubject{
+		domainencryption.NewServiceBranchKeySubject(id.MustParseServiceID(testUUID1)),
+		domainencryption.NewServiceBranchKeySubject(id.MustParseServiceID(testUUID2)),
+		domainencryption.NewServiceBranchKeySubject(id.MustParseServiceID(testUUID3)),
+		domainencryption.NewSigningKeyBranchKeySubject(id.NewKeyID("kid-1")),
+		domainencryption.NewSigningKeyBranchKeySubject(id.NewKeyID("kid-2")),
 	}
 
-	for _, serviceID := range testServiceIDs {
-		t.Run(serviceID.String(), func(t *testing.T) {
-			// Generate -> Extract should return original service ID
-			branchKeyID := provider.GenerateBranchKeyId(serviceID)
-			extractedID := provider.ExtractServiceIdFromBranchKey(branchKeyID)
-
-			if extractedID != serviceID {
-				t.Errorf("Symmetric operation failed: %q -> %q -> %q", serviceID, branchKeyID, extractedID)
-			}
+	for _, subject := range testSubjects {
+		t.Run(subject.Identifier(), func(t *testing.T) {
+			branchKeyID := provider.GenerateBranchKeyId(subject)
+			extracted, err := provider.ExtractSubjectFromBranchKey(branchKeyID)
+			require.NoError(t, err)
+			assert.Equal(t, subject.Kind(), extracted.Kind())
+			assert.Equal(t, subject.Identifier(), extracted.Identifier())
 		})
 	}
 }
 
-// TestNewDefaultProvider ensures the constructor creates a valid instance
 func TestNewDefaultProvider(t *testing.T) {
 	provider := NewDefaultProvider()
 	if provider == nil {
-		t.Error("NewDefaultProvider() returned nil")
+		t.Fatal("NewDefaultProvider() returned nil")
 	}
 
-	// Test that the provider works correctly
-	testID := id.MustParseServiceID(testUUID6)
-	result := provider.GenerateBranchKeyId(testID)
-	expected := "service_" + testUUID6 + "_branch_key"
-	if result != expected {
-		t.Errorf("New provider GenerateBranchKeyId(%q) = %q, expected %q", testID, result, expected)
-	}
+	serviceSubject := domainencryption.NewServiceBranchKeySubject(id.MustParseServiceID(testUUID6))
+	assert.Equal(t, "service_"+testUUID6+"_branch_key", provider.GenerateBranchKeyId(serviceSubject))
 }

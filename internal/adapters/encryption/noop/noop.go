@@ -3,7 +3,7 @@ package noop
 import (
 	"context"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 )
 
 // BranchKeyManager is a null-object BranchKeyManager.
@@ -11,6 +11,6 @@ import (
 // eliminating nil guards in domain services.
 type BranchKeyManager struct{}
 
-func (n *BranchKeyManager) Create(_ context.Context, _ id.ServiceID) (string, error) {
+func (n *BranchKeyManager) Create(_ context.Context, _ domainencryption.BranchKeySubject) (string, error) {
 	return "", nil
 }

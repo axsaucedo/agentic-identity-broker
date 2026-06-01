@@ -3,6 +3,7 @@ package oauth2server
 import (
 	"bytes"
 	"context"
+	"encoding/pem"
 	"errors"
 	"log/slog"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -43,14 +45,16 @@ func (e *testEncryptor) Decrypt(_ context.Context, ciphertext []byte, _ map[stri
 
 // mockBranchKeyManager is a hand-rolled mock for ports.BranchKeyManager.
 type mockBranchKeyManager struct {
-	createFn    func(ctx context.Context, serviceID id.ServiceID) (string, error)
+	createFn    func(ctx context.Context, subject domainencryption.BranchKeySubject) (string, error)
 	createCalls int
+	lastSubject domainencryption.BranchKeySubject
 }
 
-func (m *mockBranchKeyManager) Create(ctx context.Context, serviceID id.ServiceID) (string, error) {
+func (m *mockBranchKeyManager) Create(ctx context.Context, subject domainencryption.BranchKeySubject) (string, error) {
 	m.createCalls++
+	m.lastSubject = subject
 	if m.createFn != nil {
-		return m.createFn(ctx, serviceID)
+		return m.createFn(ctx, subject)
 	}
 	return "", nil
 }
@@ -361,8 +365,9 @@ func TestSigningKeyService_DecryptPrivateKey(t *testing.T) {
 		decrypted, err := svc.DecryptPrivateKey(context.Background(), key)
 		require.NoError(t, err)
 		assert.True(t, len(decrypted) > 0)
-		// Should be valid PEM
-		assert.Contains(t, string(decrypted), "-----BEGIN PRIVATE KEY-----")
+		block, _ := pem.Decode(decrypted)
+		require.NotNil(t, block)
+		assert.Equal(t, "PRIVATE KEY", block.Type)
 	})
 }
 
@@ -476,7 +481,7 @@ func TestSigningKeyService_AdminOperations(t *testing.T) {
 func TestSigningKeyService_BranchKeyProvisioning(t *testing.T) {
 	t.Run("happy path: branch key created, key stored and decryptable", func(t *testing.T) {
 		bkm := &mockBranchKeyManager{
-			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
+			createFn: func(_ context.Context, _ domainencryption.BranchKeySubject) (string, error) {
 				return "branch-key-id", nil
 			},
 		}
@@ -486,8 +491,10 @@ func TestSigningKeyService_BranchKeyProvisioning(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, key)
 
-		// Branch key was provisioned exactly once.
+		// Branch key was provisioned exactly once for the signing-key subject.
 		assert.Equal(t, 1, bkm.createCalls)
+		assert.Equal(t, domainencryption.BranchKeySubjectKindSigningKey, bkm.lastSubject.Kind())
+		assert.Equal(t, key.KID.String(), bkm.lastSubject.Identifier())
 
 		// Key was stored in the repo.
 		stored, err := repo.GetByKID(context.Background(), key.KID)
@@ -497,12 +504,14 @@ func TestSigningKeyService_BranchKeyProvisioning(t *testing.T) {
 		// Private key material is decryptable.
 		decrypted, err := svc.DecryptPrivateKey(context.Background(), stored)
 		require.NoError(t, err)
-		assert.Contains(t, string(decrypted), "-----BEGIN PRIVATE KEY-----")
+		block, _ := pem.Decode(decrypted)
+		require.NotNil(t, block)
+		assert.Equal(t, "PRIVATE KEY", block.Type)
 	})
 
 	t.Run("Create failure: error propagates, nothing stored", func(t *testing.T) {
 		bkm := &mockBranchKeyManager{
-			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
+			createFn: func(_ context.Context, _ domainencryption.BranchKeySubject) (string, error) {
 				return "", errors.New("dynamo down")
 			},
 		}
@@ -523,7 +532,7 @@ func TestSigningKeyService_BranchKeyProvisioning(t *testing.T) {
 		// Because failingEncryptor always errors on Encrypt, if Create were called after Encrypt
 		// (or not at all), createCalls would be 0. createCalls == 1 proves Create ran first.
 		bkm := &mockBranchKeyManager{
-			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
+			createFn: func(_ context.Context, _ domainencryption.BranchKeySubject) (string, error) {
 				return "branch-key-id", nil
 			},
 		}
@@ -558,7 +567,7 @@ func TestSigningKeyService_OrphanedBranchKeyWarning(t *testing.T) {
 	t.Run("warns with kid when Encrypt fails after branch key created", func(t *testing.T) {
 		var logBuf bytes.Buffer
 		bkm := &mockBranchKeyManager{
-			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
+			createFn: func(_ context.Context, _ domainencryption.BranchKeySubject) (string, error) {
 				return "branch-key-id", nil
 			},
 		}
@@ -576,7 +585,7 @@ func TestSigningKeyService_OrphanedBranchKeyWarning(t *testing.T) {
 	t.Run("warns with kid when repo.Create fails after branch key created", func(t *testing.T) {
 		var logBuf bytes.Buffer
 		bkm := &mockBranchKeyManager{
-			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
+			createFn: func(_ context.Context, _ domainencryption.BranchKeySubject) (string, error) {
 				return "branch-key-id", nil
 			},
 		}
@@ -599,7 +608,7 @@ func TestSigningKeyService_OrphanedBranchKeyWarning(t *testing.T) {
 	t.Run("warns with kid when repo.CreateAndSetCurrent fails after branch key created", func(t *testing.T) {
 		var logBuf bytes.Buffer
 		bkm := &mockBranchKeyManager{
-			createFn: func(_ context.Context, _ id.ServiceID) (string, error) {
+			createFn: func(_ context.Context, _ domainencryption.BranchKeySubject) (string, error) {
 				return "branch-key-id", nil
 			},
 		}
@@ -684,8 +693,8 @@ func TestSigningKeyEncCtx(t *testing.T) {
 		kid := id.NewKeyID("550e8400-e29b-41d4-a716-446655440000")
 		ctx := signingKeyEncCtx(kid)
 		require.Len(t, ctx, 1, "encryption context must contain exactly one key")
-		assert.Equal(t, "550e8400-e29b-41d4-a716-446655440000", ctx["service_id"],
-			"service_id must be the bare kid string — no signing_key: prefix")
+		assert.Equal(t, "550e8400-e29b-41d4-a716-446655440000", ctx["kid"],
+			"kid must be the signing key identifier used in AAD")
 	})
 }
 

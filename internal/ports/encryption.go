@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 )
 
 // EncryptionPort defines the interface for encrypting and decrypting sensitive data.
@@ -24,32 +24,25 @@ type EncryptionPort interface {
 }
 
 // BranchKeyRepository defines operations for provisioning and managing branch keys.
-// Branch keys are service-specific KEK cache entries in DynamoDB used by the hierarchical keyring.
-// Each service gets a deterministic branch key: service_{service_id}_branch_key
+// Branch keys are subject-specific KEK cache entries in DynamoDB used by the hierarchical keyring.
+// Service subjects keep the production branch key naming scheme `service_{service_id}_branch_key`.
+// Other subject kinds (for example signing keys) use their own deterministic namespaces.
 // This follows the Repository pattern for infrastructure provisioning (not data persistence).
 type BranchKeyRepository interface {
-	// Create creates a branch key for a service in the key store.
-	// The branch key ID follows the pattern: service_{service_id}_branch_key
+	// Create creates a branch key for a subject in the key store.
 	// Returns the generated branch key ID or error if provisioning fails.
 	// ATOMIC: Should fail immediately if KMS/DynamoDB operations fail - no partial state.
-	Create(ctx context.Context, serviceID id.ServiceID) (string, error)
+	Create(ctx context.Context, subject domainencryption.BranchKeySubject) (string, error)
 }
 
 // BranchKeyIdProvider defines the interface for generating and parsing branch key IDs.
 // This abstraction eliminates duplicate branch key ID logic across different encryption adapters.
-// Both AWS and Memory implementations use the same deterministic ID format: service_{service_id}_branch_key
 type BranchKeyIdProvider interface {
-	// GenerateBranchKeyId generates a deterministic branch key ID from a service ID.
-	// Format: service_{service_id}_branch_key
-	// Example: service_oauth2_branch_key, service_github_branch_key
-	GenerateBranchKeyId(serviceID id.ServiceID) string
+	// GenerateBranchKeyId generates a deterministic branch key ID from a branch key subject.
+	GenerateBranchKeyId(subject domainencryption.BranchKeySubject) string
 
-	// ExtractServiceIdFromBranchKey extracts the service ID from a branch key ID.
-	// This is the inverse operation of GenerateBranchKeyId.
-	// Format: service_{service_id}_branch_key -> service_id
-	// Example: service_550e8400-e29b-41d4-a716-446655440001_branch_key -> 550e8400-e29b-41d4-a716-446655440001
-	// Returns zero value (id.ServiceID{}) if parsing fails.
-	ExtractServiceIdFromBranchKey(branchKeyID string) id.ServiceID
+	// ExtractSubjectFromBranchKey parses a branch key ID back into its subject.
+	ExtractSubjectFromBranchKey(branchKeyID string) (domainencryption.BranchKeySubject, error)
 }
 
 // BranchKeyManager is an alias for BranchKeyRepository, consolidating branch key lifecycle management.

@@ -18,6 +18,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
@@ -241,10 +242,9 @@ func preBranchKeysForLocalStack(ctx context.Context, kmsClient *kms.Client, dyna
 	// Create branch keys for each test service using centralized ID generation
 	branchKeyIdProvider := &awsencryption.BranchKeyIdSupplier{}
 	for _, serviceID := range testServiceIDs {
-		branchKeyID := branchKeyIdProvider.GenerateBranchKeyId(serviceID)
-		encryptionCtx := map[string]string{
-			"service_id": serviceID.String(),
-		}
+		serviceSubject := domainencryption.NewServiceBranchKeySubject(serviceID)
+		branchKeyID := branchKeyIdProvider.GenerateBranchKeyId(serviceSubject)
+		encryptionCtx := serviceSubject.EncryptionContext()
 		_, err := keystoreClient.CreateKey(ctx, keystoretypes.CreateKeyInput{
 			BranchKeyIdentifier: &branchKeyID,
 			EncryptionContext:   encryptionCtx,

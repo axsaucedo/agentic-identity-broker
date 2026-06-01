@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strconv"
 
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -81,9 +82,11 @@ func (s *ThirdpartyOAuth2ProviderService) Create(
 		entity.ID = id.NewServiceID()
 	}
 
+	serviceSubject := domainencryption.NewServiceBranchKeySubject(entity.ID)
+
 	// Provision branch key before creating service (fail-fast on error)
 	s.logger.Info("provisioning branch key for service", "service_id", entity.ID)
-	branchKeyID, err := s.branchKeyManager.Create(ctx, entity.ID)
+	branchKeyID, err := s.branchKeyManager.Create(ctx, serviceSubject)
 	if err != nil {
 		s.logger.Error("failed to provision branch key",
 			"service_id", entity.ID,
@@ -100,11 +103,8 @@ func (s *ThirdpartyOAuth2ProviderService) Create(
 		return fmt.Errorf("entity secret must be in plaintext state for create: %w", err)
 	}
 
-	// Build encryption context with service_id only (ADR 008)
-	encContext := map[string]string{"service_id": entity.ID.String()}
-
 	// Encrypt secret
-	ciphertext, err := s.encryption.Encrypt(ctx, []byte(plaintext), encContext)
+	ciphertext, err := s.encryption.Encrypt(ctx, []byte(plaintext), serviceSubject.EncryptionContext())
 	if err != nil {
 		s.logger.Error("encryption_failed",
 			"operation", "create_provider",
@@ -186,11 +186,13 @@ func (s *ThirdpartyOAuth2ProviderService) Update(
 		return fmt.Errorf("provider validation failed: %w", err)
 	}
 
+	serviceSubject := domainencryption.NewServiceBranchKeySubject(entity.ID)
+
 	// Provision branch key before encrypting (idempotent — safe for already-provisioned services).
 	// Required when updating a service that was created with a different encryption backend and
 	// therefore has no branch key in the current KMS key store.
 	s.logger.Info("ensuring branch key exists for service update", "service_id", entity.ID)
-	branchKeyID, err := s.branchKeyManager.Create(ctx, entity.ID)
+	branchKeyID, err := s.branchKeyManager.Create(ctx, serviceSubject)
 	if err != nil {
 		s.logger.Error("failed to ensure branch key for update",
 			"service_id", entity.ID,
@@ -206,8 +208,7 @@ func (s *ThirdpartyOAuth2ProviderService) Update(
 		return fmt.Errorf("failed to read plaintext secret for update: %w", err)
 	}
 
-	encContext := map[string]string{"service_id": entity.ID.String()}
-	ciphertext, err := s.encryption.Encrypt(ctx, []byte(plaintext), encContext)
+	ciphertext, err := s.encryption.Encrypt(ctx, []byte(plaintext), serviceSubject.EncryptionContext())
 	if err != nil {
 		s.logger.Error("encryption_failed",
 			"operation", "update_provider",
@@ -387,9 +388,9 @@ func (s *ThirdpartyOAuth2ProviderService) decryptSecret(
 		return nil, fmt.Errorf("entity has no encrypted secret: %w", err)
 	}
 
-	encContext := map[string]string{"service_id": entity.ID.String()}
+	serviceSubject := domainencryption.NewServiceBranchKeySubject(entity.ID)
 
-	plaintext, err := s.encryption.Decrypt(ctx, ciphertext, encContext)
+	plaintext, err := s.encryption.Decrypt(ctx, ciphertext, serviceSubject.EncryptionContext())
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt client secret: %w", err)
 	}

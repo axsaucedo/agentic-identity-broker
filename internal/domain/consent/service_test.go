@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/permissionset"
@@ -34,7 +35,7 @@ func newNoopBranchKeyManager() *noopBranchKeyManager {
 	return &noopBranchKeyManager{}
 }
 
-func (m *noopBranchKeyManager) Create(_ context.Context, _ id.ServiceID) (string, error) {
+func (m *noopBranchKeyManager) Create(_ context.Context, _ domainencryption.BranchKeySubject) (string, error) {
 	return "", nil
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -92,8 +93,8 @@ type MockBranchKeyManager struct {
 	mock.Mock
 }
 
-func (m *MockBranchKeyManager) Create(ctx context.Context, serviceID id.ServiceID) (string, error) {
-	args := m.Called(ctx, serviceID)
+func (m *MockBranchKeyManager) Create(ctx context.Context, subject domainencryption.BranchKeySubject) (string, error) {
+	args := m.Called(ctx, subject)
 	return args.String(0), args.Error(1)
 }
 
@@ -103,13 +104,17 @@ func newNoopBranchKeyManager() *noopBranchKeyManager {
 	return &noopBranchKeyManager{}
 }
 
-func (m *noopBranchKeyManager) Create(_ context.Context, _ id.ServiceID) (string, error) {
+func (m *noopBranchKeyManager) Create(_ context.Context, _ domainencryption.BranchKeySubject) (string, error) {
 	return "", nil
 }
 
 // minimalValidEntity returns the smallest ThirdpartyOAuth2ProviderEntity that passes
 // ValidateForCreate. Use this as the base for tests focused on service behavior
 // (encryption, branch keys, storage) rather than validation logic.
+func serviceSubject(serviceID id.ServiceID) domainencryption.BranchKeySubject {
+	return domainencryption.NewServiceBranchKeySubject(serviceID)
+}
+
 func minimalValidEntity(svcID id.ServiceID, secret model.Secret) *model.ThirdpartyOAuth2ProviderEntity {
 	return &model.ThirdpartyOAuth2ProviderEntity{
 		ID:          svcID,
@@ -287,7 +292,7 @@ func TestThirdpartyOAuth2ProviderService_Create_WithBranchKeyManager(t *testing.
 	entity := minimalValidEntity(svcID, model.NewPlaintextSecret("secret"))
 
 	callOrder := make([]string, 0)
-	mockBKM.On("Create", ctx, svcID).Return("bk-1", nil).Run(func(_ mock.Arguments) {
+	mockBKM.On("Create", ctx, serviceSubject(svcID)).Return("bk-1", nil).Run(func(_ mock.Arguments) {
 		callOrder = append(callOrder, "branch_key")
 	})
 	mockEnc.On("Encrypt", ctx, mock.Anything, mock.Anything).Return([]byte("enc"), nil).Run(func(_ mock.Arguments) {
@@ -317,7 +322,7 @@ func TestThirdpartyOAuth2ProviderService_Create_BranchKeyFailure_AbortCreate(t *
 	svcID := id.NewServiceID()
 	entity := minimalValidEntity(svcID, model.NewPlaintextSecret("secret"))
 
-	mockBKM.On("Create", ctx, svcID).Return("", errors.New("KMS unavailable"))
+	mockBKM.On("Create", ctx, serviceSubject(svcID)).Return("", errors.New("KMS unavailable"))
 
 	err := svc.Create(ctx, entity)
 
@@ -522,7 +527,7 @@ func TestThirdpartyOAuth2ProviderService_Update_ProvisionsBranchKey(t *testing.T
 	var callSeq atomic.Int32 // incremented by each call; used to verify ordering
 
 	var createSeq int32
-	mockBKM.On("Create", ctx, svcID).
+	mockBKM.On("Create", ctx, serviceSubject(svcID)).
 		Return("sentinel-branch-key-id", nil).
 		Run(func(args mock.Arguments) {
 			createSeq = callSeq.Add(1)
@@ -561,7 +566,7 @@ func TestThirdpartyOAuth2ProviderService_Update_BranchKeyProvisioningFailure_Abo
 	svcID := id.NewServiceID()
 	entity := minimalValidEntity(svcID, model.NewPlaintextSecret("new-secret"))
 
-	mockBKM.On("Create", ctx, svcID).Return("", fmt.Errorf("DynamoDB unavailable"))
+	mockBKM.On("Create", ctx, serviceSubject(svcID)).Return("", fmt.Errorf("DynamoDB unavailable"))
 
 	err := svc.Update(ctx, entity)
 

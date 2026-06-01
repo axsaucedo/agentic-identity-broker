@@ -15,6 +15,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -87,11 +88,8 @@ func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm stri
 		return nil, fmt.Errorf("failed to generate key pair: %w", err)
 	}
 
-	kidAsServiceID, parseErr := id.ParseServiceID(kid.String())
-	if parseErr != nil {
-		return nil, fmt.Errorf("failed to parse kid %q as service ID: %w", kid, parseErr)
-	}
-	branchKeyID, err := s.branchKeyManager.Create(ctx, kidAsServiceID)
+	signingKeySubject := domainencryption.NewSigningKeyBranchKeySubject(kid)
+	branchKeyID, err := s.branchKeyManager.Create(ctx, signingKeySubject)
 	if err != nil {
 		return nil, fmt.Errorf("failed to provision branch key for signing key: %w", err)
 	}
@@ -224,14 +222,10 @@ func (s *SigningKeyService) warnOrphanedBranchKey(message string, kid id.KeyID, 
 }
 
 // signingKeyEncCtx returns the encryption context AAD for a signing key.
-//
-// The kid UUID is used directly as service_id. This routes the hierarchical
-// keyring to the per-key branch key (service_<kid>_branch_key) and binds
-// the ciphertext to that specific key — satisfying ADR 008 with a plain UUID.
+// The signing-key subject uses the well-known JWT kid term in AAD and routes the
+// hierarchical keyring to the dedicated signing-key branch key namespace.
 func signingKeyEncCtx(kid id.KeyID) map[string]string {
-	return map[string]string{
-		"service_id": kid.String(),
-	}
+	return domainencryption.NewSigningKeyBranchKeySubject(kid).EncryptionContext()
 }
 
 func generateES256KeyPEM() ([]byte, error) {

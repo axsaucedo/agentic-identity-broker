@@ -308,7 +308,7 @@ func TestEncryption_BranchKeyManagerCreate(t *testing.T) {
 	// Use a service ID not pre-provisioned in bootstrap so we exercise real creation.
 	newServiceID := id.MustParseServiceID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
-	branchKeyID, err := manager.Create(ctx, newServiceID)
+	branchKeyID, err := manager.Create(ctx, encryption.NewServiceBranchKeySubject(newServiceID))
 	require.NoError(t, err, "BranchKeyManager.Create should succeed for a new service")
 	require.NotEmpty(t, branchKeyID, "returned branch key ID should not be empty")
 
@@ -341,7 +341,7 @@ func TestEncryption_BranchKeyManagerCreate_Idempotent(t *testing.T) {
 	encCtx := map[string]string{"service_id": duplicateServiceID.String()}
 
 	// First creation.
-	id1, err := manager.Create(ctx, duplicateServiceID)
+	id1, err := manager.Create(ctx, encryption.NewServiceBranchKeySubject(duplicateServiceID))
 	require.NoError(t, err, "first Create should succeed")
 
 	// Encrypt with the first key.
@@ -350,7 +350,7 @@ func TestEncryption_BranchKeyManagerCreate_Idempotent(t *testing.T) {
 	require.NoError(t, err)
 
 	// Second creation — must not error and must not invalidate the existing ciphertext.
-	id2, err := manager.Create(ctx, duplicateServiceID)
+	id2, err := manager.Create(ctx, encryption.NewServiceBranchKeySubject(duplicateServiceID))
 	require.NoError(t, err, "second Create (duplicate) should succeed idempotently")
 	assert.Equal(t, id1, id2, "idempotent Create should return the same branch key ID")
 
