@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,6 +34,7 @@ var (
 type signingKeyRepoTestConfig struct {
 	beginErr     error
 	execErr      error
+	execErrs     []error
 	queryErr     error
 	commitErr    error
 	rowsAffected int64
@@ -41,7 +43,8 @@ type signingKeyRepoTestConfig struct {
 type signingKeyRepoTestDriver struct{}
 
 type signingKeyRepoTestConn struct {
-	cfg signingKeyRepoTestConfig
+	cfg       signingKeyRepoTestConfig
+	execCalls int
 }
 
 type signingKeyRepoTestTx struct {
@@ -84,9 +87,21 @@ func (c *signingKeyRepoTestConn) BeginTx(_ context.Context, _ driver.TxOptions) 
 }
 
 func (c *signingKeyRepoTestConn) ExecContext(_ context.Context, _ string, _ []driver.NamedValue) (driver.Result, error) {
+	if len(c.cfg.execErrs) > 0 {
+		var err error
+		if c.execCalls < len(c.cfg.execErrs) {
+			err = c.cfg.execErrs[c.execCalls]
+		}
+		c.execCalls++
+		if err != nil {
+			return nil, err
+		}
+		return driver.RowsAffected(c.cfg.rowsAffected), nil
+	}
 	if c.cfg.execErr != nil {
 		return nil, c.cfg.execErr
 	}
+	c.execCalls++
 	return driver.RowsAffected(c.cfg.rowsAffected), nil
 }
 
@@ -201,6 +216,15 @@ func TestSigningKeyRepo_ErrorClassification(t *testing.T) {
 			},
 		},
 		{
+			name:      "Create maps unique violation to conflict",
+			cfg:       signingKeyRepoTestConfig{execErr: &pgconn.PgError{Code: "23505"}},
+			operation: "SigningKeyRepo.Create",
+			kind:      storage.ErrorKindConflict,
+			call: func(repo *SigningKeyRepo) error {
+				return repo.Create(context.Background(), stubSigningKey())
+			},
+		},
+		{
 			name:      "CreateAndSetCurrent maps begin deadline exceeded to timeout",
 			cfg:       signingKeyRepoTestConfig{beginErr: context.DeadlineExceeded},
 			operation: "SigningKeyRepo.CreateAndSetCurrent",
@@ -214,6 +238,15 @@ func TestSigningKeyRepo_ErrorClassification(t *testing.T) {
 			cfg:       signingKeyRepoTestConfig{execErr: context.DeadlineExceeded},
 			operation: "SigningKeyRepo.CreateAndSetCurrent",
 			kind:      storage.ErrorKindTimeout,
+			call: func(repo *SigningKeyRepo) error {
+				return repo.CreateAndSetCurrent(context.Background(), stubSigningKey())
+			},
+		},
+		{
+			name:      "CreateAndSetCurrent maps unique violation on insert to conflict",
+			cfg:       signingKeyRepoTestConfig{execErrs: []error{nil, &pgconn.PgError{Code: "23505"}}},
+			operation: "SigningKeyRepo.CreateAndSetCurrent",
+			kind:      storage.ErrorKindConflict,
 			call: func(repo *SigningKeyRepo) error {
 				return repo.CreateAndSetCurrent(context.Background(), stubSigningKey())
 			},

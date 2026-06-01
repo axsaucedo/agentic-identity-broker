@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	pgx "github.com/jackc/pgx/v5"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -235,6 +236,10 @@ func (r *SigningKeyRepo) CountActive(ctx context.Context) (int, error) {
 func classifySigningKeyRepoError(operation string, err error, message string) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return storage.NewStorageError(operation, storage.ErrorKindTimeout, err, "operation exceeded timeout")
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return storage.NewStorageError(operation, storage.ErrorKindConflict, err, "signing key already exists")
 	}
 	return storage.NewStorageError(operation, storage.ErrorKindConnection, err, message)
 }
