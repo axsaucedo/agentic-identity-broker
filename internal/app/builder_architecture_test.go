@@ -24,21 +24,10 @@ func TestBuildLocalProviderReusesSharedLocalServices(t *testing.T) {
 
 	found := make(map[string]struct{})
 	ast.Inspect(funcLit.Body, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
+		qualified, ok := qualifiedCall(n)
 		if !ok {
 			return true
 		}
-
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		pkg, ok := sel.X.(*ast.Ident)
-		if !ok {
-			return true
-		}
-
-		qualified := pkg.Name + "." + sel.Sel.Name
 		if _, isForbidden := forbidden[qualified]; isForbidden {
 			found[qualified] = struct{}{}
 		}
@@ -52,6 +41,43 @@ func TestBuildLocalProviderReusesSharedLocalServices(t *testing.T) {
 		}
 		sort.Strings(offenders)
 		t.Fatalf("buildLocalProvider must reuse shared local services; found constructors inside the provider factory: %s", strings.Join(offenders, ", "))
+	}
+}
+
+func TestLocalAdminHandlerWiringNotDuplicated(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "builder.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parse builder.go: %v", err)
+	}
+
+	expectedSingles := []string{
+		"oauth2server.NewSigningKeyService",
+		"oauth2server.NewClientAuthService",
+		"admin.NewClientCredentialsHandler",
+		"admin.NewSigningKeysHandler",
+	}
+	tracked := make(map[string]struct{}, len(expectedSingles))
+	for _, qualified := range expectedSingles {
+		tracked[qualified] = struct{}{}
+	}
+	counts := make(map[string]int, len(expectedSingles))
+
+	ast.Inspect(file, func(n ast.Node) bool {
+		qualified, ok := qualifiedCall(n)
+		if !ok {
+			return true
+		}
+		if _, isTracked := tracked[qualified]; isTracked {
+			counts[qualified]++
+		}
+		return true
+	})
+
+	for _, qualified := range expectedSingles {
+		if counts[qualified] != 1 {
+			t.Errorf("%s must be wired exactly once in builder.go to avoid local/hybrid drift; found %d occurrences", qualified, counts[qualified])
+		}
 	}
 }
 
@@ -83,4 +109,22 @@ func findAssignedFuncLiteral(t *testing.T, file *ast.File, name string) *ast.Fun
 	}
 
 	return found
+}
+
+func qualifiedCall(n ast.Node) (string, bool) {
+	call, ok := n.(*ast.CallExpr)
+	if !ok {
+		return "", false
+	}
+
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return "", false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return "", false
+	}
+
+	return pkg.Name + "." + sel.Sel.Name, true
 }

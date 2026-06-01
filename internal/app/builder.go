@@ -770,6 +770,16 @@ func (b *Builder) Build() (*App, error) {
 		return provider, nil
 	}
 
+	// wireLocalAdminHandlers constructs the local-mode admin services and handlers.
+	// Used in both "local" and "hybrid" modes.
+	wireLocalAdminHandlers := func() *oauth2server.SigningKeyService {
+		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, app.BranchKeyManager, b.logger)
+		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), clientResolver, b.logger)
+		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
+		app.AdminHandlers.SigningKeys = admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger)
+		return signingKeyService
+	}
+
 	// buildProxyStrategies constructs the proxy path strategies.
 	// Used in both "proxy" and "hybrid" modes.
 	buildProxyStrategies := func(upstreamTokenEndpoint string) (enduser.TokenGrantStrategy, enduser.AuthorizationProceedStrategy) {
@@ -785,10 +795,7 @@ func (b *Builder) Build() (*App, error) {
 
 	switch cfg := oauthCfg.(type) {
 	case *ports.LocalOAuth2Config:
-		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, app.BranchKeyManager, b.logger)
-		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), clientResolver, b.logger)
-		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
-		app.AdminHandlers.SigningKeys = admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger)
+		signingKeyService := wireLocalAdminHandlers()
 		provider, err := buildLocalProvider(signingKeyService, cfg.TokenTTL, cfg.TokenClaimsExpression)
 		if err != nil {
 			return nil, err
@@ -800,10 +807,7 @@ func (b *Builder) Build() (*App, error) {
 			"token_ttl", cfg.TokenTTL,
 		)
 	case *ports.HybridOAuth2Config:
-		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, app.BranchKeyManager, b.logger)
-		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), clientResolver, b.logger)
-		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
-		app.AdminHandlers.SigningKeys = admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger)
+		signingKeyService := wireLocalAdminHandlers()
 		provider, err := buildLocalProvider(signingKeyService, cfg.Local.TokenTTL, cfg.Local.TokenClaimsExpression)
 		if err != nil {
 			return nil, err
