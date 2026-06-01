@@ -7,39 +7,39 @@ import (
 	"log/slog"
 	"strconv"
 
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// ThirdpartyOAuth2ProviderService is the consolidated domain service for managing external
-// OAuth2 providers. It merges encryption, decryption, and branch key provisioning into a
-// single cohesive domain service following the Single Responsibility Principle at the domain
-// service level.
+// ThirdpartyOAuth2ProviderService manages external OAuth2 providers, coordinating
+// encryption, decryption, and branch key provisioning across provider lifecycle
+// operations.
 //
 // Encryption lifecycle:
-//   - Create: validates entity, provisions branch key (if manager present),
+//   - Create: validates entity, provisions the branch key,
 //     encrypts Secret{plaintext} → Secret{ciphertext}, stores entity
 //   - Get/List/Find: retrieves entity with Secret{ciphertext}, decrypts to Secret{plaintext}
-//   - Update: validates entity (requires plaintext Secret), provisions branch key (if manager
-//     present, idempotent — safe for already-provisioned services), encrypts Secret{plaintext} →
-//     Secret{ciphertext}, stores entity. Encrypted state is rejected to ensure re-encryption
-//     always runs (e.g. during key rotation or after switching encryption backends).
+//   - Update: validates entity (requires plaintext Secret), provisions the branch key
+//     idempotently, encrypts Secret{plaintext} → Secret{ciphertext}, stores entity.
+//     Encrypted state is rejected to ensure re-encryption always runs (e.g. during
+//     key rotation or after switching encryption backends).
 //
 // The repository (ThirdpartyOAuth2ProviderRepository) is unaware of encryption mechanics
 // and treats Secret ciphertext as opaque binary data.
 type ThirdpartyOAuth2ProviderService struct {
 	repo                ports.ThirdpartyOAuth2ProviderRepository
 	encryption          ports.EncryptionPort
-	branchKeyManager    ports.BranchKeyManager        // may be nil
+	branchKeyManager    ports.BranchKeyManager
 	permissionSetRepo   ports.PermissionSetRepository // may be nil
 	skipHTTPSValidation bool
 	logger              *slog.Logger
 }
 
 // NewThirdpartyOAuth2ProviderService creates a new provider service.
-// branchKeyManager may be nil if no KMS backend is configured.
+// branchKeyManager must not be nil; inject the noop BranchKeyManager when no KMS store is configured.
 // skipHTTPSValidation allows HTTP issuer/metadata URLs in development or test environments;
 // set from config.Security.SkipThirdpartyHTTPSValidation.
 func NewThirdpartyOAuth2ProviderService(
@@ -52,6 +52,15 @@ func NewThirdpartyOAuth2ProviderService(
 ) *ThirdpartyOAuth2ProviderService {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	if repo == nil {
+		panic("thirdparty.NewThirdpartyOAuth2ProviderService: repo must not be nil")
+	}
+	if encryption == nil {
+		panic("thirdparty.NewThirdpartyOAuth2ProviderService: encryption must not be nil")
+	}
+	if branchKeyManager == nil {
+		panic("thirdparty.NewThirdpartyOAuth2ProviderService: branchKeyManager must not be nil")
 	}
 	return &ThirdpartyOAuth2ProviderService{
 		repo:                repo,
@@ -81,20 +90,20 @@ func (s *ThirdpartyOAuth2ProviderService) Create(
 		entity.ID = id.NewServiceID()
 	}
 
+	serviceSubject := domainencryption.NewServiceBranchKeySubject(entity.ID)
+
 	// Provision branch key before creating service (fail-fast on error)
-	if s.branchKeyManager != nil {
-		s.logger.Info("provisioning branch key for service", "service_id", entity.ID)
-		branchKeyID, err := s.branchKeyManager.Create(ctx, entity.ID)
-		if err != nil {
-			s.logger.Error("failed to provision branch key",
-				"service_id", entity.ID,
-				"error", err)
-			return fmt.Errorf("branch key provisioning failed: %w", err)
-		}
-		s.logger.Info("branch key provisioned",
+	s.logger.Info("provisioning branch key for service", "service_id", entity.ID)
+	branchKeyID, err := s.branchKeyManager.Create(ctx, serviceSubject)
+	if err != nil {
+		s.logger.Error("failed to provision branch key",
 			"service_id", entity.ID,
-			"branch_key_id", branchKeyID)
+			"error", err)
+		return fmt.Errorf("branch key provisioning failed: %w", err)
 	}
+	s.logger.Info("branch key provisioned",
+		"service_id", entity.ID,
+		"branch_key_id", branchKeyID)
 
 	// Extract plaintext secret
 	plaintext, err := entity.Secret.GetPlaintext()
@@ -102,11 +111,8 @@ func (s *ThirdpartyOAuth2ProviderService) Create(
 		return fmt.Errorf("entity secret must be in plaintext state for create: %w", err)
 	}
 
-	// Build encryption context with service_id only (ADR 008)
-	encContext := map[string]string{"service_id": entity.ID.String()}
-
 	// Encrypt secret
-	ciphertext, err := s.encryption.Encrypt(ctx, []byte(plaintext), encContext)
+	ciphertext, err := s.encryption.Encrypt(ctx, []byte(plaintext), serviceSubject.EncryptionContext())
 	if err != nil {
 		s.logger.Error("encryption_failed",
 			"operation", "create_provider",
@@ -174,11 +180,11 @@ func (s *ThirdpartyOAuth2ProviderService) Get(
 // always supply the secret. Passing encrypted state is rejected by ValidateForUpdate.
 // On success, entity.Secret is in encrypted state.
 //
-// If a branchKeyManager is configured, Update provisions the branch key before
-// encrypting. This handles the migration case where a service was originally created
-// with a different encryption backend (e.g. raw AES in-memory) that has no branch key
-// entry in the current KMS key store. branchKeyManager.Create is idempotent: it is safe
-// to call on services whose branch key already exists.
+// Update provisions the branch key before encrypting. This handles the migration case
+// where a service was originally created with a different encryption backend (e.g. raw
+// AES in-memory) that has no branch key entry in the current KMS key store.
+// branchKeyManager.Create is idempotent: it is safe to call on services whose branch
+// key already exists.
 func (s *ThirdpartyOAuth2ProviderService) Update(
 	ctx context.Context,
 	entity *model.ThirdpartyOAuth2ProviderEntity,
@@ -188,30 +194,29 @@ func (s *ThirdpartyOAuth2ProviderService) Update(
 		return fmt.Errorf("provider validation failed: %w", err)
 	}
 
+	serviceSubject := domainencryption.NewServiceBranchKeySubject(entity.ID)
+
 	// Provision branch key before encrypting (idempotent — safe for already-provisioned services).
 	// Required when updating a service that was created with a different encryption backend and
 	// therefore has no branch key in the current KMS key store.
-	if s.branchKeyManager != nil {
-		s.logger.Info("ensuring branch key exists for service update", "service_id", entity.ID)
-		branchKeyID, err := s.branchKeyManager.Create(ctx, entity.ID)
-		if err != nil {
-			s.logger.Error("failed to ensure branch key for update",
-				"service_id", entity.ID,
-				"error", err)
-			return fmt.Errorf("branch key provisioning failed: %w", err)
-		}
-		s.logger.Info("branch key ready for update",
+	s.logger.Info("ensuring branch key exists for service update", "service_id", entity.ID)
+	branchKeyID, err := s.branchKeyManager.Create(ctx, serviceSubject)
+	if err != nil {
+		s.logger.Error("failed to ensure branch key for update",
 			"service_id", entity.ID,
-			"branch_key_id", branchKeyID)
+			"error", err)
+		return fmt.Errorf("branch key provisioning failed: %w", err)
 	}
+	s.logger.Info("branch key ready for update",
+		"service_id", entity.ID,
+		"branch_key_id", branchKeyID)
 
 	plaintext, err := entity.Secret.GetPlaintext()
 	if err != nil {
 		return fmt.Errorf("failed to read plaintext secret for update: %w", err)
 	}
 
-	encContext := map[string]string{"service_id": entity.ID.String()}
-	ciphertext, err := s.encryption.Encrypt(ctx, []byte(plaintext), encContext)
+	ciphertext, err := s.encryption.Encrypt(ctx, []byte(plaintext), serviceSubject.EncryptionContext())
 	if err != nil {
 		s.logger.Error("encryption_failed",
 			"operation", "update_provider",
@@ -258,7 +263,6 @@ func (s *ThirdpartyOAuth2ProviderService) List(
 	return result, nil
 }
 
-// Delete removes a provider from storage.
 // Delete removes a provider by ID.
 // Returns a conflict error if permission sets reference this service.
 func (s *ThirdpartyOAuth2ProviderService) Delete(
@@ -391,9 +395,9 @@ func (s *ThirdpartyOAuth2ProviderService) decryptSecret(
 		return nil, fmt.Errorf("entity has no encrypted secret: %w", err)
 	}
 
-	encContext := map[string]string{"service_id": entity.ID.String()}
+	serviceSubject := domainencryption.NewServiceBranchKeySubject(entity.ID)
 
-	plaintext, err := s.encryption.Decrypt(ctx, ciphertext, encContext)
+	plaintext, err := s.encryption.Decrypt(ctx, ciphertext, serviceSubject.EncryptionContext())
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt client secret: %w", err)
 	}

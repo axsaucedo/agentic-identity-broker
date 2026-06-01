@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/branchkey"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -122,7 +123,7 @@ func newAdapterWithKMSARNAndKeyStore(kmsARN, dynamoDBTableName string, branchKey
 	}
 
 	// Create branch key supplier
-	supplier := &BranchKeyIdSupplier{}
+	supplier := NewBranchKeyIdSupplier(branchkey.NewDefaultProvider())
 
 	// Create hierarchical keyring using KeyStore and supplier
 	keyring, err := createHierarchicalKeyring(ctx, keyStore, supplier)

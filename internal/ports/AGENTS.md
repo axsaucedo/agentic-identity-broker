@@ -25,5 +25,5 @@ Ports are **interfaces only** + minimal DTOs. No business logic. No implementati
 - **No business logic**: No validation, orchestration, conditionals, or error handling beyond sentinels.
 - **New ports**: New architectural boundaries require an ADR. New methods require consumer justification.
 - **Minimal DTOs**: Prefer domain types from `internal/domain/storage/`; port DTOs only when domain types don't fit.
-- **Encryption context**: `Encrypt/Decrypt` accept `{"service_id": "<id>"}` only (ADR 008). Never secrets.
+- **Encryption context**: `Encrypt/Decrypt` accept exactly one approved subject key per ciphertext namespace: `{"service_id": "<id>"}` for service-scoped secrets or `{"kid": "<id>"}` for signing-key private material (ADR 008 amendment). Never secrets, and never both keys together.
 - **Error conventions**: Storage → `storage.StorageError` (domain). Encryption → `encryption.EncryptionError` (domain). Quick identity check: `ports.ErrNotFound`.

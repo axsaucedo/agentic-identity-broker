@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -90,7 +91,7 @@ func newTestEncryption() ports.EncryptionPort {
 // setupHandler creates a handler backed by a mock repository and test encryption.
 func setupHandler(t *testing.T, mockRepo *MockProviderRepository) *ServicesHandler {
 	t.Helper()
-	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockRepo, newTestEncryption(), nil, nil, false, slog.Default())
+	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockRepo, newTestEncryption(), &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
 	return NewServicesHandler(svc, testConfig(), slog.Default())
 }
 

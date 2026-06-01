@@ -26,10 +26,9 @@ type Provider struct {
 	ccHandler       *fositeOAuth2.ClientCredentialsGrantHandler
 	pkceHandler     *pkce.Handler
 
-	fositeStorage     *FositeStorage
-	clientAuth        *ClientAuthService
-	signingKeyService *SigningKeyService
-	accessStrategy    *JWXAccessTokenStrategy
+	fositeStorage  *FositeStorage
+	clientAuth     *ClientAuthService
+	accessStrategy *JWXAccessTokenStrategy
 
 	config *fosite.Config
 	logger *slog.Logger
@@ -41,8 +40,7 @@ func NewProvider(
 	pkceRepo ports.PKCESessionRepository,
 	credRepo ports.ClientCredentialRepository,
 	clientResolver ports.ClientResolver,
-	signingKeyRepo ports.SigningKeyRepository,
-	encryption ports.EncryptionPort,
+	signingKeyService *SigningKeyService,
 	issuerURI string,
 	tokenTTL time.Duration,
 	tokenClaimsExpression string,
@@ -55,11 +53,10 @@ func NewProvider(
 	}
 
 	// Build services
-	signingKeyService := NewSigningKeyService(signingKeyRepo, encryption, logger)
 	clientAuth := NewClientAuthService(credRepo, clientResolver, logger)
 
 	// Our strategies
-	accessStrategy, err := NewJWXAccessTokenStrategy(signingKeyService, signingKeyRepo, issuerURI, tokenTTL, customClaimsEval, logger)
+	accessStrategy, err := NewJWXAccessTokenStrategy(signingKeyService, issuerURI, tokenTTL, customClaimsEval, logger)
 	if err != nil {
 		return nil, fmt.Errorf("invalid access token strategy configuration: %w", err)
 	}
@@ -111,23 +108,17 @@ func NewProvider(
 			Storage:               storage,
 			Config:                config,
 		},
-		fositeStorage:     storage,
-		clientAuth:        clientAuth,
-		signingKeyService: signingKeyService,
-		accessStrategy:    accessStrategy,
-		config:            config,
-		logger:            logger,
+		fositeStorage:  storage,
+		clientAuth:     clientAuth,
+		accessStrategy: accessStrategy,
+		config:         config,
+		logger:         logger,
 	}, nil
 }
 
 // ClientAuth returns the client authentication service.
 func (p *Provider) ClientAuth() *ClientAuthService {
 	return p.clientAuth
-}
-
-// SigningKeyService returns the signing key service.
-func (p *Provider) SigningKeyService() *SigningKeyService {
-	return p.signingKeyService
 }
 
 // HandleClientCredentials processes a client_credentials grant type request.

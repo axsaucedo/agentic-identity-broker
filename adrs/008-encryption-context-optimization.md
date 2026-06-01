@@ -126,6 +126,36 @@ To:
 - ✅ Security: Service-level isolation sufficient; session isolation handled by DB
 - ✅ Performance: Minimal context = optimal KMS performance
 
+## Amendment (2026-06-01): Single-Subject Context Extension for Non-Session Assets
+
+The original decision in this ADR remains unchanged for `UserSession` token encryption: OAuth2 access and refresh tokens continue to use `{"service_id": "<service-id>"}` as their full `EncryptionContext`.
+
+This amendment extends ADR 008 to cover encrypted assets that are not naturally scoped to a third-party OAuth2 service, starting with broker signing key private material.
+
+### Extension
+
+`EncryptionContext` remains constrained to **exactly one stable, non-secret subject identifier** per ciphertext namespace. The currently approved subject keys are:
+
+- `{"service_id": "<service-id>"}` for OAuth2 user-session tokens and other service-scoped secrets
+- `{"kid": "<key-id>"}` for broker signing key private material
+
+These subject keys are mutually exclusive. A context MUST NOT contain both `service_id` and `kid`, and decryption/branch-key routing MUST fail closed if zero or multiple subject keys are present.
+
+A typed branch-key subject model is allowed to represent this invariant in code, provided it preserves the one-subject-only rule.
+
+### Rationale
+
+1. **Preserves ADR 008's performance goal**: each encryption/decryption operation still carries a single-key AAD map. This is an alternative subject, not an additive second field on the same ciphertext.
+2. **Maintains semantic correctness**: broker signing keys are global broker assets, not third-party OAuth2 services. Reusing `service_id` for them would misrepresent the protected resource.
+3. **Keeps existing service behavior stable**: service-backed secrets retain the original `service_id` subject and therefore keep their existing branch-key identity and isolation semantics.
+4. **Keeps governance explicit**: any future subject key beyond `service_id` and `kid` requires its own ADR amendment or superseding ADR before implementation.
+
+### Impact
+
+- The phrase "service_id-only" in this ADR applies to OAuth2 user-session token encryption, not to every encrypted asset in the broker.
+- Existing OAuth2 token ciphertext and service branch-key IDs remain unchanged.
+- Signing keys use their own single-field `kid` context and dedicated namespace while preserving the original minimal-context rule.
+
 ## Related ADRs
 
 - None
@@ -136,5 +166,5 @@ To:
 2. **Update database schema** JSONB constraints (if any) to reflect new format
 3. **Add migration guide** for operators managing existing encrypted sessions
 4. **Update tests and fixtures** to use optimized context format
-5. **Document in ARCHITECTURE.md** Glossary: why EncryptionContext is service_id-only
+5. **Document in ARCHITECTURE.md** Glossary: why OAuth2 user sessions use `service_id`-only context and why non-session assets may use a different single-subject context
 

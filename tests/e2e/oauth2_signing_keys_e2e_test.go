@@ -13,6 +13,7 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 )
 
 var _ = Describe("US5: Signing Key Management (local mode)", func() {
@@ -39,6 +40,7 @@ var _ = Describe("US5: Signing Key Management (local mode)", func() {
 		Expect(err).ToNot(HaveOccurred())
 		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
 		Expect(err).ToNot(HaveOccurred())
+		Expect(helpers.ProvisionSigningKey(adminServer.BaseURL())).ToNot(HaveOccurred())
 	})
 
 	AfterEach(func() {

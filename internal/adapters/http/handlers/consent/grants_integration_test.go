@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -85,7 +86,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create providerService to handle encryption context binding (simulates domain layer)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
 
 	// Seed test data
 	ctx := context.Background()
@@ -284,7 +285,7 @@ func TestGrantsIntegration_SessionToken_CreateGrantWithRedirect(t *testing.T) {
 	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
 
 	ctx := context.Background()
 	agentID := id.NewAgentID()
@@ -363,7 +364,7 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
 	ctx := context.Background()
 
 	// Agent with only optional service requirements
@@ -463,7 +464,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create providerService to handle encryption context binding (simulates domain layer)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
 
 	ctx := context.Background()
 
@@ -578,7 +579,7 @@ func TestGrantsIntegration_FR020_UnconnectedServices(t *testing.T) {
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
 	unconnectedServiceID := id.NewServiceID()
 
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, nil, false, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
 	ctx := context.Background()
 
 	agentID := id.NewAgentID()

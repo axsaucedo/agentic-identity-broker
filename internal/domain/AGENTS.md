@@ -40,7 +40,7 @@ Acceptable within domain ring: `tokenexchange/` → `consent/`, `oauth2session/`
 |---|---|
 | `Agent` | `ClientID` nullable (ADR 017), `DisplayName` required, URLs validated for HTTP(S) |
 | `UserGrant` | One per (principal, agent) pair (upsert); delegated tokens may be empty when no delegation is required |
-| `UserSession` | One per (principal, service_id), tokens encrypted, `EncryptionContext` = `service_id` only (ADR 008) |
+| `UserSession` | One per (principal, service_id), tokens encrypted, user-session `EncryptionContext` uses `service_id` while other encrypted assets may use a different single subject such as `kid` (ADR 008 amendment) |
 | `User` | ID + email, timestamps |
 
 ### Value Objects
@@ -48,7 +48,8 @@ Acceptable within domain ring: `tokenexchange/` → `consent/`, `oauth2session/`
 - `RequirementType` — enum: mandatory/optional
 - `ServiceRequirement` — agent's declared need: `ServiceID` + `RequirementType` + `RequiredScopes[]`
 - `DelegatedToken` — grant component: `ThirdpartyOAuth2ServiceID` + `Scopes[]`
-- `EncryptionContext` — AAD metadata (JSONB, implements `driver.Valuer`/`sql.Scanner`)
+- `EncryptionContext` — AAD metadata (JSONB, implements `driver.Valuer`/`sql.Scanner`); exactly one approved subject key such as `service_id` or `kid`
+- `BranchKeySubject` — typed encryption namespace wrapper selecting either the `service` or `signing_key` branch-key subject
 - `ConnectionParameters`, `StorageBackend` (memory/postgres), `DiscoveryConfig`, `OAuth2Endpoints`
 
 ### Validation

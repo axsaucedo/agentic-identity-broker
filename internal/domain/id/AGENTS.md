@@ -71,7 +71,7 @@ The generator is `gen_ids.go` (build tag `ignore`). It produces `uuid_ids_gen.go
 2. **`MustParseXxxID` in tests only** — acceptable in test fixtures and table-driven test cases where the UUID string is a compile-time constant.
 3. **Handler ordering** — authentication (principal check) must happen *before* UUID format validation. Unauthenticated requests must receive 401, not 400.
 4. **No plain `string` for entity IDs** — whenever an entity ID is stored, passed, or returned, use the typed ID. Do not convert back to `string` unless calling an external API that requires it.
-5. **`EncryptionContext` uses `ServiceID.String()`** — the encryption context map `{"service_id": "<uuid-string>"}` must use the `.String()` form of `ServiceID`. This is validated by the encryption adapter on every decrypt call.
+5. **Service-scoped `EncryptionContext` uses `ServiceID.String()`** — the encryption context map `{"service_id": "<uuid-string>"}` must use the `.String()` form of `ServiceID` when the subject is a service. Signing-key contexts use `{"kid": "<key-id>"}` instead, and the two subject keys must never appear together.
 
 ## Adding a New Entity ID
 

@@ -1,6 +1,6 @@
 package branchkey
 
-import "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+import domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 
 // DefaultProvider implements the ports.BranchKeyIdProvider interface
 type DefaultProvider struct{}
@@ -9,18 +9,10 @@ func NewDefaultProvider() *DefaultProvider {
 	return &DefaultProvider{}
 }
 
-func (p *DefaultProvider) GenerateBranchKeyId(serviceID id.ServiceID) string {
-	return GenerateBranchKeyId(serviceID.String())
+func (p *DefaultProvider) GenerateBranchKeyId(subject domainencryption.BranchKeySubject) (string, error) {
+	return GenerateBranchKeyId(subject)
 }
 
-func (p *DefaultProvider) ExtractServiceIdFromBranchKey(branchKeyID string) id.ServiceID {
-	serviceID, err := ExtractServiceID(branchKeyID)
-	if err != nil {
-		return id.ServiceID{}
-	}
-	parsed, err := id.ParseServiceID(serviceID)
-	if err != nil {
-		return id.ServiceID{}
-	}
-	return parsed
+func (p *DefaultProvider) ExtractSubjectFromBranchKey(branchKeyID string) (domainencryption.BranchKeySubject, error) {
+	return ExtractSubject(branchKeyID)
 }

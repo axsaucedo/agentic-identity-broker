@@ -20,7 +20,7 @@ import (
 
 // newTestProvider creates a Provider with in-memory storage and test encryption
 // for unit testing purposes.
-func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository) {
+func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository, *SigningKeyService) {
 	t.Helper()
 	codeRepo := memory.NewAuthorizationCodeStore()
 	credRepo := memory.NewClientCredentialStore()
@@ -29,13 +29,14 @@ func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository) {
 	enc := &testEncryptor{}
 	logger := testSlogger()
 
+	signingKeySvc := NewSigningKeyService(signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
+
 	provider, err := NewProvider(
 		codeRepo,
 		memory.NewPKCESessionStore(),
 		credRepo,
 		&testClientResolver{agentRepo: agentRepo},
-		signingKeyRepo,
-		enc,
+		signingKeySvc,
 		"https://broker.example.com",
 		time.Hour, // 1h TTL
 		"",        // no CEL expression
@@ -43,12 +44,10 @@ func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository) {
 	)
 	require.NoError(t, err)
 
-	// Generate a signing key
-	signingKeySvc := NewSigningKeyService(signingKeyRepo, enc, logger)
 	_, err = signingKeySvc.generateAndStore(context.Background(), "ES256", true, time.Now())
 	require.NoError(t, err)
 
-	return provider, agentRepo
+	return provider, agentRepo, signingKeySvc
 }
 
 // setupTestCredentials creates an agent with broker credentials and returns the agent, credential, and plaintext secret.
@@ -78,7 +77,7 @@ func setupTestCredentials(t *testing.T, provider *Provider, agentRepo ports.Agen
 
 func TestProvider_HandleClientCredentials(t *testing.T) {
 	t.Run("valid credentials return signed JWT", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
 
 		resp, err := provider.HandleClientCredentials(
@@ -97,7 +96,7 @@ func TestProvider_HandleClientCredentials(t *testing.T) {
 	})
 
 	t.Run("invalid credentials return error", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, _ := setupTestCredentials(t, provider, agentRepo)
 
 		_, err := provider.HandleClientCredentials(
@@ -110,7 +109,7 @@ func TestProvider_HandleClientCredentials(t *testing.T) {
 	})
 
 	t.Run("unknown agent_id returns error", func(t *testing.T) {
-		provider, _ := newTestProvider(t)
+		provider, _, _ := newTestProvider(t)
 
 		_, err := provider.HandleClientCredentials(
 			context.Background(),
@@ -122,7 +121,7 @@ func TestProvider_HandleClientCredentials(t *testing.T) {
 	})
 
 	t.Run("empty scope works", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
 
 		resp, err := provider.HandleClientCredentials(
@@ -138,7 +137,7 @@ func TestProvider_HandleClientCredentials(t *testing.T) {
 
 func TestProvider_HandleAuthorize(t *testing.T) {
 	t.Run("redirect_uri exact match required", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, _ := setupTestCredentials(t, provider, agentRepo)
 		agent.RedirectURIs = []string{"http://localhost/callback"}
 		_ = agentRepo.Update(context.Background(), agent)
@@ -159,7 +158,7 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 	})
 
 	t.Run("empty redirect_uris list rejects", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, _ := setupTestCredentials(t, provider, agentRepo)
 		// Agent created by setupTestCredentials has no RedirectURIs (empty slice)
 
@@ -179,7 +178,7 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 	})
 
 	t.Run("valid request returns authorization code", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, _ := setupTestCredentials(t, provider, agentRepo)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		// Update agent with redirect URIs
@@ -201,7 +200,7 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 	})
 
 	t.Run("missing code_challenge rejected", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, _ := setupTestCredentials(t, provider, agentRepo)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = agentRepo.Update(context.Background(), agent)
@@ -222,7 +221,7 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 	})
 
 	t.Run("empty code_challenge_method rejected", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, _ := setupTestCredentials(t, provider, agentRepo)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = agentRepo.Update(context.Background(), agent)
@@ -243,7 +242,7 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 	})
 
 	t.Run("plain code_challenge_method rejected", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, _ := setupTestCredentials(t, provider, agentRepo)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = agentRepo.Update(context.Background(), agent)
@@ -264,7 +263,7 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 	})
 
 	t.Run("unregistered redirect_uri rejected", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, _ := setupTestCredentials(t, provider, agentRepo)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = agentRepo.Update(context.Background(), agent)
@@ -285,7 +284,7 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 	})
 
 	t.Run("unknown agent_id rejected", func(t *testing.T) {
-		provider, _ := newTestProvider(t)
+		provider, _, _ := newTestProvider(t)
 
 		_, err := provider.HandleAuthorize(
 			context.Background(),
@@ -305,7 +304,7 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 
 func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 	t.Run("valid code exchange returns token", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = agentRepo.Update(context.Background(), agent)
@@ -344,7 +343,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 	})
 
 	t.Run("code replay rejected", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = agentRepo.Update(context.Background(), agent)
@@ -390,7 +389,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 	})
 
 	t.Run("expired code rejects", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = agentRepo.Update(context.Background(), agent)
@@ -429,7 +428,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 	})
 
 	t.Run("redirect_uri substitution rejected", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback", "https://attacker.example.com/callback"}
 		_ = agentRepo.Update(context.Background(), agent)
@@ -465,7 +464,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 	})
 
 	t.Run("PKCE mismatch rejected", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = agentRepo.Update(context.Background(), agent)
@@ -504,7 +503,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 // returns ErrorKindNotFound (the DB-level race guard fired — a concurrent request won and
 // set used_at before ours could), the exchange returns ErrInvalidGrant rather than a 500.
 func TestProvider_HandleAuthorizationCodeExchange_ConcurrentReplay(t *testing.T) {
-	provider, agentRepo := newTestProvider(t)
+	provider, agentRepo, _ := newTestProvider(t)
 	agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
 	agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 	_ = agentRepo.Update(context.Background(), agent)
@@ -573,11 +572,11 @@ func (r *raceCodeRepo) DeleteExpired(ctx context.Context) (int, error) {
 func TestProvider_AccessToken_ClaimsAndSignature(t *testing.T) {
 	const issuer = "https://broker.example.com"
 
-	verifyToken := func(t *testing.T, provider *Provider, tokenStr, wantSub, wantAgentID, wantScope string) {
+	verifyToken := func(t *testing.T, svc *SigningKeyService, tokenStr, wantSub, wantAgentID, wantScope string) {
 		t.Helper()
 		ctx := context.Background()
 
-		jwks, err := provider.signingKeyService.BuildJWKS(ctx)
+		jwks, err := svc.BuildJWKS(ctx)
 		require.NoError(t, err)
 
 		tok, err := jwt.Parse([]byte(tokenStr), jwt.WithKeySet(jwks))
@@ -613,18 +612,18 @@ func TestProvider_AccessToken_ClaimsAndSignature(t *testing.T) {
 	}
 
 	t.Run("client_credentials flow", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, svc := newTestProvider(t)
 		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
 
 		resp, err := provider.HandleClientCredentials(context.Background(), agent.ID.String(), plaintext, "read write")
 		require.NoError(t, err)
 
 		// In client_credentials, sub and agent_id are both the agent UUID (brokerClient.GetID() returns agent.ID).
-		verifyToken(t, provider, resp.AccessToken, agent.ID.String(), agent.ID.String(), "read write")
+		verifyToken(t, svc, resp.AccessToken, agent.ID.String(), agent.ID.String(), "read write")
 	})
 
 	t.Run("authorization_code flow", func(t *testing.T) {
-		provider, agentRepo := newTestProvider(t)
+		provider, agentRepo, svc := newTestProvider(t)
 		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = agentRepo.Update(context.Background(), agent)
@@ -656,7 +655,7 @@ func TestProvider_AccessToken_ClaimsAndSignature(t *testing.T) {
 		require.NoError(t, err)
 
 		// agent_id is the agent UUID; sub is the authenticated principal.
-		verifyToken(t, provider, resp.AccessToken, "user@example.com", agent.ID.String(), "read write")
+		verifyToken(t, svc, resp.AccessToken, "user@example.com", agent.ID.String(), "read write")
 	})
 }
 
@@ -672,11 +671,11 @@ func TestProvider_CEL_RequestGrantType(t *testing.T) {
 		enc := &testEncryptor{}
 		logger := testSlogger()
 
-		p, err := NewProvider(codeRepo, memory.NewPKCESessionStore(), credRepo, &testClientResolver{agentRepo: agentRepo}, signingKeyRepo, enc,
+		svc := NewSigningKeyService(signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
+		p, err := NewProvider(codeRepo, memory.NewPKCESessionStore(), credRepo, &testClientResolver{agentRepo: agentRepo}, svc,
 			"https://broker.example.com", time.Hour, expr, logger)
 		require.NoError(t, err)
 
-		svc := NewSigningKeyService(signingKeyRepo, enc, logger)
 		_, err = svc.generateAndStore(context.Background(), "ES256", true, time.Now())
 		require.NoError(t, err)
 		return p, agentRepo

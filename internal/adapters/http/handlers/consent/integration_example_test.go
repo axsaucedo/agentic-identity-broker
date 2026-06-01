@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
 	memorystorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
@@ -46,7 +47,7 @@ func newIntegrationSessionTokenValidator() ports.SessionTokenValidator {
 func newIntegrationProviderService(t *testing.T) *thirdparty.ThirdpartyOAuth2ProviderService {
 	t.Helper()
 	repo := memorystorage.NewInMemoryThirdpartyOAuth2ProviderRepository()
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, testutil.NewTestEncryptionAdapter(t), nil, nil, false, slog.Default())
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, testutil.NewTestEncryptionAdapter(t), &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
 }
 
 func newGitHubServiceEntity() *model.ThirdpartyOAuth2ProviderEntity {
