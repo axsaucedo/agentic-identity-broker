@@ -45,6 +45,10 @@ func TestBranchKeySubject_IdentifierZeroValue(t *testing.T) {
 	assert.Equal(t, "<unknown>", BranchKeySubject{}.Identifier())
 }
 
+func TestBranchKeySubject_EncryptionContextZeroValue(t *testing.T) {
+	assert.Equal(t, map[string]string{}, BranchKeySubject{}.EncryptionContext())
+}
+
 func TestBranchKeySubjectFromEncryptionContext(t *testing.T) {
 	tests := []struct {
 		name              string
