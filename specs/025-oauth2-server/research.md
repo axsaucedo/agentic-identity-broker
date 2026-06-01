@@ -321,7 +321,7 @@ func (h *Argon2Hasher) Compare(hash, secret string) error {
 - PEM/PKCS#8 is the standard format for asymmetric key serialization
 - `lestrrat-go/jwx/v3` can import PEM-encoded keys directly via `jwk.FromRaw()`
 - Encryption via `EncryptionPort` reuses the existing envelope encryption infrastructure (ADR 009/012)
-- Encryption context: `{"entity_type": "signing_key", "key_id": "<kid>"}` — distinct from service-based context in ADR 008
+- Encryption context: `{"kid": "<kid>"}` — a single-field signing-key subject, distinct from the `service_id` context used for OAuth2 user-session tokens in ADR 008
 
 ### Alternatives Considered
 - **JWK JSON format**: Viable but PEM is more widely understood for key storage and interoperability
@@ -363,12 +363,12 @@ func (h *Argon2Hasher) Compare(hash, secret string) error {
 
 ## Decision 8: Encryption Context for Signing Keys
 
-### Decision: Use `{"entity_type": "signing_key", "key_id": "<kid>"}` as encryption context
+### Decision: Use `{"kid": "<kid>"}` as encryption context
 
 ### Rationale
-- ADR 008 optimized encryption context to `service_id` only for UserSession tokens (per-service isolation)
+- ADR 008 optimized encryption context to a single subject field for UserSession tokens (`service_id`) and now permits `kid` as the signing-key equivalent
 - Signing keys are not per-service — they are broker-global. Using `service_id` would be semantically incorrect
-- `entity_type` + `key_id` provides AAD binding specific to signing key material
+- `kid` provides AAD binding specific to signing key material while preserving the one-field minimal-context rule
 - Consistent with principle: encryption context identifies WHAT is encrypted, never contains secrets
 - Verified on decrypt: mismatched context causes decryption failure (fail closed)
 
