@@ -76,10 +76,6 @@ func ExtractSubject(branchKeyID string) (domainencryption.BranchKeySubject, erro
 	}
 }
 
-func SubjectFromEncryptionContext(encryptionContext map[string]string) (domainencryption.BranchKeySubject, error) {
-	return domainencryption.BranchKeySubjectFromEncryptionContext(encryptionContext)
-}
-
 func extractIdentifier(branchKeyID, prefix, format, identifierName string) (string, error) {
 	if len(branchKeyID) > len(prefix)+len(suffix) &&
 		strings.HasPrefix(branchKeyID, prefix) &&

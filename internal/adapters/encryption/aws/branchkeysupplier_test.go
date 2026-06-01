@@ -1,15 +1,33 @@
 package aws
 
 import (
+	"fmt"
 	"testing"
 
 	mpltypes "github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl/awscryptographymaterialproviderssmithygeneratedtypes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/branchkey"
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 )
 
+type fakeBranchKeyIDProvider struct {
+	generatedID string
+	lastSubject domainencryption.BranchKeySubject
+}
+
+func (f *fakeBranchKeyIDProvider) GenerateBranchKeyId(subject domainencryption.BranchKeySubject) string {
+	f.lastSubject = subject
+	return f.generatedID
+}
+
+func (f *fakeBranchKeyIDProvider) ExtractSubjectFromBranchKey(branchKeyID string) (domainencryption.BranchKeySubject, error) {
+	return domainencryption.BranchKeySubject{}, fmt.Errorf("unexpected ExtractSubjectFromBranchKey call for %q", branchKeyID)
+}
+
 func TestBranchKeyIdSupplier_GetBranchKeyId(t *testing.T) {
-	supplier := &BranchKeyIdSupplier{}
+	supplier := NewBranchKeyIdSupplier(branchkey.NewDefaultProvider())
 
 	tests := []struct {
 		name              string
@@ -53,4 +71,20 @@ func TestBranchKeyIdSupplier_GetBranchKeyId(t *testing.T) {
 			assert.Equal(t, tt.wantID, output.BranchKeyId)
 		})
 	}
+}
+
+func TestBranchKeyIdSupplier_GetBranchKeyId_UsesInjectedProvider(t *testing.T) {
+	provider := &fakeBranchKeyIDProvider{generatedID: "custom-branch-key-id"}
+	supplier := NewBranchKeyIdSupplier(provider)
+
+	output, err := supplier.GetBranchKeyId(mpltypes.GetBranchKeyIdInput{
+		EncryptionContext: map[string]string{"kid": "kid-123"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, output)
+	assert.Equal(t, "custom-branch-key-id", output.BranchKeyId)
+	assert.Equal(t, domainencryption.BranchKeySubjectKindSigningKey, provider.lastSubject.Kind())
+	keyID, ok := provider.lastSubject.KeyID()
+	require.True(t, ok)
+	assert.Equal(t, "kid-123", keyID.String())
 }
