@@ -11,7 +11,21 @@ import (
 )
 
 func TestDomainTestsDoNotImportEncryptionNoopAdapter(t *testing.T) {
-	const forbiddenImport = "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
+	assertNoImportInDomainTests(t,
+		"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop",
+		func(path string) bool { return strings.HasSuffix(path, "_test.go") },
+	)
+}
+
+func TestOAuth2ServerStrategiesTestsDoNotImportStorageMemoryAdapter(t *testing.T) {
+	assertNoImportInDomainTests(t,
+		"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory",
+		func(path string) bool { return path == filepath.Join("oauth2server", "strategies_test.go") },
+	)
+}
+
+func assertNoImportInDomainTests(t *testing.T, forbiddenImport string, includePath func(string) bool) {
+	t.Helper()
 
 	var offenders []string
 	fset := token.NewFileSet()
@@ -20,7 +34,7 @@ func TestDomainTestsDoNotImportEncryptionNoopAdapter(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || !strings.HasSuffix(path, "_test.go") {
+		if d.IsDir() || !includePath(path) {
 			return nil
 		}
 

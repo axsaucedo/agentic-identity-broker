@@ -3,6 +3,7 @@ package oauth2server
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,16 +14,166 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
+type strategySigningKeyStore struct {
+	mu    sync.RWMutex
+	byID  map[id.SigningKeyID]*storage.SigningKey
+	byKID map[id.KeyID]*storage.SigningKey
+}
+
+var _ ports.SigningKeyRepository = (*strategySigningKeyStore)(nil)
+
+func newStrategySigningKeyStore() *strategySigningKeyStore {
+	return &strategySigningKeyStore{
+		byID:  make(map[id.SigningKeyID]*storage.SigningKey),
+		byKID: make(map[id.KeyID]*storage.SigningKey),
+	}
+}
+
+func newStrategyTestSigningKeyService() (*SigningKeyService, *strategySigningKeyStore) {
+	repo := newStrategySigningKeyStore()
+	return NewSigningKeyService(repo, &testEncryptor{}, newNoopBranchKeyManager(), testSlogger()), repo
+}
+
+func cloneStrategySigningKey(key *storage.SigningKey) *storage.SigningKey {
+	clone := *key
+	clone.PrivateKeyEncrypted = append([]byte(nil), key.PrivateKeyEncrypted...)
+	return &clone
+}
+
+func (s *strategySigningKeyStore) Create(_ context.Context, key *storage.SigningKey) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.byKID[key.KID]; exists {
+		return storage.NewStorageError("strategySigningKeyStore.Create", storage.ErrorKindConflict, nil, "signing key already exists")
+	}
+
+	clone := cloneStrategySigningKey(key)
+	s.byID[clone.ID] = clone
+	s.byKID[clone.KID] = clone
+	return nil
+}
+
+func (s *strategySigningKeyStore) CreateAndSetCurrent(_ context.Context, key *storage.SigningKey) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.byKID[key.KID]; exists {
+		return storage.NewStorageError("strategySigningKeyStore.CreateAndSetCurrent", storage.ErrorKindConflict, nil, "signing key already exists")
+	}
+
+	for _, existing := range s.byID {
+		existing.IsCurrent = false
+	}
+
+	clone := cloneStrategySigningKey(key)
+	clone.IsCurrent = true
+	s.byID[clone.ID] = clone
+	s.byKID[clone.KID] = clone
+	return nil
+}
+
+func (s *strategySigningKeyStore) GetByKID(_ context.Context, kid id.KeyID) (*storage.SigningKey, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	key, exists := s.byKID[kid]
+	if !exists || key.RemovedAt != nil {
+		return nil, storage.NewStorageError("strategySigningKeyStore.GetByKID", storage.ErrorKindNotFound, nil, "signing key not found")
+	}
+	return cloneStrategySigningKey(key), nil
+}
+
+func (s *strategySigningKeyStore) GetCurrent(_ context.Context) (*storage.SigningKey, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	now := time.Now()
+	for _, key := range s.byID {
+		if key.IsCurrent && key.RemovedAt == nil && !key.ActivatesAt.After(now) {
+			return cloneStrategySigningKey(key), nil
+		}
+	}
+
+	var best *storage.SigningKey
+	for _, key := range s.byID {
+		if key.RemovedAt == nil && !key.ActivatesAt.After(now) {
+			if best == nil || key.ActivatesAt.After(best.ActivatesAt) {
+				best = key
+			}
+		}
+	}
+	if best != nil {
+		return cloneStrategySigningKey(best), nil
+	}
+
+	return nil, storage.NewStorageError("strategySigningKeyStore.GetCurrent", storage.ErrorKindNotFound, nil, "no current signing key")
+}
+
+func (s *strategySigningKeyStore) ListActive(_ context.Context) ([]*storage.SigningKey, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	keys := make([]*storage.SigningKey, 0, len(s.byID))
+	for _, key := range s.byID {
+		if key.RemovedAt == nil {
+			keys = append(keys, cloneStrategySigningKey(key))
+		}
+	}
+	return keys, nil
+}
+
+func (s *strategySigningKeyStore) SetCurrent(_ context.Context, kid id.KeyID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	target, exists := s.byKID[kid]
+	if !exists || target.RemovedAt != nil {
+		return storage.NewStorageError("strategySigningKeyStore.SetCurrent", storage.ErrorKindNotFound, nil, "signing key not found")
+	}
+	for _, key := range s.byID {
+		key.IsCurrent = false
+	}
+	target.IsCurrent = true
+	target.ActivatesAt = time.Now()
+	return nil
+}
+
+func (s *strategySigningKeyStore) Delete(_ context.Context, kid id.KeyID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key, exists := s.byKID[kid]
+	if !exists || key.RemovedAt != nil {
+		return storage.NewStorageError("strategySigningKeyStore.Delete", storage.ErrorKindNotFound, nil, "signing key not found")
+	}
+	now := time.Now()
+	key.RemovedAt = &now
+	return nil
+}
+
+func (s *strategySigningKeyStore) CountActive(_ context.Context) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	count := 0
+	for _, key := range s.byID {
+		if key.RemovedAt == nil {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func TestJWXAccessTokenStrategy_GenerateAccessToken_DecryptFailure(t *testing.T) {
 	t.Run("decrypt failure returns wrapped error", func(t *testing.T) {
 		// Use failingDecryptor so Encrypt succeeds (key is stored) but Decrypt always fails.
-		repo := memory.NewSigningKeyStore()
+		repo := newStrategySigningKeyStore()
 		svc := NewSigningKeyService(repo, &failingDecryptor{}, newNoopBranchKeyManager(), testSlogger())
 		ctx := context.Background()
 
@@ -70,7 +221,7 @@ func TestRandomCodeStrategy_GenerateAuthorizeCode(t *testing.T) {
 
 func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 	t.Run("no key provisioned returns actionable error", func(t *testing.T) {
-		svc, _ := newTestSigningKeyService() // no key stored
+		svc, _ := newStrategyTestSigningKeyService() // no key stored
 		strategy, err := NewJWXAccessTokenStrategy(svc, "https://issuer.example.com", time.Hour, nil, testSlogger())
 		require.NoError(t, err)
 		_, _, err = strategy.GenerateAccessToken(context.Background(), buildTestRequest("agent", "user@example.com", []string{"read"}))
@@ -79,7 +230,7 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 	})
 
 	t.Run("JWT header contains the current signing key kid", func(t *testing.T) {
-		svc, _ := newTestSigningKeyService()
+		svc, _ := newStrategyTestSigningKeyService()
 		ctx := context.Background()
 
 		key, err := svc.generateAndStore(ctx, "ES256", true, time.Now())
@@ -101,7 +252,7 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 	})
 
 	t.Run("signature equals SHA-256 of the token string", func(t *testing.T) {
-		svc, _ := newTestSigningKeyService()
+		svc, _ := newStrategyTestSigningKeyService()
 		_, err := svc.generateAndStore(context.Background(), "ES256", true, time.Now())
 		require.NoError(t, err)
 
@@ -118,7 +269,7 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 		const agentID = "my-agent"
 		const subject = "user@example.com"
 
-		svc, _ := newTestSigningKeyService()
+		svc, _ := newStrategyTestSigningKeyService()
 		ctx := context.Background()
 		_, err := svc.generateAndStore(ctx, "ES256", true, time.Now())
 		require.NoError(t, err)
@@ -167,7 +318,7 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 }
 
 func TestNewJWXAccessTokenStrategy_Validation(t *testing.T) {
-	svc, _ := newTestSigningKeyService()
+	svc, _ := newStrategyTestSigningKeyService()
 	validIssuer := "https://issuer.example.com"
 
 	issuerCases := []struct {
@@ -239,7 +390,7 @@ func TestNewJWXAccessTokenStrategy_Validation(t *testing.T) {
 }
 
 func TestJWXAccessTokenStrategy_SubClaimNotOverridable(t *testing.T) {
-	svc, _ := newTestSigningKeyService()
+	svc, _ := newStrategyTestSigningKeyService()
 	_, err := svc.generateAndStore(context.Background(), "ES256", true, time.Now())
 	require.NoError(t, err)
 
@@ -266,7 +417,7 @@ func TestJWXAccessTokenStrategy_SubClaimNotOverridable(t *testing.T) {
 
 func TestJWXAccessTokenStrategy_ValidateAccessToken(t *testing.T) {
 	const issuer = "https://broker.example.com"
-	svc, repo := newTestSigningKeyService()
+	svc, repo := newStrategyTestSigningKeyService()
 	ctx := context.Background()
 	_, err := svc.generateAndStore(ctx, "ES256", true, time.Now())
 	require.NoError(t, err)
@@ -335,7 +486,7 @@ func TestJWXAccessTokenStrategy_ValidateAccessToken(t *testing.T) {
 // (and GetByKID) to simulate a DB outage or timeout. All other methods delegate to
 // an in-memory store so the rest of the service is functional.
 type connectionErrorSigningKeyRepo struct {
-	*memory.SigningKeyStore
+	*strategySigningKeyStore
 }
 
 var _ ports.SigningKeyRepository = (*connectionErrorSigningKeyRepo)(nil)
@@ -360,7 +511,7 @@ func (r *connectionErrorSigningKeyRepo) GetByKID(_ context.Context, _ id.KeyID) 
 
 func TestJWXAccessTokenStrategy_GetCurrent_NonNotFoundError(t *testing.T) {
 	t.Run("connection error does not produce 'no signing key provisioned' message", func(t *testing.T) {
-		repo := &connectionErrorSigningKeyRepo{SigningKeyStore: memory.NewSigningKeyStore()}
+		repo := &connectionErrorSigningKeyRepo{strategySigningKeyStore: newStrategySigningKeyStore()}
 		enc := &testEncryptor{}
 		svc := NewSigningKeyService(repo, enc, newNoopBranchKeyManager(), testSlogger())
 		strategy, err := NewJWXAccessTokenStrategy(svc, "https://issuer.example.com", time.Hour, nil, testSlogger())
