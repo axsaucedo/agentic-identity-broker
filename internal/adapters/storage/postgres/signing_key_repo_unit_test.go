@@ -141,10 +141,6 @@ func newUnitTestSigningKeyRepo(t *testing.T, cfg signingKeyRepoTestConfig) *Sign
 		sql.Register(signingKeyRepoTestDriverName, &signingKeyRepoTestDriver{})
 	})
 
-	if cfg.rowsAffected == 0 {
-		cfg.rowsAffected = 1
-	}
-
 	dsn := fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano())
 	signingKeyRepoTestConfigs.Lock()
 	signingKeyRepoTestConfigs.values[dsn] = cfg
@@ -261,6 +257,66 @@ func TestSigningKeyRepo_ErrorClassification(t *testing.T) {
 			},
 		},
 		{
+			name:      "GetByKID maps deadline exceeded to timeout",
+			cfg:       signingKeyRepoTestConfig{queryErr: context.DeadlineExceeded},
+			operation: "SigningKeyRepo.GetByKID",
+			kind:      storage.ErrorKindTimeout,
+			call: func(repo *SigningKeyRepo) error {
+				_, err := repo.GetByKID(context.Background(), id.NewKeyID("kid-get-by-kid"))
+				return err
+			},
+		},
+		{
+			name:      "GetByKID maps generic query error to connection",
+			cfg:       signingKeyRepoTestConfig{queryErr: errors.New("query failed")},
+			operation: "SigningKeyRepo.GetByKID",
+			kind:      storage.ErrorKindConnection,
+			call: func(repo *SigningKeyRepo) error {
+				_, err := repo.GetByKID(context.Background(), id.NewKeyID("kid-get-by-kid"))
+				return err
+			},
+		},
+		{
+			name:      "GetByKID maps missing row to not found",
+			cfg:       signingKeyRepoTestConfig{},
+			operation: "SigningKeyRepo.GetByKID",
+			kind:      storage.ErrorKindNotFound,
+			call: func(repo *SigningKeyRepo) error {
+				_, err := repo.GetByKID(context.Background(), id.NewKeyID("kid-get-by-kid"))
+				return err
+			},
+		},
+		{
+			name:      "GetCurrent maps deadline exceeded to timeout",
+			cfg:       signingKeyRepoTestConfig{queryErr: context.DeadlineExceeded},
+			operation: "SigningKeyRepo.GetCurrent",
+			kind:      storage.ErrorKindTimeout,
+			call: func(repo *SigningKeyRepo) error {
+				_, err := repo.GetCurrent(context.Background())
+				return err
+			},
+		},
+		{
+			name:      "GetCurrent maps generic query error to connection",
+			cfg:       signingKeyRepoTestConfig{queryErr: errors.New("query failed")},
+			operation: "SigningKeyRepo.GetCurrent",
+			kind:      storage.ErrorKindConnection,
+			call: func(repo *SigningKeyRepo) error {
+				_, err := repo.GetCurrent(context.Background())
+				return err
+			},
+		},
+		{
+			name:      "GetCurrent maps missing row to not found",
+			cfg:       signingKeyRepoTestConfig{},
+			operation: "SigningKeyRepo.GetCurrent",
+			kind:      storage.ErrorKindNotFound,
+			call: func(repo *SigningKeyRepo) error {
+				_, err := repo.GetCurrent(context.Background())
+				return err
+			},
+		},
+		{
 			name:      "ListActive maps deadline exceeded to timeout",
 			cfg:       signingKeyRepoTestConfig{queryErr: context.DeadlineExceeded},
 			operation: "SigningKeyRepo.ListActive",
@@ -300,9 +356,18 @@ func TestSigningKeyRepo_ErrorClassification(t *testing.T) {
 		},
 		{
 			name:      "SetCurrent maps commit generic error to connection",
-			cfg:       signingKeyRepoTestConfig{commitErr: errors.New("commit failed")},
+			cfg:       signingKeyRepoTestConfig{commitErr: errors.New("commit failed"), rowsAffected: 1},
 			operation: "SigningKeyRepo.SetCurrent",
 			kind:      storage.ErrorKindConnection,
+			call: func(repo *SigningKeyRepo) error {
+				return repo.SetCurrent(context.Background(), id.NewKeyID("kid-set-current"))
+			},
+		},
+		{
+			name:      "SetCurrent maps missing key to not found",
+			cfg:       signingKeyRepoTestConfig{execErrs: []error{nil, nil}, rowsAffected: 0},
+			operation: "SigningKeyRepo.SetCurrent",
+			kind:      storage.ErrorKindNotFound,
 			call: func(repo *SigningKeyRepo) error {
 				return repo.SetCurrent(context.Background(), id.NewKeyID("kid-set-current"))
 			},
@@ -323,6 +388,35 @@ func TestSigningKeyRepo_ErrorClassification(t *testing.T) {
 			kind:      storage.ErrorKindConnection,
 			call: func(repo *SigningKeyRepo) error {
 				return repo.Delete(context.Background(), id.NewKeyID("kid-delete"))
+			},
+		},
+		{
+			name:      "Delete maps zero rows to not found",
+			cfg:       signingKeyRepoTestConfig{rowsAffected: 0},
+			operation: "SigningKeyRepo.Delete",
+			kind:      storage.ErrorKindNotFound,
+			call: func(repo *SigningKeyRepo) error {
+				return repo.Delete(context.Background(), id.NewKeyID("kid-delete"))
+			},
+		},
+		{
+			name:      "CountActive maps deadline exceeded to timeout",
+			cfg:       signingKeyRepoTestConfig{queryErr: context.DeadlineExceeded},
+			operation: "SigningKeyRepo.CountActive",
+			kind:      storage.ErrorKindTimeout,
+			call: func(repo *SigningKeyRepo) error {
+				_, err := repo.CountActive(context.Background())
+				return err
+			},
+		},
+		{
+			name:      "CountActive maps generic query error to connection",
+			cfg:       signingKeyRepoTestConfig{queryErr: errors.New("query failed")},
+			operation: "SigningKeyRepo.CountActive",
+			kind:      storage.ErrorKindConnection,
+			call: func(repo *SigningKeyRepo) error {
+				_, err := repo.CountActive(context.Background())
+				return err
 			},
 		},
 	}
