@@ -1,10 +1,13 @@
 package e2e_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -92,5 +95,60 @@ var _ = Describe("US2: Server Mode Configuration (local mode)", func() {
 		var after map[string]interface{}
 		Expect(json.NewDecoder(resp2.Body).Decode(&after)).ToNot(HaveOccurred())
 		Expect(len(after["items"].([]interface{}))).To(BeNumerically(">=", 1))
+	})
+
+	It("returns server_error from /oauth2/token before signing key provisioning", func() {
+		config := fixtures.LocalConfig()
+		testStorage, err := storageFactory.NewTestStorage()
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = storageFactory.CloseStorage(testStorage) }()
+
+		agent := fixtures.LocalAgent()
+		Expect(testStorage.Agents().Create(context.Background(), agent)).ToNot(HaveOccurred())
+
+		serverFactory := bootstrap.NewServerFactory(config, logger)
+		app, err := serverFactory.BuildApp(testStorage)
+		Expect(err).ToNot(HaveOccurred())
+
+		adminServer, err := bootstrap.NewAdminTestServer(app, logger)
+		Expect(err).ToNot(HaveOccurred())
+		defer adminServer.Close()
+
+		enduserServer, err := bootstrap.NewEndUserTestServer(app, logger)
+		Expect(err).ToNot(HaveOccurred())
+		defer enduserServer.Close()
+
+		credentialsResp, err := http.Post(
+			adminServer.BaseURL()+"/api/agents/"+agent.ID.String()+"/client-credentials",
+			"application/json",
+			nil,
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = credentialsResp.Body.Close() }()
+		Expect(credentialsResp.StatusCode).To(Equal(http.StatusCreated))
+
+		var credentials map[string]interface{}
+		Expect(json.NewDecoder(credentialsResp.Body).Decode(&credentials)).ToNot(HaveOccurred())
+		clientSecret, ok := credentials["client_secret"].(string)
+		Expect(ok).To(BeTrue())
+		Expect(clientSecret).ToNot(BeEmpty())
+
+		form := url.Values{
+			"grant_type":    {"client_credentials"},
+			"client_id":     {agent.ID.String()},
+			"client_secret": {clientSecret},
+		}
+		resp, err := enduserServer.PublicPOST(
+			"/oauth2/token",
+			"application/x-www-form-urlencoded",
+			strings.NewReader(form.Encode()),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = resp.Body.Close() }()
+		Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
+
+		var body map[string]string
+		Expect(json.NewDecoder(resp.Body).Decode(&body)).ToNot(HaveOccurred())
+		Expect(body["error"]).To(Equal("server_error"))
 	})
 })
