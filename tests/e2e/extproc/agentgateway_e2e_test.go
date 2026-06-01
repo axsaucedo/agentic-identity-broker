@@ -386,6 +386,7 @@ func startAgentgwContainer(ctx context.Context, extprocPort, mcpPort int) string
 		WaitingFor: wait.ForListeningPort("4000/tcp").WithStartupTimeout(30 * time.Second),
 	}
 
+	agentgwLogger.Info("starting agentgateway container", "image", agentgatewayImage)
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
