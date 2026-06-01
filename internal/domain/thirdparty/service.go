@@ -14,10 +14,9 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// ThirdpartyOAuth2ProviderService is the consolidated domain service for managing external
-// OAuth2 providers. It merges encryption, decryption, and branch key provisioning into a
-// single cohesive domain service following the Single Responsibility Principle at the domain
-// service level.
+// ThirdpartyOAuth2ProviderService manages external OAuth2 providers, coordinating
+// encryption, decryption, and branch key provisioning across provider lifecycle
+// operations.
 //
 // Encryption lifecycle:
 //   - Create: validates entity, provisions the branch key,
