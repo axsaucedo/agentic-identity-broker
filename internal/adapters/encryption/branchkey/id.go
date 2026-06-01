@@ -13,16 +13,16 @@ const (
 	signingKeyPrefix = "key_"
 	suffix           = "_branch_key"
 
-	ServiceIDFormat    = servicePrefix + "%s" + suffix
-	SigningKeyIDFormat = signingKeyPrefix + "%s" + suffix
+	serviceIDFormat    = servicePrefix + "%s" + suffix
+	signingKeyIDFormat = signingKeyPrefix + "%s" + suffix
 )
 
 func generateServiceBranchKeyID(serviceID string) string {
-	return fmt.Sprintf(ServiceIDFormat, serviceID)
+	return fmt.Sprintf(serviceIDFormat, serviceID)
 }
 
 func generateSigningKeyBranchKeyID(signingKeyID string) string {
-	return fmt.Sprintf(SigningKeyIDFormat, signingKeyID)
+	return fmt.Sprintf(signingKeyIDFormat, signingKeyID)
 }
 
 // GenerateBranchKeyId generates a deterministic branch key ID from a typed branch key subject.
@@ -44,11 +44,11 @@ func GenerateBranchKeyId(subject domainencryption.BranchKeySubject) (string, err
 }
 
 func extractServiceID(branchKeyID string) (string, error) {
-	return extractIdentifier(branchKeyID, servicePrefix, ServiceIDFormat, "service ID")
+	return extractIdentifier(branchKeyID, servicePrefix, serviceIDFormat, "service ID")
 }
 
 func extractSigningKeyID(branchKeyID string) (string, error) {
-	return extractIdentifier(branchKeyID, signingKeyPrefix, SigningKeyIDFormat, "signing key ID")
+	return extractIdentifier(branchKeyID, signingKeyPrefix, signingKeyIDFormat, "signing key ID")
 }
 
 // ExtractSubject parses a branch key ID back into its typed branch key subject.
@@ -74,8 +74,8 @@ func ExtractSubject(branchKeyID string) (domainencryption.BranchKeySubject, erro
 		return domainencryption.BranchKeySubject{}, fmt.Errorf(
 			"invalid branch key ID format: %q (expected format: %s or %s)",
 			branchKeyID,
-			ServiceIDFormat,
-			SigningKeyIDFormat,
+			serviceIDFormat,
+			signingKeyIDFormat,
 		)
 	}
 }
