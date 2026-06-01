@@ -237,9 +237,17 @@ func classifySigningKeyRepoError(operation string, err error, message string) er
 	if errors.Is(err, context.DeadlineExceeded) {
 		return storage.NewStorageError(operation, storage.ErrorKindTimeout, err, "operation exceeded timeout")
 	}
+	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+		return storage.NewStorageError(operation, storage.ErrorKindNotFound, err, "signing key not found")
+	}
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return storage.NewStorageError(operation, storage.ErrorKindConflict, err, "signing key already exists")
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "23505":
+			return storage.NewStorageError(operation, storage.ErrorKindConflict, err, "signing key already exists")
+		case "40001":
+			return storage.NewStorageError(operation, storage.ErrorKindConflict, err, "transaction serialization failure")
+		}
 	}
 	return storage.NewStorageError(operation, storage.ErrorKindConnection, err, message)
 }

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	pgx "github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
@@ -183,6 +184,46 @@ func assertStorageErrorKind(t *testing.T, err error, operation string, kind stor
 	require.ErrorAs(t, err, &se)
 	assert.Equal(t, operation, se.Operation)
 	assert.Equal(t, kind, se.Kind)
+}
+
+func TestClassifySigningKeyRepoError(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		operation string
+		kind      storage.ErrorKind
+		message   string
+	}{
+		{
+			name:      "maps sql ErrNoRows to not found",
+			err:       sql.ErrNoRows,
+			operation: "SigningKeyRepo.ListActive",
+			kind:      storage.ErrorKindNotFound,
+			message:   "failed to list signing keys",
+		},
+		{
+			name:      "maps pgx ErrNoRows to not found",
+			err:       pgx.ErrNoRows,
+			operation: "SigningKeyRepo.ListActive",
+			kind:      storage.ErrorKindNotFound,
+			message:   "failed to list signing keys",
+		},
+		{
+			name:      "maps serialization failure to conflict",
+			err:       &pgconn.PgError{Code: "40001"},
+			operation: "SigningKeyRepo.CreateAndSetCurrent",
+			kind:      storage.ErrorKindConflict,
+			message:   "failed to insert signing key",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := classifySigningKeyRepoError(tt.operation, tt.err, tt.message)
+			require.Error(t, err)
+			assertStorageErrorKind(t, err, tt.operation, tt.kind)
+		})
+	}
 }
 
 func TestSigningKeyRepo_ErrorClassification(t *testing.T) {
