@@ -324,6 +324,32 @@ func TestEncryption_BranchKeyManagerCreate(t *testing.T) {
 	assert.Equal(t, string(plaintext), string(decrypted))
 }
 
+func TestEncryption_BranchKeyManagerCreate_SigningKey(t *testing.T) {
+	ctx := context.Background()
+	ls := requireSharedLS(t)
+
+	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+	adapter, manager, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+
+	signingKeyKID := id.NewKeyID("cccccccc-dddd-eeee-ffff-000000000000")
+
+	branchKeyID, err := manager.Create(ctx, encryption.NewSigningKeyBranchKeySubject(signingKeyKID))
+	require.NoError(t, err, "BranchKeyManager.Create should succeed for a signing key subject")
+	assert.Equal(t, "key_"+signingKeyKID.String()+"_branch_key", branchKeyID)
+
+	plaintext := []byte("token-for-new-signing-key")
+	encCtx := map[string]string{"kid": signingKeyKID.String()}
+
+	ct, err := adapter.Encrypt(ctx, plaintext, encCtx)
+	require.NoError(t, err, "encryption after Create should succeed for signing keys")
+
+	decrypted, err := adapter.Decrypt(ctx, ct, encCtx)
+	require.NoError(t, err, "decryption after Create should succeed for signing keys")
+	assert.Equal(t, string(plaintext), string(decrypted))
+}
+
 // TestEncryption_BranchKeyManagerCreate_Idempotent verifies that calling Create twice for the
 // same service ID is idempotent: the second call succeeds (or returns the existing key) and the
 // original ciphertext remains decryptable.
