@@ -264,7 +264,6 @@ func (s *ThirdpartyOAuth2ProviderService) List(
 	return result, nil
 }
 
-// Delete removes a provider from storage.
 // Delete removes a provider by ID.
 // Returns a conflict error if permission sets reference this service.
 func (s *ThirdpartyOAuth2ProviderService) Delete(
