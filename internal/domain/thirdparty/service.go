@@ -54,6 +54,15 @@ func NewThirdpartyOAuth2ProviderService(
 	if logger == nil {
 		logger = slog.Default()
 	}
+	if repo == nil {
+		panic("thirdparty.NewThirdpartyOAuth2ProviderService: repo must not be nil")
+	}
+	if encryption == nil {
+		panic("thirdparty.NewThirdpartyOAuth2ProviderService: encryption must not be nil")
+	}
+	if branchKeyManager == nil {
+		panic("thirdparty.NewThirdpartyOAuth2ProviderService: branchKeyManager must not be nil")
+	}
 	return &ThirdpartyOAuth2ProviderService{
 		repo:                repo,
 		encryption:          encryption,

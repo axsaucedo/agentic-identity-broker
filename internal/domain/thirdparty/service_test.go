@@ -127,6 +127,39 @@ func minimalValidEntity(svcID id.ServiceID, secret model.Secret) *model.Thirdpar
 	}
 }
 
+func TestNewThirdpartyOAuth2ProviderService_PanicsOnNilRequiredDependencies(t *testing.T) {
+	validRepo := new(MockRepository)
+	validEncryption := new(MockEncryption)
+	validBranchKeyManager := newNoopBranchKeyManager()
+
+	t.Run("nil repo", func(t *testing.T) {
+		assert.PanicsWithValue(t,
+			"thirdparty.NewThirdpartyOAuth2ProviderService: repo must not be nil",
+			func() {
+				NewThirdpartyOAuth2ProviderService(nil, validEncryption, validBranchKeyManager, nil, false, slog.Default())
+			},
+		)
+	})
+
+	t.Run("nil encryption", func(t *testing.T) {
+		assert.PanicsWithValue(t,
+			"thirdparty.NewThirdpartyOAuth2ProviderService: encryption must not be nil",
+			func() {
+				NewThirdpartyOAuth2ProviderService(validRepo, nil, validBranchKeyManager, nil, false, slog.Default())
+			},
+		)
+	})
+
+	t.Run("nil branch key manager", func(t *testing.T) {
+		assert.PanicsWithValue(t,
+			"thirdparty.NewThirdpartyOAuth2ProviderService: branchKeyManager must not be nil",
+			func() {
+				NewThirdpartyOAuth2ProviderService(validRepo, validEncryption, nil, nil, false, slog.Default())
+			},
+		)
+	})
+}
+
 // =============================================================================
 // Validation tests (ValidateForCreate / ValidateForUpdate)
 // =============================================================================
