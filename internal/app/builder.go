@@ -4,6 +4,7 @@ package app
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 
 	adaptercmd "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/cimd"
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
+	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
@@ -134,7 +136,7 @@ func (b *Builder) WithStaticWebResourcesPath(path string) *Builder {
 
 // WithTracerProvider sets a custom TracerProvider for testing.
 // When set, this provider is registered as the global provider instead of
-// the one created by NewProvider(). Mirrors the WithEncryption precedent.
+// the one created by NewProvider().
 func (b *Builder) WithTracerProvider(tp *sdktrace.TracerProvider) *Builder {
 	b.tracerProvider = tp
 	return b
@@ -312,15 +314,15 @@ func (b *Builder) Build() (*App, error) {
 			"dynamodb_region", b.config.Encryption.AWSKMS.DynamoDBRegion,
 			"branch_key_ttl", b.config.Encryption.AWSKMS.BranchKeyTTL,
 			"dynamodb_read_timeout", b.config.Encryption.AWSKMS.DynamoDBReadTimeout,
-			"dynamodb_write_timeout", b.config.Encryption.AWSKMS.DynamoDBWriteTimeout,
-			"branch_key_manager_wired", branchKeyManager != nil)
+			"dynamodb_write_timeout", b.config.Encryption.AWSKMS.DynamoDBWriteTimeout)
 	} else {
-		b.logger.Info("Memory encryption adapter initialized",
-			"branch_key_manager_wired", branchKeyManager != nil)
+		b.logger.Info("Memory encryption adapter initialized")
 	}
 
 	if branchKeyManager != nil {
 		app.BranchKeyManager = branchKeyManager
+	} else {
+		app.BranchKeyManager = &encryptionnoop.BranchKeyManager{}
 	}
 
 	// Decode and import JWE signing key — required for both OAuth2SessionService and OAuth2Service
@@ -366,7 +368,7 @@ func (b *Builder) Build() (*App, error) {
 		app.ProviderService = thirdparty.NewThirdpartyOAuth2ProviderService(
 			b.storage.Services(),
 			encryptor,
-			branchKeyManager, // May be nil if memory backend (no branch key store)
+			app.BranchKeyManager,
 			b.storage.PermissionSets(),
 			b.config.Security.SkipThirdpartyHTTPSValidation,
 			b.logger,
@@ -730,18 +732,13 @@ func (b *Builder) Build() (*App, error) {
 
 	// buildLocalProvider constructs the local token issuance infrastructure.
 	// Used in both "local" and "hybrid" modes.
-	buildLocalProvider := func(tokenTTL time.Duration, claimsExpr string) (*oauth2server.Provider, error) {
-		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, b.logger)
-		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), clientResolver, b.logger)
-		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
-		app.AdminHandlers.SigningKeys = admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger)
+	buildLocalProvider := func(signingKeyService *oauth2server.SigningKeyService, tokenTTL time.Duration, claimsExpr string) (*oauth2server.Provider, error) {
 		provider, err := oauth2server.NewProvider(
 			b.storage.AuthorizationCodes(),
 			b.storage.PKCESessions(),
 			b.storage.BrokerCredentials(),
 			clientResolver,
-			b.storage.SigningKeys(),
-			encryptor,
+			signingKeyService,
 			localIssuerURI,
 			tokenTTL,
 			claimsExpr,
@@ -752,10 +749,35 @@ func (b *Builder) Build() (*App, error) {
 		}
 
 		jwksHandler = enduserHandlers.NewJWKSHandler(signingKeyService, b.logger)
-		if err := signingKeyService.EnsureKeyExists(context.Background()); err != nil {
-			return nil, fmt.Errorf("failed to ensure signing key exists: %w", err)
+		count, err := signingKeyService.CountActive(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("failed to check signing keys: %w", err)
+		}
+		if count == 0 {
+			b.logger.Error("no signing key provisioned — local token issuance will fail until a key is created",
+				"hint", "POST /api/oauth2-server/signing-keys")
+			return provider, nil
+		}
+		if _, err := signingKeyService.GetCurrent(context.Background()); err != nil {
+			var storageErr *domstorage.StorageError
+			if errors.As(err, &storageErr) && storageErr.Kind == domstorage.ErrorKindNotFound {
+				b.logger.Error("no currently-active signing key available — local token issuance will fail until a key activates or is promoted",
+					"hint", "wait for activates_at or PUT /api/oauth2-server/signing-keys/{kid}/current")
+				return provider, nil
+			}
+			return nil, fmt.Errorf("failed to check current signing key: %w", err)
 		}
 		return provider, nil
+	}
+
+	// wireLocalAdminHandlers constructs the local-mode admin services and handlers.
+	// Used in both "local" and "hybrid" modes.
+	wireLocalAdminHandlers := func() *oauth2server.SigningKeyService {
+		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, app.BranchKeyManager, b.logger)
+		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), clientResolver, b.logger)
+		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
+		app.AdminHandlers.SigningKeys = admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger)
+		return signingKeyService
 	}
 
 	// buildProxyStrategies constructs the proxy path strategies.
@@ -773,7 +795,8 @@ func (b *Builder) Build() (*App, error) {
 
 	switch cfg := oauthCfg.(type) {
 	case *ports.LocalOAuth2Config:
-		provider, err := buildLocalProvider(cfg.TokenTTL, cfg.TokenClaimsExpression)
+		signingKeyService := wireLocalAdminHandlers()
+		provider, err := buildLocalProvider(signingKeyService, cfg.TokenTTL, cfg.TokenClaimsExpression)
 		if err != nil {
 			return nil, err
 		}
@@ -784,7 +807,8 @@ func (b *Builder) Build() (*App, error) {
 			"token_ttl", cfg.TokenTTL,
 		)
 	case *ports.HybridOAuth2Config:
-		provider, err := buildLocalProvider(cfg.Local.TokenTTL, cfg.Local.TokenClaimsExpression)
+		signingKeyService := wireLocalAdminHandlers()
+		provider, err := buildLocalProvider(signingKeyService, cfg.Local.TokenTTL, cfg.Local.TokenClaimsExpression)
 		if err != nil {
 			return nil, err
 		}

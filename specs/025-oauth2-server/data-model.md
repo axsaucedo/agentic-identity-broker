@@ -60,7 +60,7 @@ Asymmetric key pair used to sign locally-issued JWT access tokens. Exactly one k
 [Current, Active] → DELETE /{kid} → 409 Conflict (cannot remove last/current key)
 ```
 
-**Encryption context**: `{"entity_type": "signing_key", "key_id": "<kid>"}`
+**Encryption context**: `{"kid": "<kid>"}`
 
 ### 3. AuthorizationCode
 

@@ -47,7 +47,7 @@ func setupImplementedService(t *testing.T) (*oauth2session.OAuth2SessionService,
 	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo,
 		encryption,
-		nil,
+		newNoopBranchKeyManager(),
 		nil,
 		false,
 		slog.Default(),

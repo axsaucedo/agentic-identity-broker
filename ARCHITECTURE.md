@@ -1000,7 +1000,13 @@ Define any project-specific terms or acronyms.)
 
 **KEK**: Key Encryption Key. A key used to encrypt/wrap the DEK. In AWS implementation, this is an AWS KMS customer-managed key (CMK) referenced by ARN. The KEK never leaves the secure boundary and is managed by AWS KMS.
 
-**EncryptionContext**: Additional authenticated data (AAD) bound to ciphertext during encryption but not encrypted itself. Used to provide cryptographic isolation between different services. Implemented as a map[string]string containing only the service_id field for performance optimization (ADR 008).
+**EncryptionContext**: Additional authenticated data (AAD) bound to ciphertext during encryption but not encrypted itself. Constrained to exactly one stable, non-secret subject key per ciphertext namespace. The approved single-subject keys are `service_id` for service-scoped secrets and `kid` for signing-key private material (ADR 008 amendment). Implemented as a `map[string]string` with exactly one approved subject key present.
+
+**BranchKeySubject**: Domain value object in `internal/domain/encryption/` identifying the logical namespace that should map to a branch key. Wraps either a service subject (`service_id`) or a signing-key subject (`kid`) and produces the corresponding single-subject `EncryptionContext`.
+
+**BranchKeySubjectKind**: Enum discriminating which `BranchKeySubject` variant is in use: `service` or `signing_key`. Used to keep branch-key routing explicit and to fail closed on ambiguous subjects.
+
+**ContextKeyKID**: The `EncryptionContext` field name `kid`, used when encrypting broker signing-key private material. Mutually exclusive with `service_id`; contexts containing both or neither are invalid.
 
 **EncryptionPort**: Hexagonal architecture interface for encryption operations. Abstracts the domain from specific encryption implementations (AWS KMS, envelope encryption, etc.), allowing testability and implementation flexibility while ensuring consistent encryption behavior.
 
@@ -1076,7 +1082,13 @@ Define any project-specific terms or acronyms.)
 
 **UserSession**: Domain aggregate representing the complete lifecycle of a user's session with a third-party OAuth2 provider. Contains encrypted access/refresh tokens, expiration metadata, and manages token encryption/decryption through the EncryptionPort. Enforces one session per (principal, service_id) with automatic token refresh and secure deletion.
 
-**EncryptionContext**: Domain value object containing metadata that cryptographically binds encrypted tokens to their usage context. Implemented as an immutable map[string]string with service_id as the primary binding field. Prevents cross-service token usage and provides audit trail for encryption operations.
+**EncryptionContext**: Domain value object containing metadata that cryptographically binds encrypted material to its usage context. Implemented as an immutable single-subject `map[string]string`: `service_id` for user-session tokens and other service-scoped secrets, `kid` for broker signing-key private material. Preserves ADR 008's minimal-context rule while keeping non-service assets semantically correct.
+
+**BranchKeySubject**: Domain value object representing the single encryption subject used for branch-key routing. `service` subjects preserve existing service-backed branch-key identities; `signing_key` subjects give broker signing keys their own namespace.
+
+**BranchKeySubjectKind**: Enum identifying whether a `BranchKeySubject` is service-scoped or signing-key-scoped. Used by branch-key ID generation and validation.
+
+**ContextKeyKID**: The literal `kid` context key used for signing-key encryption contexts. Mutually exclusive with `service_id`.
 
 **EncryptionPort**: Port interface defining the boundary between domain logic and encryption adapters. Provides Encrypt/Decrypt methods with context parameter, enabling the domain to remain independent of specific encryption implementations (AWS KMS, local encryption, etc.). Implementations perform envelope encryption with DEK-per-session pattern and context binding validation.
 

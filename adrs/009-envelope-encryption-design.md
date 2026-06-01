@@ -15,7 +15,7 @@ The Agentic Identity Broker requires secure storage of OAuth2 access and refresh
 4. **Compliance**: Enterprise-grade key management and audit trails
 5. **Context Isolation**: Cryptographic guarantees that tokens encrypted for one service cannot be decrypted for another
 
-Previous analysis in [ADR 008: Encryption Context Optimization](008-encryption-context-optimization.md) established the performance and security benefits of service_id-only context binding.
+Previous analysis in [ADR 008: Encryption Context Optimization](008-encryption-context-optimization.md) established the performance and security benefits of service_id-only context binding for OAuth2 user-session tokens.
 
 ---
 

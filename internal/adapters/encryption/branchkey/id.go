@@ -1,74 +1,99 @@
 package branchkey
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
 
-// IDFormat defines the deterministic format for branch key IDs.
-// This is the single source of truth for branch key ID generation across all adapters.
-const IDFormat = "service_%s_branch_key"
-
-const (
-	prefix = "service_"
-	suffix = "_branch_key"
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
-// GenerateBranchKeyId generates a deterministic branch key ID from a service ID.
-// This function provides the single source of truth for branch key ID generation
-// used by both provisioning and runtime phases.
-//
-// Format: service_{service_id}_branch_key
-// Example: service_oauth2_branch_key, service_github_branch_key
-//
-// Parameters:
-//   - serviceID: The service identifier (must be non-empty)
-//
-// Returns:
-//   - string: The formatted branch key ID
-func GenerateBranchKeyId(serviceID string) string {
-	return fmt.Sprintf(IDFormat, serviceID)
+const (
+	servicePrefix    = "service_"
+	signingKeyPrefix = "key_"
+	suffix           = "_branch_key"
+
+	serviceIDFormat    = servicePrefix + "%s" + suffix
+	signingKeyIDFormat = signingKeyPrefix + "%s" + suffix
+)
+
+func generateServiceBranchKeyID(serviceID string) string {
+	return fmt.Sprintf(serviceIDFormat, serviceID)
 }
 
-// ExtractServiceID extracts the service ID from a branch key ID.
-// This is the inverse operation of GenerateBranchKeyId, ensuring symmetric operations.
-//
-// Format: service_{service_id}_branch_key -> service_id
-// Example: service_oauth2_branch_key -> oauth2
-//
-// Parameters:
-//   - branchKeyID: The branch key ID to parse
-//
-// Returns:
-//   - string: The extracted service ID, or empty string if parsing fails
-//   - error: Non-nil if the branch key ID format is invalid
-func ExtractServiceID(branchKeyID string) (string, error) {
-	// Validate format and extract service ID
-	if len(branchKeyID) > len(prefix)+len(suffix) &&
-		branchKeyID[:len(prefix)] == prefix &&
-		branchKeyID[len(branchKeyID)-len(suffix):] == suffix {
-		serviceID := branchKeyID[len(prefix) : len(branchKeyID)-len(suffix)]
-		if serviceID == "" {
-			return "", fmt.Errorf("invalid branch key ID: empty service ID in %q", branchKeyID)
+func generateSigningKeyBranchKeyID(signingKeyID string) string {
+	return fmt.Sprintf(signingKeyIDFormat, signingKeyID)
+}
+
+// GenerateBranchKeyId generates a deterministic branch key ID from a typed branch key subject.
+func GenerateBranchKeyId(subject domainencryption.BranchKeySubject) (string, error) {
+	if err := subject.Validate(); err != nil {
+		return "", fmt.Errorf("invalid branch key subject: %w", err)
+	}
+
+	switch subject.Kind() {
+	case domainencryption.BranchKeySubjectKindService:
+		serviceID, _ := subject.ServiceID()
+		return generateServiceBranchKeyID(serviceID.String()), nil
+	case domainencryption.BranchKeySubjectKindSigningKey:
+		keyID, _ := subject.KeyID()
+		return generateSigningKeyBranchKeyID(keyID.String()), nil
+	default:
+		return "", fmt.Errorf("unsupported branch key subject kind: %q", subject.Kind())
+	}
+}
+
+func extractServiceID(branchKeyID string) (string, error) {
+	return extractIdentifier(branchKeyID, servicePrefix, serviceIDFormat, "service ID")
+}
+
+func extractSigningKeyID(branchKeyID string) (string, error) {
+	return extractIdentifier(branchKeyID, signingKeyPrefix, signingKeyIDFormat, "signing key ID")
+}
+
+// ExtractSubject parses a branch key ID back into its typed branch key subject.
+func ExtractSubject(branchKeyID string) (domainencryption.BranchKeySubject, error) {
+	switch {
+	case strings.HasPrefix(branchKeyID, servicePrefix):
+		serviceID, err := extractServiceID(branchKeyID)
+		if err != nil {
+			return domainencryption.BranchKeySubject{}, err
 		}
-		return serviceID, nil
+		parsed, err := id.ParseServiceID(serviceID)
+		if err != nil {
+			return domainencryption.BranchKeySubject{}, fmt.Errorf("invalid service subject in branch key ID %q: %w", branchKeyID, err)
+		}
+		return domainencryption.NewServiceBranchKeySubject(parsed), nil
+	case strings.HasPrefix(branchKeyID, signingKeyPrefix):
+		signingKeyID, err := extractSigningKeyID(branchKeyID)
+		if err != nil {
+			return domainencryption.BranchKeySubject{}, err
+		}
+		return domainencryption.NewSigningKeyBranchKeySubject(id.NewKeyID(signingKeyID)), nil
+	default:
+		return domainencryption.BranchKeySubject{}, fmt.Errorf(
+			"invalid branch key ID format: %q (expected format: %s or %s)",
+			branchKeyID,
+			serviceIDFormat,
+			signingKeyIDFormat,
+		)
 	}
-
-	// Special case: if the length is exactly what we'd expect for an empty service ID,
-	// check if it matches the empty service ID format
-	if branchKeyID == fmt.Sprintf(IDFormat, "") {
-		return "", fmt.Errorf("invalid branch key ID: empty service ID in %q", branchKeyID)
-	}
-
-	return "", fmt.Errorf("invalid branch key ID format: %q (expected format: %s)", branchKeyID, IDFormat)
 }
 
-// ValidateBranchKeyID validates that a branch key ID follows the expected format.
-// This is used for input validation in adapters and tests.
-//
-// Parameters:
-//   - branchKeyID: The branch key ID to validate
-//
-// Returns:
-//   - bool: true if the ID format is valid, false otherwise
-func ValidateBranchKeyID(branchKeyID string) bool {
-	_, err := ExtractServiceID(branchKeyID)
-	return err == nil
+func extractIdentifier(branchKeyID, prefix, format, identifierName string) (string, error) {
+	if len(branchKeyID) > len(prefix)+len(suffix) &&
+		strings.HasPrefix(branchKeyID, prefix) &&
+		strings.HasSuffix(branchKeyID, suffix) {
+		identifier := branchKeyID[len(prefix) : len(branchKeyID)-len(suffix)]
+		if identifier == "" {
+			return "", fmt.Errorf("invalid branch key ID: empty %s in %q", identifierName, branchKeyID)
+		}
+		return identifier, nil
+	}
+
+	if branchKeyID == fmt.Sprintf(format, "") {
+		return "", fmt.Errorf("invalid branch key ID: empty %s in %q", identifierName, branchKeyID)
+	}
+
+	return "", fmt.Errorf("invalid branch key ID format: %q (expected format: %s)", branchKeyID, format)
 }

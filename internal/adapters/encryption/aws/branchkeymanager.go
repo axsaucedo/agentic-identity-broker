@@ -2,19 +2,13 @@ package aws
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/branchkey"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
-// AWSBranchKeyManager implements ports.BranchKeyManager for AWS hierarchical keyring.
-// Handles branch key provisioning for services in DynamoDB via the AWS Encryption SDK KeyStore.
-//
-// Architecture:
-// - Create: Provisions a new branch key for a service using branchkey package for ID generation
-// - Get: Retrieves branch key ID (uses same deterministic ID generation)
-// - ID resolution at runtime: Delegated to BranchKeyIdSupplier for encryption/decryption
+// AWSBranchKeyManager implements ports.BranchKeyManager for the AWS hierarchical keyring.
+// It provisions branch keys for typed subjects in DynamoDB via the AWS Encryption SDK KeyStore.
 type AWSBranchKeyManager struct {
 	keyStore *KeyStore
 }
@@ -27,23 +21,18 @@ func NewAWSBranchKeyManager(keyStore *KeyStore) *AWSBranchKeyManager {
 	}
 }
 
-// Create creates a branch key for the service in DynamoDB.
-// Implements BranchKeyRepository.Create()
-func (m *AWSBranchKeyManager) Create(ctx context.Context, serviceID id.ServiceID) (string, error) {
+// Create creates a branch key for the subject in DynamoDB.
+// Implements BranchKeyRepository.Create().
+func (m *AWSBranchKeyManager) Create(ctx context.Context, subject encryption.BranchKeySubject) (string, error) {
 	if m == nil || m.keyStore == nil {
 		return "", encryption.NewKEKUnavailableError("branch key manager not properly initialized", nil)
 	}
 
-	// 1. Validate service_id (non-empty)
-	if serviceID.IsZero() {
-		return "", encryption.NewKEKUnavailableError("service_id cannot be empty", nil)
+	if err := subject.Validate(); err != nil {
+		return "", encryption.NewKEKUnavailableError(fmt.Sprintf("invalid branch key subject: %v", err), err)
 	}
 
-	// 2. Generate deterministic branch key ID (same format used at runtime)
-	branchKeyID := branchkey.GenerateBranchKeyId(serviceID.String())
-
-	// 3. Provision in DynamoDB via KeyStore
-	provisioned, err := m.keyStore.CreateBranchKey(ctx, branchKeyID)
+	provisioned, err := m.keyStore.CreateBranchKey(ctx, subject)
 	if err != nil {
 		return "", err
 	}

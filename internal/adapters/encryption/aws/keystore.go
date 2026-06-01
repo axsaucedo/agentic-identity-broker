@@ -132,20 +132,22 @@ func createKeyStore(ctx context.Context, ksCfg KeyStoreConfig, awsCfg *ports.AWS
 	}, nil
 }
 
-// CreateBranchKey creates a branch key in DynamoDB with the specified ID and encryption context.
-// This operation is idempotent: if a branch key with the given ID already exists it is
-// returned without creating a new one. This allows callers (including service Update paths
-// where a service was originally created with a different encryption backend) to call
+// CreateBranchKey creates a branch key in DynamoDB for the provided subject.
+// This operation first checks for an existing branch key and returns it when the lookup
+// succeeds. If the lookup fails, CreateKey is attempted so callers can invoke
 // CreateBranchKey unconditionally without failing on pre-existing keys.
-//
-// Returns the branch key identifier or error if provisioning fails.
-func (ks *KeyStore) CreateBranchKey(ctx context.Context, branchKeyID string) (string, error) {
+func (ks *KeyStore) CreateBranchKey(ctx context.Context, subject encryption.BranchKeySubject) (string, error) {
 	if ks == nil || ks.client == nil {
 		return "", encryption.NewKEKUnavailableError("KeyStore not initialized", nil)
 	}
 
-	if branchKeyID == "" {
-		return "", encryption.NewKEKUnavailableError("branchKeyID cannot be empty", nil)
+	if err := subject.Validate(); err != nil {
+		return "", encryption.NewKEKUnavailableError(fmt.Sprintf("invalid branch key subject: %v", err), err)
+	}
+
+	branchKeyID, err := branchkey.GenerateBranchKeyId(subject)
+	if err != nil {
+		return "", encryption.NewKEKUnavailableError(fmt.Sprintf("failed to generate branch key ID from subject: %v", err), err)
 	}
 
 	// Idempotency check: if the branch key already exists, return it without creating a duplicate.
@@ -157,7 +159,6 @@ func (ks *KeyStore) CreateBranchKey(ctx context.Context, branchKeyID string) (st
 		BranchKeyIdentifier: branchKeyID,
 	})
 	if getErr == nil {
-		// Branch key already exists; return idempotently.
 		return branchKeyID, nil
 	}
 	// getErr is non-nil: either the key does not exist yet (expected migration path) or
@@ -165,23 +166,9 @@ func (ks *KeyStore) CreateBranchKey(ctx context.Context, branchKeyID string) (st
 	// from a KeyStoreException, so we attempt CreateKey regardless. If the infrastructure
 	// is unavailable, CreateKey will also fail and return a clear error to the caller.
 
-	// AWS Encryption SDK KeyStore requires encryption context when using custom branch key identifiers
-	// Extract service_id from branch key ID using the centralized parser
-	serviceID, err := branchkey.ExtractServiceID(branchKeyID)
-	if err != nil {
-		return "", encryption.NewKEKUnavailableError(
-			fmt.Sprintf("invalid branch key ID format: %s", branchKeyID),
-			err,
-		)
-	}
-
-	encryptionCtx := map[string]string{"service_id": serviceID}
-
-	// Use underlying AWS KeyStore client to create the branch key with the specified ID
-	// The BranchKeyIdentifier must be set to ensure deterministic ID matching with BranchKeyIdSupplier
 	branchKey, err := ks.client.CreateKey(ctx, keystoretypes.CreateKeyInput{
 		BranchKeyIdentifier: &branchKeyID,
-		EncryptionContext:   encryptionCtx,
+		EncryptionContext:   subject.EncryptionContext(),
 	})
 	if err != nil {
 		return "", encryption.NewKEKUnavailableError(

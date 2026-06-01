@@ -16,6 +16,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
@@ -26,10 +27,20 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 )
 
+type noopBranchKeyManager struct{}
+
+func newNoopBranchKeyManager() *noopBranchKeyManager {
+	return &noopBranchKeyManager{}
+}
+
+func (m *noopBranchKeyManager) Create(_ context.Context, _ domainencryption.BranchKeySubject) (string, error) {
+	return "", nil
+}
+
 // newTestProviderService wraps a repository in a ThirdpartyOAuth2ProviderService
 // with passthrough encryption for use in domain-layer tests.
 func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &MockEncryption{}, nil, nil, false, nil)
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &MockEncryption{}, newNoopBranchKeyManager(), nil, false, nil)
 }
 
 // newMockPermissionSetService creates a PermissionSetService with mock for testing

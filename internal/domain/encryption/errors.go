@@ -114,7 +114,7 @@ func FormatSanitizedError(operation string, context map[string]string) string {
 	safeContext := make(map[string]string)
 	for key, value := range context {
 		switch key {
-		case "service_id", "session_id", "principal":
+		case "service_id", "session_id", "principal", "kid":
 			// These are identifiers, not secret data
 			safeContext[key] = value
 		default:

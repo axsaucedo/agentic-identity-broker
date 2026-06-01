@@ -15,6 +15,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -33,21 +34,24 @@ const jwksGracePeriod = 2 * jwksCacheMaxAge
 // SigningKeyService manages signing key lifecycle including generation,
 // encryption, storage, and JWKS building.
 type SigningKeyService struct {
-	repo       ports.SigningKeyRepository
-	encryption ports.EncryptionPort
-	logger     *slog.Logger
+	repo             ports.SigningKeyRepository
+	encryption       ports.EncryptionPort
+	branchKeyManager ports.BranchKeyManager
+	logger           *slog.Logger
 }
 
 // NewSigningKeyService creates a new SigningKeyService.
 func NewSigningKeyService(
 	repo ports.SigningKeyRepository,
 	encryption ports.EncryptionPort,
+	branchKeyManager ports.BranchKeyManager,
 	logger *slog.Logger,
 ) *SigningKeyService {
 	return &SigningKeyService{
-		repo:       repo,
-		encryption: encryption,
-		logger:     logger,
+		repo:             repo,
+		encryption:       encryption,
+		branchKeyManager: branchKeyManager,
+		logger:           logger,
 	}
 }
 
@@ -64,7 +68,8 @@ func (s *SigningKeyService) GenerateAndStoreKey(ctx context.Context, algorithm s
 }
 
 // generateAndStore creates and persists a signing key with an explicit activatesAt timestamp.
-// Called directly by EnsureKeyExists to bypass the grace period at startup (no clients yet).
+// The caller controls the activation time, allowing tests to bypass the
+// jwksGracePeriod that GenerateAndStoreKey applies.
 func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm string, makeCurrent bool, activatesAt time.Time) (*storage.SigningKey, error) {
 	if algorithm == "" {
 		algorithm = "ES256"
@@ -85,8 +90,19 @@ func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm stri
 		return nil, fmt.Errorf("failed to generate key pair: %w", err)
 	}
 
+	signingKeySubject, err := newSigningKeySubject(kid)
+	if err != nil {
+		return nil, err
+	}
+
+	branchKeyID, err := s.branchKeyManager.Create(ctx, signingKeySubject)
+	if err != nil {
+		return nil, fmt.Errorf("failed to provision branch key for signing key: %w", err)
+	}
+
 	encrypted, err := s.encryption.Encrypt(ctx, privKeyPEM, signingKeyEncCtx(kid))
 	if err != nil {
+		s.warnOrphanedBranchKey("orphaned branch key after encryption failure; manual cleanup required", kid, branchKeyID)
 		return nil, fmt.Errorf("failed to encrypt private key: %w", err)
 	}
 
@@ -102,10 +118,12 @@ func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm stri
 
 	if makeCurrent {
 		if err := s.repo.CreateAndSetCurrent(ctx, key); err != nil {
+			s.warnOrphanedBranchKey("orphaned branch key after storage failure; manual cleanup required", kid, branchKeyID)
 			return nil, fmt.Errorf("failed to store and promote signing key: %w", err)
 		}
 	} else {
 		if err := s.repo.Create(ctx, key); err != nil {
+			s.warnOrphanedBranchKey("orphaned branch key after storage failure; manual cleanup required", kid, branchKeyID)
 			return nil, fmt.Errorf("failed to store signing key: %w", err)
 		}
 	}
@@ -158,26 +176,21 @@ func (s *SigningKeyService) BuildJWKS(ctx context.Context) (jwk.Set, error) {
 		}
 	}
 
+	if len(keys) > 0 && set.Len() == 0 {
+		return nil, fmt.Errorf("failed to build JWKS: all %d active key(s) failed processing", len(keys))
+	}
+
 	return set, nil
 }
 
-// EnsureKeyExists checks if any signing key exists and auto-generates one if not.
-// The generated key activates immediately (no grace period) because no clients have
-// cached a previous JWKS yet.
-func (s *SigningKeyService) EnsureKeyExists(ctx context.Context) error {
-	count, err := s.repo.CountActive(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to count signing keys: %w", err)
-	}
+// GetCurrent returns the active signing key used for token signing.
+func (s *SigningKeyService) GetCurrent(ctx context.Context) (*storage.SigningKey, error) {
+	return s.repo.GetCurrent(ctx)
+}
 
-	if count == 0 {
-		_, err := s.generateAndStore(ctx, "ES256", true, time.Now().UTC())
-		if err != nil {
-			return fmt.Errorf("failed to auto-generate signing key: %w", err)
-		}
-		s.logger.Info("auto-generated initial signing key at startup")
-	}
-	return nil
+// CountActive returns the number of non-removed signing keys.
+func (s *SigningKeyService) CountActive(ctx context.Context) (int, error) {
+	return s.repo.CountActive(ctx)
 }
 
 // DeleteKey removes a non-current signing key.
@@ -207,16 +220,27 @@ func (s *SigningKeyService) DecryptPrivateKey(ctx context.Context, key *storage.
 	return s.encryption.Decrypt(ctx, key.PrivateKeyEncrypted, signingKeyEncCtx(key.KID))
 }
 
-// signingKeyEncCtx returns the encryption context AAD for a signing key.
-//
-// ADR 008 specifies service_id as a UUID identifying a ThirdpartyOAuth2Service.
-// Signing keys are not per-service entities, so we use a prefixed KID instead
-// of a bare UUID to avoid collisions with service IDs while keeping a single
-// context key. This is a documented deviation from the UUID-only invariant.
-func signingKeyEncCtx(kid id.KeyID) map[string]string {
-	return map[string]string{
-		"service_id": "signing_key:" + kid.String(),
+func newSigningKeySubject(kid id.KeyID) (domainencryption.BranchKeySubject, error) {
+	subject := domainencryption.NewSigningKeyBranchKeySubject(kid)
+	if err := subject.Validate(); err != nil {
+		return domainencryption.BranchKeySubject{}, fmt.Errorf("invalid signing key subject: %w", err)
 	}
+	return subject, nil
+}
+
+func (s *SigningKeyService) warnOrphanedBranchKey(message string, kid id.KeyID, branchKeyID string) {
+	if branchKeyID == "" {
+		s.logger.Debug("skipping orphan warning: branch key ID is empty (noop backend or unexpected empty return)", "kid", kid)
+		return
+	}
+	s.logger.Warn(message, "kid", kid, "branch_key_id", branchKeyID)
+}
+
+// signingKeyEncCtx returns the encryption context AAD for a signing key.
+// The signing-key subject uses the well-known JWT kid term in AAD and routes the
+// hierarchical keyring to the dedicated signing-key branch key namespace.
+func signingKeyEncCtx(kid id.KeyID) map[string]string {
+	return domainencryption.NewSigningKeyBranchKeySubject(kid).EncryptionContext()
 }
 
 func generateES256KeyPEM() ([]byte, error) {

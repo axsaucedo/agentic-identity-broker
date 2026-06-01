@@ -313,7 +313,7 @@ func TestEncryption_BranchKeyManagerCreate(t *testing.T) {
 	// Use a service ID not pre-provisioned in bootstrap so we exercise real creation.
 	newServiceID := id.MustParseServiceID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
-	branchKeyID, err := manager.Create(ctx, newServiceID)
+	branchKeyID, err := manager.Create(ctx, encryption.NewServiceBranchKeySubject(newServiceID))
 	require.NoError(t, err, "BranchKeyManager.Create should succeed for a new service")
 	require.NotEmpty(t, branchKeyID, "returned branch key ID should not be empty")
 
@@ -327,6 +327,117 @@ func TestEncryption_BranchKeyManagerCreate(t *testing.T) {
 	decrypted, err := adapter.Decrypt(ctx, ct, encCtx)
 	require.NoError(t, err, "decryption after Create should succeed")
 	assert.Equal(t, string(plaintext), string(decrypted))
+}
+
+func TestEncryption_BranchKeyManagerCreate_SigningKey(t *testing.T) {
+	ctx := context.Background()
+	ls := requireSharedLS(t)
+
+	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+	adapter, manager, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+
+	signingKeyKID := id.NewKeyID("cccccccc-dddd-eeee-ffff-000000000000")
+
+	branchKeyID, err := manager.Create(ctx, encryption.NewSigningKeyBranchKeySubject(signingKeyKID))
+	require.NoError(t, err, "BranchKeyManager.Create should succeed for a signing key subject")
+	assert.Equal(t, "key_"+signingKeyKID.String()+"_branch_key", branchKeyID)
+
+	plaintext := []byte("token-for-new-signing-key")
+	encCtx := map[string]string{"kid": signingKeyKID.String()}
+
+	ct, err := adapter.Encrypt(ctx, plaintext, encCtx)
+	require.NoError(t, err, "encryption after Create should succeed for signing keys")
+
+	decrypted, err := adapter.Decrypt(ctx, ct, encCtx)
+	require.NoError(t, err, "decryption after Create should succeed for signing keys")
+	assert.Equal(t, string(plaintext), string(decrypted))
+}
+
+func TestEncryption_CrossNamespaceIsolation(t *testing.T) {
+	ctx := context.Background()
+	ls := requireSharedLS(t)
+
+	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+	adapter, manager, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+
+	signingKeyKIDA := id.NewKeyID("cross-namespace-kid-a")
+	signingKeyKIDB := id.NewKeyID("cross-namespace-kid-b")
+
+	_, err = manager.Create(ctx, encryption.NewSigningKeyBranchKeySubject(signingKeyKIDA))
+	require.NoError(t, err)
+	_, err = manager.Create(ctx, encryption.NewSigningKeyBranchKeySubject(signingKeyKIDB))
+	require.NoError(t, err)
+
+	signingCtxA := map[string]string{"kid": signingKeyKIDA.String()}
+	signingCtxB := map[string]string{"kid": signingKeyKIDB.String()}
+	serviceCtx := map[string]string{"service_id": testServiceOAuth2}
+
+	signingPlaintext := []byte("token-for-signing-kid-a")
+	signingCiphertext, err := adapter.Encrypt(ctx, signingPlaintext, signingCtxA)
+	require.NoError(t, err)
+
+	servicePlaintext := []byte("token-for-service-namespace")
+	serviceCiphertext, err := adapter.Encrypt(ctx, servicePlaintext, serviceCtx)
+	require.NoError(t, err)
+
+	cases := []struct {
+		name       string
+		ciphertext []byte
+		decCtx     map[string]string
+		plaintext  []byte
+		wantErr    bool
+	}{
+		{
+			name:       "signing key decrypts with original kid",
+			ciphertext: signingCiphertext,
+			decCtx:     signingCtxA,
+			plaintext:  signingPlaintext,
+		},
+		{
+			name:       "signing key ciphertext rejects different kid",
+			ciphertext: signingCiphertext,
+			decCtx:     signingCtxB,
+			wantErr:    true,
+		},
+		{
+			name:       "signing key ciphertext rejects service namespace",
+			ciphertext: signingCiphertext,
+			decCtx:     serviceCtx,
+			wantErr:    true,
+		},
+		{
+			name:       "service ciphertext decrypts with original service",
+			ciphertext: serviceCiphertext,
+			decCtx:     serviceCtx,
+			plaintext:  servicePlaintext,
+		},
+		{
+			name:       "service ciphertext rejects signing key namespace",
+			ciphertext: serviceCiphertext,
+			decCtx:     signingCtxA,
+			wantErr:    true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			decrypted, err := adapter.Decrypt(ctx, tc.ciphertext, tc.decCtx)
+			if tc.wantErr {
+				require.Error(t, err)
+				require.Empty(t, decrypted)
+				assert.True(t, isContextMismatchError(err) || isDecryptionFailedError(err) || isIntegrityViolationError(err),
+					"expected namespace isolation error, got: %v (%T)", err, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, string(tc.plaintext), string(decrypted))
+		})
+	}
 }
 
 // TestEncryption_BranchKeyManagerCreate_Idempotent verifies that calling Create twice for the
@@ -346,7 +457,7 @@ func TestEncryption_BranchKeyManagerCreate_Idempotent(t *testing.T) {
 	encCtx := map[string]string{"service_id": duplicateServiceID.String()}
 
 	// First creation.
-	id1, err := manager.Create(ctx, duplicateServiceID)
+	id1, err := manager.Create(ctx, encryption.NewServiceBranchKeySubject(duplicateServiceID))
 	require.NoError(t, err, "first Create should succeed")
 
 	// Encrypt with the first key.
@@ -355,7 +466,7 @@ func TestEncryption_BranchKeyManagerCreate_Idempotent(t *testing.T) {
 	require.NoError(t, err)
 
 	// Second creation — must not error and must not invalidate the existing ciphertext.
-	id2, err := manager.Create(ctx, duplicateServiceID)
+	id2, err := manager.Create(ctx, encryption.NewServiceBranchKeySubject(duplicateServiceID))
 	require.NoError(t, err, "second Create (duplicate) should succeed idempotently")
 	assert.Equal(t, id1, id2, "idempotent Create should return the same branch key ID")
 

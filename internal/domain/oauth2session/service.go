@@ -30,6 +30,7 @@ import (
 
 	"golang.org/x/oauth2"
 
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
@@ -433,9 +434,8 @@ func (s *OAuth2SessionService) createSession(
 
 	// Create encryption context for this session bound to service (cryptographic service isolation)
 	// This ensures tokens encrypted for one service cannot be decrypted with another service's context
-	encryptionContext := map[string]string{
-		"service_id": serviceID.String(),
-	}
+	serviceSubject := domainencryption.NewServiceBranchKeySubject(serviceID)
+	encryptionContext := serviceSubject.EncryptionContext()
 
 	// Encrypt access token
 	encryptedAccess, err = s.encryption.Encrypt(ctx, []byte(token.AccessToken), encryptionContext)
@@ -738,9 +738,8 @@ func (s *OAuth2SessionService) UpdateSessionTokens(
 	}
 
 	// Build encryption context for this session - uses service_id only
-	encContext := map[string]string{
-		"service_id": session.ServiceID.String(),
-	}
+	serviceSubject := domainencryption.NewServiceBranchKeySubject(session.ServiceID)
+	encContext := serviceSubject.EncryptionContext()
 
 	// Encrypt new access token
 	encryptedAccess, err := s.encryption.Encrypt(ctx, []byte(newToken.AccessToken), encContext)
@@ -804,9 +803,8 @@ func (s *OAuth2SessionService) DecryptAccessToken(
 		return "", fmt.Errorf("session cannot be nil")
 	}
 
-	encContext := map[string]string{
-		"service_id": session.ServiceID.String(),
-	}
+	serviceSubject := domainencryption.NewServiceBranchKeySubject(session.ServiceID)
+	encContext := serviceSubject.EncryptionContext()
 
 	accessToken, err := s.encryption.Decrypt(ctx, session.EncryptedAccessToken, encContext)
 	if err != nil {
@@ -831,9 +829,8 @@ func (s *OAuth2SessionService) DecryptRefreshToken(
 		return "", nil
 	}
 
-	encContext := map[string]string{
-		"service_id": session.ServiceID.String(),
-	}
+	serviceSubject := domainencryption.NewServiceBranchKeySubject(session.ServiceID)
+	encContext := serviceSubject.EncryptionContext()
 
 	refreshToken, err := s.encryption.Decrypt(ctx, session.EncryptedRefreshToken, encContext)
 	if err != nil {

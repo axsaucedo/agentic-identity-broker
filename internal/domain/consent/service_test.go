@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/permissionset"
@@ -27,6 +28,16 @@ import (
 // Adapter-layer and integration tests should use testutil.NewTestEncryptionAdapter(t)
 // for real AES-256-GCM roundtrips.
 type testEncryption struct{}
+
+type noopBranchKeyManager struct{}
+
+func newNoopBranchKeyManager() *noopBranchKeyManager {
+	return &noopBranchKeyManager{}
+}
+
+func (m *noopBranchKeyManager) Create(_ context.Context, _ domainencryption.BranchKeySubject) (string, error) {
+	return "", nil
+}
 
 func (e *testEncryption) Encrypt(_ context.Context, plaintext []byte, _ map[string]string) ([]byte, error) {
 	out := make([]byte, len(plaintext))
@@ -48,7 +59,7 @@ func (e *testEncryption) Decrypt(_ context.Context, ciphertext []byte, _ map[str
 // with a non-identity test double for encryption. Used in domain-layer tests that exercise
 // consent business logic, not encryption correctness.
 func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &testEncryption{}, nil, nil, false, nil)
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &testEncryption{}, newNoopBranchKeyManager(), nil, false, nil)
 }
 
 // Mock implementations for testing
