@@ -88,7 +88,11 @@ func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm stri
 		return nil, fmt.Errorf("failed to generate key pair: %w", err)
 	}
 
-	signingKeySubject := domainencryption.NewSigningKeyBranchKeySubject(kid)
+	signingKeySubject, err := newSigningKeySubject(kid)
+	if err != nil {
+		return nil, err
+	}
+
 	branchKeyID, err := s.branchKeyManager.Create(ctx, signingKeySubject)
 	if err != nil {
 		return nil, fmt.Errorf("failed to provision branch key for signing key: %w", err)
@@ -212,6 +216,14 @@ func (s *SigningKeyService) DeleteKey(ctx context.Context, kid id.KeyID) error {
 // DecryptPrivateKey decrypts the private key material of a signing key.
 func (s *SigningKeyService) DecryptPrivateKey(ctx context.Context, key *storage.SigningKey) ([]byte, error) {
 	return s.encryption.Decrypt(ctx, key.PrivateKeyEncrypted, signingKeyEncCtx(key.KID))
+}
+
+func newSigningKeySubject(kid id.KeyID) (domainencryption.BranchKeySubject, error) {
+	subject := domainencryption.NewSigningKeyBranchKeySubject(kid)
+	if err := subject.Validate(); err != nil {
+		return domainencryption.BranchKeySubject{}, fmt.Errorf("invalid signing key subject: %w", err)
+	}
+	return subject, nil
 }
 
 func (s *SigningKeyService) warnOrphanedBranchKey(message string, kid id.KeyID, branchKeyID string) {

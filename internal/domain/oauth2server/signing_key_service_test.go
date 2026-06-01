@@ -116,6 +116,22 @@ func newTestSigningKeyServiceWithBranchKeyManagerAndEncryptor(bkm ports.BranchKe
 	return NewSigningKeyService(repo, enc, bkm, logger), repo
 }
 
+func TestNewSigningKeySubject(t *testing.T) {
+	t.Run("valid kid", func(t *testing.T) {
+		subject, err := newSigningKeySubject(id.NewKeyID("kid-123"))
+		require.NoError(t, err)
+		assert.Equal(t, domainencryption.BranchKeySubjectKindSigningKey, subject.Kind())
+		assert.Equal(t, "kid-123", subject.Identifier())
+	})
+
+	t.Run("empty kid", func(t *testing.T) {
+		_, err := newSigningKeySubject(id.KeyID(""))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid signing key subject")
+		assert.Contains(t, err.Error(), "kid is required")
+	})
+}
+
 func TestSigningKeyService_GenerateAndStoreKey(t *testing.T) {
 	t.Run("generates ES256 key pair", func(t *testing.T) {
 		svc, _ := newTestSigningKeyService()
