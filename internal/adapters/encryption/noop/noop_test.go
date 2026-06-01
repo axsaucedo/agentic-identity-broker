@@ -13,9 +13,26 @@ import (
 
 func TestBranchKeyManagerCreate(t *testing.T) {
 	manager := &BranchKeyManager{}
-	subject := domainencryption.NewServiceBranchKeySubject(id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"))
 
-	branchKeyID, err := manager.Create(context.Background(), subject)
-	require.NoError(t, err)
-	assert.Empty(t, branchKeyID)
+	tests := []struct {
+		name    string
+		subject domainencryption.BranchKeySubject
+	}{
+		{
+			name:    "service subject",
+			subject: domainencryption.NewServiceBranchKeySubject(id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000")),
+		},
+		{
+			name:    "signing key subject",
+			subject: domainencryption.NewSigningKeyBranchKeySubject(id.NewKeyID("kid-123")),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			branchKeyID, err := manager.Create(context.Background(), tt.subject)
+			require.NoError(t, err)
+			assert.Empty(t, branchKeyID)
+		})
+	}
 }
