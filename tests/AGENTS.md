@@ -38,7 +38,6 @@ tests/integration/
   infra/                           Infra-backed integration tests (build tag: integration)
     main_test.go                   Shared LocalStack suite lifecycle
     encryption_vault_keyring_test.go AWS KMS hierarchical keyring with LocalStack
-    agent_repository_service_requirements_test.go  Tagged service requirement coverage
     agent_service_requirements_migration_test.go   Migration verification for service requirements
   storage/
     lifecycle_test.go              Memory adapter full lifecycle + concurrency

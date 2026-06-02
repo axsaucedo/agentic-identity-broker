@@ -890,3 +890,147 @@ func TestAgentRepository_PermissionSets_RoundTrip(t *testing.T) {
 		assert.Equal(t, psID3, byClientID.PermissionSets[0].PermissionSetID)
 	})
 }
+
+func TestAgentRepository_ServiceRequirements_RoundTrip(t *testing.T) {
+	adapter, cleanup := setupAgentTestDB(t)
+	defer cleanup()
+
+	repo := NewAgentRepository(adapter)
+	ctx := context.Background()
+
+	findListedAgent := func(t *testing.T, agentID id.AgentID) *storage.Agent {
+		t.Helper()
+
+		agents, err := repo.List(ctx)
+		require.NoError(t, err)
+		for _, agent := range agents {
+			if agent.ID == agentID {
+				return agent
+			}
+		}
+
+		t.Fatalf("agent %s not found in list", agentID)
+		return nil
+	}
+
+	t.Run("create preserves service requirements across read methods", func(t *testing.T) {
+		now := time.Now().UTC()
+		githubID := id.MustParseServiceID("c1234567-1111-1111-1111-111111111111")
+		gitlabID := id.MustParseServiceID("c1234567-2222-2222-2222-222222222222")
+		clientID := id.ClientID("sr-roundtrip-client")
+		agent := &storage.Agent{
+			ClientID:    &clientID,
+			DisplayName: "Service Requirements Round-trip",
+			Description: "Agent to verify service requirement persistence",
+			ServiceRequirements: []storage.ServiceRequirement{
+				{
+					ServiceID:       githubID,
+					RequirementType: storage.RequirementTypeMandatory,
+					RequiredScopes:  []string{"repo", "user:email"},
+				},
+				{
+					ServiceID:       gitlabID,
+					RequirementType: storage.RequirementTypeOptional,
+					RequiredScopes:  []string{"api"},
+				},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+
+		err := repo.Create(ctx, agent)
+		require.NoError(t, err)
+
+		retrieved, err := repo.Get(ctx, agent.ID)
+		require.NoError(t, err)
+		assert.Equal(t, agent.ServiceRequirements, retrieved.ServiceRequirements)
+
+		listed := findListedAgent(t, agent.ID)
+		assert.Equal(t, agent.ServiceRequirements, listed.ServiceRequirements)
+
+		byClientID, err := repo.GetByClientID(ctx, *agent.ClientID)
+		require.NoError(t, err)
+		assert.Equal(t, agent.ServiceRequirements, byClientID.ServiceRequirements)
+	})
+
+	t.Run("update replaces service requirements", func(t *testing.T) {
+		now := time.Now().UTC()
+		githubID := id.MustParseServiceID("c1234567-3333-3333-3333-333333333333")
+		slackID := id.MustParseServiceID("c1234567-4444-4444-4444-444444444444")
+		clientID := id.ClientID("sr-update-client")
+		agent := &storage.Agent{
+			ClientID:    &clientID,
+			DisplayName: "Service Requirements Update",
+			Description: "Agent to verify service requirement replacement",
+			ServiceRequirements: []storage.ServiceRequirement{
+				{
+					ServiceID:       githubID,
+					RequirementType: storage.RequirementTypeMandatory,
+					RequiredScopes:  []string{"repo"},
+				},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+
+		err := repo.Create(ctx, agent)
+		require.NoError(t, err)
+
+		updated := agent.Copy()
+		updated.ServiceRequirements = []storage.ServiceRequirement{
+			{
+				ServiceID:       slackID,
+				RequirementType: storage.RequirementTypeOptional,
+				RequiredScopes:  []string{"users:read", "channels:read"},
+			},
+		}
+		updated.UpdatedAt = time.Now().UTC()
+
+		err = repo.Update(ctx, updated)
+		require.NoError(t, err)
+
+		retrieved, err := repo.Get(ctx, agent.ID)
+		require.NoError(t, err)
+		assert.Equal(t, updated.ServiceRequirements, retrieved.ServiceRequirements)
+	})
+
+	t.Run("nil service requirements remain nil", func(t *testing.T) {
+		now := time.Now().UTC()
+		clientID := id.ClientID("sr-nil-client")
+		agent := &storage.Agent{
+			ClientID:    &clientID,
+			DisplayName: "Service Requirements Nil",
+			Description: "Agent without service requirements",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+
+		err := repo.Create(ctx, agent)
+		require.NoError(t, err)
+
+		retrieved, err := repo.Get(ctx, agent.ID)
+		require.NoError(t, err)
+		assert.Nil(t, retrieved.ServiceRequirements)
+	})
+
+	t.Run("empty service requirements remain an empty slice", func(t *testing.T) {
+		now := time.Now().UTC()
+		clientID := id.ClientID("sr-empty-client")
+		agent := &storage.Agent{
+			ClientID:            &clientID,
+			DisplayName:         "Service Requirements Empty",
+			Description:         "Agent with empty service requirements",
+			ServiceRequirements: []storage.ServiceRequirement{},
+			CreatedAt:           now,
+			UpdatedAt:           now,
+		}
+
+		err := repo.Create(ctx, agent)
+		require.NoError(t, err)
+
+		retrieved, err := repo.Get(ctx, agent.ID)
+		require.NoError(t, err)
+		require.NotNil(t, retrieved.ServiceRequirements)
+		assert.Len(t, retrieved.ServiceRequirements, 0)
+	})
+}
