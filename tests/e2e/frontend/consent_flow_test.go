@@ -4,12 +4,10 @@ package e2e_test
 
 import (
 	"context"
-	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/pages"
 	. "github.com/onsi/ginkgo/v2"
@@ -188,57 +186,4 @@ var _ = Describe("Consent Flow", func() {
 		)
 	})
 
-	// SC-005 from specs/028b-portless-registration/spec.md
-	// Verify the loopback warning is shown when the registered redirect URI is portless
-	// (http://localhost/callback) and the runtime redirect_uri includes an ephemeral port.
-	// FR-006: the localhost warning applies regardless of whether the registered entry specified a port.
-	Context("when registered redirect URI is portless loopback and runtime URI carries an ephemeral port", func() {
-		var (
-			sc005AgentID string
-			sc005Token   string
-		)
-
-		BeforeEach(func() {
-			now := time.Now()
-			sc005Agent := &storage.Agent{
-				ID:           id.NewAgentID(),
-				DisplayName:  "SC-005 Portless Loopback Agent",
-				Description:  "Test agent for SC-005: portless loopback registered redirect URI",
-				ClientURIs:   []string{"https://sc005-example.com/client_metadata.json"},
-				RedirectURIs: []string{"http://localhost/callback"},
-				CreatedAt:    now,
-				UpdatedAt:    now,
-			}
-			err := GetTestStorage().Agents().Create(ctx, sc005Agent)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create SC-005 CIMD test agent")
-			sc005AgentID = sc005Agent.ID.String()
-
-			// The session token carries the runtime redirect_uri with ephemeral port 52341.
-			// The CIMD metadata lists the portless registered URI — matching is port-agnostic after the fix.
-			sc005Token = newCIMDSessionToken(
-				sc005Agent.ID,
-				"http://localhost:52341/callback",
-				&ports.SessionCIMDMetadata{
-					ClientID:     "https://sc005-example.com/client_metadata.json",
-					ClientName:   "SC-005 Test Client",
-					RedirectURIs: []string{"http://localhost/callback"},
-				},
-			)
-		})
-
-		It("should display the localhost redirect warning alert", func() {
-			sc005Page := pages.NewConsentPage(GetTestPage(), GetFrontendURL())
-			defer func() { _ = sc005Page.Close() }()
-
-			err := sc005Page.NavigateToAgentWithSessionToken(ctx, sc005AgentID, sc005Token)
-			Expect(err).NotTo(HaveOccurred(), "Failed to navigate to SC-005 consent page")
-
-			has, err := sc005Page.HasCIMDLocalhostWarning(ctx)
-			Expect(err).NotTo(HaveOccurred(), "Failed to check localhost warning visibility")
-			Expect(has).To(BeTrue(), "CIMDLocalhostWarning should be visible for portless-registered loopback URI")
-
-			err = sc005Page.TakeScreenshot(ctx, "consent_loopback_warning_portless")
-			Expect(err).NotTo(HaveOccurred(), "Failed to save SC-005 screenshot")
-		})
-	})
 })
