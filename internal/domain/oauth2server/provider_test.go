@@ -386,6 +386,44 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 		assert.Equal(t, "Bearer", resp.TokenType)
 	})
 
+	t.Run("portless loopback registration survives authorize and exchange on ephemeral port", func(t *testing.T) {
+		provider, agentRepo, _ := newTestProvider(t)
+		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
+		agent.RedirectURIs = []string{"http://localhost/callback"}
+		require.NoError(t, agentRepo.Update(context.Background(), agent))
+
+		verifier := "loopback-ephemeral-port-verifier-abcdefghij"
+		challenge := generateS256Challenge(verifier)
+		redirectURI := "http://localhost:52341/callback"
+
+		code, err := provider.HandleAuthorize(
+			context.Background(),
+			agent.ID.String(),
+			redirectURI,
+			"code",
+			"read",
+			"state",
+			challenge,
+			"S256",
+			id.NewPrincipal("user@example.com"),
+		)
+		require.NoError(t, err)
+		require.NotEmpty(t, code)
+
+		resp, err := provider.HandleAuthorizationCodeExchange(
+			context.Background(),
+			agent.ID.String(),
+			plaintext,
+			code,
+			redirectURI,
+			verifier,
+		)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.NotEmpty(t, resp.AccessToken)
+		assert.Equal(t, "Bearer", resp.TokenType)
+	})
+
 	t.Run("code replay rejected", func(t *testing.T) {
 		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
