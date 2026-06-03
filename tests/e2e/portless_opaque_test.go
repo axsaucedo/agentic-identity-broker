@@ -3,7 +3,6 @@ package e2e_test
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -65,14 +64,15 @@ var _ = Describe("Portless Redirect URI — Opaque Agent", func() {
 
 	// SC-006 from specs/028b-portless-registration/spec.md
 	It("accepts a different ephemeral port for an opaque agent with explicit-port loopback redirect URI", func() {
-		resp, err := server.AuthenticatedGET(
-			authorizeURL(agent.ID.String(), "http://localhost:9999/callback"),
+		completeAuthorizationCodeFlow(
+			server,
 			fixtures.DefaultPrincipal().String(),
+			agent.ID.String(),
+			"http://localhost:9999/callback",
+			func(data map[string]any) {
+				_, hasCIMDMetadata := data["cimd_metadata"]
+				Expect(hasCIMDMetadata).To(BeFalse(), "opaque client flows must not surface cimd_metadata")
+			},
 		)
-		Expect(err).ToNot(HaveOccurred())
-		defer func() { _ = resp.Body.Close() }()
-
-		Expect(resp.StatusCode).To(Equal(http.StatusFound))
-		Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent"))
 	})
 })

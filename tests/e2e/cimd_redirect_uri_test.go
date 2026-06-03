@@ -28,6 +28,13 @@ func authorizeURL(clientID, redirectURI string) string {
 	)
 }
 
+func assertCIMDConsentContext(data map[string]any, redirectURI string, verifiedDomain string) {
+	cimdMeta, ok := data["cimd_metadata"].(map[string]any)
+	Expect(ok).To(BeTrue(), "cimd_metadata should be present")
+	Expect(cimdMeta["redirect_uri"]).To(Equal(redirectURI))
+	Expect(cimdMeta["verified_domain"]).To(Equal(verifiedDomain))
+}
+
 var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() {
 	var (
 		logger         *slog.Logger
@@ -108,41 +115,41 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 
 		// Scenario US1.1 from specs/028b-portless-registration/spec.md
 		It("accepts ephemeral port 52341 when portless URI is registered", func() {
-			resp, err := server.AuthenticatedGET(
-				authorizeURL(clientURL, "http://localhost:52341/callback"),
+			completeAuthorizationCodeFlow(
+				server,
 				fixtures.DefaultPrincipal().String(),
+				clientURL,
+				"http://localhost:52341/callback",
+				func(data map[string]any) {
+					assertCIMDConsentContext(data, "http://localhost:52341/callback", fakeHost)
+				},
 			)
-			Expect(err).ToNot(HaveOccurred())
-			defer func() { _ = resp.Body.Close() }()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusFound))
-			Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent"))
 		})
 
 		// Scenario US1.2 from specs/028b-portless-registration/spec.md
 		It("accepts ephemeral port 8080 when portless URI is registered", func() {
-			resp, err := server.AuthenticatedGET(
-				authorizeURL(clientURL, "http://localhost:8080/callback"),
+			completeAuthorizationCodeFlow(
+				server,
 				fixtures.DefaultPrincipal().String(),
+				clientURL,
+				"http://localhost:8080/callback",
+				func(data map[string]any) {
+					assertCIMDConsentContext(data, "http://localhost:8080/callback", fakeHost)
+				},
 			)
-			Expect(err).ToNot(HaveOccurred())
-			defer func() { _ = resp.Body.Close() }()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusFound))
-			Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent"))
 		})
 
 		// Scenario US1.3 from specs/028b-portless-registration/spec.md
 		It("accepts portless request when portless URI is registered", func() {
-			resp, err := server.AuthenticatedGET(
-				authorizeURL(clientURL, "http://localhost/callback"),
+			completeAuthorizationCodeFlow(
+				server,
 				fixtures.DefaultPrincipal().String(),
+				clientURL,
+				"http://localhost/callback",
+				func(data map[string]any) {
+					assertCIMDConsentContext(data, "http://localhost/callback", fakeHost)
+				},
 			)
-			Expect(err).ToNot(HaveOccurred())
-			defer func() { _ = resp.Body.Close() }()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusFound))
-			Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent"))
 		})
 
 		// Scenario US1.4 from specs/028b-portless-registration/spec.md
@@ -212,28 +219,28 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 
 		// Scenario US2.1 from specs/028b-portless-registration/spec.md
 		It("accepts a different ephemeral port when explicit port :3000 is registered", func() {
-			resp, err := server.AuthenticatedGET(
-				authorizeURL(clientURL, "http://localhost:9999/callback"),
+			completeAuthorizationCodeFlow(
+				server,
 				fixtures.DefaultPrincipal().String(),
+				clientURL,
+				"http://localhost:9999/callback",
+				func(data map[string]any) {
+					assertCIMDConsentContext(data, "http://localhost:9999/callback", fakeHost)
+				},
 			)
-			Expect(err).ToNot(HaveOccurred())
-			defer func() { _ = resp.Body.Close() }()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusFound))
-			Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent"))
 		})
 
 		// Scenario US2.2 from specs/028b-portless-registration/spec.md
 		It("accepts portless request when explicit port :3000 is registered", func() {
-			resp, err := server.AuthenticatedGET(
-				authorizeURL(clientURL, "http://localhost/callback"),
+			completeAuthorizationCodeFlow(
+				server,
 				fixtures.DefaultPrincipal().String(),
+				clientURL,
+				"http://localhost/callback",
+				func(data map[string]any) {
+					assertCIMDConsentContext(data, "http://localhost/callback", fakeHost)
+				},
 			)
-			Expect(err).ToNot(HaveOccurred())
-			defer func() { _ = resp.Body.Close() }()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusFound))
-			Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent"))
 		})
 	})
 
@@ -290,15 +297,15 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 
 		// Scenario US2.3 from specs/028b-portless-registration/spec.md
 		It("accepts a different ephemeral port for 127.0.0.1 loopback registration", func() {
-			resp, err := server.AuthenticatedGET(
-				authorizeURL(clientURL, "http://127.0.0.1:51234/callback"),
+			completeAuthorizationCodeFlow(
+				server,
 				fixtures.DefaultPrincipal().String(),
+				clientURL,
+				"http://127.0.0.1:51234/callback",
+				func(data map[string]any) {
+					assertCIMDConsentContext(data, "http://127.0.0.1:51234/callback", fakeHost)
+				},
 			)
-			Expect(err).ToNot(HaveOccurred())
-			defer func() { _ = resp.Body.Close() }()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusFound))
-			Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent"))
 		})
 	})
 
@@ -368,15 +375,15 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 
 		// Scenario US3.3 from specs/028b-portless-registration/spec.md
 		It("accepts exact match for non-loopback URI", func() {
-			resp, err := server.AuthenticatedGET(
-				authorizeURL(clientURL, "https://"+fakeHost+"/callback"),
+			completeAuthorizationCodeFlow(
+				server,
 				fixtures.DefaultPrincipal().String(),
+				clientURL,
+				"https://"+fakeHost+"/callback",
+				func(data map[string]any) {
+					assertCIMDConsentContext(data, "https://"+fakeHost+"/callback", fakeHost)
+				},
 			)
-			Expect(err).ToNot(HaveOccurred())
-			defer func() { _ = resp.Body.Close() }()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusFound))
-			Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent"))
 		})
 	})
 
