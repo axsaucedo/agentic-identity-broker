@@ -50,6 +50,7 @@ func TestMatchesRedirectURI(t *testing.T) {
 		{"loopback: explicit port reg, portless request", "http://localhost:3000/cb", "http://localhost/cb", true},
 		{"loopback: both portless", "http://localhost/cb", "http://localhost/cb", true},
 		{"loopback: 127.0.0.1 different ports", "http://127.0.0.1:8080/cb", "http://127.0.0.1:51234/cb", true},
+		{"loopback: [::1] different ports", "http://[::1]:8080/cb", "http://[::1]:51234/cb", true},
 		// Loopback — other components must still match
 		{"loopback: path mismatch", "http://localhost/cb", "http://localhost:3000/other", false},
 		{"loopback: scheme mismatch", "http://localhost/cb", "https://localhost/cb", false},

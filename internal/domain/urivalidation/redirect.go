@@ -38,9 +38,9 @@ func IsValidRedirectURI(uriStr string) bool {
 }
 
 // MatchesRedirectURI reports whether incoming matches registered for redirect URI
-// validation. For loopback hosts (localhost, 127.0.0.1) the port is ignored per
-// RFC 8252 §7.3; all other components must match exactly. For non-loopback hosts
-// all four URI components must match exactly.
+// validation. For loopback hosts (localhost, 127.0.0.1, [::1]) the port is ignored
+// per RFC 8252 §7.3; all other components must match exactly. For non-loopback
+// hosts all four URI components must match exactly.
 func MatchesRedirectURI(registered, incoming string) bool {
 	r, err := url.Parse(registered)
 	if err != nil || r.Host == "" {
@@ -50,7 +50,7 @@ func MatchesRedirectURI(registered, incoming string) bool {
 	if err != nil || in.Host == "" {
 		return false
 	}
-	if h := r.Hostname(); h == "localhost" || h == "127.0.0.1" {
+	if h := r.Hostname(); h == "localhost" || h == "127.0.0.1" || h == "::1" {
 		r.Host = h
 		in.Host = in.Hostname()
 	}
