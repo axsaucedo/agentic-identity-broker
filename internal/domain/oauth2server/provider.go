@@ -219,7 +219,7 @@ func (p *Provider) HandleAuthorize(
 	// Validate redirect_uri: must be registered and use HTTPS (or loopback HTTP).
 	// GetRedirectURIs() returns the agent's registered URIs for confidential clients,
 	// and the CIMD document's redirect_uris for public (CIMD) clients.
-	if !contains(fositeClient.GetRedirectURIs(), redirectURI) {
+	if !containsRedirectURI(fositeClient.GetRedirectURIs(), redirectURI) {
 		return "", fmt.Errorf("%w: %w", ErrInvalidRedirectURI,
 			fosite.ErrInvalidRequest.WithHintf("redirect_uri %q is not registered for this client", redirectURI))
 	}
@@ -235,7 +235,7 @@ func (p *Provider) HandleAuthorize(
 	scopes := splitScope(scope)
 	if len(agent.AllowedScopes) > 0 && len(scopes) > 0 {
 		for _, s := range scopes {
-			if !contains(agent.AllowedScopes, s) {
+			if !containsScope(agent.AllowedScopes, s) {
 				return "", fosite.ErrInvalidScope.WithHintf("scope %q is not allowed for this client", s)
 			}
 		}
@@ -374,9 +374,18 @@ func splitScope(scope string) fosite.Arguments {
 	return strings.Split(scope, " ")
 }
 
-func contains(list []string, item string) bool {
+func containsRedirectURI(list []string, item string) bool {
 	for _, v := range list {
 		if urivalidation.MatchesRedirectURI(v, item) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsScope(list []string, scope string) bool {
+	for _, candidate := range list {
+		if candidate == scope {
 			return true
 		}
 	}

@@ -199,6 +199,50 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 		assert.NotEmpty(t, code)
 	})
 
+	t.Run("allowed scope exact match succeeds even when redirect URI matching is port-agnostic", func(t *testing.T) {
+		provider, agentRepo, _ := newTestProvider(t)
+		agent, _, _ := setupTestCredentials(t, provider, agentRepo)
+		agent.RedirectURIs = []string{"http://localhost:3000/callback"}
+		agent.AllowedScopes = []string{"repo", "user"}
+		require.NoError(t, agentRepo.Update(context.Background(), agent))
+
+		code, err := provider.HandleAuthorize(
+			context.Background(),
+			agent.ID.String(),
+			"http://localhost:52341/callback",
+			"code",
+			"repo",
+			"state",
+			"challenge123",
+			"S256",
+			id.NewPrincipal("user@example.com"),
+		)
+		require.NoError(t, err)
+		assert.NotEmpty(t, code)
+	})
+
+	t.Run("disallowed scope is rejected when allowed scopes are configured", func(t *testing.T) {
+		provider, agentRepo, _ := newTestProvider(t)
+		agent, _, _ := setupTestCredentials(t, provider, agentRepo)
+		agent.RedirectURIs = []string{"http://localhost:3000/callback"}
+		agent.AllowedScopes = []string{"repo", "user"}
+		require.NoError(t, agentRepo.Update(context.Background(), agent))
+
+		_, err := provider.HandleAuthorize(
+			context.Background(),
+			agent.ID.String(),
+			"http://localhost:52341/callback",
+			"code",
+			"admin",
+			"state",
+			"challenge123",
+			"S256",
+			id.NewPrincipal("user@example.com"),
+		)
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, ErrInvalidScope)
+	})
+
 	t.Run("missing code_challenge rejected", func(t *testing.T) {
 		provider, agentRepo, _ := newTestProvider(t)
 		agent, _, _ := setupTestCredentials(t, provider, agentRepo)
