@@ -7,14 +7,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
@@ -80,15 +77,10 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 				_, _ = w.Write(cimdDocument(clientURL, []string{"http://localhost/callback"}))
 			}))
 
-			now := time.Now()
-			agent := &storage.Agent{
-				ID:          id.NewAgentID(),
-				ClientURIs:  []string{clientURL},
-				DisplayName: "US1 Portless Agent",
-				Description: "CIMD agent with portless loopback redirect URI for 028b testing",
-				CreatedAt:   now,
-				UpdatedAt:   now,
-			}
+			agent := fixtures.LocalAgent()
+			agent.ClientURIs = []string{clientURL}
+			agent.DisplayName = "US1 Portless Agent"
+			agent.Description = "CIMD agent with portless loopback redirect URI for 028b testing"
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
 			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
@@ -114,7 +106,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 		})
 
 		// Scenario US1.1 from specs/028b-portless-registration/spec.md
-		It("accepts ephemeral port 52341 when portless URI is registered", func() {
+		It("should accept ephemeral port 52341 when portless URI is registered", func() {
 			completeAuthorizationCodeFlow(
 				server,
 				fixtures.DefaultPrincipal().String(),
@@ -127,7 +119,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 		})
 
 		// Scenario US1.2 from specs/028b-portless-registration/spec.md
-		It("accepts ephemeral port 8080 when portless URI is registered", func() {
+		It("should accept ephemeral port 8080 when portless URI is registered", func() {
 			completeAuthorizationCodeFlow(
 				server,
 				fixtures.DefaultPrincipal().String(),
@@ -140,7 +132,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 		})
 
 		// Scenario US1.3 from specs/028b-portless-registration/spec.md
-		It("accepts portless request when portless URI is registered", func() {
+		It("should accept portless request when portless URI is registered", func() {
 			completeAuthorizationCodeFlow(
 				server,
 				fixtures.DefaultPrincipal().String(),
@@ -153,7 +145,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 		})
 
 		// Scenario US1.4 from specs/028b-portless-registration/spec.md
-		It("rejects request with path mismatch even when host is loopback", func() {
+		It("should reject request with path mismatch even when host is loopback", func() {
 			resp, err := server.AuthenticatedGET(
 				authorizeURL(clientURL, "http://localhost:52341/other"),
 				fixtures.DefaultPrincipal().String(),
@@ -184,15 +176,10 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 				_, _ = w.Write(cimdDocument(clientURL, []string{"http://localhost:3000/callback"}))
 			}))
 
-			now := time.Now()
-			agent := &storage.Agent{
-				ID:          id.NewAgentID(),
-				ClientURIs:  []string{clientURL},
-				DisplayName: "US2 Explicit Port Agent",
-				Description: "CIMD agent with explicit-port loopback redirect URI for 028b testing",
-				CreatedAt:   now,
-				UpdatedAt:   now,
-			}
+			agent := fixtures.LocalAgent()
+			agent.ClientURIs = []string{clientURL}
+			agent.DisplayName = "US2 Explicit Port Agent"
+			agent.Description = "CIMD agent with explicit-port loopback redirect URI for 028b testing"
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
 			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
@@ -218,7 +205,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 		})
 
 		// Scenario US2.1 from specs/028b-portless-registration/spec.md
-		It("accepts a different ephemeral port when explicit port :3000 is registered", func() {
+		It("should accept a different ephemeral port when explicit port :3000 is registered", func() {
 			completeAuthorizationCodeFlow(
 				server,
 				fixtures.DefaultPrincipal().String(),
@@ -231,7 +218,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 		})
 
 		// Scenario US2.2 from specs/028b-portless-registration/spec.md
-		It("accepts portless request when explicit port :3000 is registered", func() {
+		It("should accept portless request when explicit port :3000 is registered", func() {
 			completeAuthorizationCodeFlow(
 				server,
 				fixtures.DefaultPrincipal().String(),
@@ -262,15 +249,10 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 				_, _ = w.Write(cimdDocument(clientURL, []string{"http://127.0.0.1:8080/callback"}))
 			}))
 
-			now := time.Now()
-			agent := &storage.Agent{
-				ID:          id.NewAgentID(),
-				ClientURIs:  []string{clientURL},
-				DisplayName: "US2b 127.0.0.1 Agent",
-				Description: "CIMD agent with 127.0.0.1 explicit-port redirect URI for 028b testing",
-				CreatedAt:   now,
-				UpdatedAt:   now,
-			}
+			agent := fixtures.LocalAgent()
+			agent.ClientURIs = []string{clientURL}
+			agent.DisplayName = "US2b 127.0.0.1 Agent"
+			agent.Description = "CIMD agent with 127.0.0.1 explicit-port redirect URI for 028b testing"
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
 			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
@@ -296,7 +278,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 		})
 
 		// Scenario US2.3 from specs/028b-portless-registration/spec.md
-		It("accepts a different ephemeral port for 127.0.0.1 loopback registration", func() {
+		It("should accept a different ephemeral port for 127.0.0.1 loopback registration", func() {
 			completeAuthorizationCodeFlow(
 				server,
 				fixtures.DefaultPrincipal().String(),
@@ -328,15 +310,10 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 				_, _ = w.Write(cimdDocument(clientURL, []string{"https://" + fakeHost + "/callback"}))
 			}))
 
-			now := time.Now()
-			agent := &storage.Agent{
-				ID:          id.NewAgentID(),
-				ClientURIs:  []string{clientURL},
-				DisplayName: "US3 Non-Loopback Agent",
-				Description: "CIMD agent with non-loopback HTTPS redirect URI for 028b testing",
-				CreatedAt:   now,
-				UpdatedAt:   now,
-			}
+			agent := fixtures.LocalAgent()
+			agent.ClientURIs = []string{clientURL}
+			agent.DisplayName = "US3 Non-Loopback Agent"
+			agent.Description = "CIMD agent with non-loopback HTTPS redirect URI for 028b testing"
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
 			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
@@ -362,7 +339,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 		})
 
 		// Scenario US3.1 from specs/028b-portless-registration/spec.md
-		It("rejects non-loopback request with a port when portless non-loopback URI is registered", func() {
+		It("should reject non-loopback request with a port when portless non-loopback URI is registered", func() {
 			resp, err := server.AuthenticatedGET(
 				authorizeURL(clientURL, "https://"+fakeHost+":9999/callback"),
 				fixtures.DefaultPrincipal().String(),
@@ -373,8 +350,8 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 		})
 
-		// Scenario US3.3 from specs/028b-portless-registration/spec.md
-		It("accepts exact match for non-loopback URI", func() {
+		// Additional coverage: exact match for portless non-loopback registration.
+		It("should accept exact match for non-loopback URI", func() {
 			completeAuthorizationCodeFlow(
 				server,
 				fixtures.DefaultPrincipal().String(),
@@ -398,23 +375,18 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 		const fakeHost = "cimd-e2e-us3b.test.invalid"
 
 		BeforeEach(func() {
-			clientURL = "https://" + fakeHost + "/client"
+			clientURL = "https://" + fakeHost + ":443/client"
 			// CIMD document advertises an explicit-port non-loopback redirect URI.
 			cimdServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write(cimdDocument(clientURL, []string{"https://" + fakeHost + ":8443/callback"}))
+				_, _ = w.Write(cimdDocument(clientURL, []string{"https://" + fakeHost + ":443/callback"}))
 			}))
 
-			now := time.Now()
-			agent := &storage.Agent{
-				ID:          id.NewAgentID(),
-				ClientURIs:  []string{clientURL},
-				DisplayName: "US3b Explicit-Port Non-Loopback Agent",
-				Description: "CIMD agent with explicit-port non-loopback redirect URI for 028b testing",
-				CreatedAt:   now,
-				UpdatedAt:   now,
-			}
+			agent := fixtures.LocalAgent()
+			agent.ClientURIs = []string{clientURL}
+			agent.DisplayName = "US3b Explicit-Port Non-Loopback Agent"
+			agent.Description = "CIMD agent with explicit-port non-loopback redirect URI for 028b testing"
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
 			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
@@ -440,7 +412,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 		})
 
 		// Scenario US3.2 from specs/028b-portless-registration/spec.md
-		It("rejects non-loopback request with a different port when explicit port :8443 is registered", func() {
+		It("should reject non-loopback request with a different port when explicit port :443 is registered", func() {
 			resp, err := server.AuthenticatedGET(
 				authorizeURL(clientURL, "https://"+fakeHost+":9000/callback"),
 				fixtures.DefaultPrincipal().String(),
@@ -449,6 +421,19 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 			defer func() { _ = resp.Body.Close() }()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+		})
+
+		// Scenario US3.3 from specs/028b-portless-registration/spec.md
+		It("should accept non-loopback request when explicit port :443 matches exactly", func() {
+			completeAuthorizationCodeFlow(
+				server,
+				fixtures.DefaultPrincipal().String(),
+				clientURL,
+				"https://"+fakeHost+":443/callback",
+				func(data map[string]any) {
+					assertCIMDConsentContext(data, "https://"+fakeHost+":443/callback", fakeHost)
+				},
+			)
 		})
 	})
 })

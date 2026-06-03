@@ -3,13 +3,11 @@ package e2e_test
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
@@ -33,15 +31,10 @@ var _ = Describe("Portless Redirect URI — Opaque Agent", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// SC-006: opaque (UUID) agent — no ClientURIs, no ClientID, explicit :3000 in redirect_uris.
-		now := time.Now()
-		agent = &storage.Agent{
-			ID:           id.NewAgentID(),
-			DisplayName:  "Opaque Portless Agent",
-			Description:  "Opaque agent with explicit-port localhost redirect URI for 028b SC-006 testing",
-			RedirectURIs: []string{"http://localhost:3000/callback"},
-			CreatedAt:    now,
-			UpdatedAt:    now,
-		}
+		agent = fixtures.LocalAgent()
+		agent.DisplayName = "Opaque Portless Agent"
+		agent.Description = "Opaque agent with explicit-port localhost redirect URI for 028b SC-006 testing"
+		agent.RedirectURIs = []string{"http://localhost:3000/callback"}
 		Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
 		config := fixtures.LocalConfig()
