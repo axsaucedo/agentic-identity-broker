@@ -266,7 +266,7 @@
 
 ### Additional Polish
 
-- [x] T068 Run `just check` (fmt → vet → lint → test) — all must pass
+- [x] T068 Run `just check` (fmt → vet → lint) and `just verify` — all must pass
 - [x] T069 Run quickstart.md validation — verify end-to-end tracing guide works as documented
 - [x] T070 Code cleanup and remove any TODO/FIXME markers introduced during development
 

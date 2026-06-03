@@ -1,3 +1,6 @@
+//go:build integration
+// +build integration
+
 package integration
 
 import (
@@ -8,10 +11,6 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/integration/bootstrap"
 )
-
-// sharedLS is the single LocalStack container shared across all tests in this package.
-// Initialised in TestMain; nil if Docker is unavailable (tests that need it will skip).
-var sharedLS *bootstrap.LocalStackContainer
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()

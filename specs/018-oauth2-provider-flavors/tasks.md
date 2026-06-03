@@ -203,7 +203,7 @@ N/A — this feature has no frontend changes (admin-only API extension per spec.
 
 ### Additional Polish
 
-- [X] T053 [P] Run `just check` (fmt → vet → lint → test) and confirm all checks pass with zero errors
+- [X] T053 [P] Run `just check` (fmt → vet → lint) and `just verify`, and confirm both pass with zero errors
 - [X] T054 Run quickstart.md validation — execute the curl examples from specs/018-oauth2-provider-flavors/quickstart.md against the running dev server and verify expected responses
 
 ---
@@ -280,7 +280,7 @@ Task D (T019): (after B, serialize with C — same file) Implement UpdateService
 3. Phase 4 (US2) → Google credentials work → US2 E2E tests (7) green
 4. Phase 5 (US3) → Validation verified → US3 E2E tests (6) green + unit tests green
 5. Phase 6 (US4) → Flavor in list/get → US4 E2E tests (2) + edge case tests (4) green
-6. Phase N → Compliance verified → `just check` passes → PR ready
+6. Phase N → Compliance verified → `just check` and `just verify` pass → PR ready
 
 ### Parallel Team Strategy
 

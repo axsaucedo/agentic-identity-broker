@@ -186,7 +186,7 @@ This feature implements RFC 8693 OAuth 2.0 Token Exchange via the existing `/oau
 
 - [x] T024 [US2] Implement FindByProtectedResource for in-memory storage in internal/adapters/storage/memory/thirdparty_service.go (memory/thirdparty_services.go, 189 lines, FindByProtectedResource implemented)
 - [x] T025 [P] [US2] Implement FindByProtectedResource for PostgreSQL storage in internal/adapters/storage/postgres/thirdparty_service.go (use GIN index with @> operator) (postgres/thirdparty_services.go, 757 lines, GIN index query with @>)
-- [x] T026 [US2] Add integration test for FindByProtectedResource PostgreSQL query in tests/integration/storage/thirdparty_service_test.go - VERIFIED (integration tests exist)
+- [x] T026 [US2] Add integration test for FindByProtectedResource PostgreSQL query in tests/integration/storage/infra/thirdparty_service_test.go - VERIFIED (integration tests exist)
 - [x] T027 [US2] Implement resource URI normalization before lookup (remove trailing slashes) (resource_uri.go, Normalize function used in service.go, line 181)
 - [x] T028 [US2] Handle no-match case (return InvalidTarget error with descriptive message) (postgres adapter, error handling for no match)
 - [x] T029 [US2] Handle ambiguous match case (multiple services match same resource, return InvalidTarget error) (postgres adapter, ambiguous match detection)

@@ -256,7 +256,7 @@ Task T027: "Wire middleware"
 # Step 5: Run tests - verify they PASS
 go test ./internal/domain/oauth2/... -v  # Should pass
 go test ./internal/adapters/http/enduser/... -v  # Should pass
-go test ./tests/integration/... -v  # Should pass
+just test-integration  # Should pass
 ```
 
 ---
@@ -352,7 +352,7 @@ With multiple developers or agents:
 - **US1 is MVP** - provides core authorization flow with consent checking, fully tested
 - **US2 completes the flow** - adds token exchange capability with tests
 - **US3 enhances DX** - adds metadata discovery with tests
-- Run full test suite at each checkpoint: `go test ./... -v -cover`
+- Run the verification gate at each checkpoint: `just verify`
 - Verify configuration validation, TLS security, and error handling at each checkpoint
 - Commit after each task or logical group
 - Stop at any checkpoint to validate story independently with automated tests

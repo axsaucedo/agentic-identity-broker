@@ -4,6 +4,9 @@ IMAGE_NAME := env_var_or_default("IMAGE_NAME", "agentic-identity-broker")
 GINKGO_PROCS := env_var_or_default("GINKGO_PROCS", num_cpus())
 NUM_CPUS := num_cpus()
 VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
+GO_FAST_TEST_PACKAGES := `go list ./... | grep -Ev '(/specs/|/web/node_modules/|/tests/e2e$|/tests/e2e/frontend$|/tests/e2e/extproc$|/tests/integration($|/))' | tr '\n' ' '`
+INTEGRATION_INFRA_TEST_PACKAGES := "./tests/integration/infra/... ./tests/integration/migrations/... ./tests/integration/storage/infra/... ./internal/adapters/storage/postgres/..."
+INTEGRATION_INFRA_PACKAGE_PROCS := env_var_or_default("INTEGRATION_INFRA_PACKAGE_PROCS", "1")
 
 # Determine container runtime (docker or podman)
 # Prefer docker over podman when both are available for better multi-arch support
@@ -56,35 +59,35 @@ build-windows-amd64:
     GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/windows/amd64/{{NAME}}.exe ./cmd/{{NAME}}
     @echo "✓ Built: bin/windows/amd64/{{NAME}}.exe"
 
-# Run all Go tests with verbose output
+# Run the fast local Go/package test loop (no E2E or integration suites)
 test:
-    @echo "Running Go tests..."
-    go test -v -race ./...
+    @echo "Running fast Go/package tests..."
+    go test -v -race {{GO_FAST_TEST_PACKAGES}}
 
-# Run all Go tests and generate JUnit XML report for CI/CD
+# Run fast Go/package tests and generate JUnit XML report for CI/CD
 test-junit:
-    @echo "Running Go tests with JUnit output..."
+    @echo "Running fast Go/package tests with JUnit output..."
     @mkdir -p test-results
-    @go test -json -race ./... > test-results/go-test-output.json; TEST_EXIT=$$?; go-junit-report -parser gojson < test-results/go-test-output.json > test-results/junit.xml; REPORT_EXIT=$$?; if [ $$REPORT_EXIT -ne 0 ]; then echo "go-junit-report failed (exit $$REPORT_EXIT)" >&2; exit $$REPORT_EXIT; fi; echo "JUnit report generated at test-results/junit.xml"; exit $$TEST_EXIT
+    @go test -json -race {{GO_FAST_TEST_PACKAGES}} > test-results/go-test-output.json; TEST_EXIT=$$?; go-junit-report -parser gojson < test-results/go-test-output.json > test-results/junit.xml; REPORT_EXIT=$$?; if [ $$REPORT_EXIT -ne 0 ]; then echo "go-junit-report failed (exit $$REPORT_EXIT)" >&2; exit $$REPORT_EXIT; fi; echo "JUnit report generated at test-results/junit.xml"; exit $$TEST_EXIT
 
-# Run tests with coverage report
+# Run fast Go/package tests with coverage report
 test-coverage:
-    @echo "Running tests with coverage..."
+    @echo "Running fast Go/package tests with coverage..."
     @mkdir -p coverage
-    go test -v -race -coverprofile=coverage/coverage.out -covermode=atomic ./...
+    go test -v -race -coverprofile=coverage/coverage.out -covermode=atomic {{GO_FAST_TEST_PACKAGES}}
     go tool cover -html=coverage/coverage.out -o coverage/coverage.html
     @echo "Coverage report generated at coverage/coverage.html"
 
-# Run tests and display coverage percentage
+# Run fast Go/package tests and display coverage percentage
 test-coverage-summary:
-    @echo "Running tests with coverage summary..."
+    @echo "Running fast Go/package tests with coverage summary..."
     @mkdir -p coverage
-    go test -race -coverprofile=coverage/coverage.out -covermode=atomic ./...
+    go test -race -coverprofile=coverage/coverage.out -covermode=atomic {{GO_FAST_TEST_PACKAGES}}
     go tool cover -func=coverage/coverage.out
 
-# Run end-to-end tests with Ginkgo
-test-backend-e2e:
-    @echo "Running E2E tests..."
+# Run the backend E2E acceptance suite with Ginkgo
+test-e2e-backend:
+    @echo "Running backend E2E suite..."
     @if command -v ginkgo > /dev/null; then \
         ginkgo -v --procs={{GINKGO_PROCS}} ./tests/e2e/; \
     else \
@@ -92,22 +95,22 @@ test-backend-e2e:
         exit 1; \
     fi
 
-# Run E2E tests with coverage report
-test-backend-e2e-coverage:
-    @echo "Running E2E tests with coverage..."
+# Run the backend E2E acceptance suite with coverage report
+test-e2e-backend-coverage:
+    @echo "Running backend E2E suite with coverage..."
     @mkdir -p coverage
     @if command -v ginkgo > /dev/null; then \
-        ginkgo -v --procs={{GINKGO_PROCS}} --cover --coverprofile=e2e.out --output-dir=coverage ./tests/e2e/; \
-        go tool cover -html=coverage/e2e.out -o coverage/e2e.html; \
-        echo "E2E coverage report generated at coverage/e2e.html"; \
+        ginkgo -v --procs={{GINKGO_PROCS}} --cover --coverprofile=e2e-backend.out --output-dir=coverage ./tests/e2e/; \
+        go tool cover -html=coverage/e2e-backend.out -o coverage/e2e-backend.html; \
+        echo "Backend E2E coverage report generated at coverage/e2e-backend.html"; \
     else \
         echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
         exit 1; \
     fi
 
-# Watch E2E tests during development (auto-rerun on changes)
-test-backend-e2e-watch:
-    @echo "Starting E2E test watch mode..."
+# Watch the backend E2E acceptance suite during development
+test-e2e-backend-watch:
+    @echo "Watching backend E2E suite..."
     @if command -v ginkgo > /dev/null; then \
         ginkgo watch -v ./tests/e2e/; \
     else \
@@ -115,33 +118,69 @@ test-backend-e2e-watch:
         exit 1; \
     fi
 
-# Run frontend E2E tests with pre-built frontend (production-like)
-test-frontend-e2e:
+# Run the ExtProc E2E acceptance suite with Ginkgo
+test-e2e-extproc:
+    @echo "Running ExtProc E2E suite..."
+    @if command -v ginkgo > /dev/null; then \
+        ginkgo -v --procs={{GINKGO_PROCS}} ./tests/e2e/extproc/; \
+    else \
+        echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
+        exit 1; \
+    fi
+
+# Run the ExtProc E2E acceptance suite with coverage report
+test-e2e-extproc-coverage:
+    @echo "Running ExtProc E2E suite with coverage..."
+    @mkdir -p coverage
+    @if command -v ginkgo > /dev/null; then \
+        ginkgo -v --procs={{GINKGO_PROCS}} --cover --coverprofile=e2e-extproc.out --output-dir=coverage ./tests/e2e/extproc/; \
+        go tool cover -html=coverage/e2e-extproc.out -o coverage/e2e-extproc.html; \
+        echo "ExtProc E2E coverage report generated at coverage/e2e-extproc.html"; \
+    else \
+        echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
+        exit 1; \
+    fi
+
+# Run the frontend E2E acceptance suite against a built frontend bundle
+test-e2e-frontend: web-build
     #!/usr/bin/env bash
-    set -e
-    just web-build
+    set -euo pipefail
     E2E_FRONTEND_MODE=built ginkgo -v ./tests/e2e/frontend/
 
-# Run frontend E2E tests with Vite dev server (hot reload)
+# Run the frontend E2E acceptance suite against a Vite dev server
 # NOTE: Requires 'just web-dev' running in another terminal
-test-frontend-e2e-dev:
+test-e2e-frontend-dev:
     #!/usr/bin/env bash
+    set -euo pipefail
     E2E_FRONTEND_MODE=dev ginkgo -v ./tests/e2e/frontend/
 
-# Run frontend E2E tests with coverage report
-test-frontend-e2e-coverage:
+# Run the frontend E2E acceptance suite with coverage report
+test-e2e-frontend-coverage: web-build
     #!/usr/bin/env bash
-    set -e
-    just web-build
-    E2E_FRONTEND_MODE=built ginkgo -v --cover ./tests/e2e/frontend/
+    set -euo pipefail
+    mkdir -p coverage
+    E2E_FRONTEND_MODE=built ginkgo -v --cover --coverprofile=e2e-frontend.out --output-dir=coverage ./tests/e2e/frontend/
+    go tool cover -html=coverage/e2e-frontend.out -o coverage/e2e-frontend.html
+    echo "Frontend E2E coverage report generated at coverage/e2e-frontend.html"
 
-# Run all E2E tests: backend + frontend
-test-e2e-full:
-    #!/usr/bin/env bash
-    set -e
-    just web-build
-    ginkgo -v --procs={{GINKGO_PROCS}} --skip="Frontend" ./tests/e2e/
-    just test-frontend-e2e
+# Run all backend, ExtProc, and frontend E2E acceptance suites
+test-e2e: test-e2e-backend test-e2e-extproc test-e2e-frontend
+    @echo "All E2E suites completed"
+
+# Run coverage for all backend, ExtProc, and frontend E2E acceptance suites
+test-e2e-coverage: test-e2e-backend-coverage test-e2e-extproc-coverage test-e2e-frontend-coverage
+    @echo "E2E coverage reports generated under coverage/"
+
+# Watch all E2E acceptance suites during development
+test-e2e-watch:
+    @echo "Watching backend, ExtProc, and frontend E2E suites..."
+    @if command -v ginkgo > /dev/null; then \
+        E2E_FRONTEND_MODE=built ginkgo watch -v ./tests/e2e/ ./tests/e2e/extproc/ ./tests/e2e/frontend/; \
+    else \
+        echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
+        exit 1; \
+    fi
+
 
 # Build and run the application
 run: build
@@ -208,8 +247,8 @@ install-tools:
     @golangci-lint --version 2>/dev/null | grep -q "version 2.11" || bash scripts/golangci-lint-install.sh -b /usr/local/bin v2.11.4
     @command -v go-junit-report > /dev/null || go install github.com/jstemmer/go-junit-report/v2@v2.1.0
     @command -v ginkgo       > /dev/null || go install github.com/onsi/ginkgo/v2/ginkgo@v2.28.1
-    @if [ -d "~/.cache/ms-playwright" ] && [ -n "$(ls -A ~/.cache/ms-playwright 2>/dev/null)" ]; then \
-        echo "Playwright browsers already installed, skipping download"; \
+    @if [ -d "$HOME/.cache/ms-playwright" ] && [ -n "$(ls -A "$HOME/.cache/ms-playwright" 2>/dev/null)" ] && [ -f "$HOME/.cache/ms-playwright-go/1.57.0/package/cli.js" ]; then \
+        echo "Playwright driver and browsers already installed, skipping download"; \
     else \
         go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install --with-deps; \
     fi
@@ -222,108 +261,116 @@ setup-hooks:
     @echo "✓ Git hooks configured to use .githooks directory"
     @echo "Pre-commit hook will run: fmt, vet, lint"
 
-# Run integration tests (requires Docker for PostgreSQL tests)
+# Run the default self-contained integration tests that do not require external infrastructure
 test-integration:
-    @echo "Running integration tests..."
-    go test -tags=integration -v ./tests/integration/storage/... ./internal/adapters/storage/postgres/...
+    @echo "Running self-contained integration suites..."
+    go test -v ./tests/integration/...
 
-# Run integration tests and generate JUnit XML report for CI/CD
+# Run infra-backed integration tests that require build tags and external infrastructure
+test-integration-infra:
+    @echo "Running infra-backed integration suites..."
+    go test -tags=integration -p {{INTEGRATION_INFRA_PACKAGE_PROCS}} -v {{INTEGRATION_INFRA_TEST_PACKAGES}}
+
+# Run both self-contained and infra-backed integration suites
+test-integration-all: test-integration test-integration-infra
+    @echo "All integration suites completed"
+
+# Run all integration tests and generate JUnit XML reports
 test-integration-junit:
-    @echo "Running integration tests with JUnit output..."
-    @mkdir -p test-results
-    @go test -json -tags=integration -p {{NUM_CPUS}} ./tests/integration/storage/... ./internal/adapters/storage/postgres/... > test-results/integration-test-output.json; TEST_EXIT=$$?; go-junit-report -parser gojson < test-results/integration-test-output.json > test-results/integration-junit.xml; REPORT_EXIT=$$?; if [ $$REPORT_EXIT -ne 0 ]; then echo "go-junit-report failed (exit $$REPORT_EXIT)" >&2; exit $$REPORT_EXIT; fi; echo "JUnit report generated at test-results/integration-junit.xml"; exit $$TEST_EXIT
-
-# Run all tests (unit, integration, E2E, E2E frontend, web unit, CDK, mocks) and generate consolidated JUnit XML report
-test-all-junit:
     #!/usr/bin/env bash
-    set +e  # Don't exit on errors; we'll handle them at the end
+    set +e
 
-    echo "Running all tests in parallel (unit + integration + E2E) with JUnit output..."
+    echo "Running integration suites with JUnit output..."
     mkdir -p test-results
 
-    # ===== LAUNCH ALL SUITES IN PARALLEL =====
-    echo ""
-    echo "==> Launching all test suites in parallel..."
-
-    go test -json -race -p {{NUM_CPUS}} ./cmd/... ./internal/... \
-        > test-results/unit-tests-output.json 2>&1 &
-    UNIT_PID=$!
-    echo "  [unit]        PID $UNIT_PID"
-
     go test -json ./tests/integration/... \
-        > test-results/integration-tests-output.json 2>&1 &
-    INTEGRATION_PID=$!
-    echo "  [integration] PID $INTEGRATION_PID"
+        > test-results/integration-self-contained-output.json 2>&1
+    SELF_CONTAINED_EXIT=$?
 
-    go test -json -tags=integration -p {{NUM_CPUS}} \
-        ./tests/integration/storage/... ./internal/adapters/storage/postgres/... \
-        > test-results/storage-tests-output.json 2>&1 &
-    STORAGE_PID=$!
-    echo "  [storage]     PID $STORAGE_PID"
+    go test -json -tags=integration -p {{INTEGRATION_INFRA_PACKAGE_PROCS}} \
+        {{INTEGRATION_INFRA_TEST_PACKAGES}} \
+        > test-results/integration-infra-output.json 2>&1
+    INFRA_EXIT=$?
 
-    ginkgo run -v --procs={{GINKGO_PROCS}} \
-        --junit-report=test-results/e2e-junit.xml ./tests/e2e/ \
-        > test-results/e2e.log 2>&1 &
-    E2E_PID=$!
-    echo "  [e2e]         PID $E2E_PID"
+    go-junit-report -parser gojson \
+        < test-results/integration-self-contained-output.json > test-results/integration-self-contained-junit.xml || true
+    go-junit-report -parser gojson \
+        < test-results/integration-infra-output.json > test-results/integration-infra-junit.xml || true
 
-    ginkgo run -v --procs={{GINKGO_PROCS}} \
-        --junit-report=test-results/e2e-extproc-junit.xml ./tests/e2e/extproc/ \
-        > test-results/extproc.log 2>&1 &
-    EXTPROC_PID=$!
-    echo "  [extproc]     PID $EXTPROC_PID"
+    MERGER_EXIT=0
+    if command -v npx > /dev/null; then
+        npx -y junit-report-merger@9.0.3 \
+            test-results/integration-junit.xml \
+            test-results/integration-self-contained-junit.xml \
+            test-results/integration-infra-junit.xml || MERGER_EXIT=$?
+    else
+        echo "⚠ npx not found, integration-junit.xml was not merged"
+        MERGER_EXIT=1
+    fi
 
-    # NOTE: No --procs here. BeforeSuite calls ensureFrontendBuilt() via npm;
-    # multiple procs would trigger concurrent npm builds (race on web/dist/).
-    ginkgo run -v \
-        --junit-report=test-results/e2e-frontend-junit.xml ./tests/e2e/frontend/ \
-        > test-results/frontend.log 2>&1 &
-    FRONTEND_PID=$!
-    echo "  [frontend]    PID $FRONTEND_PID"
+    if [ $SELF_CONTAINED_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- Self-contained integration output (FAILED) ---"
+        cat test-results/integration-self-contained-output.json
+    fi
+    if [ $INFRA_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- Infra-backed integration output (FAILED) ---"
+        cat test-results/integration-infra-output.json
+    fi
+
+    if [ $SELF_CONTAINED_EXIT -ne 0 ] || [ $INFRA_EXIT -ne 0 ] || [ $MERGER_EXIT -ne 0 ]; then
+        echo "✗ Integration suites failed"
+        exit 1
+    fi
+
+    echo "✓ Integration JUnit report generated at test-results/integration-junit.xml"
+
+# Run the full verification gate with JUnit reports for CI/CD
+verify-junit:
+    #!/usr/bin/env bash
+    set +e
+
+    echo "Running verification suite with JUnit output..."
+    mkdir -p test-results coverage
+
+    # ===== STAGE 1: FAST/PACKAGE SUITES =====
+    echo ""
+    echo "==> Stage 1: fast/package suites"
+
+    go test -json -race -p {{NUM_CPUS}} {{GO_FAST_TEST_PACKAGES}} \
+        > test-results/fast-tests-output.json 2>&1 &
+    FAST_PID=$!
+    echo "  [fast]       PID $FAST_PID"
 
     (cd web && npm ci --silent && npm test --silent -- --run --reporter=junit) \
         > test-results/web-unit-junit.xml 2>test-results/web-unit.log &
     WEB_UNIT_PID=$!
-    echo "  [web-unit]    PID $WEB_UNIT_PID"
+    echo "  [web-unit]   PID $WEB_UNIT_PID"
 
     (cd infra/cdk && go test -json -race ./...) \
         > test-results/cdk-tests-output.json 2>&1 &
     CDK_PID=$!
-    echo "  [cdk]         PID $CDK_PID"
+    echo "  [cdk]        PID $CDK_PID"
 
     (cd mocks/sample-agent && go test -json ./...) \
         > test-results/mock-sample-agent-output.json 2>&1 &
     MOCK_AGENT_PID=$!
-    echo "  [mock-agent]  PID $MOCK_AGENT_PID"
+    echo "  [mock-agent] PID $MOCK_AGENT_PID"
 
     (cd mocks/upstream-oauth2-server && go test -json ./internal/handlers/...) \
         > test-results/mock-oauth2-output.json 2>&1 &
     MOCK_OAUTH2_PID=$!
-    echo "  [mock-oauth2] PID $MOCK_OAUTH2_PID"
+    echo "  [mock-oauth] PID $MOCK_OAUTH2_PID"
 
-    # ===== WAIT FOR ALL SUITES =====
-    echo ""
-    echo "==> Waiting for all test suites to complete..."
-
-    wait $UNIT_PID;        UNIT_EXIT=$?
-    wait $INTEGRATION_PID; INTEGRATION_EXIT=$?
-    wait $STORAGE_PID;     STORAGE_EXIT=$?
-    wait $E2E_PID;         E2E_EXIT=$?
-    wait $EXTPROC_PID;     EXTPROC_EXIT=$?
-    wait $FRONTEND_PID;    FRONTEND_EXIT=$?
+    wait $FAST_PID;        FAST_EXIT=$?
     wait $WEB_UNIT_PID;    WEB_UNIT_EXIT=$?
     wait $CDK_PID;         CDK_EXIT=$?
     wait $MOCK_AGENT_PID;  MOCK_AGENT_EXIT=$?
     wait $MOCK_OAUTH2_PID; MOCK_OAUTH2_EXIT=$?
 
-    # ===== GENERATE JUNIT XML FROM JSON OUTPUT =====
-    # Ginkgo wrote its own --junit-report files directly; only go test suites need conversion
     go-junit-report -parser gojson \
-        < test-results/unit-tests-output.json > test-results/unit-junit.xml || true
-    go-junit-report -parser gojson \
-        < test-results/integration-tests-output.json > test-results/integration-junit.xml || true
-    go-junit-report -parser gojson \
-        < test-results/storage-tests-output.json > test-results/storage-junit.xml || true
+        < test-results/fast-tests-output.json > test-results/fast-junit.xml || true
     go-junit-report -parser gojson \
         < test-results/cdk-tests-output.json > test-results/cdk-junit.xml || true
     go-junit-report -parser gojson \
@@ -331,36 +378,10 @@ test-all-junit:
     go-junit-report -parser gojson \
         < test-results/mock-oauth2-output.json > test-results/mock-oauth2-junit.xml || true
 
-    # ===== PRINT LOGS FOR FAILED SUITES (inline for CDP console) =====
-    if [ $UNIT_EXIT -ne 0 ]; then
+    if [ $FAST_EXIT -ne 0 ]; then
         echo ""
-        echo "--- Unit test output (FAILED) ---"
-        cat test-results/unit-tests-output.json
-    fi
-    if [ $INTEGRATION_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- Integration test output (FAILED) ---"
-        cat test-results/integration-tests-output.json
-    fi
-    if [ $STORAGE_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- Storage integration test output (FAILED) ---"
-        cat test-results/storage-tests-output.json
-    fi
-    if [ $E2E_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- E2E test output (FAILED) ---"
-        cat test-results/e2e.log
-    fi
-    if [ $EXTPROC_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- E2E ExtProc test output (FAILED) ---"
-        cat test-results/extproc.log
-    fi
-    if [ $FRONTEND_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- E2E Frontend test output (FAILED) ---"
-        cat test-results/frontend.log
+        echo "--- Fast Go/package test output (FAILED) ---"
+        cat test-results/fast-tests-output.json
     fi
     if [ $WEB_UNIT_EXIT -ne 0 ]; then
         echo ""
@@ -379,64 +400,159 @@ test-all-junit:
     fi
     if [ $MOCK_OAUTH2_EXIT -ne 0 ]; then
         echo ""
-        echo "--- Mock upstream-OAuth2 test output (FAILED) ---"
+        echo "--- Mock upstream OAuth2 test output (FAILED) ---"
         cat test-results/mock-oauth2-output.json
     fi
+
+    if [ $FAST_EXIT -ne 0 ] || [ $WEB_UNIT_EXIT -ne 0 ] || [ $CDK_EXIT -ne 0 ] || \
+       [ $MOCK_AGENT_EXIT -ne 0 ] || [ $MOCK_OAUTH2_EXIT -ne 0 ]; then
+        echo "✗ Stage 1 failed"
+        exit 1
+    fi
+
+    echo "✓ Stage 1 passed"
+
+    # ===== STAGE 2: INTEGRATION SUITES =====
+    echo ""
+    echo "==> Stage 2: integration suites"
+
+    echo "  [integration-self]   running"
+    go test -json ./tests/integration/... \
+        > test-results/integration-self-contained-output.json 2>&1
+    INTEGRATION_SELF_CONTAINED_EXIT=$?
+
+    echo "  [integration-infra]  running"
+    go test -json -tags=integration -p {{INTEGRATION_INFRA_PACKAGE_PROCS}} \
+        {{INTEGRATION_INFRA_TEST_PACKAGES}} \
+        > test-results/integration-infra-output.json 2>&1
+    INTEGRATION_INFRA_EXIT=$?
+
+    go-junit-report -parser gojson \
+        < test-results/integration-self-contained-output.json > test-results/integration-self-contained-junit.xml || true
+    go-junit-report -parser gojson \
+        < test-results/integration-infra-output.json > test-results/integration-infra-junit.xml || true
+
+    if [ $INTEGRATION_SELF_CONTAINED_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- Self-contained integration output (FAILED) ---"
+        cat test-results/integration-self-contained-output.json
+    fi
+    if [ $INTEGRATION_INFRA_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- Infra-backed integration output (FAILED) ---"
+        cat test-results/integration-infra-output.json
+    fi
+
+    if [ $INTEGRATION_SELF_CONTAINED_EXIT -ne 0 ] || [ $INTEGRATION_INFRA_EXIT -ne 0 ]; then
+        echo "✗ Stage 2 failed"
+        exit 1
+    fi
+
+    echo "✓ Stage 2 passed"
+
+    # ===== STAGE 3: E2E SUITES =====
+    echo ""
+    echo "==> Stage 3: E2E suites"
+
+    (cd web && npm run build --silent) > test-results/web-build.log 2>&1
+    WEB_BUILD_EXIT=$?
+    if [ $WEB_BUILD_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- Frontend build output (FAILED) ---"
+        cat test-results/web-build.log
+        echo "✗ Stage 3 failed"
+        exit 1
+    fi
+
+    ginkgo run -v --procs={{GINKGO_PROCS}} \
+        --junit-report=test-results/e2e-backend-junit.xml ./tests/e2e/ \
+        > test-results/e2e-backend.log 2>&1 &
+    E2E_BACKEND_PID=$!
+    echo "  [e2e-backend]  PID $E2E_BACKEND_PID"
+
+    ginkgo run -v --procs={{GINKGO_PROCS}} \
+        --junit-report=test-results/e2e-extproc-junit.xml ./tests/e2e/extproc/ \
+        > test-results/e2e-extproc.log 2>&1 &
+    E2E_EXTPROC_PID=$!
+    echo "  [e2e-extproc]  PID $E2E_EXTPROC_PID"
+
+    E2E_FRONTEND_MODE=built ginkgo run -v \
+        --junit-report=test-results/e2e-frontend-junit.xml ./tests/e2e/frontend/ \
+        > test-results/e2e-frontend.log 2>&1 &
+    E2E_FRONTEND_PID=$!
+    echo "  [e2e-frontend] PID $E2E_FRONTEND_PID"
+
+    wait $E2E_BACKEND_PID;  E2E_BACKEND_EXIT=$?
+    wait $E2E_EXTPROC_PID;  E2E_EXTPROC_EXIT=$?
+    wait $E2E_FRONTEND_PID; E2E_FRONTEND_EXIT=$?
+
+    if [ $E2E_BACKEND_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- Backend E2E output (FAILED) ---"
+        cat test-results/e2e-backend.log
+    fi
+    if [ $E2E_EXTPROC_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- ExtProc E2E output (FAILED) ---"
+        cat test-results/e2e-extproc.log
+    fi
+    if [ $E2E_FRONTEND_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- Frontend E2E output (FAILED) ---"
+        cat test-results/e2e-frontend.log
+    fi
+
+    if [ $E2E_BACKEND_EXIT -ne 0 ] || [ $E2E_EXTPROC_EXIT -ne 0 ] || [ $E2E_FRONTEND_EXIT -ne 0 ]; then
+        echo "✗ Stage 3 failed"
+        exit 1
+    fi
+
+    echo "✓ Stage 3 passed"
 
     # ===== MERGE JUNIT REPORTS =====
     echo ""
     echo "==> Merging JUnit reports..."
     MERGER_EXIT=0
     if command -v npx > /dev/null; then
-        if npx -y junit-report-merger@9.0.3 \
-            test-results/all-tests-junit.xml test-results/*-junit.xml; then
-            echo "✓ Merged report generated at test-results/all-tests-junit.xml"
-        else
-            MERGER_EXIT=$?
-            echo "⚠ junit-report-merger failed (exit code: $MERGER_EXIT)"
-        fi
+        npx -y junit-report-merger@9.0.3 \
+            test-results/all-tests-junit.xml \
+            test-results/fast-junit.xml \
+            test-results/integration-self-contained-junit.xml \
+            test-results/integration-infra-junit.xml \
+            test-results/e2e-backend-junit.xml \
+            test-results/e2e-extproc-junit.xml \
+            test-results/e2e-frontend-junit.xml \
+            test-results/web-unit-junit.xml \
+            test-results/cdk-junit.xml \
+            test-results/mock-agent-junit.xml \
+            test-results/mock-oauth2-junit.xml || MERGER_EXIT=$?
     else
         echo "⚠ npx not found, junit-report-merger not available"
         MERGER_EXIT=1
     fi
 
-    # ===== FINAL SUMMARY =====
     echo ""
-    echo "=== Test Summary ==="
-    [ $UNIT_EXIT -eq 0 ]        && echo "✓ Unit tests"                 || echo "✗ Unit tests ($UNIT_EXIT)"
-    [ $INTEGRATION_EXIT -eq 0 ] && echo "✓ Integration tests"           || echo "✗ Integration tests ($INTEGRATION_EXIT)"
-    [ $STORAGE_EXIT -eq 0 ]     && echo "✓ Storage tests"               || echo "✗ Storage tests ($STORAGE_EXIT)"
-    [ $E2E_EXIT -eq 0 ]         && echo "✓ E2E tests"                   || echo "✗ E2E tests ($E2E_EXIT)"
-    [ $EXTPROC_EXIT -eq 0 ]     && echo "✓ E2E ExtProc tests"           || echo "✗ E2E ExtProc tests ($EXTPROC_EXIT)"
-    [ $FRONTEND_EXIT -eq 0 ]    && echo "✓ E2E Frontend tests"          || echo "✗ E2E Frontend tests ($FRONTEND_EXIT)"
-    [ $WEB_UNIT_EXIT -eq 0 ]    && echo "✓ Web unit tests"              || echo "✗ Web unit tests ($WEB_UNIT_EXIT)"
-    [ $CDK_EXIT -eq 0 ]         && echo "✓ CDK tests"                   || echo "✗ CDK tests ($CDK_EXIT)"
-    [ $MOCK_AGENT_EXIT -eq 0 ]  && echo "✓ Mock sample-agent tests"     || echo "✗ Mock sample-agent tests ($MOCK_AGENT_EXIT)"
-    [ $MOCK_OAUTH2_EXIT -eq 0 ] && echo "✓ Mock upstream-OAuth2 tests"  || echo "✗ Mock upstream-OAuth2 tests ($MOCK_OAUTH2_EXIT)"
+    echo "=== Verification Summary ==="
+    echo "✓ Fast/package suites"
+    echo "✓ Integration suites"
+    echo "✓ E2E suites"
+    [ $MERGER_EXIT -eq 0 ] && echo "✓ Merged JUnit report" || echo "✗ Merged JUnit report ($MERGER_EXIT)"
     echo ""
 
-    if [ $UNIT_EXIT -ne 0 ] || [ $INTEGRATION_EXIT -ne 0 ] || [ $STORAGE_EXIT -ne 0 ] || \
-       [ $E2E_EXIT -ne 0 ] || [ $EXTPROC_EXIT -ne 0 ] || [ $FRONTEND_EXIT -ne 0 ] || \
-       [ $WEB_UNIT_EXIT -ne 0 ] || [ $CDK_EXIT -ne 0 ] || \
-       [ $MOCK_AGENT_EXIT -ne 0 ] || [ $MOCK_OAUTH2_EXIT -ne 0 ] || \
-       [ $MERGER_EXIT -ne 0 ]; then
-        echo "✗ Some tests failed"
+    if [ $MERGER_EXIT -ne 0 ]; then
+        echo "✗ Verification completed but JUnit merge failed"
         exit 1
     fi
 
-    echo "✓ All tests passed"
+    echo "✓ Verification JUnit report generated at test-results/all-tests-junit.xml"
 
-# Run all unit and integration tests with coverage
-test-all: test test-integration
-    @echo "All tests completed"
+# Run the full local verification gate with E2E as the final guard layer
+verify: check test web-test cdk-test mock-sample-agent-test mock-upstream-oauth2-test test-integration-all test-e2e
+    @echo "Verification suite completed"
 
-# Run all tests: unit, integration, and E2E (comprehensive test suite)
-test-full: test test-integration test-backend-e2e test-frontend-e2e
-    @echo "Full test suite completed"
-
-# Run all quality checks (fmt, vet, lint)
+# Run static quality checks (format, vet, lint; no tests)
 check: fmt vet lint
-    @echo "All checks passed!"
+    @echo "Static quality checks passed!"
 
 # =============================================================================
 # Web Development Targets
@@ -797,15 +913,6 @@ extproc-test:
     @echo "Running extproc unit tests..."
     go test -v -race ./internal/extproc/... ./cmd/extproc-token-exchange/...
 
-# Run extproc E2E tests (Ginkgo)
-extproc-test-e2e:
-    @echo "Running extproc E2E tests..."
-    @if command -v ginkgo > /dev/null; then \
-        ginkgo -v --procs={{GINKGO_PROCS}} ./tests/e2e/extproc/; \
-    else \
-        echo "Error: ginkgo is not installed. Run: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
-        exit 1; \
-    fi
 
 # Build mock MCP server binary
 mock-mcp-server-build:

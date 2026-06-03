@@ -197,7 +197,7 @@ This document breaks down the implementation of request principal extraction int
 - [x] T030 [P] Create middleware usage guide in docs/api/middleware.md
 - [x] T031 [P] Write performance benchmarks for context operations in internal/domain/principal/context_bench_test.go
 - [x] T032 [P] Write performance benchmarks for middleware in internal/adapters/http/principal_middleware_bench_test.go
-- [x] T033 Run all tests with `just test` and verify >90% coverage
+- [x] T033 Run `just verify` and `just test-coverage`, and verify >90% coverage
 - [x] T034 Run performance benchmarks and verify <1ms latency at p95
 - [x] T035 Manual end-to-end test with reverse proxy configuration (nginx/Traefik)
 

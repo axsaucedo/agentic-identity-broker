@@ -13,7 +13,7 @@
 
 **Purpose**: Confirm environment baseline and orient to existing patterns before implementation.
 
-- [X] T001 Verify `just check` passes clean before any changes (baseline confirmation)
+- [X] T001 Verify `just check` and `just verify` pass clean before any changes (baseline confirmation)
 - [X] T002 [P] Read implementation reference files: `internal/adapters/storage/memory/agent_repository.go`, `internal/adapters/storage/postgres/agent_repository.go`, and `internal/adapters/http/handlers/admin/agents_handler.go` for established patterns
 
 ---
@@ -252,10 +252,10 @@
 
 ### Polish
 
-- [X] T086 Run `just check` (fmt → vet → lint → test) — all checks MUST pass with zero issues
+- [X] T086 Run `just check` (fmt → vet → lint) and `just verify` — all checks MUST pass with zero issues
 - [ ] T087 [P] Verify `PermissionSetService` cache TTL (covered by T021a unit tests): confirm cache re-fetches after TTL expiry and that `TokenExchangeService` and `ConsentService` both benefit from it transparently
 - [ ] T088 [P] Verify `PermissionSetService` background eviction goroutine exits cleanly on server shutdown (no goroutine leak) — tested in T021a; confirm in E2E shutdown scenario
-- [ ] T089 Run `just test` with `-race` flag — no race conditions in `psCache` sync.Map operations or memory repository
+- [ ] T089 Run `just test` — no race conditions in `psCache` sync.Map operations or memory repository
 - [ ] T090 Complete `quickstart.md` verification checklist — all items checked before opening PR
 
 ---
@@ -355,7 +355,7 @@ Task T030 → T031 → T032: "Wire handler into app and routes"
 - `[P]` = task touches different files from other [P] tasks in same batch — safe to parallelize
 - `[USN]` label maps task to specific user story for traceability
 - All 24 E2E tests must be in red phase before any implementation task in Phase 3+ begins
-- `just check` must pass after every logical group of tasks
+- `just check` and `just verify` must pass after every logical group of tasks
 - Commit after each completed phase or user story for clean git history
 - The `delegated_oauth2_tokens` JSONB column is **removed** — search entire codebase for references before merge
 - Recheck: `internal/domain/` import graph must remain clean (no adapter imports) after all changes

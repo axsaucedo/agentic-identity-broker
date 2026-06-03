@@ -456,7 +456,7 @@ Phase 2: Core Infrastructure
 - [X] IPv4 connections work: `curl http://127.0.0.1:8000/health` succeeds (verified in integration tests)
 - [X] Configuration can specify custom bind addresses (tested with multiple examples)
 - [X] All bind address tests pass (TestPortConnectivity, TestServerConfigValidation pass)
-- [X] `go test -race ./...` passes (verified with `just test` and `just check`)
+- [X] `go test -race ./...` passes (verified directly and via `just verify`)
 
 ---
 
@@ -537,7 +537,7 @@ Phase 2: Core Infrastructure
 - [X] Shutdown completes cleanly within timeout (tested in TestManagerGracefulShutdown)
 - [X] Health endpoint returns 503 during shutdown (verified in TestHealthEndpoint)
 - [X] All graceful shutdown tests pass (TestServerStartup, TestManagerGracefulShutdown pass)
-- [X] `go test -race ./...` passes with no race conditions (verified with `just check`)
+- [X] `go test -race ./...` passes with no race conditions (verified directly and via `just verify`)
 
 ---
 
@@ -551,7 +551,7 @@ Phase 2: Core Infrastructure
 - [X] T069 Run `just fmt` and ensure all code is properly formatted (complete - all code formatted)
 - [X] T070 Run `just vet` and fix any static analysis issues (complete - vet passes)
 - [X] T071 Run `just lint` and fix linting issues (complete - golangci-lint passes)
-- [X] T072 Run `just check` (runs fmt + vet + lint + test) (complete - all checks pass)
+- [X] T072 Run `just check` (runs fmt + vet + lint) and `just verify` (complete - all checks pass)
 
 ### Architecture Documentation
 
@@ -590,9 +590,9 @@ Phase 2: Core Infrastructure
 - [X] T077 [P] Run race detector on all tests: `go test -race ./...`
   - No race conditions detected
   - All tests pass with race detector enabled
-  - Verified via `just test` and `just check`
+  - Verified via `just verify`
 
-- [X] T078 [P] Run full quality check: `just check`
+- [X] T078 [P] Run static checks: `just check`, then run `just verify`
   - Format passes (gofmt)
   - Vet passes (go vet)
   - Lint passes (golangci-lint)
@@ -633,7 +633,7 @@ Phase 2: Core Infrastructure
   - Hexagonal Architecture: clean ports/adapters separation, domain logic independent
 
 **Phase 7 Completion Check**:
-- [X] `just check` passes (fmt + vet + lint + test) (verified - all checks pass)
+- [X] `just check` passes (fmt + vet + lint) and `just verify` passes (verified)
 - [X] All documentation is complete and accurate (configuration.md comprehensive, api.md updated)
 - [X] Coverage report shows >80% coverage for critical paths (config validation 100%, lifecycle 76%)
 - [X] No race conditions detected (verified with `go test -race ./...`)
@@ -743,7 +743,7 @@ Phase 1 → Phase 2 → Phase 3 → [Phase 4, 5, 6 in any order] → Phase 7
 - Production-ready documentation
 
 ✅ **Quality Success**:
-- `just check` passes (fmt + vet + lint + test)
+- `just check` passes (fmt + vet + lint) and `just verify` passes
 - No race conditions (`go test -race`)
 - All constitution principles met
 - Architecture documentation complete

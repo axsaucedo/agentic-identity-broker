@@ -8,7 +8,7 @@
 
 | Property | Value |
 |----------|-------|
-| Image | `ghcr.io/agentgateway/agentgateway:v0.12.0` |
+| Image | `cr.agentgateway.dev/agentgateway` |
 | Container Name | `aib-agentgateway` |
 | Ports | `4000:4000` (MCP HTTP), `15000:15000` (Admin UI) |
 | Config Mount | `./mocks/agentgateway/config.yaml:/config.yaml:ro` |

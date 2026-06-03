@@ -195,7 +195,7 @@ services:
 
   # Agentgateway: routes MCP calls through ExtProc for transparent token exchange
   agentgateway:
-    image: cr.agentgateway.dev/agentgateway:0.12.0
+    image: cr.agentgateway.dev/agentgateway:v1.1.0
     container_name: aib-agentgateway
     ports:
       - "4000:4000"

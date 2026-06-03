@@ -6,9 +6,14 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -20,14 +25,49 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// init disables Ryuk for Podman compatibility
+var (
+	sharedTestContainer testcontainers.Container
+	sharedTestHost      string
+	sharedTestPort      string
+	sharedTestErr       error
+
+	templateDBs   = map[string]string{}
+	templateDBsMu sync.Mutex
+	databaseSeq   atomic.Uint64
+)
+
+// init disables Ryuk for Podman compatibility.
 func init() {
 	if os.Getenv("TESTCONTAINERS_RYUK_DISABLED") == "" {
 		os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 	}
 }
 
-// canAccessContainerRuntime checks if Docker or Podman is available
+func TestMain(m *testing.M) {
+	ctx := context.Background()
+	if canAccessContainerRuntime() {
+		container, host, port, err := startSharedTestContainer(ctx)
+		if err != nil {
+			sharedTestErr = err
+		} else {
+			sharedTestContainer = container
+			sharedTestHost = host
+			sharedTestPort = port
+		}
+	} else {
+		sharedTestErr = fmt.Errorf("no container runtime available")
+	}
+
+	code := m.Run()
+
+	if sharedTestContainer != nil {
+		_ = sharedTestContainer.Terminate(ctx)
+	}
+
+	os.Exit(code)
+}
+
+// canAccessContainerRuntime checks if Docker or Podman is available.
 func canAccessContainerRuntime() bool {
 	cmd := exec.Command("docker", "ps")
 	if err := cmd.Run(); err == nil {
@@ -37,20 +77,7 @@ func canAccessContainerRuntime() bool {
 	return cmd.Run() == nil
 }
 
-// setupTestContainer creates a PostgreSQL test container
-func setupTestContainer(t *testing.T) (testcontainers.Container, string, func()) {
-	t.Helper()
-
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	if !canAccessContainerRuntime() {
-		t.Skip("Skipping test: No container runtime available")
-	}
-
-	ctx := context.Background()
-
+func startSharedTestContainer(ctx context.Context) (testcontainers.Container, string, string, error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "postgres:15-alpine",
 		ExposedPorts: []string{"5432/tcp"},
@@ -62,57 +89,195 @@ func setupTestContainer(t *testing.T) (testcontainers.Container, string, func())
 		WaitingFor: wait.ForLog("database system is ready to accept connections").
 			WithOccurrence(2).
 			WithStartupTimeout(30 * time.Second),
-		Networks: []string{"podman"},
 	}
 
 	genericReq := testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
 	}
-
 	if os.Getenv("DOCKER_HOST") != "" {
 		genericReq.ProviderType = testcontainers.ProviderPodman
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, genericReq)
-	require.NoError(t, err)
-
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
-
-	port, err := container.MappedPort(ctx, "5432")
-	require.NoError(t, err)
-
-	connStr := fmt.Sprintf("postgres://testuser:testpass@%s:%s/testdb?sslmode=disable", host, port.Port())
-
-	cleanup := func() {
-		container.Terminate(ctx)
+	if err != nil {
+		return nil, "", "", err
 	}
 
-	return container, connStr, cleanup
+	host, err := container.Host(ctx)
+	if err != nil {
+		_ = container.Terminate(ctx)
+		return nil, "", "", err
+	}
+
+	port, err := container.MappedPort(ctx, "5432")
+	if err != nil {
+		_ = container.Terminate(ctx)
+		return nil, "", "", err
+	}
+
+	return container, host, port.Port(), nil
 }
 
-// applyMigrations applies all database migrations to the test container.
-// Files are copied into the container and executed via `psql -f` to avoid
-// any issues with passing multi-statement SQL as a command-line argument.
+func requireSharedTestContainer(t *testing.T) testcontainers.Container {
+	t.Helper()
+
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	if sharedTestErr != nil {
+		t.Skipf("Skipping test: %v", sharedTestErr)
+	}
+	if sharedTestContainer == nil {
+		t.Skip("Skipping test: shared PostgreSQL container unavailable")
+	}
+
+	return sharedTestContainer
+}
+
+func nextDatabaseName(prefix string) string {
+	sanitized := sanitizeDatabaseName(prefix)
+	seq := databaseSeq.Add(1)
+	name := fmt.Sprintf("%s_%d", sanitized, seq)
+	if len(name) > 63 {
+		name = name[:63]
+	}
+	return name
+}
+
+func sanitizeDatabaseName(prefix string) string {
+	re := regexp.MustCompile(`[^a-zA-Z0-9_]+`)
+	sanitized := re.ReplaceAllString(prefix, "_")
+	sanitized = strings.Trim(sanitized, "_")
+	if sanitized == "" {
+		return "testdb"
+	}
+	return sanitized
+}
+
+func buildConnString(dbName string) string {
+	return fmt.Sprintf("postgres://testuser:testpass@%s:%s/%s?sslmode=disable", sharedTestHost, sharedTestPort, dbName)
+}
+
+func execContainerCommand(t *testing.T, args ...string) string {
+	t.Helper()
+
+	container := requireSharedTestContainer(t)
+	ctx := context.Background()
+	exitCode, outReader, err := container.Exec(ctx, args)
+	output, readErr := io.ReadAll(outReader)
+	if readErr != nil {
+		require.NoError(t, readErr)
+	}
+	require.NoError(t, err, "container exec failed: %s", strings.Join(args, " "))
+	require.Equalf(t, 0, exitCode, "container exec failed: %s\noutput: %s", strings.Join(args, " "), string(output))
+	return string(output)
+}
+
+func createDatabase(t *testing.T, dbName string, templateName string) {
+	t.Helper()
+	args := []string{"createdb", "-U", "testuser", "--maintenance-db=postgres"}
+	if templateName != "" {
+		args = append(args, "-T", templateName)
+	}
+	args = append(args, dbName)
+	execContainerCommand(t, args...)
+}
+
+func dropDatabase(t *testing.T, dbName string) {
+	t.Helper()
+	terminateDatabaseConnections(t, dbName)
+	execContainerCommand(t, "dropdb", "--if-exists", "-U", "testuser", "--maintenance-db=postgres", dbName)
+}
+
+func terminateDatabaseConnections(t *testing.T, dbName string) {
+	t.Helper()
+	sql := fmt.Sprintf("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '%s' AND pid <> pg_backend_pid();", dbName)
+	execContainerCommand(t, "psql", "-U", "testuser", "-d", "postgres", "-c", sql)
+}
+
+func ensureTemplateDatabase(t *testing.T, templateKey string, provision func(t *testing.T, dbName string)) string {
+	t.Helper()
+
+	templateDBsMu.Lock()
+	defer templateDBsMu.Unlock()
+
+	if name, ok := templateDBs[templateKey]; ok {
+		return name
+	}
+
+	name := nextDatabaseName("template_" + templateKey)
+	createDatabase(t, name, "")
+	provision(t, name)
+	templateDBs[templateKey] = name
+	return name
+}
+
+func setupDatabaseFromTemplate(t *testing.T, templateKey string, provision func(t *testing.T, dbName string)) (string, func()) {
+	t.Helper()
+
+	requireSharedTestContainer(t)
+	templateName := ensureTemplateDatabase(t, templateKey, provision)
+	dbName := nextDatabaseName("test_" + templateKey)
+	createDatabase(t, dbName, templateName)
+
+	cleanup := func() {
+		dropDatabase(t, dbName)
+	}
+	return buildConnString(dbName), cleanup
+}
+
+func setupMigratedConnString(t *testing.T) (string, func()) {
+	t.Helper()
+	return setupDatabaseFromTemplate(t, "full_migrations", func(t *testing.T, dbName string) {
+		applyMigrationsToDatabase(t, requireSharedTestContainer(t), dbName)
+	})
+}
+
+func setupMigratedAdapter(t *testing.T) (*Adapter, func()) {
+	t.Helper()
+
+	connString, cleanup := setupMigratedConnString(t)
+	config := testStorageConfig(connString)
+	adapter, err := NewAdapter(config)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	require.NoError(t, adapter.Initialize(ctx))
+
+	return adapter, func() {
+		require.NoError(t, adapter.Close(ctx))
+		cleanup()
+	}
+}
+
+// applyMigrations applies all database migrations to the test container's default database.
 func applyMigrations(t *testing.T, container testcontainers.Container) {
 	t.Helper()
-	applyMigrationsUpTo(t, container, 20)
+	applyMigrationsToDatabase(t, container, "testdb")
 }
 
-// applyMigrationsUpTo applies migrations sequentially from 001 up to and including
-// the migration with the given version number.
+func applyMigrationsToDatabase(t *testing.T, container testcontainers.Container, dbName string) {
+	t.Helper()
+	applyMigrationsUpToDatabase(t, container, dbName, 20)
+}
+
+// applyMigrationsUpTo applies migrations sequentially against the default database.
 func applyMigrationsUpTo(t *testing.T, container testcontainers.Container, upTo int) {
+	t.Helper()
+	applyMigrationsUpToDatabase(t, container, "testdb", upTo)
+}
+
+// applyMigrationsUpToDatabase applies migrations sequentially from 001 up to and including
+// the migration with the given version number to the specified database.
+func applyMigrationsUpToDatabase(t *testing.T, container testcontainers.Container, dbName string, upTo int) {
 	t.Helper()
 
 	ctx := context.Background()
+	createSchemaMigrationsTable(t, ctx, container, dbName)
 
-	createSchemaMigrationsTable(t, ctx, container)
-
-	// Find project root (where migrations folder is)
 	projectRoot, err := findProjectRoot()
 	require.NoError(t, err)
-
 	migrationsDir := filepath.Join(projectRoot, "migrations")
 
 	migrations := []struct {
@@ -145,26 +310,26 @@ func applyMigrationsUpTo(t *testing.T, container testcontainers.Container, upTo 
 		if int(migration.version) > upTo {
 			break
 		}
-		applyOneMigration(t, ctx, container, migrationsDir, migration.file, migration.version)
+		applyOneMigration(t, ctx, container, dbName, migrationsDir, migration.file, migration.version)
 	}
 }
 
-// createSchemaMigrationsTable creates the schema_migrations tracking table in the container.
-func createSchemaMigrationsTable(t *testing.T, ctx context.Context, container testcontainers.Container) {
+// createSchemaMigrationsTable creates the schema_migrations tracking table in the target database.
+func createSchemaMigrationsTable(t *testing.T, ctx context.Context, container testcontainers.Container, dbName string) {
 	t.Helper()
 	schemaSQL := []byte(`CREATE TABLE IF NOT EXISTS schema_migrations (version BIGINT PRIMARY KEY, dirty BOOLEAN NOT NULL DEFAULT FALSE);`)
 	if err := container.CopyToContainer(ctx, schemaSQL, "/tmp/schema_migrations.sql", 0644); err != nil {
 		t.Logf("Warning: Failed to copy schema_migrations.sql: %v", err)
 		return
 	}
-	exitCode, _, err := container.Exec(ctx, []string{"psql", "-U", "testuser", "-d", "testdb", "-f", "/tmp/schema_migrations.sql"})
+	exitCode, _, err := container.Exec(ctx, []string{"psql", "-U", "testuser", "-d", dbName, "-f", "/tmp/schema_migrations.sql"})
 	if err != nil || exitCode != 0 {
-		t.Logf("Warning: Failed to create schema_migrations table (exit %d): %v", exitCode, err)
+		t.Logf("Warning: Failed to create schema_migrations table in %s (exit %d): %v", dbName, exitCode, err)
 	}
 }
 
 // applyOneMigration copies a migration file into the container and runs it via psql -f.
-func applyOneMigration(t *testing.T, ctx context.Context, container testcontainers.Container, migrationsDir, file string, version int64) {
+func applyOneMigration(t *testing.T, ctx context.Context, container testcontainers.Container, dbName, migrationsDir, file string, version int64) {
 	t.Helper()
 
 	data, err := os.ReadFile(filepath.Join(migrationsDir, file))
@@ -173,29 +338,26 @@ func applyOneMigration(t *testing.T, ctx context.Context, container testcontaine
 		return
 	}
 
-	// Copy the SQL file into the container so psql can read it with -f (avoids
-	// any quoting or argument-length issues with psql -c "<multiline SQL>").
-	containerPath := fmt.Sprintf("/tmp/migration_%03d.sql", version)
+	containerPath := fmt.Sprintf("/tmp/migration_%s_%03d.sql", sanitizeDatabaseName(dbName), version)
 	if err := container.CopyToContainer(ctx, data, containerPath, 0644); err != nil {
 		t.Logf("Warning: Could not copy migration %s to container: %v", file, err)
 		return
 	}
 
-	exitCode, _, err := container.Exec(ctx, []string{"psql", "-U", "testuser", "-d", "testdb", "-f", containerPath})
+	exitCode, _, err := container.Exec(ctx, []string{"psql", "-U", "testuser", "-d", dbName, "-f", containerPath})
 	if err != nil || exitCode != 0 {
-		t.Logf("Warning: Migration %s failed (exit %d): %v", file, exitCode, err)
+		t.Logf("Warning: Migration %s failed against %s (exit %d): %v", file, dbName, exitCode, err)
 		return
 	}
 
-	// Record migration version in schema_migrations
 	versionSQL := []byte(fmt.Sprintf("INSERT INTO schema_migrations (version, dirty) VALUES (%d, FALSE) ON CONFLICT DO NOTHING;", version))
-	versionPath := fmt.Sprintf("/tmp/migration_%03d_version.sql", version)
+	versionPath := fmt.Sprintf("/tmp/migration_%s_%03d_version.sql", sanitizeDatabaseName(dbName), version)
 	if err := container.CopyToContainer(ctx, versionSQL, versionPath, 0644); err == nil {
-		container.Exec(ctx, []string{"psql", "-U", "testuser", "-d", "testdb", "-f", versionPath}) //nolint:errcheck
+		container.Exec(ctx, []string{"psql", "-U", "testuser", "-d", dbName, "-f", versionPath}) //nolint:errcheck
 	}
 }
 
-// findProjectRoot walks up the directory tree to find the project root
+// findProjectRoot walks up the directory tree to find the project root.
 func findProjectRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -219,34 +381,7 @@ func findProjectRoot() (string, error) {
 // Use for tests that exercise CIMD features (ClientURIs, GetByClientURI).
 func setupAgentTestDBWithCIMD(t *testing.T) (*Adapter, func()) {
 	t.Helper()
-
-	container, connString, cleanup := setupTestContainer(t)
-	t.Cleanup(cleanup)
-
-	applyMigrations(t, container)
-
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connString,
-		},
-		Timeouts: ports.StorageTimeouts{
-			Read:  5 * time.Second,
-			Write: 10 * time.Second,
-		},
-	}
-
-	adapter, err := NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-
-	return adapter, func() {
-		adapter.Close(ctx)
-		cleanup()
-	}
+	return setupMigratedAdapter(t)
 }
 
 // testStorageConfig creates a StorageConfig for integration testing with the given connection string.

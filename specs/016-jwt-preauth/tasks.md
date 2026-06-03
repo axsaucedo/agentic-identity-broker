@@ -296,7 +296,7 @@
 
 ### Additional Polish
 
-- [X] T082 Run `just check` (fmt, vet, lint, test) — all checks must pass
+- [X] T082 Run `just check` (fmt, vet, lint) and `just verify` — all checks must pass
 - [ ] T083 Run quickstart.md validation: manually verify signed JWT, unsigned JWT, and backward-compatible configurations per `specs/016-jwt-preauth/quickstart.md`
 - [X] T084 Code cleanup: ensure consistent error messages, remove any TODOs or placeholder code
 

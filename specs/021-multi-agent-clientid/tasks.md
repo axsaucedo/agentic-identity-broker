@@ -168,7 +168,7 @@ Backend-only feature per plan.md §Technical Context. No frontend changes.
 - [X] T041 [P] In internal/app/builder.go: inject cfg.OAuth2AuthServer.MultiAgentClient.Enabled as multiAgentEnabled into AgentsHandler constructor
 - [X] T042 [P] Write PostgreSQL integration test in internal/adapters/storage/postgres/agent_repository_migration008_test.go: apply migration 008, verify two agents can share client_id; apply only 001-007, verify duplicate client_id rejected by DB constraint
 
-**Checkpoint**: `just test` passes with full test suite including integration tests; `just build` succeeds
+**Checkpoint**: `just verify` passes and `just build` succeeds
 
 ---
 
@@ -230,7 +230,7 @@ Backend-only feature per plan.md §Technical Context. No frontend changes.
 **Testing** (Principle VIII — Unit & Integration Tests):
 - [X] T066 Verify unit tests in service_test.go, oauth2_token_test.go, cel_evaluator_test.go were written FIRST (red-green TDD)
 - [X] T067 Verify unit tests changed minimally during implementation
-- [X] T068 Run `just test` — all unit + integration tests pass with race detector
+- [X] T068 Run `just verify` — full verification gate passes
 
 **E2E Acceptance Testing** (Principle XIII):
 - [X] T069 Verify each of the 14 It() blocks in tests/e2e/multi_agent_client_test.go maps to exactly ONE acceptance scenario from spec.md
@@ -242,7 +242,7 @@ Backend-only feature per plan.md §Technical Context. No frontend changes.
 
 ### Additional Polish
 
-- [X] T075 [P] Run `just check` (fmt → vet → lint → test) — all checks pass
+- [X] T075 [P] Run `just check` (fmt → vet → lint) and `just verify` — all checks pass
 - [ ] T076 [P] Validate quickstart.md steps work end-to-end against running broker (feature disabled and enabled modes)
 
 ---
@@ -307,7 +307,7 @@ Task T023: "Add AgentIDParamInjected audit log in internal/domain/oauth2/service
 4. Write US1 unit tests (T019–T020), verify they FAIL
 5. Implement US1 (T021–T027)
 6. Verify US1 E2E scenarios 1–6 pass
-7. **STOP and VALIDATE**: `just check` passes; US1 works end-to-end
+7. **STOP and VALIDATE**: `just check` and `just verify` pass; US1 works end-to-end
 
 ### Incremental Delivery
 
@@ -337,4 +337,4 @@ With multiple developers or agents:
 - US1 and US2 are independent implementation targets (different source files)
 - The resolveAgentIdByClientId CEL function is ONLY registered when feature is DISABLED (nil closure = feature enabled = function absent)
 - Security rule: token is always withheld on claim absence/mismatch (fail closed, SR-001)
-- Commit after each task or logical group; run `just check` before each commit
+- Commit after each task or logical group; run `just check` and `just verify` before each commit

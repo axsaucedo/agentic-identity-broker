@@ -119,8 +119,9 @@ Tests needing both route types create both server instances.
 ## Running E2E Tests
 
 ```bash
-just test-e2e             # All E2E tests
-just test-e2e-coverage    # With coverage report
-just test-e2e-watch       # Watch mode for TDD
-ginkgo -v --focus="pattern" ./tests/e2e/    # Focused run
+just test-e2e-backend          # Backend E2E suite only
+just test-e2e-backend-coverage # Backend E2E suite with coverage report
+just test-e2e-backend-watch    # Backend E2E watch mode for TDD
+just test-e2e                  # All backend, ExtProc, and frontend E2E suites
+ginkgo -v --focus="pattern" ./tests/e2e/    # Focused backend run
 ```

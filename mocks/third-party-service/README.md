@@ -243,10 +243,10 @@ See `go.mod` for the complete dependency tree.
 
 ### Automated Integration Test
 
-The broker's integration tests use mock OAuth2 providers. To run tests:
+The broker's self-contained integration tests use mock OAuth2 providers. To run them:
 
 ```bash
-just test
+just test-integration
 ```
 
 ### Manual Testing

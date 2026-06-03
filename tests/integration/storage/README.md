@@ -1,6 +1,7 @@
-# Integration Tests
+# Storage Integration Tests
 
-This directory contains integration tests for the persistence layer storage adapters.
+This directory contains the storage-focused integration tests for the persistence layer adapters.
+Self-contained tests stay in `tests/integration/storage/`, while infra-backed PostgreSQL tests live in `tests/integration/storage/infra/`.
 
 ## Running Integration Tests
 
@@ -13,11 +14,11 @@ Integration tests require either Docker or Podman to run.
 # Ensure Docker daemon is running
 docker ps
 
-# Run integration tests
-go test -tags=integration -v ./tests/integration/storage/...
+# Run infra-backed storage integration tests
+go test -tags=integration -v ./tests/integration/storage/infra/...
 
 # Or using justfile
-just test-integration
+just test-integration-infra
 ```
 
 #### With Podman
@@ -28,7 +29,7 @@ Podman is fully supported as an alternative to Docker, including on macOS.
 ```bash
 # Podman socket should be available automatically
 export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
-go test -tags=integration -v ./tests/integration/storage/...
+go test -tags=integration -v ./tests/integration/storage/infra/...
 ```
 
 **On macOS with Podman machine:**
@@ -43,10 +44,10 @@ podman machine start
 export DOCKER_HOST='unix:///var/folders/42/xfyh9ksn6sndqbtl0ybbtr700000gn/T/podman/podman-machine-default-api.sock'
 
 # Run tests
-go test -tags=integration -v ./tests/integration/storage/...
+go test -tags=integration -v ./tests/integration/storage/infra/...
 
 # Or with justfile
-just test-integration
+just test-integration-infra
 ```
 
 **Note:** The postgres_test.go init function automatically disables Ryuk cleanup by default. This is necessary because Ryuk tries to use a network named "bridge", which conflicts with Podman's network mode system (where "bridge" is a reserved network mode, not a network name). This is handled transparently - no additional configuration needed.
@@ -57,14 +58,17 @@ just test-integration
 ```
 tests/integration/storage/
 ├── README.md                 # This file
-├── lifecycle_test.go        # Memory adapter lifecycle tests (no build tag)
-└── postgres_test.go         # PostgreSQL adapter tests (integration build tag)
+├── lifecycle_test.go         # Memory adapter lifecycle tests (self-contained)
+└── infra/
+    ├── postgres_test.go      # PostgreSQL adapter tests (integration build tag)
+    └── thirdparty_service_test.go # PostgreSQL third-party service integration
 ```
 
-### Memory Adapter Tests (No Build Tag)
+### Memory Adapter Tests (Self-Contained)
 Run with standard `go test`:
 ```bash
 go test -v ./tests/integration/storage/...
+# or just test-integration
 ```
 
 Tests:
@@ -74,10 +78,11 @@ Tests:
 - `TestMemoryAdapter_PaginationSupport` - Offset/limit pagination
 - `TestMemoryAdapter_ErrorRecovery` - Error handling scenarios
 
-### PostgreSQL Adapter Tests (With Integration Build Tag)
+### PostgreSQL Adapter Tests (Infra-Backed, Integration Build Tag)
 Requires container runtime (Docker or Podman):
 ```bash
-go test -tags=integration -v ./tests/integration/storage/...
+go test -tags=integration -v ./tests/integration/storage/infra/...
+# or just test-integration-infra
 ```
 
 Tests:
@@ -123,7 +128,7 @@ podman machine start
 
 # Export and retry tests
 export DOCKER_HOST='unix:///<your-socket-path>'
-go test -tags=integration -v ./tests/integration/storage/...
+go test -tags=integration -v ./tests/integration/storage/infra/...
 ```
 
 **On Linux with rootless Podman:**
@@ -133,7 +138,7 @@ ls -l $XDG_RUNTIME_DIR/podman/podman.sock
 
 # Set DOCKER_HOST if needed
 export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
-go test -tags=integration -v ./tests/integration/storage/...
+go test -tags=integration -v ./tests/integration/storage/infra/...
 ```
 
 ### Container image not available
@@ -145,7 +150,7 @@ podman images | grep postgres
 podman pull postgres:15-alpine
 
 # Run tests with verbose output
-TESTCONTAINERS_LOGS=true go test -tags=integration -v ./tests/integration/storage/...
+TESTCONTAINERS_LOGS=true go test -tags=integration -v ./tests/integration/storage/infra/...
 ```
 
 ### Tests hang or timeout
@@ -157,7 +162,7 @@ podman ps -a | grep postgres
 podman rm -f $(podman ps -aq --filter ancestor=postgres:15-alpine)
 
 # Run tests with debug output
-TESTCONTAINERS_LOGS=true go test -tags=integration -v ./tests/integration/storage/...
+TESTCONTAINERS_LOGS=true go test -tags=integration -v ./tests/integration/storage/infra/...
 ```
 
 ## CI/CD Integration
@@ -173,7 +178,7 @@ TESTCONTAINERS_LOGS=true go test -tags=integration -v ./tests/integration/storag
     sleep 2
 
     # Run tests
-    go test -tags=integration -v ./tests/integration/storage/...
+    go test -tags=integration -v ./tests/integration/storage/infra/...
 ```
 
 ### GitLab CI Example
@@ -186,7 +191,7 @@ integration-tests:
     - export DOCKER_HOST=unix:///run/podman/podman.sock
     - podman system service --time=0 unix:///run/podman/podman.sock &
     - sleep 2
-    - go test -tags=integration -v ./tests/integration/storage/...
+    - go test -tags=integration -v ./tests/integration/storage/infra/...
 ```
 
 ## Performance Notes

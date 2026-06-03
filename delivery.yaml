@@ -34,9 +34,9 @@ pipeline:
       - desc: "Run quality checks"
         cmd: |
           just check
-      - desc: "Run all tests (unit + integration)"
+      - desc: "Run verification suite"
         cmd: |
-          GINKGO_PROCS=8 cdp-wrap-cmd "just test-all-junit" "cdp-tool upload-test-results -t junit $(pwd)/test-results/all-tests-junit.xml"
+          GINKGO_PROCS=8 cdp-wrap-cmd "just verify-junit" "cdp-tool upload-test-results -t junit $(pwd)/test-results/all-tests-junit.xml"
       - desc: "Run artifacts build test"
         cmd: |
           just build-all

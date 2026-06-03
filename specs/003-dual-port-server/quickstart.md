@@ -352,14 +352,14 @@ Edit code in `internal/adapters/http/`, `internal/domain/server/`, etc.
 ### 2. Run Tests
 
 ```bash
-# Unit tests
+# Fast Go/package tests
 just test
 
-# Integration tests
-go test ./tests/integration/... -v
+# Integration suites
+just test-integration
 
-# With race detection
-go test -race ./...
+# Full verification gate
+just verify
 
 # Coverage report
 just test-coverage
@@ -368,7 +368,7 @@ just test-coverage
 ### 3. Run Code Quality Checks
 
 ```bash
-# Format, vet, lint, test
+# Format, vet, lint
 just check
 ```
 

@@ -1765,11 +1765,14 @@ Per constitution Principle VIII:
 
 **Run tests**:
 ```bash
-# Unit tests only
+# Fast Go/package tests
 just test
 
-# Integration tests (requires Docker)
-go test ./... -v
+# Full verification gate
+just verify
+
+# Integration suites (Docker/Podman required for infra-backed layer)
+just test-integration
 
 # With coverage
 just test-coverage
