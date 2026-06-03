@@ -139,8 +139,8 @@ When the feature is enabled, the following structured log events are emitted:
 ## Testing
 
 ```bash
-# Run all tests (unit + integration + E2E)
-just test
+# Run all tests (fast/package + integration + E2E)
+just verify
 
 # Run only multi-agent E2E tests
 ginkgo -v --label-filter="multi-agent" ./tests/e2e/...

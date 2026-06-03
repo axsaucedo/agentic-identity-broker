@@ -13,8 +13,9 @@ This guide covers the end-to-end developer workflow for implementing the Permiss
 just dev             # Go backend hot-reload (Air) on :8000 / :14000
 just web-dev         # Vite frontend on :3000
 
-# Run all checks before committing
-just check           # fmt → vet → lint → test
+# Run checks before committing
+just check           # fmt → vet → lint
+just verify          # full verification gate
 ```
 
 ---
@@ -362,7 +363,8 @@ Screenshots to: `tests/e2e/screenshots/consent_permission_sets_*.png`
 
 Before opening PR:
 
-- [ ] `just check` passes (fmt + vet + lint + test)
+- [ ] `just check` passes (fmt + vet + lint)
+- [ ] `just verify` passes
 - [ ] All 24 E2E scenarios green
 - [ ] All Playwright frontend tests green
 - [ ] Screenshots captured for all UI states

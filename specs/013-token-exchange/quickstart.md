@@ -662,8 +662,7 @@ Remove `Skip()` calls and add actual test implementations.
 ### Step 6.3: Run Full Test Suite
 
 ```bash
-just test
-just test-e2e
+just verify
 ```
 
 ---

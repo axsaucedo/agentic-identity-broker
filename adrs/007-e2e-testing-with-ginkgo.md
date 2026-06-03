@@ -93,9 +93,10 @@ We will use **Ginkgo v2** with **Gomega** for BDD-style E2E tests that exercise 
 
 **Quick Commands**:
 ```bash
-just test-e2e           # Run all E2E tests
-just test-e2e-coverage  # Run with coverage report
-just test-e2e-watch     # Watch mode for TDD
+just test-e2e-backend          # Run the backend E2E suite
+just test-e2e-backend-coverage # Run the backend suite with coverage report
+just test-e2e-backend-watch    # Watch the backend suite during TDD
+just test-e2e                  # Run all backend, ExtProc, and frontend E2E suites
 ```
 
 ## References

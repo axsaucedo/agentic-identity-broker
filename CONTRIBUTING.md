@@ -42,12 +42,13 @@ See [Constitution v1.4.0](.specify/memory/constitution.md) for details.
 
 ## Before Committing
 
-Run all quality checks:
+Run static checks and the full verification gate:
 ```bash
-just check    # Format, vet, lint, test
+just check    # Format, vet, lint
+just verify   # Full verification gate with E2E last
 ```
 
-This must pass before opening a PR.
+Both must pass before opening a PR.
 
 ## Making Changes
 
@@ -88,14 +89,17 @@ export function MyComponent() {
 
 - Tests live next to source files (`*_test.go` or `*.test.tsx`)
 - New features need >80% test coverage
-- Run tests: `just test`
-- Coverage: `just test-coverage`
+- Fast Go/package tests: `just test`
+- Integration suites: `just test-integration`
+- All E2E suites: `just test-e2e`
+- Full verification gate: `just verify`
+- Coverage for the fast Go/package suite: `just test-coverage`
 
 ## Pull Request Process
 
 ### Before Opening a PR
 
-1. Run `just check` and ensure all checks pass
+1. Run `just check` and `just verify`, and ensure both pass
 2. Update [ARCHITECTURE.md](ARCHITECTURE.md) if design changed
 3. Write clear commit messages using [Conventional Commits](https://www.conventionalcommits.org/)
 
@@ -111,8 +115,8 @@ export function MyComponent() {
 ### Requirements
 
 - ✅ One maintainer review required
-- ✅ All quality checks passing (`just check`)
-- ✅ All tests passing
+- ✅ Static quality checks passing (`just check`)
+- ✅ Full verification gate passing (`just verify`)
 - ✅ Architecture changes require both maintainers
 
 ## Commit Guidelines

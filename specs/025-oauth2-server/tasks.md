@@ -399,7 +399,7 @@
 **Testing** (Principles VIII, XIII):
 - [x] T145 Verify all E2E tests pass: `ginkgo -v ./tests/e2e/oauth2_*`
 - [x] T146 Verify all unit tests pass: `just test`
-- [x] T147 Run full check suite: `just check` (fmt → vet → lint → test)
+- [x] T147 Run static checks with `just check` (fmt → vet → lint), then run `just verify`
 
 ### Additional Polish
 

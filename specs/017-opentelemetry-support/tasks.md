@@ -243,7 +243,7 @@ N/A — this feature is backend-only. No frontend components or design system ch
 
 ### Polish
 
-- [x] T067 Run just check (fmt → vet → lint → test) and fix all issues — all checks must pass
+- [x] T067 Run `just check` (fmt → vet → lint) and `just verify`, and fix all issues — both must pass
 - [x] T068 [P] Verify config.yaml telemetry section uses enabled: false default with full commented example to guide operators
 
 ---

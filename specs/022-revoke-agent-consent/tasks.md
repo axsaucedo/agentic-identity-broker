@@ -183,7 +183,7 @@
 
 ### Additional Polish
 
-- [ ] T060 Run `just check` (fmt → vet → lint → test) — all checks must pass with zero issues
+- [ ] T060 Run `just check` (fmt → vet → lint) and `just verify` — all checks must pass with zero issues
 - [ ] T061 [P] Verify RevokeConsent (idempotent, used by POST empty-array path) is UNCHANGED — quickstart.md confirms backward compatibility must be maintained
 
 ---

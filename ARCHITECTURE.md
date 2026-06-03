@@ -353,14 +353,17 @@ tests/e2e/
 
 **Running E2E Tests**:
 ```bash
-# Run all E2E tests
+# Run the backend E2E suite
+just test-e2e-backend
+
+# Run the backend suite with coverage report
+just test-e2e-backend-coverage
+
+# Watch the backend suite (auto-rerun on changes)
+just test-e2e-backend-watch
+
+# Run all backend, ExtProc, and frontend E2E suites
 just test-e2e
-
-# Run with coverage report
-just test-e2e-coverage
-
-# Watch mode (auto-rerun on changes)
-just test-e2e-watch
 
 # Run specific scenarios
 ginkgo -v --focus="Authorization Endpoint" ./tests/e2e/

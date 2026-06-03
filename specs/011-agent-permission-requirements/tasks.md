@@ -29,7 +29,7 @@
 
 - [x] T001 Verify Go 1.23.0+ installed and repository cloned at `/home/runner/work/agentic-identity-broker/agentic-identity-broker`
 - [x] T002 [P] Run `just deps` to ensure all dependencies are up to date
-- [x] T003 [P] Run `just check` to verify existing tests pass and establish baseline
+- [x] T003 [P] Run `just verify` to verify existing tests pass and establish baseline
 
 ---
 
@@ -125,7 +125,7 @@
 
 - [x] T010 Create migration file `migrations/005_add_agent_service_requirements.up.sql` (DB-001, DB-002)
 - [x] T011 Create rollback migration file `migrations/005_add_agent_service_requirements.down.sql` (DB-001, DB-005)
-- [x] T012 Write integration test in `tests/integration/agent_service_requirements_migration_test.go` to verify migration applies cleanly using existing testcontainer setup (DB-005)
+- [x] T012 Write integration test in `tests/integration/infra/agent_service_requirements_migration_test.go` to verify migration applies cleanly using existing testcontainer setup (DB-005)
 - [x] T013 Write integration test to verify migration rollback works without data loss (DB-005)
 - [x] T014 Apply migration to test database and verify agents table has service_requirements JSONB column (DB-002, DB-003)
 - [x] T015 Apply migration to test database and verify idx_agents_service_requirements GIN index created (DB-004)
@@ -148,7 +148,7 @@
 - [x] T017 [P] [US1] Write unit tests in `internal/domain/storage/requirement_type_test.go` for RequirementType validation
 - [x] T018 [P] [US1] Write unit tests in `internal/domain/storage/service_requirement_test.go` for ServiceRequirement structure validation
 - [x] T019 [P] [US1] Write unit tests in `internal/domain/storage/agent_test.go` for Agent.ValidateServiceRequirements() including duplicate detection
-- [x] T020 [P] [US1] Write integration tests in `tests/integration/agent_repository_service_requirements_test.go` for JSONB serialization/deserialization using existing testcontainer setup
+- [x] T020 [P] [US1] Write integration tests in `tests/integration/agent_repository_service_requirements_memory_test.go` and `tests/integration/infra/agent_repository_service_requirements_test.go` for JSONB serialization/deserialization using existing self-contained and infra-backed setups
 - [x] T021 [P] [US1] Write unit tests in `internal/adapters/http/handlers/admin/agent_handler_test.go` for validateServiceRequirements()
 - [x] T022 [US1] Run tests and verify they FAIL (no implementation exists yet)
 
@@ -367,8 +367,8 @@
 
 **Database & Persistence** (Principle IX):
 - [x] T114 [P] Verify migration files in `migrations/` follow sequential numbering: 005_add_agent_service_requirements.{up,down}.sql
-- [x] T115 [P] Verify integration tests test migrations (apply, rollback, data integrity) in `tests/integration/agent_service_requirements_migration_test.go`
-- [x] T116 [P] Verify PostgreSQL repository integration tests pass in `tests/integration/agent_repository_service_requirements_test.go`
+- [x] T115 [P] Verify integration tests test migrations (apply, rollback, data integrity) in `tests/integration/infra/agent_service_requirements_migration_test.go`
+- [x] T116 [P] Verify PostgreSQL repository integration tests pass in `tests/integration/infra/agent_repository_service_requirements_test.go`
 - [x] T117 Verify persistence entities follow `specs/004-persistence-layer/quickstart.md` patterns (JSONB with sqlx)
 
 **Security** (Principles I, III):
@@ -409,8 +409,8 @@
 - [x] T141 Run `just fmt` to format all Go code
 - [x] T142 Run `just vet` for static analysis
 - [x] T143 Run `just lint` to check code quality
-- [x] T144 Run `just test` to execute full test suite
-- [x] T145 Run `just check` (combines fmt, vet, lint, test) and verify all pass
+- [x] T144 Run `just verify` to execute the full verification gate
+- [x] T145 Run `just check` (fmt, vet, lint) and verify static checks pass
 - [x] T146 [P] Build frontend with `just web-build` and verify no errors
 - [x] T147 [P] Run frontend tests with `cd web && npm test` and verify all pass
 - [x] T148 Code cleanup and refactoring for readability
@@ -495,7 +495,7 @@
 - T110-T112 (architecture docs) can run in parallel
 - T114-T117 (database verification) can run in parallel
 - T118-T120 (security verification) can run in parallel
-- T141-T144 (code quality checks) can run sequentially (just check combines them)
+- T141-T145 (code quality checks + verification) should run sequentially (`just verify` depends on a clean codebase)
 - T146-T147 (frontend build and tests) can run in parallel
 
 ---
@@ -507,7 +507,7 @@
 Task T017: "Write unit tests in internal/domain/storage/requirement_type_test.go"
 Task T018: "Write unit tests in internal/domain/storage/service_requirement_test.go"
 Task T019: "Write unit tests in internal/domain/storage/agent_test.go"
-Task T020: "Write integration tests in tests/integration/agent_repository_service_requirements_test.go"
+Task T020: "Write integration tests in tests/integration/agent_repository_service_requirements_memory_test.go and tests/integration/infra/agent_repository_service_requirements_test.go"
 Task T021: "Write unit tests in internal/adapters/http/handlers/admin/agent_handler_test.go"
 
 # After tests written, launch domain layer components together:

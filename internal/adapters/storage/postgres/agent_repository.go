@@ -137,7 +137,7 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 
 	var serviceReqsJSON []byte
 	var err error
-	if len(agent.ServiceRequirements) > 0 {
+	if agent.ServiceRequirements != nil {
 		serviceReqsJSON, err = json.Marshal(agent.ServiceRequirements)
 		if err != nil {
 			return storage.NewStorageError(
@@ -360,7 +360,7 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 
 	var serviceReqsJSON []byte
 	var err error
-	if len(agent.ServiceRequirements) > 0 {
+	if agent.ServiceRequirements != nil {
 		serviceReqsJSON, err = json.Marshal(agent.ServiceRequirements)
 		if err != nil {
 			return storage.NewStorageError(

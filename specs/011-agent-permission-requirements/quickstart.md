@@ -785,8 +785,8 @@ var _ = Describe("Agent Permission Requirements", func() {
 ## Next Steps After Implementation
 
 - [ ] Update ARCHITECTURE.md Glossary with new domain terms
-- [ ] Run `just check` (fmt, vet, lint, test)
-- [ ] Run full E2E test suite
+- [ ] Run `just check` (fmt, vet, lint)
+- [ ] Run `just verify`
 - [ ] Request code review
 - [ ] Run codeql_checker for security vulnerabilities
 - [ ] Update agent context via `.specify/scripts/bash/update-agent-context.sh copilot`

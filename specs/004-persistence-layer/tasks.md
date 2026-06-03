@@ -275,7 +275,7 @@ Cross-cutting concerns, comprehensive testing, and final documentation.
 
 ### Code Quality & CI/CD
 
-- [ ] T115 Ensure `just check` passes (fmt, vet, lint, test)
+- [ ] T115 Ensure `just check` (fmt, vet, lint) and `just verify` both pass
 - [ ] T116 Configure CI pipeline to run tests with race detector
 - [ ] T117 Configure CI pipeline to run integration tests with PostgreSQL container
 - [ ] T118 Add coverage reporting to CI pipeline (fail if < 80%)
@@ -373,7 +373,7 @@ These three user story groups are **independent** and can proceed in parallel af
 1. Before starting any phase, verify all dependencies are complete
 2. For each task, update the checkbox when complete: `- [x]`
 3. Mark story tasks in progress with `[IN PROGRESS]` comment
-4. Run `just check` after each phase completion
+4. Run `just check` and `just verify` after each phase completion
 5. Commit after each phase: `git commit -m "feat: Complete Phase X tasks"`
 
 Example progress tracking:

@@ -203,7 +203,7 @@
 - [x] T048 [P] Create MCP server mock Dockerfile in `mocks/mcp-server/Dockerfile` (multi-stage build)
 - [x] T049 Create agentgateway configuration (ExtProc policy + MCP backend) in `mocks/agentgateway/config.yaml` per contracts/docker-compose.md
 - [x] T050 Add three new services to `docker-compose.yml`: agentgateway (ghcr.io/agentgateway/agentgateway:v0.12.0), extproc-token-exchange (Dockerfile.mock), mcp-server-mock (Dockerfile.mock) per contracts/docker-compose.md
-- [x] T051 [P] Add `just` targets for ExtProc development: `just build-extproc`, `just run-extproc`, `just test-extproc-e2e` in `justfile`
+- [x] T051 [P] Add `just` targets for ExtProc development: `just extproc-build`, `just extproc-run`, `just test-e2e-extproc` in `justfile`
 
 **Checkpoint**: `docker compose up` starts full integration environment with transparent token exchange
 
@@ -265,7 +265,7 @@
 
 - [x] T074 Code cleanup and refactoring across all ExtProc packages
 - [x] T075 [P] Run quickstart.md validation: verify implementation matches quickstart steps
-- [x] T076 Run `just check` (fmt, vet, lint, test) — all checks must pass
+- [x] T076 Run `just check` (fmt, vet, lint) and `just verify` — all checks must pass
 
 ---
 
