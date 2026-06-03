@@ -60,6 +60,9 @@ func TestMatchesRedirectURI(t *testing.T) {
 		{"non-loopback: port differs", "https://app.example.com/cb", "https://app.example.com:9999/cb", false},
 		{"non-loopback: explicit port differs", "https://app.example.com:8443/cb", "https://app.example.com:9000/cb", false},
 		{"non-loopback: portless reg, port in request", "https://app.example.com/cb", "https://app.example.com:443/cb", false},
+		// Defense-in-depth — reject malformed values even if legacy data bypassed write validation
+		{"invalid: raw fragment rejected", "https://app.example.com/cb#frag", "https://app.example.com/cb#frag", false},
+		{"invalid: raw whitespace rejected", "https://app.example.com/call back", "https://app.example.com/call back", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

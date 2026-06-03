@@ -42,6 +42,10 @@ func IsValidRedirectURI(uriStr string) bool {
 // per RFC 8252 §7.3; all other components must match exactly. For non-loopback
 // hosts all four URI components must match exactly.
 func MatchesRedirectURI(registered, incoming string) bool {
+	if strings.ContainsAny(registered, "# \t\n\r") || strings.ContainsAny(incoming, "# \t\n\r") {
+		return false
+	}
+
 	r, err := url.Parse(registered)
 	if err != nil || r.Host == "" {
 		return false
