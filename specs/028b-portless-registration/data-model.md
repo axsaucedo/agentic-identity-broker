@@ -10,8 +10,8 @@ This feature introduces no new entities, no schema changes, and no configuration
 
 ## New: `MatchesRedirectURI` (Value Function)
 
-**Package**: `internal/domain/storage`
-**File**: `agent.go` (added alongside `IsValidRedirectURI`)
+**Package**: `internal/domain/urivalidation`
+**File**: `redirect.go` (alongside `IsValidRedirectURI`)
 
 ```
 MatchesRedirectURI(registered string, incoming string) bool
@@ -49,14 +49,11 @@ Before:
     if req.RedirectURI == allowed { uriAllowed = true; break }
 
 After:
-    if redirect.MatchesRedirectURI(allowed, req.RedirectURI) {
+    if urivalidation.MatchesRedirectURI(allowed, req.RedirectURI) {
         uriAllowed = true
-        // audit log: registered_redirect_uri=allowed, incoming_redirect_uri=req.RedirectURI
         break
     }
 ```
-
-The slog audit entry is emitted unconditionally on every loopback match (SR-003). Non-loopback matches require no audit entry beyond existing error logging.
 
 ### Site 2 — `internal/domain/oauth2server/provider.go`
 
@@ -65,16 +62,14 @@ Before (contains helper):
     if v == item { return true }
 
 After:
-    if redirect.MatchesRedirectURI(v, item) { return true }
+    if urivalidation.MatchesRedirectURI(v, item) { return true }
 ```
-
-Audit logging here is best-effort: the `contains` helper currently has no logger reference. The audit requirement (SR-003) is fully satisfied by site 1 (which handles both CIMD and opaque flows). If the fosite path is taken, a logger can be passed or a separate check added post-`contains` call in the caller.
 
 ---
 
-## Unchanged: `IsValidRedirectURI`
+## Unchanged: `IsValidRedirectURI` (logic)
 
-`internal/domain/storage/agent.go:IsValidRedirectURI` — no changes.
+`internal/domain/urivalidation/redirect.go:IsValidRedirectURI` — logic unchanged; package moved from `storage`.
 
 Already accepts portless loopback URIs (`http://localhost/callback`) as structurally valid. Write-time validation is orthogonal to runtime matching semantics.
 
@@ -88,9 +83,9 @@ This validates CIMD document fetch-time same-origin constraints. Already skips s
 
 ---
 
-## No New Packages
+## Package Changes
 
-Both callers (`service.go`, `provider.go`) already import `internal/domain/storage`. No import changes needed at either call site.
+`internal/domain/urivalidation/` gains `redirect.go` with `IsValidRedirectURI` and `MatchesRedirectURI`. All call sites (`service.go`, `provider.go`, `cimd/document.go`) import `urivalidation` directly. `storage/agent.go` imports `urivalidation` for its write-time redirect URI validation.
 
 ## No Schema Changes
 

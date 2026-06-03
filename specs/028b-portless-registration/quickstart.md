@@ -10,7 +10,7 @@ A single new helper function (`MatchesRedirectURI`) and two call-site updates. N
 
 ## Step 1 — Write the Unit Tests First (TDD Red Phase)
 
-Add `TestMatchesRedirectURI` to `internal/domain/storage/agent_test.go` (the existing test file for `IsValidRedirectURI`). No new file or package needed.
+Add `TestMatchesRedirectURI` to `internal/domain/urivalidation/redirect_test.go` (alongside `TestIsValidRedirectURI`).
 
 ```go
 func TestMatchesRedirectURI(t *testing.T) {
@@ -38,7 +38,7 @@ func TestMatchesRedirectURI(t *testing.T) {
     }
     for _, tc := range cases {
         t.Run(tc.name, func(t *testing.T) {
-            got := redirect.MatchesRedirectURI(tc.registered, tc.incoming)
+            got := MatchesRedirectURI(tc.registered, tc.incoming)
             if got != tc.want {
                 t.Errorf("MatchesRedirectURI(%q, %q) = %v, want %v", tc.registered, tc.incoming, got, tc.want)
             }
@@ -47,13 +47,13 @@ func TestMatchesRedirectURI(t *testing.T) {
 }
 ```
 
-Run `go test ./internal/domain/storage/...` — `TestMatchesRedirectURI` must **fail to compile** (function doesn't exist yet).
+Run `go test ./internal/domain/urivalidation/...` — `TestMatchesRedirectURI` must **fail to compile** (function doesn't exist yet).
 
 ---
 
 ## Step 2 — Implement `MatchesRedirectURI`
 
-Add to `internal/domain/storage/agent.go`, below `IsValidRedirectURI`:
+Add to `internal/domain/urivalidation/redirect.go`, below `IsValidRedirectURI`:
 
 ```go
 // MatchesRedirectURI compares a registered redirect URI against an incoming
@@ -78,7 +78,7 @@ func MatchesRedirectURI(registered, incoming string) bool {
 }
 ```
 
-Run `go test ./internal/domain/storage/...` — tests must now **pass**.
+Run `go test ./internal/domain/urivalidation/...` — tests must now **pass**.
 
 ---
 
@@ -106,7 +106,7 @@ Run `just test-e2e` — all new `It()` blocks must **fail** with `Expected 400 t
 
 ## Step 4 — Wire the Helper into `service.go`
 
-In `internal/domain/oauth2/service.go`, replace the `==` comparison:
+In `internal/domain/oauth2/service.go`, add `urivalidation` import and replace the `==` comparison:
 
 ```go
 // Before:
@@ -119,20 +119,20 @@ for _, allowed := range allowedRedirectURIs {
 
 // After:
 for _, allowed := range allowedRedirectURIs {
-    if redirect.MatchesRedirectURI(allowed, req.RedirectURI) {
+    if urivalidation.MatchesRedirectURI(allowed, req.RedirectURI) {
         uriAllowed = true
         break
     }
 }
 ```
 
-No new import needed — `internal/domain/storage` is already imported by `service.go`.
+Also replace `storage.IsValidRedirectURI` → `urivalidation.IsValidRedirectURI` in the same file.
 
 ---
 
 ## Step 5 — Wire the Helper into `provider.go`
 
-In `internal/domain/oauth2server/provider.go`, update the `contains` helper:
+In `internal/domain/oauth2server/provider.go`, add `urivalidation` import and update the `contains` helper:
 
 ```go
 // Before:
@@ -148,13 +148,17 @@ func contains(list []string, item string) bool {
 // After:
 func contains(list []string, item string) bool {
     for _, v := range list {
-        if redirect.MatchesRedirectURI(v, item) {
+        if urivalidation.MatchesRedirectURI(v, item) {
             return true
         }
     }
     return false
 }
 ```
+
+Also replace `storage.IsValidRedirectURI` → `urivalidation.IsValidRedirectURI` in the same file.
+
+Also update `oauth2/cimd/document.go`: replace the `storage` import with `urivalidation` and update the `storage.IsValidRedirectURI` call.
 
 ---
 
@@ -178,7 +182,7 @@ Add a note to the redirect URI validation section (or OAuth2 Authorization Serve
 ## Verification Checklist
 
 ```
-[ ] go test ./internal/domain/storage/... — PASS (MatchesRedirectURI unit tests)
+[ ] go test ./internal/domain/urivalidation/... — PASS (MatchesRedirectURI + IsValidRedirectURI unit tests)
 [ ] go test ./internal/domain/oauth2/... — PASS (all existing tests still green)
 [ ] go test ./internal/domain/oauth2server/... — PASS
 [ ] just check — PASS (fmt, vet, lint, unit tests)

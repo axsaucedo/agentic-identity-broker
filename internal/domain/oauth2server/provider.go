@@ -15,6 +15,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -222,7 +223,7 @@ func (p *Provider) HandleAuthorize(
 		return "", fmt.Errorf("%w: %w", ErrInvalidRedirectURI,
 			fosite.ErrInvalidRequest.WithHintf("redirect_uri %q is not registered for this client", redirectURI))
 	}
-	if !storage.IsValidRedirectURI(redirectURI) {
+	if !urivalidation.IsValidRedirectURI(redirectURI) {
 		return "", fmt.Errorf("%w: %w", ErrInvalidRedirectURI,
 			fosite.ErrInvalidRequest.WithHintf("redirect_uri must use HTTPS for non-loopback hosts"))
 	}
@@ -375,7 +376,7 @@ func splitScope(scope string) fosite.Arguments {
 
 func contains(list []string, item string) bool {
 	for _, v := range list {
-		if v == item {
+		if urivalidation.MatchesRedirectURI(v, item) {
 			return true
 		}
 	}

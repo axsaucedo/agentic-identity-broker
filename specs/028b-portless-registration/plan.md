@@ -66,16 +66,14 @@ specs/028b-portless-registration/
 
 ```text
 internal/domain/oauth2/
-├── service.go                         # redirect URI list-membership check — primary fix site
-│                                      #   lines ~177-183: replace == with loopback-aware comparator
-└── service_test.go                    # unit tests for updated matching logic
+└── service.go                         # redirect URI list-membership check — primary fix site
 
 internal/domain/oauth2server/
 └── provider.go                        # contains() helper — second fix site (fosite-backed path)
 
-internal/domain/storage/
-├── agent.go                           # add MatchesRedirectURI alongside IsValidRedirectURI
-└── agent_test.go                      # table-driven unit tests for MatchesRedirectURI (primary TDD target)
+internal/domain/urivalidation/
+├── redirect.go                        # IsValidRedirectURI + MatchesRedirectURI (moved from storage/)
+└── redirect_test.go                   # table-driven unit tests for both functions (primary TDD target)
 
 tests/e2e/
 ├── cimd_redirect_uri_test.go          # E2E tests for US1, US2, US3, SC-001–005
@@ -153,7 +151,7 @@ tests/e2e/screenshots/
 
 ### Unit Tests
 
-**Location**: `internal/domain/storage/agent_test.go`
+**Location**: `internal/domain/urivalidation/redirect_test.go`
 
 **Coverage**: Table-driven tests for `MatchesRedirectURI`:
 - Loopback: same port → match

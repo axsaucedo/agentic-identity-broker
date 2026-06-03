@@ -16,25 +16,27 @@ Both perform `==` string equality. If only site 1 is patched, agents using the f
 
 ---
 
-## Decision 2: `MatchesRedirectURI` Goes in `internal/domain/storage/agent.go`
+## Decision 2: `MatchesRedirectURI` and `IsValidRedirectURI` live in `internal/domain/urivalidation/`
 
-**Decision**: Add `MatchesRedirectURI(registered, incoming string) bool` to `internal/domain/storage/agent.go`, alongside `IsValidRedirectURI`.
+**Decision**: Both `MatchesRedirectURI(registered, incoming string) bool` and `IsValidRedirectURI(uriStr string) bool` live in `internal/domain/urivalidation/redirect.go`. The `internal/domain/storage` package was the original placement but was revised after implementation — URI validation predicates belong in the dedicated `urivalidation` package, not alongside the `Agent` entity.
 
 **Rationale**:
-- `IsValidRedirectURI` already lives in `internal/domain/storage/agent.go` and is already imported by both `service.go` and `provider.go` — no new import path required at either call site
-- Groups URI validation logic in one place; the two functions are companion concerns
-- No new package means no new directory, no new import decisions, no architectural surface to justify
+- `internal/domain/urivalidation/` already exists as the home for URI validation logic (`ValidateCIMDClientURL`)
+- `storage/agent.go` is an entity model file — pure predicate functions about URI semantics do not belong there
+- All call sites (`oauth2/service.go`, `oauth2server/provider.go`, `oauth2/cimd/document.go`) now import `urivalidation` directly
+- `storage/agent.go` imports `urivalidation` for its `validateFields` redirect URI check
 
 **Alternatives considered**:
-- New `internal/domain/oauth2/redirect/` package: rejected — no architectural reason to add a package for a single function that naturally belongs next to `IsValidRedirectURI`
+- `internal/domain/storage/agent.go` (original): rejected post-implementation — mixing entity model with URI validation predicates weakens package cohesion
+- New `internal/domain/oauth2/redirect/` package: rejected — no reason to add a package when `urivalidation` already exists
 - Inline the logic at each site: rejected because dual-site maintenance is error-prone
 - Add a method to `storage.Agent`: rejected because the comparison is not tied to any entity
 
 ---
 
-## Decision 3: `IsValidRedirectURI` Is Unchanged
+## Decision 3: `IsValidRedirectURI` Is Unchanged (logic)
 
-**Decision**: `internal/domain/storage/agent.go` `IsValidRedirectURI` requires no changes.
+**Decision**: `IsValidRedirectURI` logic requires no changes — only its package home moved to `internal/domain/urivalidation/`.
 
 **Rationale**: It validates structural validity (scheme, host non-empty, no fragment). It already accepts `http://localhost/callback` (no port) as valid — Go's `url.Parse` returns an empty `.Port()` for a URI without a port, and the function only checks scheme + host, not port. The write-time validator does not need to know about port-matching semantics.
 

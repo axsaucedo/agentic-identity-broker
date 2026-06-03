@@ -108,7 +108,7 @@ flowchart TD
 ### Security Requirements
 
 - **SR-001**: The port-ignore exception applies exclusively to loopback addresses (`localhost`, `127.0.0.1`). Any extension of this exception to other host categories requires a superseding ADR.
-- **SR-002**: Scheme and path must still match exactly for loopback redirect URIs; only the port is excluded from comparison.
+- **SR-002**: Scheme, path, and query string must still match exactly for loopback redirect URIs; only the port is excluded from comparison.
 
 ### Key Entities
 
@@ -142,7 +142,7 @@ flowchart TD
 ### Session 2026-06-02
 
 - Q: Should the loopback port-ignore exception apply only to CIMD-sourced redirect URIs, or also to opaque (UUID) `client_id` Agent flows? → A: Both. RFC 8252 §7.3 MUST is not CIMD-specific; FR-007 covers all Agent redirect URI validation regardless of registration method.
-- Q: When should the SR-003 audit log entry fire — only on port mismatches, or on every loopback redirect match? → A: Every loopback redirect match, always recording both registered URI and full incoming URI including port.
+- Q: Should audit logging be added on every loopback redirect match, recording both the registered URI and the full incoming URI (including ephemeral port)? → A: Descoped. OAuth2 authorization events (grant creation, session creation, authorization code issuance) are already captured at higher granularity by existing structured logging. Adding per-match logging at the comparator level would duplicate information without security value, since PKCE already ensures an intercepted code is unusable. No SR-003 requirement.
 - Q: Should SC-006 be added to require E2E test coverage for the loopback port-ignore rule on opaque (UUID) Agent flows (FR-007)? → A: Yes. Added SC-006 requiring a dedicated E2E test for the non-CIMD flow path.
 
 ---

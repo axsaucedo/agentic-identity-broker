@@ -13,6 +13,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -176,7 +177,7 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 	}
 	uriAllowed := false
 	for _, allowed := range allowedRedirectURIs {
-		if req.RedirectURI == allowed {
+		if urivalidation.MatchesRedirectURI(allowed, req.RedirectURI) {
 			uriAllowed = true
 			break
 		}
@@ -188,7 +189,7 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 	// Step 1b-runtime: Enforce HTTPS for non-loopback hosts even on legacy data.
 	// Write-time validation (Agent.Validate/ValidateForCreate) prevents new non-HTTPS
 	// registrations, but this guard closes the gap for pre-existing stored URIs.
-	if !storage.IsValidRedirectURI(req.RedirectURI) {
+	if !urivalidation.IsValidRedirectURI(req.RedirectURI) {
 		return ports.ErrorDecision("invalid_redirect_uri", "redirect_uri must use HTTPS for non-local hosts", ""), nil
 	}
 

@@ -1,0 +1,78 @@
+package e2e_test
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
+)
+
+var _ = Describe("Portless Redirect URI — Opaque Agent", func() {
+	var (
+		logger         *slog.Logger
+		storageFactory *bootstrap.StorageFactory
+		testStorage    *storageadapter.Adapter
+		server         *bootstrap.TestServer
+		agent          *storage.Agent
+	)
+
+	BeforeEach(func() {
+		logger = bootstrap.TestLogger(slog.LevelInfo)
+		storageFactory = bootstrap.NewStorageFactory(logger)
+
+		var err error
+		testStorage, err = storageFactory.NewTestStorage()
+		Expect(err).ToNot(HaveOccurred())
+
+		// SC-006: opaque (UUID) agent — no ClientURIs, no ClientID, explicit :3000 in redirect_uris.
+		now := time.Now()
+		agent = &storage.Agent{
+			ID:           id.NewAgentID(),
+			DisplayName:  "Opaque Portless Agent",
+			Description:  "Opaque agent with explicit-port localhost redirect URI for 028b SC-006 testing",
+			RedirectURIs: []string{"http://localhost:3000/callback"},
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		}
+		Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+
+		config := fixtures.LocalConfig()
+		sf := bootstrap.NewServerFactory(config, logger)
+		appInstance, err := sf.BuildApp(testStorage)
+		Expect(err).ToNot(HaveOccurred())
+
+		server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		if server != nil {
+			server.Close()
+		}
+		if testStorage != nil {
+			_ = storageFactory.CloseStorage(testStorage)
+		}
+	})
+
+	// SC-006 from specs/028b-portless-registration/spec.md
+	It("accepts a different ephemeral port for an opaque agent with explicit-port loopback redirect URI", func() {
+		resp, err := server.AuthenticatedGET(
+			authorizeURL(agent.ID.String(), "http://localhost:9999/callback"),
+			fixtures.DefaultPrincipal().String(),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = resp.Body.Close() }()
+
+		Expect(resp.StatusCode).To(Equal(http.StatusFound))
+		Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent"))
+	})
+})

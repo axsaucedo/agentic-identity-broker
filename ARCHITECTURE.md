@@ -646,6 +646,8 @@ OAuth2 /authorize request
 
 **Security Properties**: SSRF blocked at TCP-connect time (TOCTOU-safe); authorization context never relay through browser URL as plain params (JWE session_token seals context server-side, SR-013/SR-014). All agent modes (local, proxy, CIMD) use session_token — no redirect_uri fallback.
 
+**Redirect URI Matching**: `storage.MatchesRedirectURI` (`internal/domain/storage/agent.go`) compares a registered URI against the runtime request URI. For loopback hosts (`localhost`, `127.0.0.1`) the port component is ignored per RFC 8252 §7.3 and OAuth 2.1 §2.3.1 — any ephemeral port is accepted as long as scheme, host, and path match exactly. For all other hosts all four URI components (scheme, host, port, path) must match exactly. This rule applies to both CIMD clients (redirect_uris from the fetched document) and opaque clients (redirect_uris registered on the Agent entity). IPv6 loopback (`::1`) is not subject to port relaxation.
+
 **See Also**: ADR 015 — CIMD Fetcher Architecture (SSRF hardening, caching, strategy pattern)
 
 ### 3.2. Envoy External Processor (ExtProc) Token Exchange Service
