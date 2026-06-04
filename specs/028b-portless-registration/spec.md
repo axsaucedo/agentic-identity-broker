@@ -7,7 +7,7 @@
 
 ## Overview
 
-Spec 028 enforces exact port matching when validating redirect URIs for CIMD-based clients. This was a conservative workaround for providers that do not implement the RFC 8252 §7.3 loopback redirect exception. It is not a requirement — RFC 8252 §7.3 and OAuth 2.1 §2.3.1 both specify that the port component of a loopback redirect URI MUST be ignored during validation, because native apps bind to an ephemeral OS-assigned port at runtime. Enforcing a static port breaks every CIMD client that uses a standard OS-assigned port.
+Spec 028 enforces exact port matching when validating redirect URIs for CIMD-based clients, ignoring the RFC 8252 §7.3 loopback redirect exception. RFC 8252 §7.3 and OAuth 2.1 §2.3.1 both specify that the port component of a loopback redirect URI MUST be ignored during validation, because native apps bind to an ephemeral OS-assigned port at runtime. Enforcing a static port breaks every CIMD client that uses a standard OS-assigned port.
 
 This spec amends the redirect URI validation rules established in 028 to correctly implement the RFC 8252 §7.3 / OAuth 2.1 §2.3.1 exception: when the redirect URI host is `localhost` or `127.0.0.1`, any port value (or no port) is valid; scheme, host, and path are compared — only the port is ignored.
 

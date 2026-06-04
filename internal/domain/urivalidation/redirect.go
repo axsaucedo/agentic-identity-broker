@@ -10,8 +10,8 @@ import (
 // - Must have a non-empty host
 // - Must not contain a fragment
 //
-// HTTP is only allowed for localhost and loopback addresses (127.0.0.1, [::1])
-// to support development. All other callbacks require HTTPS.
+// HTTP is only allowed for localhost and loopback addresses (127.0.0.1, [::1]).
+// All other callbacks require HTTPS.
 func IsValidRedirectURI(uriStr string) bool {
 	// Reject raw fragment or whitespace before parsing — url.ParseRequestURI
 	// percent-encodes these instead of erroring.
