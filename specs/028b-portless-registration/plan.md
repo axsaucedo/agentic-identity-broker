@@ -69,7 +69,7 @@ internal/domain/oauth2/
 └── service.go                         # redirect URI list-membership check — primary fix site
 
 internal/domain/oauth2server/
-└── provider.go                        # contains() helper — second fix site (fosite-backed path)
+└── provider.go                        # containsRedirectURI() helper — second fix site (fosite-backed redirect path)
 
 internal/domain/urivalidation/
 ├── redirect.go                        # IsValidRedirectURI + MatchesRedirectURI (moved from storage/)
@@ -80,10 +80,10 @@ tests/e2e/
 └── portless_opaque_test.go            # E2E test for SC-006 (opaque Agent flow)
 
 tests/e2e/frontend/
-└── consent_flow_test.go               # amended: loopback warning for explicit-port registered URI
+└── cimd_flow_test.go                  # amended: loopback warning for explicit-port registered URI
 
 tests/e2e/screenshots/
-└── consent_loopback_warning_portless.png
+└── cimd_loopback_warning_explicit_port.png
 ```
 
 ## Implementation Phase Overview
@@ -125,7 +125,7 @@ tests/e2e/screenshots/
 | US3 Scenario 1 | `cimd_redirect_uri_test.go` | non-loopback, different port → fails |
 | US3 Scenario 2 | `cimd_redirect_uri_test.go` | non-loopback explicit port, different port → fails |
 | US3 Scenario 3 | `cimd_redirect_uri_test.go` | non-loopback exact match → succeeds |
-| SC-005 | `tests/e2e/frontend/consent_flow_test.go` | loopback warning shown for explicit-port registered URI |
+| SC-005 | `tests/e2e/frontend/cimd_flow_test.go` | loopback warning shown for explicit-port registered URI |
 | SC-006 | `portless_opaque_test.go` | opaque UUID Agent, explicit-port registered, ephemeral port request → succeeds |
 
 **Red Phase Requirements**: Each `It()` block must contain `Expect(resp.StatusCode).To(Equal(...))` or redirect location assertions. No `Expect(true).To(BeFalse())` placeholders.
@@ -141,13 +141,13 @@ tests/e2e/screenshots/
 
 ### Frontend Playwright E2E Tests
 
-**Test Location**: `tests/e2e/frontend/consent_flow_test.go` (amended)
+**Test Location**: `tests/e2e/frontend/cimd_flow_test.go` (amended)
 
-**Scenario**: Loopback warning (CS-003 from 028) displayed when registered URI has explicit port and runtime URI uses a different port — confirm warning fires in both cases
+**Scenario**: Loopback warning (CS-003 from 028) displayed when the registered URI has an explicit port and the runtime URI uses a different port — complements the existing portless warning coverage
 
 | UI Scenario | Screenshot Filename |
 |---|---|
-| Loopback warning shown for portless-registered loopback redirect | `consent_loopback_warning_portless.png` |
+| Loopback warning shown for explicit-port registered loopback redirect | `cimd_loopback_warning_explicit_port.png` |
 
 ### Unit Tests
 

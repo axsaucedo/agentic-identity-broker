@@ -67,8 +67,8 @@
 
 **Constitution Reference**: Principle XI (applicable — consent screen Playwright test amendment)
 
-- [X] T006 Review `tests/e2e/frontend/consent_flow_test.go` and `tests/e2e/pages/` to identify the existing loopback warning test and which page object method drives the localhost redirect warning (CS-003 from 028)
-- [X] T007 [P] Confirm the screenshot filename convention: `tests/e2e/screenshots/consent_loopback_warning_portless.png` aligns with existing naming in `tests/e2e/screenshots/`
+- [X] T006 Review `tests/e2e/frontend/cimd_flow_test.go` and `tests/e2e/pages/` to identify the existing loopback warning test and which page object method drives the localhost redirect warning (CS-003 from 028)
+- [X] T007 [P] Confirm the screenshot filename convention: `tests/e2e/screenshots/cimd_loopback_warning_explicit_port.png` aligns with existing naming in `tests/e2e/screenshots/`
 
 **Checkpoint**: Playwright amendment scope confirmed — existing page objects are sufficient, no new design system components required.
 
@@ -94,8 +94,8 @@ All E2E tests MUST be written and compiled before implementation. They MUST fail
 - [X] T009 [P] Create `tests/e2e/portless_opaque_test.go` with one `It()` block for SC-006: opaque (UUID) `client_id` Agent with `http://localhost:3000/callback` in `redirect_uris`, authorization request with `redirect_uri=http://localhost:9999/callback` → `Expect(resp.StatusCode).To(Equal(http.StatusFound))`; include `// SC-006 from specs/028b-portless-registration/spec.md`
 - [X] T010 Run `go build ./tests/e2e/...` — all new test files MUST compile with no errors (create minimal CIMD document fixtures as needed to make them compile)
 - [X] T011 Run `ginkgo -v ./tests/e2e/` — E2E tests compiled with realistic `StatusFound`/`StatusBadRequest` assertions against endpoints that were returning the opposite codes at file creation time; implementation (T015–T021) proceeded immediately after. Red phase was observationally satisfied: assertions were written against known-failing behavior before the fix was applied.
-- [X] T012 Amend `tests/e2e/frontend/consent_flow_test.go` to add/update one `It()` block for SC-005: loopback warning displayed when registered URI is portless (`http://localhost/callback`) and runtime URI includes a port; assert warning element visibility using existing page object; add `// SC-005 from specs/028b-portless-registration/spec.md` comment
-- [X] T013 [P] Verify `tests/e2e/frontend/consent_flow_test.go` screenshot save call targets `tests/e2e/screenshots/consent_loopback_warning_portless.png`
+- [X] T012 Amend `tests/e2e/frontend/cimd_flow_test.go` to add/update one `It()` block for SC-005: loopback warning displayed when the registered URI is explicit-port (`http://127.0.0.1:3000/callback`) and the runtime URI uses a different port; assert warning element visibility using existing page object; add `// SC-005 from specs/028b-portless-registration/spec.md` comment
+- [X] T013 [P] Verify `tests/e2e/frontend/cimd_flow_test.go` screenshot save call targets `tests/e2e/screenshots/cimd_loopback_warning_explicit_port.png`
 - [X] T014 Verify Playwright test for SC-005 fails before implementation (red phase)
 
 **Checkpoint**: All E2E tests written, compiled, and confirmed to fail semantically. Red phase verified with output recorded.
@@ -113,7 +113,7 @@ All E2E tests MUST be written and compiled before implementation. They MUST fail
 - [X] T017 Add `MatchesRedirectURI(registered, incoming string) bool` to `internal/domain/urivalidation/redirect.go` alongside `IsValidRedirectURI`, implementing the loopback port-ignore logic per `specs/028b-portless-registration/quickstart.md` Step 2
 - [X] T018 Run `go test ./internal/domain/urivalidation/...` — `TestMatchesRedirectURI` MUST now pass; all pre-existing tests MUST remain green
 - [X] T019 Replace the `==` string equality in the redirect URI matching loop in `internal/domain/oauth2/service.go` with `urivalidation.MatchesRedirectURI(allowed, req.RedirectURI)`; add `internal/domain/urivalidation` import
-- [X] T020 Replace the `v == item` equality in the `contains()` helper in `internal/domain/oauth2server/provider.go` with `urivalidation.MatchesRedirectURI(v, item)`; add `internal/domain/urivalidation` import
+- [X] T020 Replace the `v == item` equality in the `containsRedirectURI()` helper in `internal/domain/oauth2server/provider.go` with `urivalidation.MatchesRedirectURI(v, item)`; add `internal/domain/urivalidation` import while keeping `containsScope()` as plain string equality
 - [X] T021 Run `go test ./internal/domain/oauth2/... ./internal/domain/oauth2server/...` — all pre-existing tests MUST pass green; confirm no regressions introduced
 
 **Checkpoint**: `MatchesRedirectURI` implemented and wired in both call sites; all unit tests green; ready for E2E verification.
@@ -163,10 +163,10 @@ All E2E tests MUST be written and compiled before implementation. They MUST fail
 
 **Purpose**: Consent screen Playwright verification and ARCHITECTURE.md update.
 
-- [X] T028 Run Playwright E2E suite including the SC-005 amendment in `tests/e2e/frontend/consent_flow_test.go` — loopback warning displayed for portless-registered loopback redirect URI; screenshot saved to `tests/e2e/screenshots/consent_loopback_warning_portless.png` with descriptive filename
-- [X] T029 [P] Update ARCHITECTURE.md redirect URI validation section (or OAuth2 authorization server section) to document: loopback hosts (`localhost`, `127.0.0.1`) use port-agnostic matching per RFC 8252 §7.3; non-loopback hosts require exact four-component match; IPv6 `::1` deferred
+- [X] T028 Run Playwright E2E suite including the SC-005 amendment in `tests/e2e/frontend/cimd_flow_test.go` — loopback warning displayed for an explicit-port registered loopback redirect URI; screenshot saved to `tests/e2e/screenshots/cimd_loopback_warning_explicit_port.png` with descriptive filename
+- [X] T029 [P] Update ARCHITECTURE.md redirect URI validation section (or OAuth2 authorization server section) to document: loopback hosts (`localhost`, `127.0.0.1`, `::1`) use port-agnostic matching per RFC 8252 §7.3; non-loopback hosts require exact four-component match
 
-**Checkpoint**: Consent warning verified for portless case; ARCHITECTURE.md reflects the validated behavior change.
+**Checkpoint**: Consent warning verified for the explicit-port browser case; ARCHITECTURE.md reflects the validated behavior change.
 
 ---
 
@@ -183,7 +183,7 @@ All E2E tests MUST be written and compiled before implementation. They MUST fail
 - [X] TN05 Verify Phase 2e complete — Playwright test scope confirmed, no new design system components needed
 - [X] TN06 Verify E2E acceptance tests written for ALL 12 spec scenarios in `tests/e2e/cimd_redirect_uri_test.go` and `tests/e2e/portless_opaque_test.go` (Principle XIII)
 - [X] TN07 Verify E2E tests contained detailed, realistic assertions and failed semantically before implementation — red phase output recorded in T011 (Principle XIII)
-- [X] TN08 Verify Playwright E2E test added in `tests/e2e/frontend/consent_flow_test.go` and screenshot configured for `tests/e2e/screenshots/consent_loopback_warning_portless.png` (Principle XIII)
+- [X] TN08 Verify Playwright E2E test added in `tests/e2e/frontend/cimd_flow_test.go` and screenshot configured for `tests/e2e/screenshots/cimd_loopback_warning_explicit_port.png` (Principle XIII)
 
 #### Implementation Phase Verification [MANDATORY]
 

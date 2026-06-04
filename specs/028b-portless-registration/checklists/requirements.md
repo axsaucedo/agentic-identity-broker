@@ -32,5 +32,5 @@
 ## Notes
 
 - Spec is an amendment to 028-cimd-support; baseline context is fully preserved
-- IPv6 loopback (::1) is explicitly deferred and documented in Assumptions
+- IPv6 loopback (::1) is included in the loopback port-ignore rule and documented in Assumptions
 - All items pass — ready for `/speckit.plan`

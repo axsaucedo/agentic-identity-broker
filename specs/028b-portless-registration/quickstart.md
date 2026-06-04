@@ -132,11 +132,11 @@ Also replace `storage.IsValidRedirectURI` → `urivalidation.IsValidRedirectURI`
 
 ## Step 5 — Wire the Helper into `provider.go`
 
-In `internal/domain/oauth2server/provider.go`, add `urivalidation` import and update the `contains` helper:
+In `internal/domain/oauth2server/provider.go`, add `urivalidation` import and update the `containsRedirectURI` helper only:
 
 ```go
 // Before:
-func contains(list []string, item string) bool {
+func containsRedirectURI(list []string, item string) bool {
     for _, v := range list {
         if v == item {
             return true
@@ -146,7 +146,7 @@ func contains(list []string, item string) bool {
 }
 
 // After:
-func contains(list []string, item string) bool {
+func containsRedirectURI(list []string, item string) bool {
     for _, v := range list {
         if urivalidation.MatchesRedirectURI(v, item) {
             return true
@@ -155,6 +155,8 @@ func contains(list []string, item string) bool {
     return false
 }
 ```
+
+Keep `containsScope` as plain string equality so scope validation continues to compare literal scope values.
 
 Also replace `storage.IsValidRedirectURI` → `urivalidation.IsValidRedirectURI` in the same file.
 

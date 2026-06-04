@@ -8,7 +8,7 @@
 
 **Rationale**: The codebase has two independent code paths through authorize:
 1. `internal/domain/oauth2/service.go` lines ~177-183 — the primary `HandleAuthorize` path, used for CIMD and opaque clients alike
-2. `internal/domain/oauth2server/provider.go` `contains()` helper — the fosite-backed path for the OAuth2 server mode
+2. `internal/domain/oauth2server/provider.go` `containsRedirectURI()` helper — the fosite-backed redirect-matching path for the OAuth2 server mode
 
 Both perform `==` string equality. If only site 1 is patched, agents using the fosite path get inconsistent behavior.
 
@@ -60,11 +60,11 @@ The only change needed is at authorization-request time: when the incoming `redi
 
 ---
 
-## Decision 6: IPv6 `::1` Out of Scope
+## Decision 6: IPv6 `::1` Uses the Same Loopback Match Rule
 
-**Decision**: `::1` is not added to the loopback port-ignore set in `MatchesRedirectURI`.
+**Decision**: `::1` is included in the loopback port-ignore set in `MatchesRedirectURI`.
 
-**Rationale**: As documented in spec Assumptions, IPv6 loopback support is deferred. `IsValidRedirectURI` already permits `http://[::1]/callback` structurally, and `validateRedirectOrigin` already skips same-origin checks for `::1`. However, adding `::1` to the port-ignore matching rule is a separate decision with distinct security considerations (IPv6 loopback is less commonly used by native apps, and `::1` normalization — brackets vs no brackets — adds parsing complexity). The spec explicitly defers this.
+**Rationale**: `IsValidRedirectURI` already permits `http://[::1]/callback` structurally, `validateRedirectOrigin` already skips same-origin checks for `::1`, and RFC 8252 §7.3 treats IPv6 loopback the same as other loopback interfaces. Normalizing `url.URL.Host` to `Hostname()` keeps the existing bracketed-literal parsing while allowing ephemeral-port matches for `http://[::1]:<port>/callback`.
 
 ---
 
@@ -80,4 +80,4 @@ The only change needed is at authorization-request time: when the incoming `redi
 
 **Decision**: No new ADR will be created for this change.
 
-**Rationale**: The spec (`specs/028b-portless-registration/spec.md`) and its clarifications session fully document the RFC 8252 §7.3 / OAuth 2.1 §2.3.1 mandate, the deliberate exclusion of IPv6 `::1`, and the non-loopback exact-match constraint. The decision is a correction to make the broker RFC-compliant — it is not an architectural pattern choice. An ADR would duplicate the spec without adding information.
+**Rationale**: The spec (`specs/028b-portless-registration/spec.md`) and its clarifications session fully document the RFC 8252 §7.3 / OAuth 2.1 §2.3.1 mandate, the loopback host set (`localhost`, `127.0.0.1`, `::1`), and the non-loopback exact-match constraint. The decision is a correction to make the broker RFC-compliant — it is not an architectural pattern choice. An ADR would duplicate the spec without adding information.
