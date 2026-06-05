@@ -30,6 +30,14 @@ func IsValidRedirectURI(uriStr string) bool {
 	}
 }
 
+// IsWellFormedRedirectURI reports whether uriStr has the structural form required
+// for redirect URI matching. Unlike IsValidRedirectURI, it does not enforce the
+// HTTPS-or-loopback policy.
+func IsWellFormedRedirectURI(uriStr string) bool {
+	_, ok := parseRedirectURI(uriStr)
+	return ok
+}
+
 // MatchesRedirectURI reports whether incoming matches registered for redirect URI
 // validation. For loopback hosts (localhost, 127.0.0.1, [::1]) the port is ignored
 // per RFC 8252 §7.3; all other components must match exactly. For non-loopback

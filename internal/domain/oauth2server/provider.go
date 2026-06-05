@@ -219,7 +219,7 @@ func (p *Provider) HandleAuthorize(
 	// Validate redirect_uri: must be registered and use HTTPS (or loopback HTTP).
 	// GetRedirectURIs() returns the agent's registered URIs for confidential clients,
 	// and the CIMD document's redirect_uris for public (CIMD) clients.
-	if !containsRedirectURI(fositeClient.GetRedirectURIs(), redirectURI) {
+	if !p.containsRedirectURI(agent.ID, fositeClient.GetRedirectURIs(), redirectURI) {
 		return "", fmt.Errorf("%w: %w", ErrInvalidRedirectURI,
 			fosite.ErrInvalidRequest.WithHintf("redirect_uri %q is not registered for this client", redirectURI))
 	}
@@ -374,13 +374,31 @@ func splitScope(scope string) fosite.Arguments {
 	return strings.Split(scope, " ")
 }
 
-func containsRedirectURI(list []string, item string) bool {
+func (p *Provider) containsRedirectURI(agentID id.AgentID, list []string, item string) bool {
 	for _, v := range list {
 		if urivalidation.MatchesRedirectURI(v, item) {
 			return true
 		}
 	}
+	p.logMalformedRegisteredRedirectURIs(agentID, item, list)
 	return false
+}
+
+func (p *Provider) logMalformedRegisteredRedirectURIs(agentID id.AgentID, requestRedirectURI string, registeredRedirectURIs []string) {
+	if p.logger == nil {
+		return
+	}
+	for _, registeredRedirectURI := range registeredRedirectURIs {
+		if urivalidation.IsWellFormedRedirectURI(registeredRedirectURI) {
+			continue
+		}
+		p.logger.Warn(
+			"MalformedRegisteredRedirectURI",
+			"agent_id", agentID,
+			"registered_redirect_uri", registeredRedirectURI,
+			"request_redirect_uri", requestRedirectURI,
+		)
+	}
 }
 
 func containsScope(list []string, scope string) bool {

@@ -1,9 +1,11 @@
 package oauth2server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -18,16 +20,15 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 )
 
-// newTestProvider creates a Provider with in-memory storage and test encryption
-// for unit testing purposes.
-func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository, *SigningKeyService) {
+func newTestProviderWithResolver(t *testing.T, resolver ports.ClientResolver, logger *slog.Logger) (*Provider, *SigningKeyService) {
 	t.Helper()
 	codeRepo := memory.NewAuthorizationCodeStore()
 	credRepo := memory.NewClientCredentialStore()
-	agentRepo := memory.NewAgentRepository()
 	signingKeyRepo := memory.NewSigningKeyStore()
 	enc := &testEncryptor{}
-	logger := testSlogger()
+	if logger == nil {
+		logger = testSlogger()
+	}
 
 	signingKeySvc := NewSigningKeyService(signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
 
@@ -35,7 +36,7 @@ func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository, *Signing
 		codeRepo,
 		memory.NewPKCESessionStore(),
 		credRepo,
-		&testClientResolver{agentRepo: agentRepo},
+		resolver,
 		signingKeySvc,
 		"https://broker.example.com",
 		time.Hour, // 1h TTL
@@ -47,6 +48,15 @@ func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository, *Signing
 	_, err = signingKeySvc.generateAndStore(context.Background(), "ES256", true, time.Now())
 	require.NoError(t, err)
 
+	return provider, signingKeySvc
+}
+
+// newTestProvider creates a Provider with in-memory storage and test encryption
+// for unit testing purposes.
+func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository, *SigningKeyService) {
+	t.Helper()
+	agentRepo := memory.NewAgentRepository()
+	provider, signingKeySvc := newTestProviderWithResolver(t, &testClientResolver{agentRepo: agentRepo}, testSlogger())
 	return provider, agentRepo, signingKeySvc
 }
 
@@ -73,6 +83,41 @@ func setupTestCredentials(t *testing.T, provider *Provider, agentRepo ports.Agen
 	require.NoError(t, err)
 
 	return agent, cred, plaintext
+}
+
+func TestProvider_HandleAuthorize_LogsMalformedRegisteredRedirectURI(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	agent := &dstorage.Agent{
+		ID:           id.NewAgentID(),
+		DisplayName:  "Test OAuth2 Agent",
+		Description:  "Agent for provider test",
+		RedirectURIs: []string{"https://client.example.com/call back"},
+	}
+
+	provider, _ := newTestProviderWithResolver(t, &mockClientResolver{
+		resolveFunc: func(context.Context, id.ClientID) (*ports.ClientResolution, error) {
+			return &ports.ClientResolution{Agent: agent}, nil
+		},
+	}, logger)
+
+	_, err := provider.HandleAuthorize(
+		context.Background(),
+		"test-client",
+		"https://client.example.com/callback",
+		"code",
+		"",
+		"state",
+		"challenge",
+		"S256",
+		id.NewPrincipal("user@example.com"),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidRedirectURI)
+	assert.Contains(t, logBuf.String(), `"msg":"MalformedRegisteredRedirectURI"`)
+	assert.Contains(t, logBuf.String(), agent.ID.String())
+	assert.Contains(t, logBuf.String(), `"registered_redirect_uri":"https://client.example.com/call back"`)
+	assert.Contains(t, logBuf.String(), `"request_redirect_uri":"https://client.example.com/callback"`)
 }
 
 func TestProvider_HandleClientCredentials(t *testing.T) {
