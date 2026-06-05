@@ -4,7 +4,7 @@
 
 ## Summary
 
-This feature amends redirect URI validation to implement RFC 8252 §7.3 / OAuth 2.1 §2.3.1: when a redirect URI's host is `localhost` or `127.0.0.1`, the port component is ignored during runtime matching. The change is **purely logical** — no schema migrations, no new entities, no API surface changes. Two call sites in the broker perform redirect URI list-membership checks; both must be updated to use a new port-agnostic comparator for loopback hosts.
+This feature amends redirect URI validation to implement RFC 8252 §7.3 / OAuth 2.1 §2.3.1: when a redirect URI's host is `localhost`, `127.0.0.1`, or `::1`, the port component is ignored during runtime matching. The change is **purely logical** — no schema migrations, no new entities, no API surface changes. Two call sites in the broker perform redirect URI list-membership checks; both must be updated to use a new port-agnostic comparator for loopback hosts.
 
 ## Technical Context
 
@@ -69,7 +69,7 @@ internal/domain/oauth2/
 └── service.go                         # redirect URI list-membership check — primary fix site
 
 internal/domain/oauth2server/
-└── provider.go                        # containsRedirectURI() helper — second fix site (fosite-backed redirect path)
+└── provider.go                        # contains() helper — second fix site (fosite-backed path)
 
 internal/domain/urivalidation/
 ├── redirect.go                        # IsValidRedirectURI + MatchesRedirectURI (moved from storage/)
@@ -80,10 +80,10 @@ tests/e2e/
 └── portless_opaque_test.go            # E2E test for SC-006 (opaque Agent flow)
 
 tests/e2e/frontend/
-└── cimd_flow_test.go                  # amended: loopback warning for explicit-port registered URI
+└── consent_flow_test.go               # amended: loopback warning for explicit-port registered URI
 
 tests/e2e/screenshots/
-└── cimd_loopback_warning_explicit_port.png
+└── consent_loopback_warning_portless.png
 ```
 
 ## Implementation Phase Overview
@@ -125,7 +125,7 @@ tests/e2e/screenshots/
 | US3 Scenario 1 | `cimd_redirect_uri_test.go` | non-loopback, different port → fails |
 | US3 Scenario 2 | `cimd_redirect_uri_test.go` | non-loopback explicit port, different port → fails |
 | US3 Scenario 3 | `cimd_redirect_uri_test.go` | non-loopback exact match → succeeds |
-| SC-005 | `tests/e2e/frontend/cimd_flow_test.go` | loopback warning shown for explicit-port registered URI |
+| SC-005 | `tests/e2e/frontend/consent_flow_test.go` | loopback warning shown for explicit-port registered URI |
 | SC-006 | `portless_opaque_test.go` | opaque UUID Agent, explicit-port registered, ephemeral port request → succeeds |
 
 **Red Phase Requirements**: Each `It()` block must contain `Expect(resp.StatusCode).To(Equal(...))` or redirect location assertions. No `Expect(true).To(BeFalse())` placeholders.
@@ -141,13 +141,13 @@ tests/e2e/screenshots/
 
 ### Frontend Playwright E2E Tests
 
-**Test Location**: `tests/e2e/frontend/cimd_flow_test.go` (amended)
+**Test Location**: `tests/e2e/frontend/consent_flow_test.go` (amended)
 
-**Scenario**: Loopback warning (CS-003 from 028) displayed when the registered URI has an explicit port and the runtime URI uses a different port — complements the existing portless warning coverage
+**Scenario**: Loopback warning (CS-003 from 028) displayed when registered URI has explicit port and runtime URI uses a different port — confirm warning fires in both cases
 
 | UI Scenario | Screenshot Filename |
 |---|---|
-| Loopback warning shown for explicit-port registered loopback redirect | `cimd_loopback_warning_explicit_port.png` |
+| Loopback warning shown for portless-registered loopback redirect | `consent_loopback_warning_portless.png` |
 
 ### Unit Tests
 
@@ -160,6 +160,8 @@ tests/e2e/screenshots/
 - Loopback: registered has port, request portless → match
 - Loopback: path differs → no match
 - Loopback: scheme differs → no match
+- Loopback: 127.0.0.1 different ports → match
+- Loopback: [::1] different ports → match
 - Loopback: host differs (localhost vs 127.0.0.1) → no match
 - Non-loopback: same → match
 - Non-loopback: port differs → no match

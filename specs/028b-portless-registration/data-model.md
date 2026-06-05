@@ -58,14 +58,12 @@ After:
 ### Site 2 — `internal/domain/oauth2server/provider.go`
 
 ```
-Before (`containsRedirectURI` helper):
+Before (contains helper):
     if v == item { return true }
 
 After:
     if urivalidation.MatchesRedirectURI(v, item) { return true }
 ```
-
-`containsScope` remains plain string membership for `AllowedScopes`; only redirect URI matching uses `MatchesRedirectURI`.
 
 ---
 

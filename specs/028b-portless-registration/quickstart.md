@@ -26,6 +26,7 @@ func TestMatchesRedirectURI(t *testing.T) {
         {"loopback: explicit port reg, portless request", "http://localhost:3000/cb", "http://localhost/cb", true},
         {"loopback: both portless", "http://localhost/cb", "http://localhost/cb", true},
         {"loopback: 127.0.0.1 different ports", "http://127.0.0.1:8080/cb", "http://127.0.0.1:51234/cb", true},
+        {"loopback: [::1] different ports", "http://[::1]:8080/cb", "http://[::1]:51234/cb", true},
         // Loopback — other components must still match
         {"loopback: path mismatch", "http://localhost/cb", "http://localhost:3000/other", false},
         {"loopback: scheme mismatch", "http://localhost/cb", "https://localhost/cb", false},
@@ -57,10 +58,10 @@ Add to `internal/domain/urivalidation/redirect.go`, below `IsValidRedirectURI`:
 
 ```go
 // MatchesRedirectURI compares a registered redirect URI against an incoming
-// redirect URI. For loopback hosts (localhost, 127.0.0.1) the port component
-// is ignored per RFC 8252 §7.3 and OAuth 2.1 §2.3.1; all other components
-// must match exactly. For non-loopback hosts all four components (scheme,
-// host, port, path+query) must match exactly.
+// redirect URI. For loopback hosts (localhost, 127.0.0.1, ::1) the port
+// component is ignored per RFC 8252 §7.3 and OAuth 2.1 §2.3.1; all other
+// components must match exactly. For non-loopback hosts all four components
+// (scheme, host, port, path+query) must match exactly.
 func MatchesRedirectURI(registered, incoming string) bool {
     r, err := url.Parse(registered)
     if err != nil || r.Host == "" {
@@ -70,7 +71,7 @@ func MatchesRedirectURI(registered, incoming string) bool {
     if err != nil || in.Host == "" {
         return false
     }
-    if h := r.Hostname(); h == "localhost" || h == "127.0.0.1" {
+    if h := r.Hostname(); h == "localhost" || h == "127.0.0.1" || h == "::1" {
         r.Host = h
         in.Host = in.Hostname()
     }
@@ -132,11 +133,11 @@ Also replace `storage.IsValidRedirectURI` → `urivalidation.IsValidRedirectURI`
 
 ## Step 5 — Wire the Helper into `provider.go`
 
-In `internal/domain/oauth2server/provider.go`, add `urivalidation` import and update the `containsRedirectURI` helper only:
+In `internal/domain/oauth2server/provider.go`, add `urivalidation` import and update the `contains` helper:
 
 ```go
 // Before:
-func containsRedirectURI(list []string, item string) bool {
+func contains(list []string, item string) bool {
     for _, v := range list {
         if v == item {
             return true
@@ -146,7 +147,7 @@ func containsRedirectURI(list []string, item string) bool {
 }
 
 // After:
-func containsRedirectURI(list []string, item string) bool {
+func contains(list []string, item string) bool {
     for _, v := range list {
         if urivalidation.MatchesRedirectURI(v, item) {
             return true
@@ -155,8 +156,6 @@ func containsRedirectURI(list []string, item string) bool {
     return false
 }
 ```
-
-Keep `containsScope` as plain string equality so scope validation continues to compare literal scope values.
 
 Also replace `storage.IsValidRedirectURI` → `urivalidation.IsValidRedirectURI` in the same file.
 
