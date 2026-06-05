@@ -248,7 +248,10 @@ func (p *Provider) HandleAuthorize(
 		},
 	}
 
-	parsedRedirectURI, _ := url.Parse(redirectURI)
+	parsedRedirectURI, err := parseValidatedRedirectURI(redirectURI)
+	if err != nil {
+		return "", err
+	}
 
 	authReq := fosite.NewAuthorizeRequest()
 	authReq.Client = fositeClient
@@ -365,6 +368,14 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		ExpiresIn:   int64(p.config.AccessTokenLifespan.Seconds()),
 		Scope:       strings.Join(req.GetGrantedScopes(), " "),
 	}, nil
+}
+
+func parseValidatedRedirectURI(redirectURI string) (*url.URL, error) {
+	parsedRedirectURI, err := url.ParseRequestURI(redirectURI)
+	if err != nil {
+		return nil, fosite.ErrServerError.WithDebugf("redirect_uri parse failed after validation: %v", err)
+	}
+	return parsedRedirectURI, nil
 }
 
 func splitScope(scope string) fosite.Arguments {

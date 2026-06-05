@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/ory/fosite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -118,6 +119,22 @@ func TestProvider_HandleAuthorize_LogsMalformedRegisteredRedirectURI(t *testing.
 	assert.Contains(t, logBuf.String(), agent.ID.String())
 	assert.Contains(t, logBuf.String(), `"registered_redirect_uri":"https://client.example.com/call back"`)
 	assert.Contains(t, logBuf.String(), `"request_redirect_uri":"https://client.example.com/callback"`)
+}
+
+func TestParseValidatedRedirectURI(t *testing.T) {
+	t.Run("valid absolute redirect URI parses", func(t *testing.T) {
+		parsed, err := parseValidatedRedirectURI("https://client.example.com/callback")
+		require.NoError(t, err)
+		require.NotNil(t, parsed)
+		assert.Equal(t, "https://client.example.com/callback", parsed.String())
+	})
+
+	t.Run("relative redirect URI returns server error", func(t *testing.T) {
+		parsed, err := parseValidatedRedirectURI("client.example.com/callback")
+		require.Error(t, err)
+		assert.Nil(t, parsed)
+		assert.ErrorIs(t, err, fosite.ErrServerError)
+	})
 }
 
 func TestProvider_HandleClientCredentials(t *testing.T) {
