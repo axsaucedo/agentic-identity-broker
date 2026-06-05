@@ -3,6 +3,7 @@ package e2e_test
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -15,13 +16,17 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/matchers"
 )
 
-// authorizeURL builds an /oauth2/authorize query for the given client_id and redirect_uri.
+const validCodeChallenge = "E9Mrozoa2owQB2dSBnnNBvjrNqtPTUAwY5uQp41VN-I"
+
+// authorizeURL builds an /oauth2/authorize query with valid PKCE parameters for the
+// given client_id and redirect_uri.
 func authorizeURL(clientID, redirectURI string) string {
 	return fmt.Sprintf(
-		"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=xyz",
-		url.QueryEscape(clientID), url.QueryEscape(redirectURI),
+		"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=xyz&code_challenge=%s&code_challenge_method=S256",
+		url.QueryEscape(clientID), url.QueryEscape(redirectURI), url.QueryEscape(validCodeChallenge),
 	)
 }
 
@@ -30,6 +35,18 @@ func assertCIMDConsentContext(data map[string]any, redirectURI string, verifiedD
 	Expect(ok).To(BeTrue(), "cimd_metadata should be present")
 	Expect(cimdMeta["redirect_uri"]).To(Equal(redirectURI))
 	Expect(cimdMeta["verified_domain"]).To(Equal(verifiedDomain))
+}
+
+func assertRedirectValidationError(resp *http.Response, expectedErrorCode string) {
+	Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+	Expect(resp.Header.Get("Location")).To(BeEmpty(), "redirect URI validation failures must not redirect to consent")
+	Expect(resp).To(matchers.HaveOAuth2Error(expectedErrorCode))
+
+	body, err := io.ReadAll(resp.Body)
+	Expect(err).ToNot(HaveOccurred())
+	actualErrorCode, errorDescription := helpers.ParseJSONError(string(body))
+	Expect(actualErrorCode).To(Equal(expectedErrorCode))
+	Expect(errorDescription).To(ContainSubstring("redirect_uri"))
 }
 
 var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() {
@@ -153,7 +170,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			assertRedirectValidationError(resp, "invalid_request")
 		})
 	})
 
@@ -347,7 +364,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			assertRedirectValidationError(resp, "invalid_request")
 		})
 
 		// Additional coverage: exact match for portless non-loopback registration.
@@ -420,7 +437,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			assertRedirectValidationError(resp, "invalid_request")
 		})
 
 		// Scenario US3.3 from specs/028b-portless-registration/spec.md
