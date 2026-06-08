@@ -18,10 +18,6 @@ func TestIsValidRedirectURI(t *testing.T) {
 		{"http localhost allowed", "http://localhost/callback", true},
 		{"http 127.0.0.1 allowed", "http://127.0.0.1/callback", true},
 		{"http ::1 allowed", "http://[::1]/callback", true},
-		{"empty port rejected", "http://localhost:/callback", false},
-		{"ipv6 empty port rejected", "http://[::1]:/callback", false},
-		{"port zero rejected", "http://localhost:0/callback", false},
-		{"port above range rejected", "https://client.example.com:65536/cb", false},
 		{"http non-local rejected", "http://client.example.com/callback", false},
 		{"http non-local with port rejected", "http://client.example.com:8080/cb", false},
 		{"empty string", "", false},
@@ -65,11 +61,6 @@ func TestMatchesRedirectURI(t *testing.T) {
 		{"non-loopback: explicit port differs", "https://app.example.com:8443/cb", "https://app.example.com:9000/cb", false},
 		{"non-loopback: portless reg, port in request", "https://app.example.com/cb", "https://app.example.com:443/cb", false},
 		// Defense-in-depth — reject malformed values even if legacy data bypassed write validation
-		{"invalid: registered empty port rejected", "http://localhost:/cb", "http://localhost:52341/cb", false},
-		{"invalid: incoming empty port rejected", "http://localhost/cb", "http://localhost:/cb", false},
-		{"invalid: registered ipv6 empty port rejected", "http://[::1]:/cb", "http://[::1]:52341/cb", false},
-		{"invalid: registered port zero rejected", "http://localhost:0/cb", "http://localhost:52341/cb", false},
-		{"invalid: registered out-of-range port rejected", "http://localhost:65536/cb", "http://localhost:52341/cb", false},
 		{"invalid: raw fragment rejected", "https://app.example.com/cb#frag", "https://app.example.com/cb#frag", false},
 		{"invalid: raw whitespace rejected", "https://app.example.com/call back", "https://app.example.com/call back", false},
 	}

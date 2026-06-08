@@ -8,7 +8,7 @@
 
 **Rationale**: The codebase has two independent code paths through authorize:
 1. `internal/domain/oauth2/service.go` lines ~177-183 — the primary `HandleAuthorize` path, used for CIMD and opaque clients alike
-2. `internal/domain/oauth2server/provider.go` `contains()` helper — the fosite-backed path for the OAuth2 server mode
+2. `internal/domain/oauth2server/provider.go` `containsRedirectURI()` helper — the fosite-backed redirect-matching path for the OAuth2 server mode
 
 Both perform `==` string equality. If only site 1 is patched, agents using the fosite path get inconsistent behavior.
 
