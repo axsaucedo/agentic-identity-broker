@@ -15,6 +15,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -218,11 +219,11 @@ func (p *Provider) HandleAuthorize(
 	// Validate redirect_uri: must be registered and use HTTPS (or loopback HTTP).
 	// GetRedirectURIs() returns the agent's registered URIs for confidential clients,
 	// and the CIMD document's redirect_uris for public (CIMD) clients.
-	if !contains(fositeClient.GetRedirectURIs(), redirectURI) {
+	if !p.containsRedirectURI(agent.ID, fositeClient.GetRedirectURIs(), redirectURI) {
 		return "", fmt.Errorf("%w: %w", ErrInvalidRedirectURI,
 			fosite.ErrInvalidRequest.WithHintf("redirect_uri %q is not registered for this client", redirectURI))
 	}
-	if !storage.IsValidRedirectURI(redirectURI) {
+	if !urivalidation.IsValidRedirectURI(redirectURI) {
 		return "", fmt.Errorf("%w: %w", ErrInvalidRedirectURI,
 			fosite.ErrInvalidRequest.WithHintf("redirect_uri must use HTTPS for non-loopback hosts"))
 	}
@@ -234,7 +235,7 @@ func (p *Provider) HandleAuthorize(
 	scopes := splitScope(scope)
 	if len(agent.AllowedScopes) > 0 && len(scopes) > 0 {
 		for _, s := range scopes {
-			if !contains(agent.AllowedScopes, s) {
+			if !containsScope(agent.AllowedScopes, s) {
 				return "", fosite.ErrInvalidScope.WithHintf("scope %q is not allowed for this client", s)
 			}
 		}
@@ -247,7 +248,10 @@ func (p *Provider) HandleAuthorize(
 		},
 	}
 
-	parsedRedirectURI, _ := url.Parse(redirectURI)
+	parsedRedirectURI, err := parseValidatedRedirectURI(redirectURI)
+	if err != nil {
+		return "", err
+	}
 
 	authReq := fosite.NewAuthorizeRequest()
 	authReq.Client = fositeClient
@@ -366,6 +370,14 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 	}, nil
 }
 
+func parseValidatedRedirectURI(redirectURI string) (*url.URL, error) {
+	parsedRedirectURI, err := url.ParseRequestURI(redirectURI)
+	if err != nil {
+		return nil, fosite.ErrServerError.WithDebugf("redirect_uri parse failed after validation: %v", err)
+	}
+	return parsedRedirectURI, nil
+}
+
 func splitScope(scope string) fosite.Arguments {
 	if scope == "" {
 		return fosite.Arguments{}
@@ -373,9 +385,36 @@ func splitScope(scope string) fosite.Arguments {
 	return strings.Split(scope, " ")
 }
 
-func contains(list []string, item string) bool {
+func (p *Provider) containsRedirectURI(agentID id.AgentID, list []string, item string) bool {
 	for _, v := range list {
-		if v == item {
+		if urivalidation.MatchesRedirectURI(v, item) {
+			return true
+		}
+	}
+	p.logMalformedRegisteredRedirectURIs(agentID, item, list)
+	return false
+}
+
+func (p *Provider) logMalformedRegisteredRedirectURIs(agentID id.AgentID, requestRedirectURI string, registeredRedirectURIs []string) {
+	if p.logger == nil {
+		return
+	}
+	for _, registeredRedirectURI := range registeredRedirectURIs {
+		if urivalidation.IsWellFormedRedirectURI(registeredRedirectURI) {
+			continue
+		}
+		p.logger.Warn(
+			"MalformedRegisteredRedirectURI",
+			"agent_id", agentID,
+			"registered_redirect_uri", registeredRedirectURI,
+			"request_redirect_uri", requestRedirectURI,
+		)
+	}
+}
+
+func containsScope(list []string, scope string) bool {
+	for _, candidate := range list {
+		if candidate == scope {
 			return true
 		}
 	}

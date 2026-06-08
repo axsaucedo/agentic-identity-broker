@@ -185,4 +185,5 @@ var _ = Describe("Consent Flow", func() {
 			"scopes", scopes,
 		)
 	})
+
 })

@@ -1,13 +1,16 @@
 package oauth2server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/ory/fosite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -18,16 +21,15 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 )
 
-// newTestProvider creates a Provider with in-memory storage and test encryption
-// for unit testing purposes.
-func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository, *SigningKeyService) {
+func newTestProviderWithResolver(t *testing.T, resolver ports.ClientResolver, logger *slog.Logger) (*Provider, *SigningKeyService) {
 	t.Helper()
 	codeRepo := memory.NewAuthorizationCodeStore()
 	credRepo := memory.NewClientCredentialStore()
-	agentRepo := memory.NewAgentRepository()
 	signingKeyRepo := memory.NewSigningKeyStore()
 	enc := &testEncryptor{}
-	logger := testSlogger()
+	if logger == nil {
+		logger = testSlogger()
+	}
 
 	signingKeySvc := NewSigningKeyService(signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
 
@@ -35,7 +37,7 @@ func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository, *Signing
 		codeRepo,
 		memory.NewPKCESessionStore(),
 		credRepo,
-		&testClientResolver{agentRepo: agentRepo},
+		resolver,
 		signingKeySvc,
 		"https://broker.example.com",
 		time.Hour, // 1h TTL
@@ -47,6 +49,15 @@ func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository, *Signing
 	_, err = signingKeySvc.generateAndStore(context.Background(), "ES256", true, time.Now())
 	require.NoError(t, err)
 
+	return provider, signingKeySvc
+}
+
+// newTestProvider creates a Provider with in-memory storage and test encryption
+// for unit testing purposes.
+func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository, *SigningKeyService) {
+	t.Helper()
+	agentRepo := memory.NewAgentRepository()
+	provider, signingKeySvc := newTestProviderWithResolver(t, &testClientResolver{agentRepo: agentRepo}, testSlogger())
 	return provider, agentRepo, signingKeySvc
 }
 
@@ -73,6 +84,57 @@ func setupTestCredentials(t *testing.T, provider *Provider, agentRepo ports.Agen
 	require.NoError(t, err)
 
 	return agent, cred, plaintext
+}
+
+func TestProvider_HandleAuthorize_LogsMalformedRegisteredRedirectURI(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	agent := &dstorage.Agent{
+		ID:           id.NewAgentID(),
+		DisplayName:  "Test OAuth2 Agent",
+		Description:  "Agent for provider test",
+		RedirectURIs: []string{"https://client.example.com/call back"},
+	}
+
+	provider, _ := newTestProviderWithResolver(t, &mockClientResolver{
+		resolveFunc: func(context.Context, id.ClientID) (*ports.ClientResolution, error) {
+			return &ports.ClientResolution{Agent: agent}, nil
+		},
+	}, logger)
+
+	_, err := provider.HandleAuthorize(
+		context.Background(),
+		"test-client",
+		"https://client.example.com/callback",
+		"code",
+		"",
+		"state",
+		"challenge",
+		"S256",
+		id.NewPrincipal("user@example.com"),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidRedirectURI)
+	assert.Contains(t, logBuf.String(), `"msg":"MalformedRegisteredRedirectURI"`)
+	assert.Contains(t, logBuf.String(), agent.ID.String())
+	assert.Contains(t, logBuf.String(), `"registered_redirect_uri":"https://client.example.com/call back"`)
+	assert.Contains(t, logBuf.String(), `"request_redirect_uri":"https://client.example.com/callback"`)
+}
+
+func TestParseValidatedRedirectURI(t *testing.T) {
+	t.Run("valid absolute redirect URI parses", func(t *testing.T) {
+		parsed, err := parseValidatedRedirectURI("https://client.example.com/callback")
+		require.NoError(t, err)
+		require.NotNil(t, parsed)
+		assert.Equal(t, "https://client.example.com/callback", parsed.String())
+	})
+
+	t.Run("relative redirect URI returns server error", func(t *testing.T) {
+		parsed, err := parseValidatedRedirectURI("client.example.com/callback")
+		require.Error(t, err)
+		assert.Nil(t, parsed)
+		assert.ErrorIs(t, err, fosite.ErrServerError)
+	})
 }
 
 func TestProvider_HandleClientCredentials(t *testing.T) {
@@ -197,6 +259,50 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 		)
 		require.NoError(t, err)
 		assert.NotEmpty(t, code)
+	})
+
+	t.Run("allowed scope exact match succeeds even when redirect URI matching is port-agnostic", func(t *testing.T) {
+		provider, agentRepo, _ := newTestProvider(t)
+		agent, _, _ := setupTestCredentials(t, provider, agentRepo)
+		agent.RedirectURIs = []string{"http://localhost:3000/callback"}
+		agent.AllowedScopes = []string{"repo", "user"}
+		require.NoError(t, agentRepo.Update(context.Background(), agent))
+
+		code, err := provider.HandleAuthorize(
+			context.Background(),
+			agent.ID.String(),
+			"http://localhost:52341/callback",
+			"code",
+			"repo",
+			"state",
+			"challenge123",
+			"S256",
+			id.NewPrincipal("user@example.com"),
+		)
+		require.NoError(t, err)
+		assert.NotEmpty(t, code)
+	})
+
+	t.Run("disallowed scope is rejected when allowed scopes are configured", func(t *testing.T) {
+		provider, agentRepo, _ := newTestProvider(t)
+		agent, _, _ := setupTestCredentials(t, provider, agentRepo)
+		agent.RedirectURIs = []string{"http://localhost:3000/callback"}
+		agent.AllowedScopes = []string{"repo", "user"}
+		require.NoError(t, agentRepo.Update(context.Background(), agent))
+
+		_, err := provider.HandleAuthorize(
+			context.Background(),
+			agent.ID.String(),
+			"http://localhost:52341/callback",
+			"code",
+			"admin",
+			"state",
+			"challenge123",
+			"S256",
+			id.NewPrincipal("user@example.com"),
+		)
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, ErrInvalidScope)
 	})
 
 	t.Run("missing code_challenge rejected", func(t *testing.T) {
@@ -334,6 +440,44 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 			plaintext,
 			code,
 			"http://localhost:8080/callback",
+			verifier,
+		)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.NotEmpty(t, resp.AccessToken)
+		assert.Equal(t, "Bearer", resp.TokenType)
+	})
+
+	t.Run("portless loopback registration survives authorize and exchange on ephemeral port", func(t *testing.T) {
+		provider, agentRepo, _ := newTestProvider(t)
+		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
+		agent.RedirectURIs = []string{"http://localhost/callback"}
+		require.NoError(t, agentRepo.Update(context.Background(), agent))
+
+		verifier := "loopback-ephemeral-port-verifier-abcdefghij"
+		challenge := generateS256Challenge(verifier)
+		redirectURI := "http://localhost:52341/callback"
+
+		code, err := provider.HandleAuthorize(
+			context.Background(),
+			agent.ID.String(),
+			redirectURI,
+			"code",
+			"read",
+			"state",
+			challenge,
+			"S256",
+			id.NewPrincipal("user@example.com"),
+		)
+		require.NoError(t, err)
+		require.NotEmpty(t, code)
+
+		resp, err := provider.HandleAuthorizationCodeExchange(
+			context.Background(),
+			agent.ID.String(),
+			plaintext,
+			code,
+			redirectURI,
 			verifier,
 		)
 		require.NoError(t, err)

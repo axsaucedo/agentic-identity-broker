@@ -1,9 +1,11 @@
 package oauth2
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -40,6 +42,10 @@ func newTestSessionTokenService() *sessiontoken.Service {
 
 func newTestAuthorizationService(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, cfg *OAuth2Config) ports.OAuth2Service {
 	return NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, nil), cfg, nil, newTestSessionTokenService())
+}
+
+func newTestAuthorizationServiceWithLogger(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, cfg *OAuth2Config, logger *slog.Logger) ports.OAuth2Service {
+	return NewAuthorizationService(grantRepo, NewMockSessionRepository(), NewAgentClientResolver(agentRepo, logger), cfg, logger, newTestSessionTokenService())
 }
 
 func newTestAuthorizationServiceWithSessions(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, sessionRepo ports.UserSessionRepository, cfg *OAuth2Config) ports.OAuth2Service {
@@ -962,6 +968,44 @@ func TestService_HandleAuthorization_RedirectURIValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestService_HandleAuthorization_LogsMalformedRegisteredRedirectURI(t *testing.T) {
+	agentID := id.NewAgentID()
+	malformedURI := "https://client.example.com/call back"
+	requestURI := "https://client.example.com/callback"
+
+	agentRepo := NewMockAgentRepository()
+	grantRepo := NewMockGrantRepository()
+	require.NoError(t, agentRepo.Create(context.Background(), &storage.Agent{
+		ID:           agentID,
+		ClientID:     ptr.To(id.ClientID("client-1")),
+		DisplayName:  "Test Agent",
+		RedirectURIs: []string{malformedURI},
+	}))
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	svc := newTestAuthorizationServiceWithLogger(agentRepo, grantRepo, &OAuth2Config{
+		PublicURL:    "https://broker.example.com",
+		ModeStrategy: NewProxyModeStrategy(),
+	}, logger)
+
+	decision, err := svc.HandleAuthorization(context.Background(), &ports.AuthorizationRequest{
+		ClientID:     id.ClientID(agentID.String()),
+		RedirectURI:  requestURI,
+		ResponseType: "code",
+		OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
+	}, id.NewPrincipal("user@example.com"))
+
+	require.NoError(t, err)
+	require.NotNil(t, decision)
+	assert.Equal(t, "error", decision.Action)
+	assert.Equal(t, "invalid_redirect_uri", decision.ErrorCode)
+	assert.Contains(t, logBuf.String(), `"msg":"MalformedRegisteredRedirectURI"`)
+	assert.Contains(t, logBuf.String(), agentID.String())
+	assert.Contains(t, logBuf.String(), `"registered_redirect_uri":"https://client.example.com/call back"`)
+	assert.Contains(t, logBuf.String(), `"request_redirect_uri":"https://client.example.com/callback"`)
 }
 
 // TestService_HandleAuthorization_ScopeValidation verifies that when an agent has

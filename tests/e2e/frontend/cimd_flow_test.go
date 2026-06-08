@@ -155,3 +155,102 @@ var _ = Describe("CIMD Full Browser Authorization Flow", func() {
 		Expect(finalURL).To(ContainSubstring("state=fl002"), "original state must be preserved")
 	})
 })
+
+var _ = Describe("CIMD Loopback Warning Browser Flow", func() {
+	var (
+		cimdDocServer  *httptest.Server
+		cimdAppServer  *bootstrap.TestServer
+		callbackServer *httptest.Server
+		consentPage    *pages.ConsentPage
+		cimdClientURL  string
+		cimdServerURL  string
+		runtimeURI     string
+	)
+
+	const fakeHost = "cimd-loopback-warning.test.invalid"
+	const registeredLoopbackURI = "http://127.0.0.1:3000/callback"
+
+	BeforeEach(func() {
+		ctx := context.Background()
+
+		callbackServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		runtimeURI = callbackServer.URL + "/callback"
+		cimdClientURL = "https://" + fakeHost + "/client"
+
+		cimdDocServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "max-age=300")
+			_, _ = fmt.Fprintf(w, `{"client_id":%q,"client_name":"CIMD Loopback Warning Agent","redirect_uris":[%q]}`,
+				cimdClientURL, registeredLoopbackURI)
+		}))
+
+		now := time.Now()
+		cimdAgent := &storage.Agent{
+			ID:          id.NewAgentID(),
+			ClientURIs:  []string{cimdClientURL},
+			DisplayName: "CIMD Loopback Warning Agent",
+			Description: "Agent for SC-005 loopback warning browser flow test",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		Expect(GetTestStorage().Agents().Create(ctx, cimdAgent)).To(Succeed())
+
+		config := fixtures.OAuth2ConfigWithCIMD(GetMockUpstream().Server.URL)
+		sf := bootstrap.NewServerFactory(config, GetLogger())
+		cimdFetcher, err := bootstrap.NewCIMDTestFetcher(cimdDocServer, fakeHost, 5120)
+		Expect(err).NotTo(HaveOccurred())
+		cimdAppServer, err = bootstrap.NewCIMDEndUserTestServer(GetTestStorage(), sf, cimdFetcher, GetLogger())
+		Expect(err).NotTo(HaveOccurred())
+		cimdServerURL = cimdAppServer.BaseURL()
+
+		consentPage = pages.NewConsentPage(GetTestPage(), cimdServerURL)
+	})
+
+	AfterEach(func() {
+		if cimdAppServer != nil {
+			cimdAppServer.Close()
+			cimdAppServer = nil
+		}
+		if cimdDocServer != nil {
+			cimdDocServer.Close()
+			cimdDocServer = nil
+		}
+		if callbackServer != nil {
+			callbackServer.Close()
+			callbackServer = nil
+		}
+	})
+
+	// SC-005 from specs/028b-portless-registration/spec.md
+	It("shows the localhost warning when authorize uses a different runtime loopback port", func() {
+		ctx := context.Background()
+		verifier := helpers.PKCEVerifier()
+		challenge := helpers.GenerateCodeChallenge(verifier)
+
+		authorizeURL := fmt.Sprintf(
+			"%s/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=sc005&code_challenge=%s&code_challenge_method=S256",
+			cimdServerURL,
+			url.QueryEscape(cimdClientURL),
+			url.QueryEscape(runtimeURI),
+			challenge,
+		)
+
+		_, err := GetTestPage().Goto(authorizeURL)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = consentPage.WaitForURL(ctx, "/consent/agent/")
+		Expect(err).NotTo(HaveOccurred(), "browser should reach the consent page when explicit-port registration matches a different runtime loopback port")
+
+		err = consentPage.WaitForPageLoad(ctx)
+		Expect(err).NotTo(HaveOccurred(), "consent page should fully render")
+
+		hasWarning, err := consentPage.HasCIMDLocalhostWarning(ctx)
+		Expect(err).NotTo(HaveOccurred(), "failed to check localhost warning visibility")
+		Expect(hasWarning).To(BeTrue(), "localhost warning should be visible when registered and runtime loopback ports differ")
+
+		err = consentPage.TakeScreenshot(ctx, "cimd_loopback_warning_explicit_port")
+		Expect(err).NotTo(HaveOccurred(), "failed to save SC-005 browser-flow screenshot")
+	})
+})

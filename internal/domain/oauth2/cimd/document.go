@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 )
 
 // ClientIDMetadataDocument is a parsed and validated CIMD JSON document.
@@ -108,7 +108,7 @@ func validateLogoURI(logoURI string) error {
 // client_id URL, with an exception for localhost/127.0.0.1 redirect URIs.
 func validateRedirectOrigin(clientURL *url.URL, redirectURI string) error {
 	// Structural validity check first (catches ftp://, fragments, missing host, etc.)
-	if !storage.IsValidRedirectURI(redirectURI) {
+	if !urivalidation.IsValidRedirectURI(redirectURI) {
 		return fmt.Errorf("redirect_uri %q is not a valid redirect URI", redirectURI)
 	}
 	r, _ := url.Parse(redirectURI) // safe: IsValidRedirectURI already validated

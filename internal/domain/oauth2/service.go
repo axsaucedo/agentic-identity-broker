@@ -13,6 +13,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -176,19 +177,20 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 	}
 	uriAllowed := false
 	for _, allowed := range allowedRedirectURIs {
-		if req.RedirectURI == allowed {
+		if urivalidation.MatchesRedirectURI(allowed, req.RedirectURI) {
 			uriAllowed = true
 			break
 		}
 	}
 	if !uriAllowed {
+		s.logMalformedRegisteredRedirectURIs(agent.ID, req.RedirectURI, allowedRedirectURIs)
 		return ports.ErrorDecision(redirectURIErrCode, "redirect_uri not registered for this client", ""), nil
 	}
 
 	// Step 1b-runtime: Enforce HTTPS for non-loopback hosts even on legacy data.
 	// Write-time validation (Agent.Validate/ValidateForCreate) prevents new non-HTTPS
 	// registrations, but this guard closes the gap for pre-existing stored URIs.
-	if !storage.IsValidRedirectURI(req.RedirectURI) {
+	if !urivalidation.IsValidRedirectURI(req.RedirectURI) {
 		return ports.ErrorDecision("invalid_redirect_uri", "redirect_uri must use HTTPS for non-local hosts", ""), nil
 	}
 
@@ -519,6 +521,23 @@ func (s *AuthorizationService) GenerateMetadata(ctx context.Context) (*ports.Met
 	}
 
 	return metadata, nil
+}
+
+func (s *AuthorizationService) logMalformedRegisteredRedirectURIs(agentID id.AgentID, requestRedirectURI string, registeredRedirectURIs []string) {
+	if s.logger == nil {
+		return
+	}
+	for _, registeredRedirectURI := range registeredRedirectURIs {
+		if urivalidation.IsWellFormedRedirectURI(registeredRedirectURI) {
+			continue
+		}
+		s.logger.Warn(
+			"MalformedRegisteredRedirectURI",
+			"agent_id", agentID,
+			"registered_redirect_uri", registeredRedirectURI,
+			"request_redirect_uri", requestRedirectURI,
+		)
+	}
 }
 
 // anyDelegatedSessionExpired returns true if any OAuth2 session relevant to the
