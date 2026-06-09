@@ -20,7 +20,7 @@ import (
 // authorizeURL builds an /oauth2/authorize query for the given client_id and redirect_uri.
 func authorizeURL(clientID, redirectURI string) string {
 	return fmt.Sprintf(
-		"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=xyz",
+		"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=xyz&code_challenge=redirect-uri-test-challenge&code_challenge_method=S256",
 		url.QueryEscape(clientID), url.QueryEscape(redirectURI),
 	)
 }
@@ -154,6 +154,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 			defer func() { _ = resp.Body.Close() }()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			Expect(resp.Header.Get("Location")).To(BeEmpty())
 		})
 	})
 
@@ -348,6 +349,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 			defer func() { _ = resp.Body.Close() }()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			Expect(resp.Header.Get("Location")).To(BeEmpty())
 		})
 
 		// Additional coverage: exact match for portless non-loopback registration.
@@ -421,6 +423,7 @@ var _ = Describe("CIMD Redirect URI Matching — Portless Registration", func() 
 			defer func() { _ = resp.Body.Close() }()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			Expect(resp.Header.Get("Location")).To(BeEmpty())
 		})
 
 		// Scenario US3.3 from specs/028b-portless-registration/spec.md

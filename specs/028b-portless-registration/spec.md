@@ -131,7 +131,6 @@ flowchart TD
 
 ## Assumptions
 
-- IPv6 loopback (`::1`) follows the same authorize-time port-ignore rule as `localhost` and `127.0.0.1` per RFC 8252 §7.3. Redirect URIs such as `http://[::1]:3000/callback` and `http://[::1]:51234/callback` match when scheme, host, and path are equal.
 - The port-ignore rule applies at authorization-request-time redirect URI matching — this is the code change location. CIMD document fetch-time validation (`validateRedirectOrigin`) already skips same-origin enforcement entirely for loopback hosts and requires no code change.
 - The port-ignore rule applies to all Agent redirect URI validation, not only to CIMD-based flows. An opaque (UUID) `client_id` Agent with `http://localhost:3000/callback` in its directly-registered `redirect_uris` benefits from the same exception as a CIMD-sourced client. (`client_uris` on the Agent entity is the CIMD document URL field; `redirect_uris` is the separately-registered redirect URI list.)
 
