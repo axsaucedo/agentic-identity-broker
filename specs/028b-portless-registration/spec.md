@@ -7,9 +7,9 @@
 
 ## Overview
 
-Spec 028 enforces exact port matching when validating redirect URIs for CIMD-based clients, ignoring the RFC 8252 §7.3 loopback redirect exception. RFC 8252 §7.3 and OAuth 2.1 §2.3.1 both specify that the port component of a loopback redirect URI MUST be ignored during validation, because native apps bind to an ephemeral OS-assigned port at runtime. Enforcing a static port breaks every CIMD client that uses a standard OS-assigned port.
+Spec 028 enforces exact port matching when validating redirect URIs for CIMD-based clients. This was a conservative workaround for providers that do not implement the RFC 8252 §7.3 loopback redirect exception. It is not a requirement — RFC 8252 §7.3 and OAuth 2.1 §2.3.1 both specify that the port component of a loopback redirect URI MUST be ignored during validation, because native apps bind to an ephemeral OS-assigned port at runtime. Enforcing a static port breaks every CIMD client that uses a standard OS-assigned port.
 
-This spec amends the redirect URI validation rules established in 028 to correctly implement the RFC 8252 §7.3 / OAuth 2.1 §2.3.1 exception: when the redirect URI host is `localhost`, `127.0.0.1`, or `::1`, any port value (or no port) is valid; scheme, host, and path are compared — only the port is ignored.
+This spec amends the redirect URI validation rules established in 028 to correctly implement the RFC 8252 §7.3 / OAuth 2.1 §2.3.1 exception: when the redirect URI host is `localhost` or `127.0.0.1`, any port value (or no port) is valid; scheme, host, and path are compared — only the port is ignored.
 
 ---
 
@@ -50,7 +50,7 @@ A developer registers their CIMD redirect URI as `http://localhost:3000/callback
 
 ### User Story 3 — Non-Localhost Redirect URIs Are Unaffected (Priority: P1)
 
-The ephemeral port exception applies exclusively to loopback hosts (`localhost`, `127.0.0.1`, and `::1`). Non-loopback redirect URIs continue to require exact scheme, host, port, and path matching. This spec does not loosen validation for any non-loopback redirect URI.
+The ephemeral port exception applies exclusively to loopback hosts (`localhost` and `127.0.0.1`). Non-loopback redirect URIs continue to require exact scheme, host, port, and path matching. This spec does not loosen validation for any non-loopback redirect URI.
 
 **Why this priority**: The port-ignore behavior must not silently expand to non-loopback hosts. Expanding it would allow attackers to redirect to arbitrary ports on legitimate domains, bypassing the redirect URI pinning that prevents token theft.
 
@@ -78,7 +78,7 @@ The ephemeral port exception applies exclusively to loopback hosts (`localhost`,
 
 ### Functional Requirements
 
-- **FR-001**: For redirect URIs whose host is `localhost`, `127.0.0.1`, or `::1`, the system MUST ignore the port component during authorization request redirect URI validation, applying only scheme, host, and path comparison. (CIMD document fetch-time validation already satisfies this via its existing same-origin skip for loopback hosts — no code change required there.)
+- **FR-001**: For redirect URIs whose host is `localhost` or `127.0.0.1`, the system MUST ignore the port component during authorization request redirect URI validation, applying only scheme, host, and path comparison. (CIMD document fetch-time validation already satisfies this via its existing same-origin skip for loopback hosts — no code change required there.)
 - **FR-002**: For all other redirect URI hosts (non-loopback), the system MUST perform exact match validation across scheme, host, port, and path — unchanged from existing behavior.
 - **FR-003**: A CIMD document that registers a loopback redirect URI without a port (e.g. `http://localhost/callback`) MUST be accepted; the absence of a port is not a validation error.
 - **FR-004**: A CIMD document that registers a loopback redirect URI with an explicit port (e.g. `http://localhost:3000/callback`) MUST be accepted; the explicit port is ignored during authorization-time validation.
@@ -92,7 +92,7 @@ The ephemeral port exception applies exclusively to loopback hosts (`localhost`,
 
 ```mermaid
 flowchart TD
-    A["Incoming redirect_uri"] --> B{"Host is localhost, 127.0.0.1, or ::1?"}
+    A["Incoming redirect_uri"] --> B{"Host is localhost or 127.0.0.1?"}
     B -- Yes --> C["Compare: scheme + host + path only\n(port ignored)"]
     B -- No --> D["Compare: scheme + host + port + path\n(exact match)"]
     C --> E{"Match found in registered URIs?"}
@@ -107,7 +107,7 @@ flowchart TD
 
 ### Security Requirements
 
-- **SR-001**: The port-ignore exception applies exclusively to loopback addresses (`localhost`, `127.0.0.1`, `::1`). Any extension of this exception to other host categories requires a superseding ADR.
+- **SR-001**: The port-ignore exception applies exclusively to loopback addresses (`localhost`, `127.0.0.1`). Any extension of this exception to other host categories requires a superseding ADR.
 - **SR-002**: Scheme, path, and query string must still match exactly for loopback redirect URIs; only the port is excluded from comparison.
 
 ### Key Entities
@@ -131,7 +131,6 @@ flowchart TD
 
 ## Assumptions
 
-- IPv6 loopback (`::1`) follows the same authorize-time port-ignore rule as `localhost` and `127.0.0.1` per RFC 8252 §7.3. Redirect URIs such as `http://[::1]:3000/callback` and `http://[::1]:51234/callback` match when scheme, host, and path are equal.
 - The port-ignore rule applies at authorization-request-time redirect URI matching — this is the code change location. CIMD document fetch-time validation (`validateRedirectOrigin`) already skips same-origin enforcement entirely for loopback hosts and requires no code change.
 - The port-ignore rule applies to all Agent redirect URI validation, not only to CIMD-based flows. An opaque (UUID) `client_id` Agent with `http://localhost:3000/callback` in its directly-registered `redirect_uris` benefits from the same exception as a CIMD-sourced client. (`client_uris` on the Agent entity is the CIMD document URL field; `redirect_uris` is the separately-registered redirect URI list.)
 

@@ -183,7 +183,6 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 		}
 	}
 	if !uriAllowed {
-		s.logMalformedRegisteredRedirectURIs(agent.ID, req.RedirectURI, allowedRedirectURIs)
 		return ports.ErrorDecision(redirectURIErrCode, "redirect_uri not registered for this client", ""), nil
 	}
 
@@ -521,23 +520,6 @@ func (s *AuthorizationService) GenerateMetadata(ctx context.Context) (*ports.Met
 	}
 
 	return metadata, nil
-}
-
-func (s *AuthorizationService) logMalformedRegisteredRedirectURIs(agentID id.AgentID, requestRedirectURI string, registeredRedirectURIs []string) {
-	if s.logger == nil {
-		return
-	}
-	for _, registeredRedirectURI := range registeredRedirectURIs {
-		if urivalidation.IsWellFormedRedirectURI(registeredRedirectURI) {
-			continue
-		}
-		s.logger.Warn(
-			"MalformedRegisteredRedirectURI",
-			"agent_id", agentID,
-			"registered_redirect_uri", registeredRedirectURI,
-			"request_redirect_uri", requestRedirectURI,
-		)
-	}
 }
 
 // anyDelegatedSessionExpired returns true if any OAuth2 session relevant to the
