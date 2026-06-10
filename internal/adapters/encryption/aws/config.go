@@ -24,11 +24,11 @@ import (
 // Configuration scenarios supported:
 //   - Default: Uses AWS SDK default credential chain and region resolution
 //   - Region override: Explicitly sets AWS region for all services
-//   - Custom endpoints: For LocalStack or custom AWS implementations
+//   - Custom endpoints: For a LocalStack-compatible AWS emulator or custom AWS implementations
 //   - Static credentials: Access key ID and secret for testing/CI environments
 //   - AWS profile: Uses named profile from ~/.aws/credentials
 //   - IAM role assumption: Assumes role using default credentials then switches
-//   - SSL disable: For LocalStack only (development only, DANGEROUS in production)
+//   - SSL disable: For LocalStack-compatible AWS emulator use only (development only, DANGEROUS in production)
 //
 // Parameters:
 //   - ctx: Context for AWS API calls and credential resolution
@@ -69,7 +69,7 @@ func buildAWSConfig(ctx context.Context, cfg *ports.AWSKMSConfig) (aws.Config, e
 		options = append(options, config.WithSharedConfigProfile(cfg.Profile))
 	}
 
-	// Custom HTTP client for SSL disable (LocalStack testing)
+	// Custom HTTP client for SSL disable (AWS emulator testing)
 	if cfg.DisableSSL {
 		httpClient := &http.Client{
 			Transport: &http.Transport{
@@ -205,7 +205,7 @@ func validateSecuritySettings(cfg *ports.AWSKMSConfig) error {
 	// Warn about disabled SSL verification
 	if cfg.DisableSSL {
 		fmt.Fprintf(os.Stderr, "WARNING: SSL verification is DISABLED (disable_ssl: true). "+
-			"This is DANGEROUS in production and should only be used for LocalStack testing.\n")
+			"This is DANGEROUS in production and should only be used for AWS emulator testing.\n")
 	}
 
 	return nil

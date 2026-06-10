@@ -156,6 +156,8 @@ Read full ADRs in `adrs/` before implementing. Pre-existing ADRs are authoritati
 | `just test-integration-all` | Both integration layers |
 | `just cdk-test` | CDK unit tests |
 
+**Local validation expectation:** do not rely on editor or LSP diagnostics alone. After Go, test, or infrastructure changes, run `just check` locally before handing work off. Use narrower commands while iterating, then finish with the smallest additional `just test...`/`just verify` command that matches the change.
+
 ## Code Style
 
 All code in the monorepo (Go, TypeScript, CDK):

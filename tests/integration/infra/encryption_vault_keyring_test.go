@@ -5,7 +5,6 @@ package integration
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/kms"
@@ -18,13 +17,9 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/integration/bootstrap"
 )
 
-var (
-	sharedLS     *bootstrap.LocalStackContainer
-	sharedLSErr  error
-	sharedLSOnce sync.Once
-)
+var sharedEmulator *bootstrap.AWSEmulatorContainer
 
-// Test service UUIDs — must match the IDs provisioned in bootstrap/localstack.go:preBranchKeysForLocalStack
+// Test service UUIDs — must match the IDs provisioned in bootstrap/aws_emulator.go:preBranchKeysForEmulator
 // and the UUIDs in fixtures.TestServices().
 const (
 	testServiceOAuth2 = "01234567-89ab-cdef-0123-456789abcdef"
@@ -32,28 +27,20 @@ const (
 	testServiceGoogle = "23456789-abcd-ef01-2345-6789abcdef01"
 )
 
-// requireSharedLS skips the test if LocalStack is unavailable (e.g. no Docker).
-func requireSharedLS(t *testing.T) *bootstrap.LocalStackContainer {
+// requireSharedEmulator skips the test if the AWS emulator is unavailable (e.g. no Docker).
+func requireSharedEmulator(t *testing.T) *bootstrap.AWSEmulatorContainer {
 	t.Helper()
-
-	sharedLSOnce.Do(func() {
-		sharedLS, sharedLSErr = bootstrap.StartLocalStackForSuite(context.Background())
-	})
-
-	if sharedLSErr != nil {
-		t.Skipf("LocalStack unavailable — ensure Docker or Colima is running: %v", sharedLSErr)
+	if sharedEmulator == nil {
+		t.Skip("AWS emulator unavailable — ensure Docker or Colima is running")
 	}
-	if sharedLS == nil {
-		t.Skip("LocalStack unavailable — ensure Docker or Colima is running")
-	}
-	return sharedLS
+	return sharedEmulator
 }
 
-// newAdapter creates a fresh adapter pointing at the shared LocalStack instance.
+// newAdapter creates a fresh adapter pointing at the shared AWS emulator instance.
 func newAdapter(t *testing.T) *awsencryption.AWSAdapter {
 	t.Helper()
-	ls := requireSharedLS(t)
-	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+	emulator := requireSharedEmulator(t)
+	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + emulator.KMSKeyID
 	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	require.NoError(t, err, "failed to create encryption adapter")
 	return adapter
@@ -250,8 +237,8 @@ func TestEncryption_EdgeCases(t *testing.T) {
 // TestEncryption_Configuration verifies adapter construction succeeds with a valid ARN and
 // fails with clearly invalid inputs.
 func TestEncryption_Configuration(t *testing.T) {
-	ls := requireSharedLS(t)
-	validARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+	emulator := requireSharedEmulator(t)
+	validARN := "arn:aws:kms:eu-central-1:000000000000:key/" + emulator.KMSKeyID
 
 	adapter, manager, err := awsencryption.NewAWSEncryption(validARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	require.NoError(t, err)
@@ -267,7 +254,7 @@ func TestEncryption_Configuration(t *testing.T) {
 }
 
 // TestEncryption_BranchKeyProvisioning verifies all three pre-provisioned services have
-// working branch keys in the shared LocalStack DynamoDB table.
+// working branch keys in the shared AWS emulator DynamoDB table.
 func TestEncryption_BranchKeyProvisioning(t *testing.T) {
 	ctx := context.Background()
 	adapter := newAdapter(t)
@@ -289,12 +276,12 @@ func TestEncryption_BranchKeyProvisioning(t *testing.T) {
 // KMS on-demand key rotation. This test mutates KMS state and therefore runs last.
 func TestEncryption_KeyRotationBackwardCompatibility(t *testing.T) {
 	ctx := context.Background()
-	ls := requireSharedLS(t)
+	emulator := requireSharedEmulator(t)
 
-	kmsClient, err := bootstrap.NewKMSClientForLocalStack(ctx, ls.Endpoint)
+	kmsClient, err := bootstrap.NewKMSClientForEmulator(ctx, emulator.Endpoint)
 	require.NoError(t, err)
 
-	_, err = kmsClient.EnableKeyRotation(ctx, &kms.EnableKeyRotationInput{KeyId: &ls.KMSKeyID})
+	_, err = kmsClient.EnableKeyRotation(ctx, &kms.EnableKeyRotationInput{KeyId: &emulator.KMSKeyID})
 	require.NoError(t, err, "failed to enable key rotation")
 
 	adapter := newAdapter(t)
@@ -304,7 +291,7 @@ func TestEncryption_KeyRotationBackwardCompatibility(t *testing.T) {
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
 	require.NoError(t, err)
 
-	_, err = kmsClient.RotateKeyOnDemand(ctx, &kms.RotateKeyOnDemandInput{KeyId: &ls.KMSKeyID})
+	_, err = kmsClient.RotateKeyOnDemand(ctx, &kms.RotateKeyOnDemandInput{KeyId: &emulator.KMSKeyID})
 	require.NoError(t, err, "failed to perform on-demand key rotation")
 
 	decrypted, err := adapter.Decrypt(ctx, ciphertext, encCtx)
@@ -316,9 +303,9 @@ func TestEncryption_KeyRotationBackwardCompatibility(t *testing.T) {
 // branch key in real DynamoDB and that the new service can subsequently encrypt and decrypt.
 func TestEncryption_BranchKeyManagerCreate(t *testing.T) {
 	ctx := context.Background()
-	ls := requireSharedLS(t)
+	emulator := requireSharedEmulator(t)
 
-	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + emulator.KMSKeyID
 	adapter, manager, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	require.NoError(t, err)
 	require.NotNil(t, manager)
@@ -344,9 +331,9 @@ func TestEncryption_BranchKeyManagerCreate(t *testing.T) {
 
 func TestEncryption_BranchKeyManagerCreate_SigningKey(t *testing.T) {
 	ctx := context.Background()
-	ls := requireSharedLS(t)
+	emulator := requireSharedEmulator(t)
 
-	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + emulator.KMSKeyID
 	adapter, manager, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	require.NoError(t, err)
 	require.NotNil(t, manager)
@@ -370,9 +357,9 @@ func TestEncryption_BranchKeyManagerCreate_SigningKey(t *testing.T) {
 
 func TestEncryption_CrossNamespaceIsolation(t *testing.T) {
 	ctx := context.Background()
-	ls := requireSharedLS(t)
+	emulator := requireSharedEmulator(t)
 
-	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + emulator.KMSKeyID
 	adapter, manager, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	require.NoError(t, err)
 	require.NotNil(t, manager)
@@ -458,9 +445,9 @@ func TestEncryption_CrossNamespaceIsolation(t *testing.T) {
 // original ciphertext remains decryptable.
 func TestEncryption_BranchKeyManagerCreate_Idempotent(t *testing.T) {
 	ctx := context.Background()
-	ls := requireSharedLS(t)
+	emulator := requireSharedEmulator(t)
 
-	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + emulator.KMSKeyID
 	adapter, manager, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	require.NoError(t, err)
 	require.NotNil(t, manager)
@@ -495,9 +482,9 @@ func TestEncryption_BranchKeyManagerCreate_Idempotent(t *testing.T) {
 // messages containing "context", which the error-classification code must not misroute.
 func TestEncryption_CancelledContextClassifiedAsKEKUnavailable(t *testing.T) {
 	ctx := context.Background()
-	ls := requireSharedLS(t)
+	emulator := requireSharedEmulator(t)
 
-	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + emulator.KMSKeyID
 	adapter := newAdapter(t)
 
 	// Produce valid ciphertext with a live context.

@@ -14,7 +14,7 @@ import (
 
 // SCOPE: This test suite ONLY tests environment variable KEK injection for development mode.
 // It exercises the AWS Encryption SDK adapter directly with raw AES keyring (not AWS KMS).
-// Testing AWS KMS integration belongs in separate integration tests with LocalStack/real KMS.
+// Testing AWS KMS integration belongs in separate integration tests with a LocalStack-compatible AWS emulator or real KMS.
 // These tests verify envelope encryption, context binding, and DEK management using
 // base64-encoded key material loaded from environment variables.
 

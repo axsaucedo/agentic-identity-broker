@@ -82,7 +82,7 @@ func TestBuildAWSConfig_Profile(t *testing.T) {
 }
 
 func TestBuildAWSConfig_CustomEndpoints(t *testing.T) {
-	// Test custom endpoints (LocalStack scenario)
+	// Test custom endpoints (AWS emulator scenario)
 	// Modern pattern: endpoints are applied at service client level, not config level
 	cfg := &ports.AWSKMSConfig{
 		KMSEndpoint:      "http://localhost:4566",
@@ -98,7 +98,7 @@ func TestBuildAWSConfig_CustomEndpoints(t *testing.T) {
 }
 
 func TestBuildAWSConfig_DisableSSL(t *testing.T) {
-	// Test SSL disable for LocalStack
+	// Test SSL disable for a LocalStack-compatible AWS emulator
 	cfg := &ports.AWSKMSConfig{
 		DisableSSL: true,
 	}

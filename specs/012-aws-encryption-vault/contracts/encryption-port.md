@@ -219,7 +219,7 @@ encryptionContext := map[string]string{
 
 **Testing Support**:
 - Mock adapter for unit tests (in-memory encryption, deterministic)
-- Real AWS KMS integration tests (testcontainers with LocalStack)
+- Real AWS KMS integration tests (testcontainers with a LocalStack-compatible AWS emulator)
 
 ---
 

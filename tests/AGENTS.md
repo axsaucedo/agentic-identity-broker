@@ -9,7 +9,7 @@ Two test suites with distinct purposes, frameworks, and infrastructure needs:
 | Suite | Framework | Scope | Storage | Container Runtime |
 |---|---|---|---|---|
 | `e2e/` | Ginkgo v2 / Gomega | Full system via HTTP | In-memory | Not required |
-| `integration/` | Standard `go test` / testify | Component-level | PostgreSQL + LocalStack | Docker or Podman |
+| `integration/` | Standard `go test` / testify | Component-level | PostgreSQL + LocalStack-compatible AWS emulator | Docker or Podman |
 
 **ADR**: [007-e2e-testing-with-ginkgo.md](../adrs/007-e2e-testing-with-ginkgo.md) — binding decision for E2E test architecture.
 
@@ -25,7 +25,7 @@ See [`e2e/AGENTS.md`](e2e/AGENTS.md) for full rules, directory layout, test patt
 
 Integration coverage is split into two slices:
 - **Self-contained integration**: component tests that stay within the process boundary (`httptest`, in-memory adapters, config wiring)
-- **Infra-backed integration**: tests that require PostgreSQL or LocalStack via testcontainers
+- **Infra-backed integration**: tests that require PostgreSQL or a LocalStack-compatible AWS emulator via testcontainers
 
 This keeps the default integration loop cheap while preserving a heavier infra-backed layer for real dependency validation.
 
@@ -34,10 +34,10 @@ This keeps the default integration loop cheap while preserving a heavier infra-b
 ```
 tests/integration/
   bootstrap/
-    localstack.go                  LocalStack container (KMS + DynamoDB) lifecycle
+    aws_emulator.go                LocalStack-compatible AWS emulator (KMS + DynamoDB) lifecycle
   infra/                           Infra-backed integration tests (build tag: integration)
-    main_test.go                   Shared LocalStack suite lifecycle
-    encryption_vault_keyring_test.go AWS KMS hierarchical keyring with LocalStack
+    main_test.go                   Shared AWS emulator suite lifecycle
+    encryption_vault_keyring_test.go AWS KMS hierarchical keyring with the AWS emulator
     agent_service_requirements_migration_test.go   Migration verification for service requirements
   storage/
     lifecycle_test.go              Memory adapter full lifecycle + concurrency
@@ -75,12 +75,13 @@ just test-integration-infra                                      # Via justfile
 just test-integration-all                                        # Runs both layers
 ```
 
-### LocalStack Bootstrap
+### AWS Emulator Bootstrap
 
-`bootstrap/localstack.go` provides `StartLocalStack()`:
-- Runs LocalStack container with KMS + DynamoDB services
+`bootstrap/aws_emulator.go` provides `StartAWSEmulator()` and `StartAWSEmulatorForSuite()`:
+- Runs a LocalStack-compatible AWS emulator with KMS + DynamoDB services
 - Creates a KMS key and returns the key ID
 - Sets AWS SDK environment variables for test clients
+- Supports both per-test startup and a shared suite-level container
 - Used by `infra/encryption_vault_keyring_test.go` for real envelope encryption tests
 
 ### Testing Conventions
@@ -98,6 +99,6 @@ just test-integration-all                                        # Runs both lay
 | Storage lifecycle | `storage/lifecycle_test.go` | None (in-memory) |
 | PostgreSQL adapter | `storage/infra/postgres_test.go` | Testcontainers PostgreSQL |
 | Migration verification | `migrations/migrations_test.go` | Testcontainers PostgreSQL |
-| Encryption keyring | `infra/encryption_vault_keyring_test.go` | LocalStack (KMS + DynamoDB) |
+| Encryption keyring | `infra/encryption_vault_keyring_test.go` | LocalStack-compatible AWS emulator (KMS + DynamoDB) |
 | HTTP endpoints | `oauth2_*.go`, `server_test.go` | None (httptest) |
 | Config/middleware | `config_test.go`, `principal_middleware_test.go` | None |

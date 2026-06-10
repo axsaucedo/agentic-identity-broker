@@ -79,7 +79,7 @@ encryption:
 
     # Security Configuration
     # SSL should always be enabled in production (disable_ssl: false is default)
-    # Only set to true for development/LocalStack scenarios
+    # Only set to true for development/AWS emulator scenarios
     # disable_ssl: false
 
     # Timeout Configuration for DynamoDB operations

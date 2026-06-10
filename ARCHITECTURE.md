@@ -593,7 +593,7 @@ Retrieval flow:
 
 - E2E tests (24 scenarios) covering all acceptance criteria from spec
 - Unit tests for adapter error handling, context verification, DEK uniqueness
-- Integration tests with LocalStack KMS and real PostgreSQL storage
+- Integration tests with a LocalStack-compatible AWS emulator for KMS and real PostgreSQL storage
 - Backward compatibility tests for KEK rotation scenarios
 
 **Encryption Architecture Pattern**:

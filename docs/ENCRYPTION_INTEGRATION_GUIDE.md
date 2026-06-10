@@ -349,7 +349,7 @@ func TestEncryption(t *testing.T) {
 
 ```go
 func TestEncryptionWithRealAdapter(t *testing.T) {
-    // Use real AWS adapter with LocalStack for testing
+    // Use a real AWS adapter with a LocalStack-compatible AWS emulator for testing
     adapter, manager, err := aws.NewAWSEncryption(
         "arn:aws:kms:eu-central-1:123456789012:key/12345678",
         "IdentityBrokerEncryptionBranchKeys",

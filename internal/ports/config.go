@@ -64,10 +64,10 @@ type ServerInstanceConfig struct {
 
 // CORSConfig contains CORS (Cross-Origin Resource Sharing) configuration.
 // When AllowedOrigins is empty, CORS headers are not added (production default — secure by default).
-// For development, set AllowedOrigins to ["*"] to allow all origins.
+// Use explicit localhost origins during development, for example ["http://localhost:3000"].
 type CORSConfig struct {
 	// AllowedOrigins lists origins allowed for cross-origin requests.
-	// Use ["*"] to allow all origins (development only).
+	// Use explicit localhost origins during development instead of wildcard access.
 	// Leave empty to disable CORS headers (production default).
 	AllowedOrigins []string `mapstructure:"allowed_origins"`
 
@@ -761,13 +761,13 @@ type AWSKMSConfig struct {
 	Region string `mapstructure:"region"`
 
 	// KMSEndpoint specifies a custom KMS endpoint URL.
-	// Used for testing with LocalStack or custom KMS implementations.
-	// Example: "http://localhost:4566" (LocalStack)
+	// Used for testing with a LocalStack-compatible AWS emulator or custom KMS implementations.
+	// Example: "http://localhost:4566" (LocalStack-compatible AWS emulator)
 	KMSEndpoint string `mapstructure:"kms_endpoint"`
 
 	// DynamoDBEndpoint specifies a custom DynamoDB endpoint URL.
-	// Used for testing with LocalStack or DynamoDB Local.
-	// Example: "http://localhost:4566" (LocalStack)
+	// Used for testing with a LocalStack-compatible AWS emulator or DynamoDB Local.
+	// Example: "http://localhost:4566" (LocalStack-compatible AWS emulator)
 	DynamoDBEndpoint string `mapstructure:"dynamodb_endpoint"`
 
 	// Profile specifies the AWS profile to use for credentials.
@@ -792,7 +792,7 @@ type AWSKMSConfig struct {
 	AssumeRoleARN string `mapstructure:"assume_role_arn"`
 
 	// DisableSSL disables SSL verification for AWS API calls.
-	// WARNING: Only use for development/testing with LocalStack.
+	// WARNING: Only use for development/testing with a LocalStack-compatible AWS emulator.
 	// NEVER enable this in production environments.
 	DisableSSL bool `mapstructure:"disable_ssl"`
 }
