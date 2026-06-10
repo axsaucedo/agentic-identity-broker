@@ -2,7 +2,7 @@
 # This Dockerfile packages only the golang-migrate tool and migration files
 # Used exclusively by Kubernetes migration Jobs with schema-level permissions
 ARG BASE_IMAGE=default
-FROM registry.opensource.zalan.do/library/alpine-3:latest AS default
+FROM container-registry.zalando.net/library/alpine-3:latest AS default
 FROM ${BASE_IMAGE}
 
 # Build arguments for multi-architecture support via docker buildx
