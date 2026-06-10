@@ -10,10 +10,12 @@ oauth2_authorization_server:
 
   # Proxy section: upstream OAuth2 server configuration (required in proxy/hybrid mode)
   proxy:
-    upstream_issuer_uri: "https://auth.example.com"                    # Upstream OAuth2 issuer URL
-    upstream_authorize_endpoint: "https://auth.example.com/authorize"  # Upstream authorization endpoint
-    upstream_token_endpoint: "https://auth.example.com/token"          # Upstream token endpoint
-    upstream_timeout_seconds: 30  # Timeout for upstream OAuth2 server requests (seconds)
+    upstream_issuer_uri: "https://auth.example.com" # Upstream OAuth2 issuer URL
+    upstream_authorize_endpoint: "https://auth.example.com/authorize" # Upstream authorization endpoint
+    upstream_token_endpoint: "https://auth.example.com/token" # Upstream token endpoint
+    upstream_timeout_seconds: 30 # Timeout for upstream OAuth2 server requests (seconds)
+    upstream_jwks_min_refresh: "15m" # Optional floor for upstream JWKS refresh attempts
+    upstream_jwks_max_refresh: "1h" # Optional ceiling for upstream JWKS refresh attempts
 
   # Note: The broker's public URL (used as the OAuth2 issuer in
   # /.well-known/oauth-authorization-server metadata) is configured via
@@ -21,18 +23,18 @@ oauth2_authorization_server:
 
   # Supported OAuth2 grant types
   supported_response_types:
-    - code                                       # Authorization code flow (RFC 6749 Section 4.1)
+    - code # Authorization code flow (RFC 6749 Section 4.1)
 
   supported_grant_types:
-    - authorization_code                         # Authorization code grant (RFC 6749 Section 4.1)
-    - refresh_token                              # Refresh token grant (RFC 6749 Section 6)
+    - authorization_code # Authorization code grant (RFC 6749 Section 4.1)
+    - refresh_token # Refresh token grant (RFC 6749 Section 6)
 
   # Multi-agent client sharing (optional)
   # When disabled (default), each agent must have a unique upstream client_id.
   # When enabled, multiple agents may share the same upstream client_id;
   # agent identity is determined by a custom claim in the upstream token.
   multi_agent_client:
-    enabled: false  # Set to true to allow multiple agents to share one upstream client_id
+    enabled: false # Set to true to allow multiple agents to share one upstream client_id
     # Required when enabled: true
     # agent_id_param_name: "x_agent_id"   # Query param appended to upstream authorize redirect
     # agent_id_claim_name: "x_agent_id"   # JWT claim in upstream token carrying the agent's internal ID

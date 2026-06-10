@@ -341,10 +341,12 @@ func DefaultCIMDConfig() CIMDConfig {
 
 // ProxyModeConfig holds upstream OAuth2 server configuration for proxy mode.
 type ProxyModeConfig struct {
-	UpstreamIssuerURI         string `mapstructure:"upstream_issuer_uri"`
-	UpstreamAuthorizeEndpoint string `mapstructure:"upstream_authorize_endpoint"`
-	UpstreamTokenEndpoint     string `mapstructure:"upstream_token_endpoint"`
-	UpstreamTimeoutSeconds    int    `mapstructure:"upstream_timeout_seconds"`
+	UpstreamIssuerURI         string        `mapstructure:"upstream_issuer_uri"`
+	UpstreamAuthorizeEndpoint string        `mapstructure:"upstream_authorize_endpoint"`
+	UpstreamTokenEndpoint     string        `mapstructure:"upstream_token_endpoint"`
+	UpstreamTimeoutSeconds    int           `mapstructure:"upstream_timeout_seconds"`
+	UpstreamJWKSMinRefresh    time.Duration `mapstructure:"upstream_jwks_min_refresh"`
+	UpstreamJWKSMaxRefresh    time.Duration `mapstructure:"upstream_jwks_max_refresh"`
 }
 
 // LocalModeConfig holds local token issuance configuration for local/hybrid mode.
@@ -519,6 +521,8 @@ func (c *OAuth2AuthServerConfig) Resolve() (OAuth2ModeConfig, error) {
 			UpstreamAuthorizeEndpoint: c.Proxy.UpstreamAuthorizeEndpoint,
 			UpstreamTokenEndpoint:     c.Proxy.UpstreamTokenEndpoint,
 			UpstreamTimeoutSeconds:    c.Proxy.UpstreamTimeoutSeconds,
+			UpstreamJWKSMinRefresh:    c.Proxy.UpstreamJWKSMinRefresh,
+			UpstreamJWKSMaxRefresh:    c.Proxy.UpstreamJWKSMaxRefresh,
 			SupportedResponseTypes:    c.SupportedResponseTypes,
 			SupportedGrantTypes:       c.SupportedGrantTypes,
 			MultiAgentClient:          c.MultiAgentClient,
@@ -539,6 +543,8 @@ func (c *OAuth2AuthServerConfig) Resolve() (OAuth2ModeConfig, error) {
 				UpstreamAuthorizeEndpoint: c.Proxy.UpstreamAuthorizeEndpoint,
 				UpstreamTokenEndpoint:     c.Proxy.UpstreamTokenEndpoint,
 				UpstreamTimeoutSeconds:    c.Proxy.UpstreamTimeoutSeconds,
+				UpstreamJWKSMinRefresh:    c.Proxy.UpstreamJWKSMinRefresh,
+				UpstreamJWKSMaxRefresh:    c.Proxy.UpstreamJWKSMaxRefresh,
 				SupportedResponseTypes:    c.SupportedResponseTypes,
 				SupportedGrantTypes:       c.SupportedGrantTypes,
 				MultiAgentClient:          c.MultiAgentClient,

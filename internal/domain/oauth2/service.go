@@ -501,9 +501,11 @@ func (s *AuthorizationService) GenerateMetadata(ctx context.Context) (*ports.Met
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
 	}
 
-	// In local and hybrid modes, include JWKS URI and code challenge methods (both serve the JWKS endpoint).
+	// JWKS URI is always advertised — all modes serve /oauth2/jwks.json.
+	metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
+
+	// Code challenge methods and client auth overrides only apply in modes that issue codes.
 	if mode := s.config.ModeStrategy.Mode(); mode == servermode.Local || mode == servermode.Hybrid {
-		metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
 		metadata.CodeChallengeMethodsSupported = []string{"S256"}
 		// client_secret_post is always supported for confidential clients.
 		// none is included when CIMD is enabled: CIMD agents are public clients with no pre-registered secret.

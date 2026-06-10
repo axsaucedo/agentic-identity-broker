@@ -3,6 +3,7 @@ package http
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -53,11 +54,54 @@ func healthStateHTTPStatus(state ports.HealthState) int {
 }
 
 // HealthResponse represents the JSON response for the health endpoint.
-// This structure matches the OpenAPI specification in contracts/health-api.yaml.
+// The end-user OpenAPI documents optional component health details when present.
 type HealthResponse struct {
-	Status        string    `json:"status"`         // Health status: "starting", "healthy", "shutting_down", "unhealthy"
-	Timestamp     time.Time `json:"timestamp"`      // Current server time (ISO 8601)
-	UptimeSeconds int64     `json:"uptime_seconds"` // Time since server started serving requests
+	Status        string            `json:"status"`               // Health status: "starting", "healthy", "shutting_down", "unhealthy"
+	Timestamp     time.Time         `json:"timestamp"`            // Current server time (ISO 8601)
+	UptimeSeconds int64             `json:"uptime_seconds"`       // Time since server started serving requests
+	Components    map[string]string `json:"components,omitempty"` // Optional component-level health details
+}
+
+// NewHealthHandler returns the production health endpoint handler.
+// It is shared by the server adapter and test bootstrap so E2E tests exercise
+// the same response shape and component-health serialization as production.
+func NewHealthHandler(
+	healthStatus func() ports.HealthState,
+	startTime time.Time,
+	healthComponents func() map[string]string,
+	logger *slog.Logger,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		healthState := ports.HealthStateHealthy
+		if healthStatus != nil {
+			healthState = healthStatus()
+		}
+
+		uptime := time.Since(startTime)
+		response := HealthResponse{
+			Status:        healthStateString(healthState),
+			Timestamp:     time.Now().UTC(),
+			UptimeSeconds: int64(uptime.Seconds()),
+		}
+		if healthComponents != nil {
+			components := healthComponents()
+			if len(components) > 0 {
+				response.Components = make(map[string]string, len(components))
+				for name, state := range components {
+					response.Components[name] = state
+				}
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(healthStateHTTPStatus(healthState))
+
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			logger.Error("Failed to encode health response",
+				"error", err)
+			// Don't try to write another response; headers already sent
+		}
+	}
 }
 
 // handleHealth returns an HTTP handler for the health endpoint.
@@ -65,27 +109,6 @@ type HealthResponse struct {
 // The handler is designed to be fast and non-blocking, using atomic operations for health state.
 func (s *Server) handleHealth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Get current health state (atomic read, non-blocking)
-		healthState := s.HealthStatus()
-
-		// Calculate uptime since server started serving
-		uptime := time.Since(s.startTime)
-
-		// Create response
-		response := HealthResponse{
-			Status:        healthStateString(healthState),
-			Timestamp:     time.Now().UTC(),
-			UptimeSeconds: int64(uptime.Seconds()),
-		}
-
-		// Marshal to JSON
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(healthStateHTTPStatus(healthState))
-
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			s.logger.Error("Failed to encode health response",
-				"error", err)
-			// Don't try to write another response; headers already sent
-		}
+		NewHealthHandler(s.HealthStatus, s.startTime, s.config.HealthComponents, s.logger)(w, r)
 	}
 }

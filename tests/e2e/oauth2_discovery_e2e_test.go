@@ -15,7 +15,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 )
 
-var _ = Describe("US6: Discovery and JWKS (local mode)", func() {
+var _ = Describe("US032: Discovery and JWKS", func() {
 	var (
 		enduserServer  *bootstrap.TestServer
 		storageFactory *bootstrap.StorageFactory
@@ -89,26 +89,59 @@ var _ = Describe("US6: Discovery and JWKS (local mode)", func() {
 		}
 	})
 
-	It("discovery 404 in proxy mode", func() {
-		// Create a proxy-mode server
-		proxyConfig := fixtures.OAuth2ConfigWithUpstream("http://localhost:19999")
-		proxyStorage, err := storageFactory.NewTestStorage()
-		Expect(err).ToNot(HaveOccurred())
-		defer func() { _ = storageFactory.CloseStorage(proxyStorage) }()
+	Context("in proxy mode", func() {
+		var (
+			mockUpstream *helpers.MockUpstreamOAuth2Server
+			proxyServer  *bootstrap.TestServer
+			proxyStorage *storageadapter.Adapter
+		)
 
-		proxyFactory := bootstrap.NewServerFactory(proxyConfig, logger)
-		proxyApp, err := proxyFactory.BuildApp(proxyStorage)
-		Expect(err).ToNot(HaveOccurred())
+		BeforeEach(func() {
+			mockUpstream = helpers.NewMockUpstreamOAuth2Server()
+			proxyConfig := fixtures.OAuth2ConfigWithUpstream(mockUpstream.URL())
+			var err error
+			proxyStorage, err = storageFactory.NewTestStorage()
+			Expect(err).ToNot(HaveOccurred())
 
-		proxyServer, err := bootstrap.NewEndUserTestServer(proxyApp, logger)
-		Expect(err).ToNot(HaveOccurred())
-		defer proxyServer.Close()
+			proxyFactory := bootstrap.NewServerFactory(proxyConfig, logger)
+			proxyApp, err := proxyFactory.BuildApp(proxyStorage)
+			Expect(err).ToNot(HaveOccurred())
 
-		// JWKS should not be available in proxy mode (conditional routing)
-		resp, err := http.Get(proxyServer.BaseURL() + "/oauth2/jwks.json")
-		Expect(err).ToNot(HaveOccurred())
-		defer func() { _ = resp.Body.Close() }()
-		// In proxy mode, JWKS route is not registered → 404 or 405
-		Expect(resp.StatusCode).To(SatisfyAny(Equal(http.StatusNotFound), Equal(http.StatusMethodNotAllowed)))
+			proxyServer, err = bootstrap.NewEndUserTestServer(proxyApp, logger)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			if proxyServer != nil {
+				proxyServer.Close()
+			}
+			if proxyStorage != nil {
+				_ = storageFactory.CloseStorage(proxyStorage)
+			}
+			if mockUpstream != nil {
+				mockUpstream.Close()
+			}
+		})
+
+		// Scenario 2.4 from specs/032-aggregated-jwks/spec.md
+		It("serves aggregated JWKS and advertises jwks_uri in discovery", func() {
+			resp, err := http.Get(proxyServer.BaseURL() + "/oauth2/jwks.json")
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			var jwks map[string]interface{}
+			Expect(json.NewDecoder(resp.Body).Decode(&jwks)).ToNot(HaveOccurred())
+			Expect(jwks).To(HaveKey("keys"))
+
+			discResp, err := http.Get(proxyServer.BaseURL() + "/.well-known/oauth-authorization-server")
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = discResp.Body.Close() }()
+			Expect(discResp.StatusCode).To(Equal(http.StatusOK))
+
+			var discBody map[string]interface{}
+			Expect(json.NewDecoder(discResp.Body).Decode(&discBody)).ToNot(HaveOccurred())
+			Expect(discBody).To(HaveKey("jwks_uri"))
+		})
 	})
 })

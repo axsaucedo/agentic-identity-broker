@@ -5,13 +5,18 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime/pprof"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/lestrrat-go/jwx/v3/jwk"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -19,6 +24,72 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 )
+
+// mockJWKSPublisher is a minimal JWKS publisher stub for builder tests.
+type mockJWKSPublisher struct{}
+
+func (m *mockJWKSPublisher) PublishJWKS(_ context.Context) (jwk.Set, error) {
+	return jwk.NewSet(), nil
+}
+
+type mockJWKSPublisherWithHealth struct {
+	state ports.ComponentHealth
+}
+
+func (m *mockJWKSPublisherWithHealth) PublishJWKS(_ context.Context) (jwk.Set, error) {
+	return jwk.NewSet(), nil
+}
+
+func (m *mockJWKSPublisherWithHealth) HealthState() ports.ComponentHealth {
+	return m.state
+}
+
+func countHTTPRCGoroutines(t *testing.T) int {
+	t.Helper()
+
+	var dump bytes.Buffer
+	if err := pprof.Lookup("goroutine").WriteTo(&dump, 1); err != nil {
+		t.Fatalf("pprof.Lookup(goroutine).WriteTo() failed: %v", err)
+	}
+
+	count := 0
+	for _, block := range strings.Split(dump.String(), "\n\n") {
+		if !strings.Contains(block, "github.com/lestrrat-go/httprc/v3.") {
+			continue
+		}
+		var (
+			groupCount int
+			parsed     bool
+		)
+		for _, line := range strings.Split(block, "\n") {
+			if _, err := fmt.Sscanf(line, "%d @", &groupCount); err == nil {
+				parsed = true
+				break
+			}
+		}
+		if !parsed {
+			t.Fatalf("failed to parse goroutine profile block:\n%s", block)
+		}
+		count += groupCount
+	}
+	return count
+}
+
+func waitForHTTPRCGoroutineCount(t *testing.T, want func(int) bool, failure string) {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	last := countHTTPRCGoroutines(t)
+	for time.Now().Before(deadline) {
+		last = countHTTPRCGoroutines(t)
+		if want(last) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	t.Fatalf("%s (last count=%d)", failure, last)
+}
 
 // TestBuilderMinimalConfiguration validates that the builder can construct an application
 // with in-memory storage and the minimum required configuration.
@@ -81,12 +152,8 @@ func TestBuilderMinimalConfiguration(t *testing.T) {
 			},
 		},
 		OAuth2AuthServer: ports.OAuth2AuthServerConfig{
-			Mode: "proxy",
-			Proxy: ports.ProxyModeConfig{
-				UpstreamIssuerURI:         "https://auth.example.com",
-				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-				UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			},
+			Mode:  "local",
+			Local: ports.LocalModeConfig{TokenTTL: time.Hour},
 		},
 	}
 
@@ -409,7 +476,7 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	t.Run("proxy mode — JWKS handler is nil", func(t *testing.T) {
+	t.Run("proxy mode — JWKS handler is non-nil", func(t *testing.T) {
 		cfg := baseConfig(jweKey)
 		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
 			Mode: "proxy",
@@ -419,12 +486,33 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 				UpstreamTokenEndpoint:     "https://issuer.example.com/token",
 			},
 		}
-		app, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).Build()
+		app, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).
+			WithJWKSPublisher(&mockJWKSPublisher{}).Build()
 		if err != nil {
 			t.Fatalf("Build() in proxy mode failed: %v", err)
 		}
-		if app.EnduserHandlers.JWKS != nil {
-			t.Error("proxy mode must not wire a JWKS handler")
+		if app.EnduserHandlers.JWKS == nil {
+			t.Error("proxy mode must wire a JWKS handler")
+		}
+	})
+
+	t.Run("proxy mode exposes upstream JWKS health", func(t *testing.T) {
+		cfg := baseConfig(jweKey)
+		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+			Mode: "proxy",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "https://issuer.example.com",
+				UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://issuer.example.com/token",
+			},
+		}
+		app, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).
+			WithJWKSPublisher(&mockJWKSPublisherWithHealth{state: ports.ComponentHealthDegraded}).Build()
+		if err != nil {
+			t.Fatalf("Build() in proxy mode failed: %v", err)
+		}
+		if got := app.EnduserHealthComponents(); got["upstream_jwks"] != "degraded" {
+			t.Fatalf("EnduserHealthComponents()[\"upstream_jwks\"] = %q, want %q", got["upstream_jwks"], "degraded")
 		}
 	})
 
@@ -440,6 +528,9 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 		}
 		if app.EnduserHandlers.JWKS == nil {
 			t.Error("local mode must wire a JWKS handler")
+		}
+		if got := app.EnduserHealthComponents(); got != nil {
+			t.Fatalf("EnduserHealthComponents() = %#v, want nil in local mode", got)
 		}
 	})
 
@@ -478,7 +569,8 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 			},
 			Local: ports.LocalModeConfig{TokenTTL: time.Hour},
 		}
-		app, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).Build()
+		app, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).
+			WithJWKSPublisher(&mockJWKSPublisher{}).Build()
 		if err != nil {
 			t.Fatalf("Build() in hybrid mode failed: %v", err)
 		}
@@ -486,6 +578,310 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 			t.Error("hybrid mode must wire a JWKS handler")
 		}
 	})
+}
+
+func TestBuilder_ProxyJWKSFailsWhenStartupMetadataDiscoveryFails(t *testing.T) {
+	newStorage := func(t *testing.T) *storage.Adapter {
+		t.Helper()
+		a, err := storage.NewAdapter(&ports.StorageConfig{
+			Backend:  "memory",
+			Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+		})
+		if err != nil {
+			t.Fatalf("storage.NewAdapter: %v", err)
+		}
+		return a
+	}
+
+	newConfig := func(jweKey string, upstreamURL string) *ports.Config {
+		return &ports.Config{
+			Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+			Server: ports.ServerConfig{
+				EndUser: ports.ServerInstanceConfig{
+					Port: 8000, Bind: "::1", PublicURL: "http://localhost:8000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Admin: ports.ServerInstanceConfig{
+					Port: 14000, Bind: "::1", PublicURL: "http://localhost:14000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Shutdown: ports.ShutdownConfig{Timeout: 5 * time.Second},
+			},
+			Storage: ports.StorageConfig{
+				Backend:  "memory",
+				Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+			},
+			ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
+			Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
+			Security:         ports.SecurityConfig{SkipThirdpartyHTTPSValidation: true},
+			OAuth2AuthServer: ports.OAuth2AuthServerConfig{
+				Mode: "proxy",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         upstreamURL,
+					UpstreamAuthorizeEndpoint: upstreamURL + "/authorize",
+					UpstreamTokenEndpoint:     upstreamURL + "/token",
+					UpstreamTimeoutSeconds:    1,
+					UpstreamJWKSMinRefresh:    time.Second,
+					UpstreamJWKSMaxRefresh:    time.Second,
+				},
+			},
+		}
+	}
+
+	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/oauth-authorization-server" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer upstream.Close()
+
+	_, err := NewBuilder().
+		WithConfig(newConfig(jweKey, upstream.URL)).
+		WithStorage(newStorage(t)).
+		WithLogger(logger).
+		Build()
+	if err == nil {
+		t.Fatal("Build() in proxy mode succeeded, want metadata discovery startup error")
+	}
+	if !strings.Contains(err.Error(), "failed to discover OAuth2 server metadata") {
+		t.Fatalf("Build() error = %v, want discovery failure", err)
+	}
+}
+
+func TestBuilder_HybridJWKSWarnsWhenStartupProbeFails(t *testing.T) {
+	newStorage := func(t *testing.T) *storage.Adapter {
+		t.Helper()
+		a, err := storage.NewAdapter(&ports.StorageConfig{
+			Backend:  "memory",
+			Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+		})
+		if err != nil {
+			t.Fatalf("storage.NewAdapter: %v", err)
+		}
+		return a
+	}
+
+	newConfig := func(jweKey string, upstreamURL string) *ports.Config {
+		return &ports.Config{
+			Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+			Server: ports.ServerConfig{
+				EndUser: ports.ServerInstanceConfig{
+					Port: 8000, Bind: "::1", PublicURL: "http://localhost:8000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Admin: ports.ServerInstanceConfig{
+					Port: 14000, Bind: "::1", PublicURL: "http://localhost:14000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Shutdown: ports.ShutdownConfig{Timeout: 5 * time.Second},
+			},
+			Storage: ports.StorageConfig{
+				Backend:  "memory",
+				Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+			},
+			ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
+			Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
+			Security:         ports.SecurityConfig{SkipThirdpartyHTTPSValidation: true},
+			OAuth2AuthServer: ports.OAuth2AuthServerConfig{
+				Mode: "hybrid",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         upstreamURL,
+					UpstreamAuthorizeEndpoint: upstreamURL + "/authorize",
+					UpstreamTokenEndpoint:     upstreamURL + "/token",
+					UpstreamTimeoutSeconds:    1,
+					UpstreamJWKSMinRefresh:    time.Second,
+					UpstreamJWKSMaxRefresh:    time.Second,
+				},
+				Local: ports.LocalModeConfig{TokenTTL: time.Hour},
+			},
+		}
+	}
+
+	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/.well-known/oauth-authorization-server":
+			baseURL := "http://" + r.Host
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"issuer":                 baseURL,
+				"authorization_endpoint": baseURL + "/authorize",
+				"token_endpoint":         baseURL + "/token",
+				"jwks_uri":               baseURL + "/.well-known/jwks.json",
+			})
+		case "/.well-known/jwks.json":
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	app, err := NewBuilder().
+		WithConfig(newConfig(jweKey, upstream.URL)).
+		WithStorage(newStorage(t)).
+		WithLogger(logger).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() in hybrid mode failed: %v", err)
+	}
+	if app == nil {
+		t.Fatal("expected non-nil app")
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		_ = app.Shutdown(shutdownCtx)
+	}()
+
+	if !strings.Contains(logs.String(), "startup upstream JWKS probe failed") {
+		t.Fatalf("expected startup JWKS probe warning, got logs: %s", logs.String())
+	}
+}
+
+func TestBuilder_ShutdownStopsUpstreamJWKSAdapterWorkers(t *testing.T) {
+	newStorage := func(t *testing.T) *storage.Adapter {
+		t.Helper()
+		a, err := storage.NewAdapter(&ports.StorageConfig{
+			Backend:  "memory",
+			Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+		})
+		if err != nil {
+			t.Fatalf("storage.NewAdapter: %v", err)
+		}
+		return a
+	}
+
+	newConfig := func(jweKey string, mode string, upstreamURL string) *ports.Config {
+		cfg := &ports.Config{
+			Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+			Server: ports.ServerConfig{
+				EndUser: ports.ServerInstanceConfig{
+					Port: 8000, Bind: "::1", PublicURL: "http://localhost:8000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Admin: ports.ServerInstanceConfig{
+					Port: 14000, Bind: "::1", PublicURL: "http://localhost:14000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Shutdown: ports.ShutdownConfig{Timeout: 5 * time.Second},
+			},
+			Storage: ports.StorageConfig{
+				Backend:  "memory",
+				Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+			},
+			ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
+			Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
+			Security:         ports.SecurityConfig{SkipThirdpartyHTTPSValidation: true},
+		}
+
+		switch mode {
+		case "proxy":
+			cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+				Mode: "proxy",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         upstreamURL,
+					UpstreamAuthorizeEndpoint: upstreamURL + "/authorize",
+					UpstreamTokenEndpoint:     upstreamURL + "/token",
+					UpstreamTimeoutSeconds:    1,
+				},
+			}
+		case "hybrid":
+			cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+				Mode: "hybrid",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         upstreamURL,
+					UpstreamAuthorizeEndpoint: upstreamURL + "/authorize",
+					UpstreamTokenEndpoint:     upstreamURL + "/token",
+					UpstreamTimeoutSeconds:    1,
+				},
+				Local: ports.LocalModeConfig{TokenTTL: time.Hour},
+			}
+		default:
+			t.Fatalf("unsupported mode %q", mode)
+		}
+
+		return cfg
+	}
+
+	newUpstream := func(t *testing.T) *httptest.Server {
+		t.Helper()
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch r.URL.Path {
+			case "/.well-known/oauth-authorization-server":
+				baseURL := "http://" + r.Host
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"issuer":                 baseURL,
+					"authorization_endpoint": baseURL + "/authorize",
+					"token_endpoint":         baseURL + "/token",
+					"jwks_uri":               baseURL + "/.well-known/jwks.json",
+				})
+			case "/.well-known/jwks.json":
+				_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{}})
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+	}
+
+	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	for _, mode := range []string{"proxy", "hybrid"} {
+		t.Run(mode, func(t *testing.T) {
+			upstream := newUpstream(t)
+			defer upstream.Close()
+
+			baseline := countHTTPRCGoroutines(t)
+
+			app, err := NewBuilder().
+				WithConfig(newConfig(jweKey, mode, upstream.URL)).
+				WithStorage(newStorage(t)).
+				WithLogger(logger).
+				Build()
+			if err != nil {
+				t.Fatalf("Build() in %s mode failed: %v", mode, err)
+			}
+			if app.Shutdown == nil {
+				t.Fatalf("Build() in %s mode returned nil Shutdown", mode)
+			}
+
+			waitForHTTPRCGoroutineCount(t,
+				func(count int) bool { return count > baseline },
+				"expected upstream JWKS adapter workers to start")
+
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			if err := app.Shutdown(shutdownCtx); err != nil {
+				t.Fatalf("Shutdown() in %s mode failed: %v", mode, err)
+			}
+
+			waitForHTTPRCGoroutineCount(t,
+				func(count int) bool { return count <= baseline },
+				"expected upstream JWKS adapter workers to stop after shutdown")
+		})
+	}
 }
 
 // TestBuilder_MissingOAuth2AuthServerConfig verifies that Build() fails when the
@@ -611,6 +1007,134 @@ func TestBuilder_MissingOAuth2AuthServerConfig(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "mode") {
 		t.Errorf("expected error to mention 'mode', got: %v", err)
+	}
+}
+
+// TestBuilder_SharedUpstreamJWKSAdapter verifies that when both token exchange and
+// JWKS publishing are enabled in proxy mode, the builder performs upstream JWKS URI
+// discovery exactly once and creates a single shared adapter — not separate instances
+// with independent refresh cycles.
+func TestBuilder_SharedUpstreamJWKSAdapter(t *testing.T) {
+	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+
+	var discoveryCount atomic.Int32
+	var jwksFetchCount atomic.Int32
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/.well-known/oauth-authorization-server":
+			discoveryCount.Add(1)
+			baseURL := "http://" + r.Host
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"issuer":                 baseURL,
+				"authorization_endpoint": baseURL + "/authorize",
+				"token_endpoint":         baseURL + "/token",
+				"jwks_uri":               baseURL + "/.well-known/jwks.json",
+			})
+		case "/.well-known/jwks.json":
+			jwksFetchCount.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	// Override the domain storage HTTP client so discovery calls use our test server.
+	origClient := http.DefaultClient
+	domstorage.SetHTTPClientForTesting(upstream.Client())
+	defer domstorage.SetHTTPClientForTesting(origClient)
+
+	newStorage := func(t *testing.T) *storage.Adapter {
+		t.Helper()
+		a, err := storage.NewAdapter(&ports.StorageConfig{
+			Backend:  "memory",
+			Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+		})
+		if err != nil {
+			t.Fatalf("storage.NewAdapter: %v", err)
+		}
+		return a
+	}
+
+	cfg := &ports.Config{
+		Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server: ports.ServerConfig{
+			EndUser: ports.ServerInstanceConfig{
+				Port: 8000, Bind: "::1", PublicURL: "http://localhost:8000",
+				Authentication: ports.AuthenticationConfig{
+					Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+				},
+			},
+			Admin: ports.ServerInstanceConfig{
+				Port: 14000, Bind: "::1", PublicURL: "http://localhost:14000",
+				Authentication: ports.AuthenticationConfig{
+					Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+				},
+			},
+			Shutdown: ports.ShutdownConfig{Timeout: 5 * time.Second},
+		},
+		Storage: ports.StorageConfig{
+			Backend:  "memory",
+			Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+		},
+		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
+		Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
+		Security:         ports.SecurityConfig{SkipThirdpartyHTTPSValidation: true},
+		OAuth2AuthServer: ports.OAuth2AuthServerConfig{
+			Mode: "proxy",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         upstream.URL,
+				UpstreamAuthorizeEndpoint: upstream.URL + "/authorize",
+				UpstreamTokenEndpoint:     upstream.URL + "/token",
+				UpstreamTimeoutSeconds:    5,
+			},
+			MultiAgentClient: ports.MultiAgentClientConfig{
+				Enabled:          true,
+				AgentIDParamName: "x_agent_id",
+				AgentIDClaimName: "agent_id",
+			},
+		},
+		TokenExchange: ports.TokenExchangeConfig{
+			ClaimExtraction: ports.ClaimExtractionConfig{
+				PrincipalExpression: "subject_token.sub",
+				AgentIDExpression:   "subject_token.agent_id",
+			},
+			Authorization: ports.AuthorizationConfig{
+				Type: "cel",
+				CEL: ports.CELAuthorizationConfig{
+					Expression:        "true",
+					EvaluationTimeout: 100 * time.Millisecond,
+				},
+			},
+		},
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	app, err := NewBuilder().
+		WithConfig(cfg).
+		WithStorage(newStorage(t)).
+		WithLogger(logger).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() failed: %v", err)
+	}
+	defer func() { _ = app.Shutdown(context.Background()) }()
+
+	// With token exchange + multi-agent + JWKS publishing all active,
+	// discovery should happen exactly once (shared adapter).
+	got := discoveryCount.Load()
+	if got != 1 {
+		t.Errorf("upstream discovery calls = %d, want 1 (shared adapter)", got)
+	}
+
+	// JWKS fetch should come from a single httprc controller (one adapter).
+	// At build time the adapter may or may not have completed its first fetch,
+	// but there should be at most 1 outstanding fetch (not 3 from separate adapters).
+	if fetches := jwksFetchCount.Load(); fetches > 1 {
+		t.Errorf("initial JWKS fetches = %d, want at most 1 (single shared adapter)", fetches)
 	}
 }
 

@@ -39,7 +39,7 @@ ports/             7 interface files defining ALL hexagonal boundaries
   cel.go           CELCompilerPort
   config.go        ConfigPort + Config struct
   encryption.go    EncryptionPort, BranchKeyRepository, BranchKeyIdProvider, BranchKeyManager
-  jwks.go          JWKSPort
+  jwks.go          JWKSPort, JWKSHealthPort
   oauth2.go        OAuth2Service interface
   server.go        HealthState
   storage.go       AgentRepository, UserGrantRepository, UserSessionRepository, HealthChecker
@@ -126,7 +126,7 @@ These are **domain data models**, NOT database models. Adapter-specific records 
 | Config | `ConfigPort` | `ports/config.go` |
 | Storage | `AgentRepository`, `UserGrantRepository`, `UserSessionRepository` | `ports/storage.go` |
 | Provider Storage | `ThirdpartyOAuth2ProviderRepository` | `ports/thirdparty_provider.go` |
-| JWKS | `JWKSPort` | `ports/jwks.go` |
+| JWKS | `JWKSPort`, `JWKSHealthPort` | `ports/jwks.go` |
 | OAuth2 | `OAuth2Service` | `ports/oauth2.go` |
 | CEL | `CELCompilerPort` | `ports/cel.go` |
 | Health | `HealthChecker` | `ports/storage.go` |

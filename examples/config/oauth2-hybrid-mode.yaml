@@ -38,6 +38,8 @@ oauth2_authorization_server:
     upstream_authorize_endpoint: "https://auth.example.com/authorize"
     upstream_token_endpoint: "https://auth.example.com/token"
     upstream_timeout_seconds: 30
+    upstream_jwks_min_refresh: "15m"
+    upstream_jwks_max_refresh: "1h"
 
   # Local section: token issuance for LocalClient and CIMDClient agents (required in hybrid mode)
   local:
@@ -63,12 +65,12 @@ oauth2_authorization_server:
 
 # Storage backend
 storage:
-  backend: "memory"  # Use "postgres" for production
+  backend: "memory" # Use "postgres" for production
 
 # Encryption for signing key private material (required in hybrid/local mode)
 encryption:
   memory:
-    raw_key: "base64-encoded-32-byte-key"  # Use "aws_kms" for production
+    raw_key: "base64-encoded-32-byte-key" # Use "aws_kms" for production
 
 # Logging
 log:

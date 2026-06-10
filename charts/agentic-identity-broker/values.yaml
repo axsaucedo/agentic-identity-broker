@@ -439,6 +439,10 @@ broker:
       upstreamTokenEndpoint: ""
       # -- Upstream request timeout in seconds (0 = use application default of 30s)
       upstreamTimeoutSeconds: 0
+      # -- Minimum interval between upstream JWKS refresh attempts. Empty = application default of 15m.
+      upstreamJwksMinRefresh: ""
+      # -- Maximum interval between upstream JWKS refresh attempts. Empty = application default of 1h.
+      upstreamJwksMaxRefresh: ""
 
     # -- Supported OAuth2 response types (empty = use mode-specific defaults: ["code"])
     supportedResponseTypes: []

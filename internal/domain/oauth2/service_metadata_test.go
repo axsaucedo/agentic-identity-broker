@@ -22,7 +22,7 @@ func TestGenerateMetadata_ProxyMode(t *testing.T) {
 	assert.Equal(t, "https://broker.example.com", metadata.Issuer)
 	assert.Equal(t, "https://broker.example.com/oauth2/authorize", metadata.AuthorizationEndpoint)
 	assert.Equal(t, "https://broker.example.com/oauth2/token", metadata.TokenEndpoint)
-	assert.Empty(t, metadata.JWKSURI, "JWKS URI should be empty in proxy mode")
+	assert.Equal(t, "https://broker.example.com/oauth2/jwks.json", metadata.JWKSURI, "proxy mode must advertise JWKS URI (aggregated key surface)")
 	assert.Empty(t, metadata.CodeChallengeMethodsSupported, "code challenge methods should be empty in proxy mode")
 	assert.ElementsMatch(t, []string{"client_secret_post", "client_secret_basic"}, metadata.TokenEndpointAuthMethodsSupported,
 		"proxy mode must advertise both client_secret_post and client_secret_basic")

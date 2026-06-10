@@ -98,6 +98,9 @@ oauth2_authorization_server:
     upstream_authorize_endpoint: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT}
     # Upstream token endpoint
     upstream_token_endpoint: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT}
+    # Optional JWKS refresh bounds (defaults shown here for operator visibility)
+    upstream_jwks_min_refresh: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_JWKS_MIN_REFRESH:15m}
+    upstream_jwks_max_refresh: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_JWKS_MAX_REFRESH:1h}
 
 # Future sections for expanded configuration:
 # database:

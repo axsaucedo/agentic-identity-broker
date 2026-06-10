@@ -48,18 +48,19 @@ type MockUpstreamOAuth2Server struct {
 	requestMutex sync.RWMutex
 
 	// Response configuration
-	authorizeCalled     bool
-	tokenCalled         bool
-	metadataCalled      bool
-	jwksCalled          bool
-	successfulTokenResp bool
-	errorCode           string
-	errorDescription    string
-	responseDelay       time.Duration
-	accessToken         string
-	refreshToken        string
-	tokenType           string
-	expiresIn           int
+	authorizeCalled         bool
+	tokenCalled             bool
+	metadataCalled          bool
+	jwksCalled              bool
+	successfulTokenResp     bool
+	errorCode               string
+	errorDescription        string
+	responseDelay           time.Duration
+	blockTokenUntilCanceled bool
+	accessToken             string
+	refreshToken            string
+	tokenType               string
+	expiresIn               int
 
 	// RSA key pair for JWT signing (generated on init)
 	privateKeyPEM string
@@ -83,7 +84,9 @@ func NewMockUpstreamOAuth2Server() *MockUpstreamOAuth2Server {
 	m.privateKeyPEM, m.publicKeyPEM, m.jwksSet = sharedKeyPair()
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/authorize", m.handleAuthorize)
 	mux.HandleFunc("/oauth/authorize", m.handleAuthorize)
+	mux.HandleFunc("/token", m.handleToken)
 	mux.HandleFunc("/oauth/token", m.handleToken)
 	mux.HandleFunc("/.well-known/openid-configuration", m.handleMetadata)
 	mux.HandleFunc("/.well-known/oauth-authorization-server", m.handleMetadata)
@@ -147,6 +150,15 @@ func (m *MockUpstreamOAuth2Server) WithRefreshToken(token string) *MockUpstreamO
 // WithResponseDelay adds a delay to token endpoint responses (simulates network latency).
 func (m *MockUpstreamOAuth2Server) WithResponseDelay(delay time.Duration) *MockUpstreamOAuth2Server {
 	m.responseDelay = delay
+	return m
+}
+
+// WithTokenHangUntilCanceled makes the token endpoint block until the caller's
+// request context is canceled. This is useful for provoking client-side
+// timeouts without sleeping longer than necessary in tests.
+func (m *MockUpstreamOAuth2Server) WithTokenHangUntilCanceled() *MockUpstreamOAuth2Server {
+	m.blockTokenUntilCanceled = true
+	m.responseDelay = 0
 	return m
 }
 
@@ -292,11 +304,6 @@ func (m *MockUpstreamOAuth2Server) handleAuthorize(w http.ResponseWriter, r *htt
 // handleToken handles the /oauth/token endpoint.
 // Simulates upstream OAuth2 token exchange endpoint.
 func (m *MockUpstreamOAuth2Server) handleToken(w http.ResponseWriter, r *http.Request) {
-	// Apply response delay if configured
-	if m.responseDelay > 0 {
-		time.Sleep(m.responseDelay)
-	}
-
 	// Parse form data so it's available for testing via FormValue
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -305,14 +312,25 @@ func (m *MockUpstreamOAuth2Server) handleToken(w http.ResponseWriter, r *http.Re
 
 	m.requestMutex.Lock()
 	m.LastRequest = r
+	m.LastBody = r.Form.Encode()
 	m.tokenCalled = true
-	// Read body
-	if r.Body != nil {
-		defer func() { _ = r.Body.Close() }()
-		bodyBytes, _ := readRequestBody(r)
-		m.LastBody = string(bodyBytes)
-	}
 	m.requestMutex.Unlock()
+
+	if m.blockTokenUntilCanceled {
+		<-r.Context().Done()
+		return
+	}
+
+	// Apply response delay if configured
+	if m.responseDelay > 0 {
+		timer := time.NewTimer(m.responseDelay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-r.Context().Done():
+			return
+		}
+	}
 
 	// Check for error condition
 	if !m.successfulTokenResp && m.errorCode != "" {

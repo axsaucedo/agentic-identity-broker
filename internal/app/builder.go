@@ -80,9 +80,19 @@ type App struct {
 	// Logger
 	Logger *slog.Logger
 
+	jwksPublisherHealth ports.JWKSPublisherHealthPort
+
 	// Shutdown must be called on graceful shutdown to release background resources
 	// (e.g. stop the PermissionSetService eviction goroutine).
 	Shutdown func(context.Context) error
+}
+
+// EnduserHealthComponents returns optional component-level health for the public /health endpoint.
+func (a *App) EnduserHealthComponents() map[string]string {
+	if a == nil || a.jwksPublisherHealth == nil {
+		return nil
+	}
+	return map[string]string{"upstream_jwks": string(a.jwksPublisherHealth.HealthState())}
 }
 
 // Builder is a chainable builder for constructing App instances.
@@ -102,6 +112,7 @@ type Builder struct {
 	staticWebResourcesPath string
 	tracerProvider         *sdktrace.TracerProvider // Optional: custom TracerProvider for testing
 	cimdFetcher            ports.CIMDFetcher        // Optional: overrides auto-created CIMD fetcher for testing
+	jwksPublisher          ports.JWKSPublisherPort  // Optional: overrides JWKS publisher for testing
 }
 
 // NewBuilder creates a new application builder.
@@ -151,6 +162,15 @@ func (b *Builder) WithCIMDFetcher(f ports.CIMDFetcher) *Builder {
 	return b
 }
 
+// WithJWKSPublisher injects a pre-built JWKS publisher for the public /oauth2/jwks.json
+// endpoint. Intended for testing only. When no other upstream-verification consumer
+// (token exchange or multi-agent verification) is active, this bypasses the builder's
+// upstream metadata discovery for JWKS publishing.
+func (b *Builder) WithJWKSPublisher(p ports.JWKSPublisherPort) *Builder {
+	b.jwksPublisher = p
+	return b
+}
+
 // oauthResolved holds values extracted from a resolved OAuth2ModeConfig for use
 // throughout the builder. Populated once via extractOAuthValues, consumed many times.
 type oauthResolved struct {
@@ -158,6 +178,8 @@ type oauthResolved struct {
 	upstreamAuthorizeEndpoint string
 	upstreamTokenEndpoint     string
 	upstreamTimeout           time.Duration
+	jwksMinRefresh            time.Duration
+	jwksMaxRefresh            time.Duration
 	localIssuerURI            string
 	localTokenTTL             time.Duration
 	localClaimsExpression     string
@@ -176,6 +198,8 @@ func extractOAuthValues(cfg ports.OAuth2ModeConfig, publicURL string) oauthResol
 		r.upstreamAuthorizeEndpoint = c.UpstreamAuthorizeEndpoint
 		r.upstreamTokenEndpoint = c.UpstreamTokenEndpoint
 		r.upstreamTimeout = c.UpstreamTimeout()
+		r.jwksMinRefresh = c.JWKSMinRefresh()
+		r.jwksMaxRefresh = c.JWKSMaxRefresh()
 		r.responseTypes = c.SupportedResponseTypes
 		r.grantTypes = c.SupportedGrantTypes
 		r.multiAgentClient = c.MultiAgentClient
@@ -194,6 +218,8 @@ func extractOAuthValues(cfg ports.OAuth2ModeConfig, publicURL string) oauthResol
 		r.upstreamAuthorizeEndpoint = c.Proxy.UpstreamAuthorizeEndpoint
 		r.upstreamTokenEndpoint = c.Proxy.UpstreamTokenEndpoint
 		r.upstreamTimeout = c.Proxy.UpstreamTimeout()
+		r.jwksMinRefresh = c.Proxy.JWKSMinRefresh()
+		r.jwksMaxRefresh = c.Proxy.JWKSMaxRefresh()
 		r.responseTypes = c.ResponseTypes()
 		r.grantTypes = c.GrantTypes()
 		r.multiAgentClient = c.Proxy.MultiAgentClient
@@ -395,13 +421,14 @@ func (b *Builder) Build() (*App, error) {
 		)
 	}
 
+	// Computed once and used in OAuth2Config, shared JWKS adapter creation, and token exchange wiring.
+	tokenExchangeEnabled := ov.upstreamIssuerURI != "" &&
+		b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
+		b.config.TokenExchange.Authorization.CEL.Expression != ""
+
 	// Create OAuth2 service — mode-specific config drives all decisions.
 	var clientResolver ports.ClientResolver
 	{
-		tokenExchangeEnabled := ov.upstreamIssuerURI != "" &&
-			b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
-			b.config.TokenExchange.Authorization.CEL.Expression != ""
-
 		oauth2Config := &oauth2service.OAuth2Config{
 			UpstreamAuthorizeEndpoint: ov.upstreamAuthorizeEndpoint,
 			UpstreamTokenEndpoint:     ov.upstreamTokenEndpoint,
@@ -520,11 +547,53 @@ func (b *Builder) Build() (*App, error) {
 		ov.multiAgentClient.Enabled,
 	)
 
+	// Shared upstream JWKS adapter: in proxy/hybrid mode the broker resolves upstream
+	// OAuth2 metadata at startup so every upstream-verification surface uses the same
+	// readiness model. The only exception is the test-only JWKS publisher override when
+	// no other consumer needs upstream JWKS verification.
+	var sharedUpstreamJWKS *jwks.Adapter
+	if ov.upstreamIssuerURI != "" && (b.jwksPublisher == nil || tokenExchangeEnabled || ov.multiAgentClient.Enabled) {
+		discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(), ov.upstreamTimeout)
+		discovered, err := domstorage.DiscoverOAuth2Endpoints(
+			discoveryCtx,
+			ov.upstreamIssuerURI,
+			nil,
+			b.config.Security.SkipThirdpartyHTTPSValidation,
+		)
+		discoveryCancel()
+		if err != nil {
+			return nil, fmt.Errorf("failed to discover OAuth2 server metadata: %w", err)
+		}
+		if discovered.JWKsURI == "" {
+			return nil, fmt.Errorf("OAuth2 server metadata did not include a jwks_uri")
+		}
+
+		sharedUpstreamJWKS, err = jwks.NewJWKSAdapter(
+			discovered.JWKsURI,
+			upstreamClient,
+			ov.jwksMinRefresh,
+			ov.jwksMaxRefresh,
+			b.logger,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create upstream JWKS adapter: %w", err)
+		}
+
+		// Chain shutdown once — callers that receive the shared adapter must not re-chain.
+		prevShutdown := app.Shutdown
+		shared := sharedUpstreamJWKS
+		app.Shutdown = func(ctx context.Context) error {
+			var prevErr error
+			if prevShutdown != nil {
+				prevErr = prevShutdown(ctx)
+			}
+			return errors.Join(shared.Shutdown(ctx), prevErr)
+		}
+	}
+
 	// Token exchange (RFC 8693) requires an upstream JWT issuer for JWKS validation.
 	// Only available in proxy/hybrid mode where an upstream issuer is configured.
-	if ov.upstreamIssuerURI != "" &&
-		b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
-		b.config.TokenExchange.Authorization.CEL.Expression != "" {
+	if tokenExchangeEnabled {
 		// Validate required dependencies
 		if app.ConsentService == nil {
 			return nil, fmt.Errorf("token exchange service requires consent service, but storage repositories (Agents, Services, UserGrants) are not available")
@@ -558,43 +627,14 @@ func (b *Builder) Build() (*App, error) {
 			return nil, fmt.Errorf("failed to create CEL evaluator for token exchange: %w", err)
 		}
 
-		// Create JWKS adapter for JWT validation
-		// Per spec FR-039: JWKS URI discovered from upstream OAuth2 server metadata (RFC 8414)
-		discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(),
-			ov.upstreamTimeout)
-
-		discovered, err := domstorage.DiscoverOAuth2Endpoints(
-			discoveryCtx,
-			ov.upstreamIssuerURI,
-			nil, // use standard /.well-known/oauth-authorization-server path
-			b.config.Security.SkipThirdpartyHTTPSValidation,
-		)
-		discoveryCancel()
-		if err != nil {
-			return nil, fmt.Errorf("failed to discover OAuth2 server metadata: %w", err)
-		}
-		if discovered.JWKsURI == "" {
-			return nil, fmt.Errorf("OAuth2 server metadata did not include a jwks_uri")
-		}
-
-		jwksAdapter, err := jwks.NewJWKSAdapter(
-			discovered.JWKsURI,
-			upstreamClient,
-			15*time.Minute, // min refresh interval
-			1*time.Hour,    // max refresh interval
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create JWKS adapter for token exchange: %w", err)
-		}
-
-		// Create JWT validator
+		// Create JWT validator using the shared upstream JWKS adapter.
 		// Per spec SR-001: Client assertion and subject_token JWTs validated against JWKS
 		brokerAudience := b.config.TokenExchange.ExpectedAudience
 		if brokerAudience == "" {
 			brokerAudience = tokenexchange.DefaultBrokerAudience
 		}
 		jwtValidator, err := tokenexchange.NewJWTValidator(
-			jwksAdapter,
+			sharedUpstreamJWKS,
 			ov.upstreamIssuerURI,
 			brokerAudience,
 			tokenexchange.DefaultClockSkewTolerance, // Per spec FR-042: 60 second clock skew tolerance
@@ -687,37 +727,9 @@ func (b *Builder) Build() (*App, error) {
 	// guarantees (SR-001) are not conditional on upstream validation alone.
 	var multiAgentVerifier ports.MultiAgentVerifier
 	if ov.multiAgentClient.Enabled {
-		multiAgentDiscoveryCtx, multiAgentDiscoveryCancel := context.WithTimeout(
-			context.Background(),
-			ov.upstreamTimeout,
-		)
-		multiAgentDiscovered, err := domstorage.DiscoverOAuth2Endpoints(
-			multiAgentDiscoveryCtx,
-			ov.upstreamIssuerURI,
-			nil, // use standard /.well-known/oauth-authorization-server path
-			b.config.Security.SkipThirdpartyHTTPSValidation,
-		)
-		multiAgentDiscoveryCancel()
-		if err != nil {
-			return nil, fmt.Errorf("failed to discover OAuth2 server metadata for multi-agent verifier: %w", err)
-		}
-		if multiAgentDiscovered.JWKsURI == "" {
-			return nil, fmt.Errorf("OAuth2 server metadata did not include a jwks_uri (required for multi-agent token verification)")
-		}
-
-		multiAgentJWKSAdapter, err := jwks.NewJWKSAdapter(
-			multiAgentDiscovered.JWKsURI,
-			upstreamClient,
-			15*time.Minute,
-			1*time.Hour,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create JWKS adapter for multi-agent verifier: %w", err)
-		}
-
 		verifier, err := oauth2service.NewMultiAgentTokenVerifier(
 			ov.multiAgentClient.AgentIDClaimName,
-			multiAgentJWKSAdapter,
+			sharedUpstreamJWKS,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create multi-agent token verifier: %w", err)
@@ -727,6 +739,7 @@ func (b *Builder) Build() (*App, error) {
 	var grantHandler enduser.TokenGrantStrategy
 	var proceedHandler enduser.AuthorizationProceedStrategy
 	var jwksHandler *enduserHandlers.JWKSHandler
+	var jwksPublisherHealth ports.JWKSPublisherHealthPort
 
 	localIssuerURI := ov.localIssuerURI
 
@@ -748,7 +761,6 @@ func (b *Builder) Build() (*App, error) {
 			return nil, fmt.Errorf("failed to create OAuth2 server provider: %w", err)
 		}
 
-		jwksHandler = enduserHandlers.NewJWKSHandler(signingKeyService, b.logger)
 		count, err := signingKeyService.CountActive(context.Background())
 		if err != nil {
 			return nil, fmt.Errorf("failed to check signing keys: %w", err)
@@ -806,6 +818,11 @@ func (b *Builder) Build() (*App, error) {
 			"issuer_uri", localIssuerURI,
 			"token_ttl", cfg.TokenTTL,
 		)
+		publisher := ports.JWKSPublisherPort(oauth2service.NewLocalJWKSPublisher(signingKeyService, b.logger))
+		if b.jwksPublisher != nil {
+			publisher = b.jwksPublisher
+		}
+		jwksHandler = enduserHandlers.NewJWKSHandler(publisher, b.logger)
 	case *ports.HybridOAuth2Config:
 		signingKeyService := wireLocalAdminHandlers()
 		provider, err := buildLocalProvider(signingKeyService, cfg.Local.TokenTTL, cfg.Local.TokenClaimsExpression)
@@ -822,11 +839,49 @@ func (b *Builder) Build() (*App, error) {
 			"issuer_uri", localIssuerURI,
 			"token_ttl", cfg.Local.TokenTTL,
 		)
+		var hybridPublisher ports.JWKSPublisherPort
+		if b.jwksPublisher != nil {
+			hybridPublisher = b.jwksPublisher
+		} else {
+			if sharedUpstreamJWKS == nil {
+				return nil, fmt.Errorf("upstream JWKS adapter not initialized")
+			}
+			svc := oauth2service.NewHybridJWKSPublisher(signingKeyService, sharedUpstreamJWKS, b.logger)
+			// T046: Check for kid conflicts at startup; log error but allow startup to continue.
+			kidCtx, kidCancel := context.WithTimeout(context.Background(), ov.upstreamTimeout)
+			_, kidErr := svc.PublishJWKS(kidCtx)
+			kidCancel()
+			if errors.Is(kidErr, ports.ErrKidConflict) {
+				b.logger.Error("startup kid conflict in hybrid JWKS aggregation — /oauth2/jwks.json will return 500 until resolved", "error", kidErr)
+			} else if kidErr != nil {
+				b.logger.Warn("startup upstream JWKS probe failed — /oauth2/jwks.json will return 503 until upstream recovers", "error", kidErr)
+			}
+			hybridPublisher = svc
+		}
+		if healthPublisher, ok := hybridPublisher.(ports.JWKSPublisherHealthPort); ok {
+			jwksPublisherHealth = healthPublisher
+		}
+		jwksHandler = enduserHandlers.NewJWKSHandler(hybridPublisher, b.logger)
 	case *ports.ProxyOAuth2Config:
 		grantHandler, proceedHandler = buildProxyStrategies(cfg.UpstreamTokenEndpoint)
+		var proxyPublisher ports.JWKSPublisherPort
+		if b.jwksPublisher != nil {
+			proxyPublisher = b.jwksPublisher
+		} else {
+			if sharedUpstreamJWKS == nil {
+				return nil, fmt.Errorf("upstream JWKS adapter not initialized")
+			}
+			proxyPublisher = oauth2service.NewProxyJWKSPublisher(sharedUpstreamJWKS, b.logger)
+		}
+		if healthPublisher, ok := proxyPublisher.(ports.JWKSPublisherHealthPort); ok {
+			jwksPublisherHealth = healthPublisher
+		}
+		jwksHandler = enduserHandlers.NewJWKSHandler(proxyPublisher, b.logger)
 	default:
 		panic(fmt.Sprintf("BUG: unhandled OAuth2ModeConfig type %T — update strategy switch", oauthCfg))
 	}
+
+	app.jwksPublisherHealth = jwksPublisherHealth
 
 	oauth2MetadataHandler := &enduser.OAuth2MetadataHandler{
 		Service: app.OAuth2Service,

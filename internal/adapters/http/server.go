@@ -23,6 +23,7 @@ type ServerConfig struct {
 	PublicURL        string
 	Authentication   ports.AuthenticationConfig
 	JWTAuthenticator domjwtauth.JWTAuthenticator // nil when JWT not configured
+	HealthComponents func() map[string]string
 }
 
 // Server implements HTTP server lifecycle management using the chi router framework.

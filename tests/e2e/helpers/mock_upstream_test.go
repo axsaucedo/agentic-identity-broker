@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -147,6 +148,23 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 
 			Expect(bodyStr).To(ContainSubstring("custom-access-token"))
 			Expect(bodyStr).To(ContainSubstring("custom-refresh-token"))
+		})
+
+		It("should block token responses until the request context is canceled when configured", func() {
+			mockServer.WithTokenHangUntilCanceled()
+
+			tokenURL := fmt.Sprintf("%s/oauth/token", mockServer.URL())
+			client := &http.Client{Timeout: 50 * time.Millisecond}
+
+			start := time.Now()
+			_, err := client.PostForm(tokenURL, url.Values{
+				"grant_type": {"authorization_code"},
+				"code":       {"code"},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Client.Timeout exceeded"))
+			Expect(time.Since(start)).To(BeNumerically("<", 500*time.Millisecond))
+			Expect(mockServer.GetTokenCalled()).To(BeTrue())
 		})
 	})
 

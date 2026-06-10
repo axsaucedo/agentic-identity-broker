@@ -138,8 +138,11 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 		r.Get("/.well-known/oauth-authorization-server", h.OAuth2Metadata.ServeHTTP)
 	}
 
-	// JWKS endpoint (local mode only — serves signing key public material)
-	if h.JWKS != nil {
+	// JWKS endpoint — serves aggregated public key material in all modes
+	if h.OAuth2Authorize != nil || h.OAuth2Token != nil || h.OAuth2Metadata != nil || h.JWKS != nil {
+		if h.JWKS == nil {
+			panic("BUG: JWKS handler required when OAuth2 routes are enabled")
+		}
 		r.Get("/oauth2/jwks.json", h.JWKS.ServeJWKS)
 	}
 

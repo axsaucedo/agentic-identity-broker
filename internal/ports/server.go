@@ -17,3 +17,15 @@ const (
 	// HealthStateUnhealthy indicates the server has encountered an error or is not operational.
 	HealthStateUnhealthy
 )
+
+// ComponentHealth represents the status of an optional subsystem reported under
+// the /health endpoint's components map.
+type ComponentHealth string
+
+const (
+	// ComponentHealthHealthy indicates the subsystem is reachable and fresh.
+	ComponentHealthHealthy ComponentHealth = "healthy"
+
+	// ComponentHealthDegraded indicates the subsystem is degraded but the server can still run.
+	ComponentHealthDegraded ComponentHealth = "degraded"
+)

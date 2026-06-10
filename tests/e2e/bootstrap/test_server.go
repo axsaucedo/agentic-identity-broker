@@ -173,7 +173,10 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 
 	// Determine route setup and server config based on server type.
 	// Use production NewHandler to align bootstrap with production server path.
-	var routeSetup func(chi.Router)
+	var (
+		routeSetup       func(chi.Router)
+		healthComponents func() map[string]string
+	)
 	serverCfg := httpAdapter.ServerConfig{
 		Authentication:   app.Config.Server.EndUser.Authentication,
 		JWTAuthenticator: app.JWTAuthenticator,
@@ -186,6 +189,7 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 		spaSaved := app.EnduserHandlers.SPA
 		app.EnduserHandlers.SPA = nil
 		defer func() { app.EnduserHandlers.SPA = spaSaved }()
+		healthComponents = app.EnduserHealthComponents
 		routeSetup = func(r chi.Router) {
 			routing.SetupEnduserRoutes(r, app.EnduserHandlers, routing.EnduserRouteConfig{
 				Authentication:   app.Config.Server.EndUser.Authentication,
@@ -217,12 +221,12 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 	// Build router using the production NewHandler (same middleware stack as production).
 	router := httpAdapter.NewHandler(serverCfg, routeSetup, logger)
 
-	// Add simple health endpoint (tests don't need lifecycle-aware health state).
-	router.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"healthy"}`))
-	})
+	router.Get("/health", httpAdapter.NewHealthHandler(
+		func() ports.HealthState { return ports.HealthStateHealthy },
+		time.Now(),
+		healthComponents,
+		logger,
+	))
 
 	// Create httptest server with appropriate port configuration
 	var server *httptest.Server
@@ -635,11 +639,12 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 	router.Use(httpMiddleware.OptionalPrincipalMiddleware(b.config.Server.EndUser.Authentication, nil, b.logger))
 
 	// Add health endpoint (available immediately)
-	router.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"healthy"}`))
-	})
+	router.Get("/health", httpAdapter.NewHealthHandler(
+		func() ports.HealthState { return ports.HealthStateHealthy },
+		time.Now(),
+		nil,
+		b.logger,
+	))
 
 	// Step 2: Create httptest server with the mux (this assigns a random port)
 	testServer := httptest.NewServer(router)

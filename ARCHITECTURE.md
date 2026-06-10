@@ -446,19 +446,21 @@ Admin Server (Port 14000):
 - Validate API implementation compliance against documented spec
 - Reference for integration testing and contract validation
 
-#### 3.1.4.1. OAuth2 Server Mode (`local`)
+#### 3.1.4.1. OAuth2 Server Modes (`proxy`, `local`, `hybrid`)
 
-**Mode Selection**: The broker operates in one of two mutually exclusive modes, configured via `oauth2.auth_server.mode`:
+**Mode Selection**: The broker operates in one of three mutually exclusive modes, configured via `oauth2_authorization_server.mode`:
 
 | Mode | Value | Behavior |
 |------|-------|----------|
-| Proxy (default) | `proxy` | Forwards OAuth2 requests to an upstream authorization server. The broker acts as a mediating proxy and does not mint tokens. |
-| Local | `local` | The broker acts as a standalone OAuth2 authorization server, minting its own JWT access tokens signed with managed asymmetric keys. |
+| Proxy (default) | `proxy` | Forwards authorization and token requests to an upstream authorization server. The broker still serves RFC 8414 metadata and a broker-hosted JWKS endpoint that republishes the upstream public keys. |
+| Local | `local` | Acts as a standalone OAuth2 authorization server, minting its own JWT access tokens signed with managed asymmetric keys. Metadata and JWKS expose only broker-managed local keys. |
+| Hybrid | `hybrid` | Combines proxy and local issuance. The builder wires both strategy sets at startup and dispatches per request based on the resolved agent `ClientType`. Metadata and JWKS expose the broker-hosted verification surface for both local and upstream tokens. |
 
-**Strategy Pattern**: Handler behavior switches at startup based on mode:
+**Strategy Pattern**: Handler behavior is fixed at startup by injected strategies rather than runtime mode checks:
 
-- `OAuth2AuthorizeHandler` uses an `AuthorizationCodeIssuer` strategy — **nil** in proxy mode, non-nil in `local` mode. When nil, authorization requests are forwarded upstream; when non-nil, the broker generates authorization codes locally.
-- `OAuth2TokenHandler` uses a `TokenMintingStrategy` — **nil** in proxy mode, non-nil in `local` mode. When nil, token requests are proxied upstream; when non-nil, the broker mints JWT access tokens.
+- `OAuth2AuthorizeHandler` always exists; the builder injects `proxyProceedStrategy`, `localProceedStrategy`, or `hybridProceedStrategy` based on the selected mode.
+- `OAuth2TokenHandler` always exists; the builder injects `proxyTokenGrantStrategy`, `localGrantStrategy`, or `hybridTokenGrantStrategy` based on the selected mode.
+- When local issuance is part of the active mode (`local` or `hybrid`), the local strategies are backed by `internal/domain/oauth2server.Provider`, which contains all fosite-specific authorization-server logic.
 
 **Type Containment**: All [fosite](https://github.com/ory/fosite) OAuth2 server types are contained in `internal/domain/oauth2server/`. This package encapsulates the OAuth2 authorization server domain logic (authorization code storage, client authentication, token signing) and **never leaks fosite types** into ports, adapters/http, or app packages.
 
@@ -467,14 +469,19 @@ Admin Server (Port 14000):
 - `internal/domain/oauth2server/` must **never** import adapter packages or `internal/app/`.
 - No other package in the codebase may import fosite types directly — all interaction flows through `oauth2server` domain interfaces.
 
-**Endpoints added in `local` mode**:
+**Public OAuth2 endpoints** (served in all three modes; strategy behavior differs by mode):
 ```
 End-User Server (Port 8000):
   ├── GET  /.well-known/oauth-authorization-server   (RFC 8414 discovery)
-  ├── GET  /oauth2/jwks.json                         (signing key set)
-  ├── GET  /oauth2/authorize                         (authorization code grant)
-  └── POST /oauth2/token                             (token issuance)
+  ├── GET  /oauth2/jwks.json                         (broker-hosted verification surface)
+  ├── GET  /oauth2/authorize                         (proxy, local, or hybrid proceed path)
+  └── POST /oauth2/token                             (proxy, local, hybrid, and token-exchange flows)
+```
 
+**Upstream JWKS bootstrap policy**: In `proxy` and `hybrid` modes the upstream JWKS can be consumed by three different surfaces: the public `/oauth2/jwks.json` publisher, RFC 8693 token-exchange JWT validation, and multi-agent upstream-token verification. The builder resolves upstream OAuth2 metadata at startup for all upstream-backed verification surfaces, so proxy/hybrid mode does not start with an unknown upstream verifier configuration. If metadata discovery fails, startup fails. After successful startup, later upstream JWKS refresh failures still fail closed at request time: `/oauth2/jwks.json` returns HTTP 503 and verification-dependent flows reject requests until the upstream recovers.
+
+**Local issuance admin endpoints** (served only when local issuance is active: `local` or `hybrid`):
+```
 Admin Server (Port 14000):
   ├── /api/agents/{id}/client-credentials/*
   │   ├── POST   /                (generate broker-issued credentials)
@@ -1174,7 +1181,7 @@ Define any project-specific terms or acronyms.)
 
 **ClientType**: Enum (`internal/domain/storage`) classifying an Agent at request time based on its registered identifiers. `ProxyClient` — has a `ClientID`; requests forwarded to upstream. `LocalClient` — no `ClientID` and no `ClientURIs`; tokens minted locally. `CIMDClient` — has `ClientURIs` but no `ClientID`; tokens minted locally after CIMD document fetch. `AmbiguousClient` — has both `ClientID` and `ClientURIs`; rejected as `invalid_client` during client resolution. Computed by `Agent.ClientType()` — never stored.
 
-**ProxyModeConfig**: Configuration value object (`internal/ports/config.go`) carrying the upstream OAuth2 server coordinates required when `mode` is `proxy` or `hybrid`: `upstream_issuer_uri`, `upstream_authorize_endpoint`, `upstream_token_endpoint`, `upstream_timeout_seconds`. All fields are ignored (and must be empty) in `local` mode.
+**ProxyModeConfig**: Configuration value object (`internal/ports/config.go`) carrying the upstream OAuth2 server coordinates required when `mode` is `proxy` or `hybrid`: `upstream_issuer_uri`, `upstream_authorize_endpoint`, `upstream_token_endpoint`, `upstream_timeout_seconds`, `upstream_jwks_min_refresh`, and `upstream_jwks_max_refresh`. The JWKS refresh bounds apply a floor and ceiling to the upstream JWKS cache cadence. All proxy fields are ignored (and must be empty) in `local` mode.
 
 **LocalModeConfig**: Configuration value object (`internal/ports/config.go`) carrying local token issuance parameters required when `mode` is `local` or `hybrid`: `token_ttl`, `token_claims_expression`, and optional `issuer_uri`. `issuer_uri` overrides the JWT `iss` claim independently of `server.enduser.public_url`, enabling deployments behind CDNs or reverse proxies. Defaults to `server.enduser.public_url` when absent. All fields are ignored (and must be empty) in `proxy` mode.
 
@@ -1185,6 +1192,14 @@ Define any project-specific terms or acronyms.)
 **AuthorizationProceedStrategy**: Adapter-layer interface for the "proceed" branch of an authorization decision — invoked when a grant exists and the broker should advance the flow. `proxyProceedStrategy` issues a 302 to `decision.RedirectURL` (the upstream authorize URL). `localProceedStrategy` calls `AuthorizationCodeIssuer.IssueAuthorizationCode` and redirects with `code=` to the client's `redirect_uri`. `hybridProceedStrategy` dispatches to proxy or local based on `decision.ClientType`.
 
 **Mode Strategy Pattern**: The mechanism by which `OAuthServerMode` drives the entire request-handling topology at startup time rather than via runtime branching. The builder selects and wires the appropriate `ModeStrategy` (domain, controls `AcceptsClientType`) and `AuthorizationProceedStrategy`/`TokenGrantStrategy` (adapters) based on the configured mode. For hybrid mode, both proxy and local strategies are created and wrapped in dispatching composites. Handlers and services never inspect the configured mode string — they receive pre-wired strategies.
+
+### JWKS Aggregation Domain
+
+**AggregatedKeySet**: The `jwk.Set` value returned by `JWKSPublisherService.PublishJWKS()` for `/oauth2/jwks.json`. It is assembled on demand from the current mode-appropriate key sources: local signing keys only (`local` mode), upstream keys republished verbatim (`proxy` mode), or both sets merged with kid-uniqueness enforcement (`hybrid` mode). The publisher does not persist a separate snapshot; upstream material comes from the cached `JWKSPort` adapter state. Never contains private key material.
+
+**KeySource**: A conceptual origin of public JWK material used during `PublishJWKS()`, not a standalone interface in the current code. Two sources are used directly by the publisher service: the broker's local `SigningKeyManager` (local signing keys generated by the admin API) and the upstream JWKS adapter (`JWKSPort`) that fetches and caches the upstream authorization server's public keys. Only the sources relevant to the active `OAuthServerMode` are consulted at request time.
+
+**JWKSPublisher**: Domain service (`JWKSPublisherService` in `internal/domain/oauth2/jwks_publisher.go`) implementing the `JWKSPublisherPort` interface. On each request it reads the current mode-appropriate key sources, merges them, enforces kid-uniqueness across local and upstream keys, tracks upstream freshness, and returns `ErrUpstreamUnavailable` or `ErrKidConflict` sentinel errors when the verification surface is incomplete. Mapped to HTTP 503 at the handler layer.
 
 ### Client ID Metadata Document (CIMD) Domain
 

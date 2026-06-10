@@ -795,6 +795,8 @@ See `examples/config/oauth2-authorization-server.yaml` for a complete configurat
 | `oauth2.auth_server.proxy.upstream_issuer_uri` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI` | — | Upstream OAuth2 issuer URI. Used for proxy path routing. |
 | `oauth2.auth_server.proxy.upstream_authorize_endpoint` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT` | — | Upstream authorization endpoint. |
 | `oauth2.auth_server.proxy.upstream_token_endpoint` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT` | — | Upstream token endpoint. |
+| `oauth2.auth_server.proxy.upstream_jwks_min_refresh` | duration | `15m` | Go duration (e.g. `30s`, `5m`, `1h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_JWKS_MIN_REFRESH` | — | Minimum interval between upstream JWKS refresh attempts. Applies a floor to the cache cadence derived from upstream cache headers. |
+| `oauth2.auth_server.proxy.upstream_jwks_max_refresh` | duration | `1h` | Go duration (e.g. `5m`, `30m`, `2h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_JWKS_MAX_REFRESH` | — | Maximum interval between upstream JWKS refresh attempts. Caps how stale the broker will allow upstream JWKS cache entries to become. |
 | `oauth2.auth_server.local.token_ttl` | duration | `1h` | Go duration (e.g. `30m`, `2h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_TTL` | — | Validity period for locally issued JWT access tokens. |
 | `oauth2.auth_server.local.token_claims_expression` | string | `""` | CEL expression | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_CLAIMS_EXPRESSION` | — | CEL expression to inject custom claims into issued JWTs. |
 
@@ -811,6 +813,8 @@ oauth2:
       upstream_issuer_uri: "https://auth.example.com"
       upstream_authorize_endpoint: "https://auth.example.com/oauth/authorize"
       upstream_token_endpoint: "https://auth.example.com/oauth/token"
+      upstream_jwks_min_refresh: "15m"
+      upstream_jwks_max_refresh: "1h"
 ```
 
 **Local mode**:
@@ -832,6 +836,8 @@ oauth2:
       upstream_issuer_uri: "https://auth.example.com"
       upstream_authorize_endpoint: "https://auth.example.com/oauth/authorize"
       upstream_token_endpoint: "https://auth.example.com/oauth/token"
+      upstream_jwks_min_refresh: "15m"
+      upstream_jwks_max_refresh: "1h"
     local:
       token_ttl: "1h"
 ```

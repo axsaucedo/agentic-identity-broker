@@ -12,7 +12,7 @@ Ports are **interfaces only** + minimal DTOs. No business logic. No implementati
 | `cimd.go` | See `cimd.go` for authoritative interface/error/DTO names | CIMD client resolution/fetching ports. Read the file directly for the exact contract surface. |
 | `config.go` | `ConfigPort` | Configuration loading/access. DTOs: `Config` + all nested config types (largest port file) |
 | `encryption.go` | `EncryptionPort`, `BranchKeyRepository`, `BranchKeyIdProvider` | Envelope encryption with AAD + branch key management. Alias: `BranchKeyManager = BranchKeyRepository` |
-| `jwks.go` | `JWKSPort` | JWKS fetching/caching. Returns `jwk.Set`/`jwk.Key` from `lestrrat-go/jwx/v3` |
+| `jwks.go` | `JWKSPort`, `JWKSHealthPort` | JWKS retrieval with embedded health reporting plus the health-only facet |
 | `oauth2.go` | `OAuth2Service` | OAuth2 authorization + RFC 8414 metadata. DTOs: `AuthorizationRequest`, `AuthorizationDecision`, `MetadataResponse` |
 | `oauth2server.go` | See `oauth2server.go` for authoritative interface/error/DTO names | OAuth2 server signing key + credential generation ports. Read the file directly for the exact contract surface. |
 | `server.go` | `HealthState` (enum) | Server lifecycle: `Starting`, `Healthy`, `ShuttingDown`, `Unhealthy` |

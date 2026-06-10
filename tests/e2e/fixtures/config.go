@@ -2,6 +2,7 @@ package fixtures
 
 import (
 	"encoding/base64"
+	"os"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -10,9 +11,9 @@ import (
 // DefaultOAuth2Config returns a minimal valid OAuth2 authorization server configuration.
 // Uses safe defaults suitable for E2E testing:
 // - In-memory storage backend
-// - Upstream issuer: http://localhost:19000
-// - Upstream authorize endpoint: http://localhost:19000/authorize
-// - Upstream token endpoint: http://localhost:19000/token
+// - Upstream issuer: E2E_UPSTREAM_BASE_URL or http://127.0.0.1:19000
+// - Upstream authorize endpoint: <upstream>/authorize
+// - Upstream token endpoint: <upstream>/token
 // - Timeout: 30 seconds
 // - Public URL: http://localhost:8000
 // - X-Remote-User authentication header
@@ -20,6 +21,11 @@ import (
 // - StateTokenTTL: 10 minutes
 // - PKCE verifier length: 32 bytes
 func DefaultOAuth2Config() *ports.Config {
+	upstreamURL := os.Getenv("E2E_UPSTREAM_BASE_URL")
+	if upstreamURL == "" {
+		upstreamURL = "http://127.0.0.1:19000"
+	}
+
 	return &ports.Config{
 		Log: ports.LogConfig{
 			Level:  ports.LogLevelInfo,
@@ -60,9 +66,9 @@ func DefaultOAuth2Config() *ports.Config {
 		OAuth2AuthServer: ports.OAuth2AuthServerConfig{
 			Mode: "proxy",
 			Proxy: ports.ProxyModeConfig{
-				UpstreamIssuerURI:         "http://localhost:19000",
-				UpstreamAuthorizeEndpoint: "http://localhost:19000/authorize",
-				UpstreamTokenEndpoint:     "http://localhost:19000/token",
+				UpstreamIssuerURI:         upstreamURL,
+				UpstreamAuthorizeEndpoint: upstreamURL + "/authorize",
+				UpstreamTokenEndpoint:     upstreamURL + "/token",
 				UpstreamTimeoutSeconds:    30,
 			},
 			SupportedResponseTypes: []string{"code"},
@@ -90,6 +96,9 @@ func OAuth2ConfigWithUpstream(upstreamURL string) *ports.Config {
 	config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = upstreamURL
 	config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = upstreamURL + "/oauth/authorize"
 	config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = upstreamURL + "/oauth/token"
+	config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds = 2
+	config.OAuth2AuthServer.Proxy.UpstreamJWKSMinRefresh = 1 * time.Second
+	config.OAuth2AuthServer.Proxy.UpstreamJWKSMaxRefresh = 2 * time.Second
 	return config
 }
 
@@ -437,7 +446,9 @@ func HybridConfig(upstreamURL string) *ports.Config {
 	config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = upstreamURL
 	config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = upstreamURL + "/oauth/authorize"
 	config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = upstreamURL + "/oauth/token"
-	config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds = 30
+	config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds = 2
+	config.OAuth2AuthServer.Proxy.UpstreamJWKSMinRefresh = 1 * time.Second
+	config.OAuth2AuthServer.Proxy.UpstreamJWKSMaxRefresh = 2 * time.Second
 	config.OAuth2AuthServer.Local.TokenTTL = time.Hour
 	return config
 }

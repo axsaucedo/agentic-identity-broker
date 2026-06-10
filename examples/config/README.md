@@ -280,6 +280,7 @@ OAuth2 Authorization Server proxy configuration. Demonstrates:
 - Upstream OAuth2 server URLs (authorization, token endpoints)
 - Supported OAuth2 grant types and response types
 - Upstream request timeout configuration
+- Upstream JWKS refresh floor/ceiling configuration
 - TLS certificate validation (enforced by default)
 - `multi_agent_client` block (Feature 021) — enabled and disabled examples
 - **Note**: The broker's public URL used for RFC 8414 metadata/issuer is configured via `server.enduser.public_url` (not inside the `oauth2_authorization_server` block)
@@ -296,6 +297,8 @@ OAuth2 Authorization Server proxy configuration. Demonstrates:
 #     upstream_issuer_uri: "https://auth.example.com"
 #     upstream_authorize_endpoint: "https://auth.example.com/authorize"
 #     upstream_token_endpoint: "https://auth.example.com/token"
+#     upstream_jwks_min_refresh: "15m"
+#     upstream_jwks_max_refresh: "1h"
 #
 # The broker's public URL (used as the OAuth2 issuer) is set separately:
 # server:
@@ -379,6 +382,7 @@ Both the `proxy` and `local` sections are required in hybrid mode.
 Key settings:
 - `mode: "hybrid"` — enables all three client modes
 - `proxy.*` — upstream OAuth2 server configuration (required)
+- `proxy.upstream_jwks_min_refresh` / `proxy.upstream_jwks_max_refresh` — optional JWKS refresh bounds for the upstream cache
 - `local.*` — local token issuance configuration (required)
 - `cimd.enabled` — optional CIMD support for URL-addressed agents
 

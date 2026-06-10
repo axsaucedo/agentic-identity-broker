@@ -313,16 +313,16 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 	// GROUP 5: Upstream server failures - timeout scenario
 	Describe("upstream server failures - timeout handling", func() {
 		BeforeEach(func() {
-			// Create config with short timeout
-			config := fixtures.DefaultOAuth2Config()
+			mockUpstream := helpers.NewMockUpstreamOAuth2Server().WithTokenHangUntilCanceled()
+			DeferCleanup(mockUpstream.Close)
+
+			config := fixtures.OAuth2ConfigWithUpstream(mockUpstream.URL())
 			config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds = 1
 
-			// Rebuild server with timeout config
 			factory := bootstrap.NewServerFactory(config, logger)
 			built, err := factory.BuildApp(testStorage)
 			Expect(err).ToNot(HaveOccurred())
 
-			// Close default server
 			if server != nil {
 				server.Close()
 			}

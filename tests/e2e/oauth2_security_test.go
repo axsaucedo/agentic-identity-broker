@@ -30,6 +30,36 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 		testAgent      *storage.Agent // registered agent used in token endpoint tests
 	)
 
+	newDiscoverableUpstream := func(tokenHandler http.HandlerFunc) *httptest.Server {
+		mux := http.NewServeMux()
+		var upstream *httptest.Server
+		metadataHandler := func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			baseURL := upstream.URL
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"issuer":                   baseURL,
+				"authorization_endpoint":   baseURL + "/oauth/authorize",
+				"token_endpoint":           baseURL + "/oauth/token",
+				"jwks_uri":                 baseURL + "/.well-known/jwks.json",
+				"response_types_supported": []string{"code"},
+				"grant_types_supported":    []string{"authorization_code", "refresh_token"},
+			})
+		}
+		mux.HandleFunc("/.well-known/openid-configuration", metadataHandler)
+		mux.HandleFunc("/.well-known/oauth-authorization-server", metadataHandler)
+		mux.HandleFunc("/.well-known/jwks.json", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"keys":[]}`))
+		})
+		mux.HandleFunc("/oauth/authorize", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		})
+		mux.HandleFunc("/oauth/token", tokenHandler)
+		upstream = httptest.NewServer(mux)
+		return upstream
+	}
+
 	BeforeEach(func() {
 		logger = bootstrap.TestLogger(slog.LevelInfo)
 		storageFactory = bootstrap.NewStorageFactory(logger)
@@ -152,8 +182,8 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			Expect(location).NotTo(BeEmpty())
 			// Should redirect to consent or upstream
 			Expect(location).To(SatisfyAny(
-				ContainSubstring("http://localhost:19000"), // Upstream
-				ContainSubstring("/consent/"),              // Consent page
+				ContainSubstring(fixtures.DefaultOAuth2Config().OAuth2AuthServer.Proxy.UpstreamIssuerURI),
+				ContainSubstring("/consent/"),
 			))
 		})
 	})
@@ -277,15 +307,15 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 	// GROUP 5: Upstream error handling
 	Describe("upstream error forwarding", func() {
 		It("should forward 401 Unauthorized from upstream", func() {
-			// Given: Mock upstream returns 401
-			mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Given: Mock upstream returns 401 from the token endpoint while keeping discovery healthy
+			mockUpstream := newDiscoverableUpstream(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
 				_ = json.NewEncoder(w).Encode(map[string]string{
 					"error":             "invalid_client",
 					"error_description": "Client authentication failed",
 				})
-			}))
+			})
 			defer mockUpstream.Close()
 
 			// Update config to use error-responding upstream
@@ -319,15 +349,15 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 		})
 
 		It("should forward 500 Internal Server Error from upstream", func() {
-			// Given: Mock upstream returns 500
-			mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Given: Mock upstream returns 500 from the token endpoint while keeping discovery healthy
+			mockUpstream := newDiscoverableUpstream(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
 				_ = json.NewEncoder(w).Encode(map[string]string{
 					"error":             "server_error",
 					"error_description": "Internal server error",
 				})
-			}))
+			})
 			defer mockUpstream.Close()
 
 			// Update config to use error-responding upstream
@@ -364,8 +394,8 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 	// GROUP 6: Header handling
 	Describe("response header preservation", func() {
 		It("should preserve Content-Type header from upstream", func() {
-			// Given: Mock upstream with specific response headers
-			mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Given: Mock upstream with specific response headers and valid discovery metadata
+			mockUpstream := newDiscoverableUpstream(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json; charset=utf-8")
 				w.Header().Set("Cache-Control", "no-store, no-cache")
 				w.Header().Set("Pragma", "no-cache")
@@ -374,7 +404,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 					"access_token": "token123",
 					"token_type":   "Bearer",
 				})
-			}))
+			})
 			defer mockUpstream.Close()
 
 			// Update config to use mock upstream
@@ -410,8 +440,8 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 		})
 
 		It("should preserve custom headers from upstream", func() {
-			// Given: Mock upstream with custom response headers
-			mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Given: Mock upstream with custom response headers and valid discovery metadata
+			mockUpstream := newDiscoverableUpstream(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("X-Custom-Header", "custom-value")
 				w.Header().Set("X-RateLimit-Limit", "100")
@@ -420,7 +450,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 					"access_token": "token123",
 					"token_type":   "Bearer",
 				})
-			}))
+			})
 			defer mockUpstream.Close()
 
 			// Update config to use mock upstream
@@ -459,9 +489,9 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 	// GROUP 7: HTTP hop-by-hop header filtering
 	Describe("hop-by-hop header filtering", func() {
 		It("should not forward Connection header to upstream", func() {
-			// Given: Mock upstream that verifies Connection header is NOT present
+			// Given: Mock upstream that verifies Connection header is NOT present and valid discovery metadata
 			connectionHeaderSeen := false
-			mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mockUpstream := newDiscoverableUpstream(func(w http.ResponseWriter, r *http.Request) {
 				if r.Header.Get("Connection") != "" {
 					connectionHeaderSeen = true
 				}
@@ -471,7 +501,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 					"access_token": "token123",
 					"token_type":   "Bearer",
 				})
-			}))
+			})
 			defer mockUpstream.Close()
 
 			// Update config to use mock upstream

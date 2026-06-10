@@ -680,6 +680,14 @@
                   "type": "integer",
                   "minimum": 0,
                   "description": "Upstream request timeout in seconds (0 = use application default of 30s)"
+                },
+                "upstreamJwksMinRefresh": {
+                  "type": "string",
+                  "description": "Minimum interval between upstream JWKS refresh attempts (empty = use application default of 15m)"
+                },
+                "upstreamJwksMaxRefresh": {
+                  "type": "string",
+                  "description": "Maximum interval between upstream JWKS refresh attempts (empty = use application default of 1h)"
                 }
               }
             },

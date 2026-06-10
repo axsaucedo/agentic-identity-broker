@@ -120,6 +120,7 @@ func run(cmd *cobra.Command, args []string) error {
 			PublicURL:        cfg.Server.EndUser.PublicURL,
 			Authentication:   cfg.Server.EndUser.Authentication,
 			JWTAuthenticator: application.JWTAuthenticator,
+			HealthComponents: application.EnduserHealthComponents,
 		},
 		enduserRouteSetup,
 		logger,

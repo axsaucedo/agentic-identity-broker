@@ -27,6 +27,8 @@ type ProxyOAuth2Config struct {
 	UpstreamAuthorizeEndpoint string
 	UpstreamTokenEndpoint     string
 	UpstreamTimeoutSeconds    int
+	UpstreamJWKSMinRefresh    time.Duration
+	UpstreamJWKSMaxRefresh    time.Duration
 	SupportedResponseTypes    []string
 	SupportedGrantTypes       []string
 	MultiAgentClient          MultiAgentClientConfig
@@ -41,6 +43,26 @@ func (c *ProxyOAuth2Config) UpstreamTimeout() time.Duration {
 		return 30 * time.Second
 	}
 	return time.Duration(c.UpstreamTimeoutSeconds) * time.Second
+}
+
+func (c *ProxyOAuth2Config) JWKSMinRefresh() time.Duration {
+	if c.UpstreamJWKSMinRefresh == 0 {
+		return 15 * time.Minute
+	}
+	return c.UpstreamJWKSMinRefresh
+}
+
+func (c *ProxyOAuth2Config) JWKSMaxRefresh() time.Duration {
+	min := c.JWKSMinRefresh()
+	if c.UpstreamJWKSMaxRefresh == 0 || c.UpstreamJWKSMaxRefresh < min {
+		// Preserve the invariant max >= max(min, 1h) when the configured max is
+		// omitted or smaller than the resolved minimum refresh interval.
+		if min > time.Hour {
+			return min
+		}
+		return time.Hour
+	}
+	return c.UpstreamJWKSMaxRefresh
 }
 
 // LocalOAuth2Config is the resolved configuration for local mode.

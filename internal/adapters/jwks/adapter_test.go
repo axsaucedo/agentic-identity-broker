@@ -1,10 +1,15 @@
 package jwks
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,7 +17,106 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
+
+type deadlineCapturingRoundTripper struct {
+	deadlineCh chan time.Time
+	doneCh     chan struct{}
+	doneOnce   sync.Once
+}
+
+type shutdownControllerStub struct {
+	calls int
+	err   error
+}
+
+type safeLogBuffer struct {
+	mu sync.Mutex
+	bytes.Buffer
+}
+
+func (b *safeLogBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.Buffer.Write(p)
+}
+
+func (b *safeLogBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.Buffer.String()
+}
+
+func (b *safeLogBuffer) Bytes() []byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]byte(nil), b.Buffer.Bytes()...)
+}
+
+func (s *shutdownControllerStub) ShutdownContext(context.Context) error {
+	s.calls++
+	return s.err
+}
+
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+type countingRoundTripper struct {
+	calls atomic.Int64
+}
+
+func (rt *countingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	rt.calls.Add(1)
+	<-req.Context().Done()
+	return nil, req.Context().Err()
+}
+
+func (rt *deadlineCapturingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if deadline, ok := req.Context().Deadline(); ok {
+		select {
+		case rt.deadlineCh <- deadline:
+		default:
+		}
+	} else {
+		select {
+		case rt.deadlineCh <- time.Time{}:
+		default:
+		}
+	}
+	<-req.Context().Done()
+	rt.doneOnce.Do(func() { close(rt.doneCh) })
+	return nil, req.Context().Err()
+}
+
+func TestShutdownControllerWithWarning_LogsCleanupFailure(t *testing.T) {
+	ctrl := &shutdownControllerStub{err: assert.AnError}
+	var logs safeLogBuffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	shutdownControllerWithWarning(ctrl, logger, "resource registration failure")
+
+	assert.Equal(t, 1, ctrl.calls)
+	assert.Contains(t, logs.String(), "failed to shut down JWKS controller during constructor cleanup")
+	assert.Contains(t, logs.String(), "resource registration failure")
+}
+
+func TestShutdownControllerWithWarning_DoesNotLogOnSuccess(t *testing.T) {
+	ctrl := &shutdownControllerStub{}
+	var logs safeLogBuffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	shutdownControllerWithWarning(ctrl, logger, "resource creation failure")
+
+	assert.Equal(t, 1, ctrl.calls)
+	assert.Empty(t, logs.String())
+}
 
 // TestNewJWKSAdapter tests adapter creation with various parameter combinations
 func TestNewJWKSAdapter(t *testing.T) {
@@ -90,12 +194,7 @@ func TestNewJWKSAdapter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			adapter, err := NewJWKSAdapter(
-				tt.jwksURI,
-				tt.httpClient,
-				tt.minRefreshInterval,
-				tt.maxRefreshInterval,
-			)
+			adapter, err := NewJWKSAdapter(tt.jwksURI, tt.httpClient, tt.minRefreshInterval, tt.maxRefreshInterval, testLogger())
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -136,12 +235,7 @@ func TestGetKeySet(t *testing.T) {
 	defer server.Close()
 
 	// Create adapter
-	adapter, err := NewJWKSAdapter(
-		server.URL,
-		server.Client(),
-		15*time.Minute,
-		time.Hour,
-	)
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), 15*time.Minute, time.Hour, testLogger())
 	require.NoError(t, err)
 	defer func() { _ = adapter.Shutdown(context.Background()) }()
 
@@ -168,12 +262,7 @@ func TestGetKeySet_HTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter, err := NewJWKSAdapter(
-		server.URL,
-		server.Client(),
-		15*time.Minute,
-		time.Hour,
-	)
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), 15*time.Minute, time.Hour, testLogger())
 	require.NoError(t, err)
 	defer func() { _ = adapter.Shutdown(context.Background()) }()
 
@@ -193,12 +282,7 @@ func TestGetKeySet_InvalidJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter, err := NewJWKSAdapter(
-		server.URL,
-		server.Client(),
-		15*time.Minute,
-		time.Hour,
-	)
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), 15*time.Minute, time.Hour, testLogger())
 	require.NoError(t, err)
 	defer func() { _ = adapter.Shutdown(context.Background()) }()
 
@@ -207,6 +291,41 @@ func TestGetKeySet_InvalidJSON(t *testing.T) {
 
 	_, err = adapter.GetKeySet(ctx)
 	assert.Error(t, err)
+}
+
+func TestGetKeySet_RecordsSpanErrorOnFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("not valid json {"))
+	}))
+	defer server.Close()
+
+	spanRecorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+	prevTP := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	defer func() {
+		otel.SetTracerProvider(prevTP)
+		_ = tp.Shutdown(context.Background())
+	}()
+
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), 15*time.Minute, time.Hour, testLogger())
+	require.NoError(t, err)
+	defer func() { _ = adapter.Shutdown(context.Background()) }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = adapter.GetKeySet(ctx)
+	require.Error(t, err)
+	require.NoError(t, tp.ForceFlush(context.Background()))
+
+	span := findSpanByName(spanRecorder.Ended(), "jwks.fetch")
+	require.NotNil(t, span)
+	assert.Equal(t, codes.Error, span.Status().Code)
+	assert.Contains(t, span.Status().Description, "failed to fetch jwks")
+	assert.Contains(t, spanEvents(span), "exception")
 }
 
 // TestGetKeySet_ContextCancelled tests cancellation handling
@@ -219,12 +338,7 @@ func TestGetKeySet_ContextCancelled(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter, err := NewJWKSAdapter(
-		server.URL,
-		server.Client(),
-		15*time.Minute,
-		time.Hour,
-	)
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), 15*time.Minute, time.Hour, testLogger())
 	require.NoError(t, err)
 	defer func() { _ = adapter.Shutdown(context.Background()) }()
 
@@ -233,6 +347,68 @@ func TestGetKeySet_ContextCancelled(t *testing.T) {
 
 	_, err = adapter.GetKeySet(ctx)
 	assert.Error(t, err)
+}
+
+func TestGetKeySet_DeduplicatesRefreshAcrossCanceledCallers(t *testing.T) {
+	transport := &countingRoundTripper{}
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   100 * time.Millisecond,
+	}
+
+	adapter, err := NewJWKSAdapter("https://auth.example.com/.well-known/jwks.json", httpClient, 15*time.Minute, time.Hour, testLogger())
+	require.NoError(t, err)
+	defer func() { _ = adapter.Shutdown(context.Background()) }()
+
+	for range 5 {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		_, err := adapter.GetKeySet(ctx)
+		cancel()
+		require.Error(t, err)
+	}
+
+	// net/http may retry a canceled idempotent GET once, so assert the refresh stays
+	// bounded instead of requiring exactly one RoundTrip.
+	assert.LessOrEqual(t, transport.calls.Load(), int64(2), "canceled callers should not trigger a fresh JWKS fetch each time")
+}
+
+func TestGetKeySet_RefreshUsesFetchTimeoutWhenCallerContextExpires(t *testing.T) {
+	transport := &deadlineCapturingRoundTripper{
+		deadlineCh: make(chan time.Time, 1),
+		doneCh:     make(chan struct{}),
+	}
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   80 * time.Millisecond,
+	}
+
+	adapter, err := NewJWKSAdapter("https://auth.example.com/.well-known/jwks.json", httpClient, 15*time.Minute, time.Hour, testLogger())
+	require.NoError(t, err)
+	defer func() { _ = adapter.Shutdown(context.Background()) }()
+
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	_, err = adapter.GetKeySet(ctx)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "context deadline exceeded")
+
+	select {
+	case deadline := <-transport.deadlineCh:
+		require.False(t, deadline.IsZero(), "refresh request should carry a deadline")
+		observedTimeout := deadline.Sub(start)
+		assert.Greater(t, observedTimeout, 50*time.Millisecond)
+		assert.LessOrEqual(t, observedTimeout, 150*time.Millisecond)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for refresh request")
+	}
+
+	select {
+	case <-transport.doneCh:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("refresh request did not finish within fetch timeout")
+	}
 }
 
 // TestGetKey tests key retrieval by kid
@@ -262,12 +438,7 @@ func TestGetKey(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter, err := NewJWKSAdapter(
-		server.URL,
-		server.Client(),
-		15*time.Minute,
-		time.Hour,
-	)
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), 15*time.Minute, time.Hour, testLogger())
 	require.NoError(t, err)
 	defer func() { _ = adapter.Shutdown(context.Background()) }()
 
@@ -305,12 +476,7 @@ func TestGetKey_NotFound(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter, err := NewJWKSAdapter(
-		server.URL,
-		server.Client(),
-		15*time.Minute,
-		time.Hour,
-	)
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), 15*time.Minute, time.Hour, testLogger())
 	require.NoError(t, err)
 	defer func() { _ = adapter.Shutdown(context.Background()) }()
 
@@ -343,12 +509,7 @@ func TestGetKey_ConcurrentAccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter, err := NewJWKSAdapter(
-		server.URL,
-		server.Client(),
-		15*time.Minute,
-		time.Hour,
-	)
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), 15*time.Minute, time.Hour, testLogger())
 	require.NoError(t, err)
 	defer func() { _ = adapter.Shutdown(context.Background()) }()
 
@@ -391,12 +552,7 @@ func TestGetKeySet_Caching(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter, err := NewJWKSAdapter(
-		server.URL,
-		server.Client(),
-		15*time.Minute,
-		time.Hour,
-	)
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), 15*time.Minute, time.Hour, testLogger())
 	require.NoError(t, err)
 	defer func() { _ = adapter.Shutdown(context.Background()) }()
 
@@ -416,4 +572,267 @@ func TestGetKeySet_Caching(t *testing.T) {
 	// Both calls should return key sets
 	assert.NotNil(t, keyset1)
 	assert.NotNil(t, keyset2)
+}
+
+func findSpanByName(spans []sdktrace.ReadOnlySpan, name string) sdktrace.ReadOnlySpan {
+	for _, span := range spans {
+		if span.Name() == name {
+			return span
+		}
+	}
+	return nil
+}
+
+func spanEvents(span sdktrace.ReadOnlySpan) []string {
+	events := span.Events()
+	names := make([]string, 0, len(events))
+	for _, event := range events {
+		names = append(names, event.Name)
+	}
+	return names
+}
+
+func TestShutdown_CanBeCalledMultipleTimes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"keys":[]}`))
+	}))
+	defer server.Close()
+
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), 15*time.Minute, time.Hour, testLogger())
+	require.NoError(t, err)
+
+	require.NoError(t, adapter.Shutdown(context.Background()))
+	require.NoError(t, adapter.Shutdown(context.Background()))
+}
+
+func TestBackgroundRefreshFailure_LogsWarn(t *testing.T) {
+	testKey, err := jwk.Import([]byte("secret_key_material_32_bytes_long_"))
+	require.NoError(t, err)
+	require.NoError(t, testKey.Set(jwk.KeyIDKey, "test-kid"))
+	require.NoError(t, testKey.Set(jwk.AlgorithmKey, jwa.HS256()))
+
+	keyset := jwk.NewSet()
+	require.NoError(t, keyset.AddKey(testKey))
+	jwksJSON, err := json.Marshal(keyset)
+	require.NoError(t, err)
+
+	var upstreamHealthy atomic.Bool
+	upstreamHealthy.Store(true)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !upstreamHealthy.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=1")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(jwksJSON)
+	}))
+	defer server.Close()
+
+	var logs safeLogBuffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	adapter, err := NewJWKSAdapter(
+		server.URL,
+		server.Client(),
+		time.Second,
+		time.Second,
+		logger,
+	)
+	require.NoError(t, err)
+	defer func() { _ = adapter.Shutdown(context.Background()) }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = adapter.GetKeySet(ctx)
+	require.NoError(t, err)
+
+	upstreamHealthy.Store(false)
+	require.Eventually(t, func() bool {
+		return logs.String() != ""
+	}, 5*time.Second, 100*time.Millisecond)
+	assert.Contains(t, logs.String(), "JWKS refresh failed")
+}
+
+func TestGetKeySet_LogsOnceWhenServingCachedKeysAfterRefreshFailure(t *testing.T) {
+	testKey, err := jwk.Import([]byte("secret_key_material_32_bytes_long_"))
+	require.NoError(t, err)
+	require.NoError(t, testKey.Set(jwk.KeyIDKey, "test-kid"))
+	require.NoError(t, testKey.Set(jwk.AlgorithmKey, jwa.HS256()))
+
+	keyset := jwk.NewSet()
+	require.NoError(t, keyset.AddKey(testKey))
+	jwksJSON, err := json.Marshal(keyset)
+	require.NoError(t, err)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=60")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(jwksJSON)
+	}))
+	defer server.Close()
+
+	var logs safeLogBuffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), time.Minute, time.Hour, logger)
+	require.NoError(t, err)
+	defer func() { _ = adapter.Shutdown(context.Background()) }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = adapter.GetKeySet(ctx)
+	require.NoError(t, err)
+
+	adapter.recordFailure(assert.AnError)
+
+	_, err = adapter.GetKeySet(ctx)
+	require.NoError(t, err)
+	_, err = adapter.GetKeySet(ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, ports.ComponentHealthHealthy, adapter.HealthState())
+	assert.Equal(t, 1, bytes.Count(logs.Bytes(), []byte("serving cached JWKS after refresh failure")))
+}
+
+func TestMarkStaleServeLogged_RelogsEveryTenthServe(t *testing.T) {
+	adapter := &Adapter{}
+	adapter.healthMu.Lock()
+	adapter.lastSuccessAt = time.Now()
+	adapter.nextRefreshAt = time.Now().Add(time.Hour)
+	adapter.lastErr = assert.AnError
+	adapter.healthMu.Unlock()
+
+	logged := 0
+	for range 10 {
+		if err := adapter.markStaleServeLogged(); err != nil {
+			logged++
+		}
+	}
+
+	assert.Equal(t, 2, logged)
+}
+
+func TestHealthState_HealthyWhileCachedMaterialIsStillFreshAfterRefreshFailure(t *testing.T) {
+	adapter := &Adapter{}
+	adapter.healthMu.Lock()
+	adapter.lastSuccessAt = time.Now()
+	adapter.nextRefreshAt = time.Now().Add(time.Hour)
+	adapter.lastErr = assert.AnError
+	adapter.healthMu.Unlock()
+
+	assert.Equal(t, ports.ComponentHealthHealthy, adapter.HealthState())
+}
+
+func TestHealthState_DegradedBeforeFirstFetch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"keys":[]}`))
+	}))
+	defer server.Close()
+
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), 15*time.Minute, time.Hour, testLogger())
+	require.NoError(t, err)
+	defer func() { _ = adapter.Shutdown(context.Background()) }()
+
+	assert.Equal(t, ports.ComponentHealthDegraded, adapter.HealthState())
+}
+
+func TestHealthState_TracksBackgroundRefreshLifecycle(t *testing.T) {
+	testKey, err := jwk.Import([]byte("secret_key_material_32_bytes_long_"))
+	require.NoError(t, err)
+	require.NoError(t, testKey.Set(jwk.KeyIDKey, "test-kid"))
+	require.NoError(t, testKey.Set(jwk.AlgorithmKey, jwa.HS256()))
+
+	keyset := jwk.NewSet()
+	require.NoError(t, keyset.AddKey(testKey))
+	jwksJSON, err := json.Marshal(keyset)
+	require.NoError(t, err)
+
+	var upstreamHealthy atomic.Bool
+	upstreamHealthy.Store(true)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !upstreamHealthy.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=1")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(jwksJSON)
+	}))
+	defer server.Close()
+
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), time.Second, time.Second, testLogger())
+	require.NoError(t, err)
+	defer func() { _ = adapter.Shutdown(context.Background()) }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = adapter.GetKeySet(ctx)
+	require.NoError(t, err)
+	require.Equal(t, ports.ComponentHealthHealthy, adapter.HealthState())
+
+	upstreamHealthy.Store(false)
+	require.Eventually(t, func() bool {
+		return adapter.HealthState() == ports.ComponentHealthDegraded
+	}, 5*time.Second, 100*time.Millisecond)
+
+	upstreamHealthy.Store(true)
+	require.Eventually(t, func() bool {
+		return adapter.HealthState() == ports.ComponentHealthHealthy
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+func TestGetKeySet_ReturnsErrorWhenCachedMaterialExpiresAfterRefreshFailure(t *testing.T) {
+	testKey, err := jwk.Import([]byte("secret_key_material_32_bytes_long_"))
+	require.NoError(t, err)
+	require.NoError(t, testKey.Set(jwk.KeyIDKey, "test-kid"))
+	require.NoError(t, testKey.Set(jwk.AlgorithmKey, jwa.HS256()))
+
+	keyset := jwk.NewSet()
+	require.NoError(t, keyset.AddKey(testKey))
+	jwksJSON, err := json.Marshal(keyset)
+	require.NoError(t, err)
+
+	var upstreamHealthy atomic.Bool
+	upstreamHealthy.Store(true)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !upstreamHealthy.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=1")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(jwksJSON)
+	}))
+	defer server.Close()
+
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), time.Second, time.Second, testLogger())
+	require.NoError(t, err)
+	defer func() { _ = adapter.Shutdown(context.Background()) }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = adapter.GetKeySet(ctx)
+	require.NoError(t, err)
+
+	upstreamHealthy.Store(false)
+	require.Eventually(t, func() bool {
+		return adapter.HealthState() == ports.ComponentHealthDegraded
+	}, 5*time.Second, 100*time.Millisecond)
+
+	_, err = adapter.GetKeySet(ctx)
+	require.Error(t, err)
 }

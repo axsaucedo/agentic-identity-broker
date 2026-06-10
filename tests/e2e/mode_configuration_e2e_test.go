@@ -25,7 +25,7 @@ import (
 )
 
 // This test validates behavioral differences across the three operational modes:
-// - Proxy mode: delegates token issuance to upstream, no local JWKS/signing
+// - Proxy mode: delegates token issuance to upstream, republishes upstream JWKS at broker endpoint
 // - local mode (no CIMD): mints tokens locally, agents resolved by client_id string
 // - local mode (with CIMD): mints tokens locally, agents resolved by URL-based client_id via CIMD fetch
 
@@ -75,15 +75,20 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			}
 		})
 
-		It("does not expose JWKS endpoint", func() {
+		// Scenario 1.2 from specs/032-aggregated-jwks/spec.md
+		It("exposes aggregated JWKS endpoint in proxy mode", func() {
 			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
-			Expect(resp.StatusCode).To(SatisfyAny(Equal(http.StatusNotFound), Equal(http.StatusMethodNotAllowed)))
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			var jwks map[string]interface{}
+			Expect(json.NewDecoder(resp.Body).Decode(&jwks)).ToNot(HaveOccurred())
+			Expect(jwks).To(HaveKey("keys"))
 		})
 
-		It("does not expose discovery metadata", func() {
-			// In proxy mode, discovery IS available but JWKS URI is absent from the response
+		// Scenario 2.2 from specs/032-aggregated-jwks/spec.md
+		It("advertises jwks_uri in discovery metadata in proxy mode", func() {
 			resp, err := http.Get(server.BaseURL() + "/.well-known/oauth-authorization-server")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -91,7 +96,7 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 
 			var body map[string]interface{}
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).ToNot(HaveOccurred())
-			Expect(body).ToNot(HaveKey("jwks_uri"))
+			Expect(body).To(HaveKey("jwks_uri"))
 		})
 
 		It("redirects authorization to consent page (proxy mode)", func() {

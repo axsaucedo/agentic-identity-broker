@@ -48,7 +48,7 @@ type EnduserHandlers struct {
 	OAuth2Token     *enduser.OAuth2TokenHandler
 	OAuth2Metadata  *enduser.OAuth2MetadataHandler
 
-	// JWKS handler (local mode only — serves signing key public material)
+	// JWKS handler (all OAuth2 modes — serves aggregated signing key public material)
 	JWKS *enduserHandlers.JWKSHandler
 
 	// SPA handler for serving static files (must be last)

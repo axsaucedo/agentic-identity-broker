@@ -126,12 +126,18 @@ data:
         {{- end }}
       {{- end }}
       {{- with .Values.broker.oauth2AuthorizationServer.proxy }}
-      {{- if or .upstreamIssuerUri .upstreamAuthorizeEndpoint .upstreamTokenEndpoint .upstreamTimeoutSeconds }}
+      {{- if or .upstreamIssuerUri .upstreamAuthorizeEndpoint .upstreamTokenEndpoint .upstreamTimeoutSeconds .upstreamJwksMinRefresh .upstreamJwksMaxRefresh }}
       proxy:
         upstream_issuer_uri: {{ .upstreamIssuerUri }}
         upstream_authorize_endpoint: {{ .upstreamAuthorizeEndpoint }}
         upstream_token_endpoint: {{ .upstreamTokenEndpoint }}
         upstream_timeout_seconds: {{ .upstreamTimeoutSeconds }}
+        {{- if .upstreamJwksMinRefresh }}
+        upstream_jwks_min_refresh: {{ .upstreamJwksMinRefresh | quote }}
+        {{- end }}
+        {{- if .upstreamJwksMaxRefresh }}
+        upstream_jwks_max_refresh: {{ .upstreamJwksMaxRefresh | quote }}
+        {{- end }}
       {{- end }}
       {{- end }}
       {{- with .Values.broker.oauth2AuthorizationServer.local }}

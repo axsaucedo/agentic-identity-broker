@@ -39,6 +39,13 @@ func (m *mockJWKSPort) GetKey(_ context.Context, kid string) (jwk.Key, error) {
 	return key, nil
 }
 
+func (m *mockJWKSPort) HealthState() ports.ComponentHealth {
+	if m.err != nil {
+		return ports.ComponentHealthDegraded
+	}
+	return ports.ComponentHealthHealthy
+}
+
 var _ ports.JWKSPort = (*mockJWKSPort)(nil)
 
 // generateTestRSAKeyPair generates an RSA key pair for test JWT signing.

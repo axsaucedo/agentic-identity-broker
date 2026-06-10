@@ -1,52 +1,53 @@
 package enduser
 
 import (
+	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// testEncryptor is a minimal encryption stub for testing.
-type testEncryptor struct{}
-
-func (e *testEncryptor) Encrypt(_ context.Context, plaintext []byte, _ map[string]string) ([]byte, error) {
-	result := make([]byte, 0, len(plaintext)+4)
-	result = append(result, []byte("ENC:")...)
-	result = append(result, plaintext...)
-	return result, nil
+type mockSuccessPublisher struct {
+	set jwk.Set
 }
 
-func (e *testEncryptor) Decrypt(_ context.Context, ciphertext []byte, _ map[string]string) ([]byte, error) {
-	if len(ciphertext) < 4 || string(ciphertext[:4]) != "ENC:" {
-		return nil, assert.AnError
-	}
-	return ciphertext[4:], nil
+func (m *mockSuccessPublisher) PublishJWKS(_ context.Context) (jwk.Set, error) {
+	return m.set, nil
 }
 
 func newTestJWKSHandler(t *testing.T) *JWKSHandler {
 	t.Helper()
-	repo := memory.NewSigningKeyStore()
-	enc := &testEncryptor{}
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	svc := oauth2server.NewSigningKeyService(repo, enc, &encryptionnoop.BranchKeyManager{}, logger)
 
-	// Generate a signing key so the JWKS is non-empty
-	_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
-	return NewJWKSHandler(svc, logger)
+	publicKey, err := jwk.Import(privateKey.Public())
+	require.NoError(t, err)
+	require.NoError(t, publicKey.Set(jwk.KeyIDKey, "test-kid"))
+	require.NoError(t, publicKey.Set(jwk.KeyUsageKey, "sig"))
+	require.NoError(t, publicKey.Set(jwk.AlgorithmKey, jwa.ES256()))
+
+	set := jwk.NewSet()
+	require.NoError(t, set.AddKey(publicKey))
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
+	return NewJWKSHandler(&mockSuccessPublisher{set: set}, logger)
 }
 
 func TestJWKSHandler_ServeJWKS(t *testing.T) {
@@ -113,4 +114,104 @@ func TestJWKSHandler_ServeJWKS(t *testing.T) {
 		rawBody := rec.Body.String()
 		assert.False(t, strings.Contains(rawBody, `"d":`), "raw response must not contain '\"d\":' private key field")
 	})
+
+	t.Run("returns 503 when upstream unavailable", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
+		handler := NewJWKSHandler(&mockErrorPublisher{err: ports.ErrUpstreamUnavailable}, logger)
+
+		req := httptest.NewRequest(http.MethodGet, "/oauth2/jwks.json", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeJWKS(rec, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+
+		var body map[string]string
+		err := json.NewDecoder(rec.Body).Decode(&body)
+		require.NoError(t, err)
+		assert.Equal(t, "upstream key material temporarily unavailable", body["error"])
+	})
+
+	t.Run("returns 503 when kid conflict detected", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
+		handler := NewJWKSHandler(&mockErrorPublisher{err: ports.ErrKidConflict}, logger)
+
+		req := httptest.NewRequest(http.MethodGet, "/oauth2/jwks.json", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeJWKS(rec, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+
+		var body map[string]string
+		err := json.NewDecoder(rec.Body).Decode(&body)
+		require.NoError(t, err)
+		assert.Equal(t, "JWKS configuration conflict requires operator action", body["error"])
+	})
+
+	t.Run("returns 500 when publisher returns generic error", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
+		handler := NewJWKSHandler(&mockErrorPublisher{err: errors.New("storage error")}, logger)
+
+		req := httptest.NewRequest(http.MethodGet, "/oauth2/jwks.json", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeJWKS(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+
+		var body map[string]string
+		err := json.NewDecoder(rec.Body).Decode(&body)
+		require.NoError(t, err)
+		assert.Equal(t, "internal server error", body["error"])
+	})
+
+	t.Run("logs warn when error response encoding fails", func(t *testing.T) {
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		handler := NewJWKSHandler(&mockErrorPublisher{err: ports.ErrUpstreamUnavailable}, logger)
+
+		req := httptest.NewRequest(http.MethodGet, "/oauth2/jwks.json", nil)
+		rec := &failingResponseWriter{}
+
+		handler.ServeJWKS(rec, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, rec.status)
+		assert.Contains(t, logs.String(), "level=WARN")
+		assert.Contains(t, logs.String(), "failed to encode error response")
+	})
 }
+
+type mockErrorPublisher struct {
+	err error
+}
+
+func (m *mockErrorPublisher) PublishJWKS(_ context.Context) (jwk.Set, error) {
+	return nil, m.err
+}
+
+type failingResponseWriter struct {
+	header http.Header
+	status int
+}
+
+func (w *failingResponseWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (w *failingResponseWriter) WriteHeader(status int) {
+	w.status = status
+}
+
+func (w *failingResponseWriter) Write(_ []byte) (int, error) {
+	return 0, assert.AnError
+}
+
+var _ ports.JWKSPublisherPort = (*mockSuccessPublisher)(nil)
+var _ ports.JWKSPublisherPort = (*mockErrorPublisher)(nil)

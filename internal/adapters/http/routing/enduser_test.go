@@ -9,7 +9,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/lestrrat-go/jwx/v3/jwk"
+
 	httpadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
+	enduserhttp "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/routing"
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
@@ -17,6 +20,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 )
+
+type mockJWKSPublisher struct{}
+
+func (m *mockJWKSPublisher) PublishJWKS(_ context.Context) (jwk.Set, error) {
+	return jwk.NewSet(), nil
+}
 
 func TestSetupEnduserRoutes_ConsentAllowsSameOriginPost(t *testing.T) {
 	t.Parallel()
@@ -50,17 +59,17 @@ func TestSetupEnduserRoutes_ConsentRejectsCrossSitePost(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, postResp.Code)
 }
 
-// T045a: JWKS route is absent (404) when JWKS handler is nil (proxy mode).
-// When h.JWKS != nil the route is registered — verified by local/hybrid E2E tests.
-func TestSetupEnduserRoutes_JWKSRouteAbsentWhenHandlerNil(t *testing.T) {
+func TestSetupEnduserRoutes_PanicsWhenOAuth2RoutesConfiguredWithoutJWKSHandler(t *testing.T) {
 	router := chi.NewRouter()
-	routing.SetupEnduserRoutes(router, &app.EnduserHandlers{}, routing.EnduserRouteConfig{})
 
-	req := httptest.NewRequest(http.MethodGet, "/oauth2/jwks.json", nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	require.Equal(t, http.StatusNotFound, w.Code)
+	require.PanicsWithValue(t,
+		"BUG: JWKS handler required when OAuth2 routes are enabled",
+		func() {
+			routing.SetupEnduserRoutes(router, &app.EnduserHandlers{
+				OAuth2Metadata: &enduserhttp.OAuth2MetadataHandler{},
+			}, routing.EnduserRouteConfig{})
+		},
+	)
 }
 
 func TestSetupEnduserRoutes_ConsentRejectsCrossOriginPost(t *testing.T) {
@@ -115,6 +124,7 @@ func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
 		WithConfig(cfg).
 		WithStorage(storage).
 		WithLogger(logger).
+		WithJWKSPublisher(&mockJWKSPublisher{}).
 		Build()
 	require.NoError(t, err)
 	t.Cleanup(func() {

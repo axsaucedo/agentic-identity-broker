@@ -1,0 +1,135 @@
+# OpenAPI Contract Update: /oauth2/jwks.json
+
+## Changes to `/api/enduser/openapi.yaml`
+
+### `/oauth2/jwks.json` endpoint (MODIFIED)
+
+```yaml
+/oauth2/jwks.json:
+  get:
+    summary: JSON Web Key Set (Aggregated)
+    description: |
+      Returns the broker's aggregated JSON Web Key Set containing public keys
+      for token verification. Content depends on the broker's operating mode:
+      - **local**: Only the broker's local public signing keys.
+      - **proxy**: Upstream authorization server's public keys, republished by the broker.
+      - **hybrid**: Union of the broker's local signing keys and upstream authorization server's public keys.
+
+      Clients use this single endpoint to verify any token the broker distributes,
+      regardless of the broker's operating mode.
+
+      Keys are returned exactly as sourced — no modification to kid, alg, kty, use, or other JWK fields.
+      Private key material is never exposed.
+    operationId: getAggregatedJWKS
+    tags:
+      - OAuth2
+    responses:
+      "200":
+        description: JWKS containing public keys for token verification
+        headers:
+          Cache-Control:
+            schema:
+              type: string
+              example: "public, max-age=300"
+            description: Keys may be cached for 5 minutes
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - keys
+              properties:
+                keys:
+                  type: array
+                  items:
+                    type: object
+                    description: JSON Web Key (RFC 7517)
+                    properties:
+                      kty:
+                        type: string
+                        description: Key type (e.g., "EC", "RSA")
+                      kid:
+                        type: string
+                        description: Key ID
+                      alg:
+                        type: string
+                        description: Algorithm (e.g., "ES256", "RS256")
+                      use:
+                        type: string
+                        description: Key use (e.g., "sig")
+                      crv:
+                        type: string
+                        description: Curve (for EC keys, e.g., "P-256")
+                      x:
+                        type: string
+                        description: X coordinate (for EC keys)
+                      "y":
+                        type: string
+                        description: Y coordinate (for EC keys)
+                      n:
+                        type: string
+                        description: Modulus (for RSA keys)
+                      e:
+                        type: string
+                        description: Exponent (for RSA keys)
+      "503":
+        description: |
+          Upstream key material temporarily unavailable.
+          Returned when:
+          - The cached upstream JWKS has expired and cannot be refreshed (proxy/hybrid mode)
+          - A duplicate key ID (kid) conflict is detected between local and upstream keys (hybrid mode)
+        content:
+          text/plain:
+            schema:
+              type: string
+              example: "upstream key material temporarily unavailable"
+```
+
+### `/.well-known/oauth-authorization-server` (MODIFIED)
+
+Change: `jwks_uri` is now present in ALL modes (was only local/hybrid).
+
+```yaml
+/.well-known/oauth-authorization-server:
+  get:
+    summary: OAuth2 Authorization Server Metadata (RFC 8414)
+    description: |
+      Returns OAuth2 authorization server metadata for auto-discovery.
+      The `jwks_uri` field is always present, pointing to the broker's
+      own `/oauth2/jwks.json` endpoint regardless of operating mode.
+    responses:
+      "200":
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - issuer
+                - authorization_endpoint
+                - token_endpoint
+                - jwks_uri
+                - response_types_supported
+                - grant_types_supported
+              properties:
+                issuer:
+                  type: string
+                  example: "https://broker.example.com"
+                authorization_endpoint:
+                  type: string
+                  example: "https://broker.example.com/oauth2/authorize"
+                token_endpoint:
+                  type: string
+                  example: "https://broker.example.com/oauth2/token"
+                jwks_uri:
+                  type: string
+                  description: Always present in all modes — points to broker's aggregated JWKS endpoint
+                  example: "https://broker.example.com/oauth2/jwks.json"
+                response_types_supported:
+                  type: array
+                  items:
+                    type: string
+                grant_types_supported:
+                  type: array
+                  items:
+                    type: string
+```

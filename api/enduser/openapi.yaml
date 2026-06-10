@@ -131,6 +131,8 @@ paths:
         - `starting`: Server is initializing (binding to port, setting up routes)
         - `shutting_down`: Graceful shutdown in progress, completing in-flight requests
         - `unhealthy`: Server encountered an error and requires restart
+
+        In proxy and hybrid OAuth2 modes, the response may also include component-level health in `components`. The `upstream_jwks` component reports `healthy` or `degraded` without changing the top-level server lifecycle status.
       operationId: getHealth
       tags:
         - Health
@@ -149,6 +151,14 @@ paths:
                     status: healthy
                     timestamp: "2025-12-19T10:30:00Z"
                     uptime_seconds: 3600
+                healthyWithDegradedUpstreamJWKS:
+                  summary: Healthy server with degraded upstream JWKS
+                  value:
+                    status: healthy
+                    timestamp: "2025-12-19T10:30:00Z"
+                    uptime_seconds: 3600
+                    components:
+                      upstream_jwks: degraded
         "503":
           description: Server is unavailable (starting, shutting down, or unhealthy)
           content:
@@ -1403,14 +1413,21 @@ paths:
     get:
       summary: JSON Web Key Set endpoint
       description: |
-        Returns the broker's public signing keys in JWK Set format (RFC 7517).
+        Returns the broker's aggregated public signing keys in JWK Set format (RFC 7517).
 
-        Clients use these keys to verify the signatures of tokens issued by the broker.
-        Only public key material is included — private keys are never exposed.
+        Clients use this single endpoint to verify any token the broker asks them to trust,
+        regardless of operating mode. Only public key material is included — private keys
+        are never exposed.
 
-        **Mode availability**: This endpoint is served in `local` and `hybrid` modes only.
-        In `proxy` mode, the upstream OAuth2 server is the issuer, so its JWKS is used.
-        Requests to this endpoint in proxy mode return 404.
+        **Mode-dependent content**:
+        - `local` mode: returns only the broker's locally-generated signing keys.
+        - `proxy` mode: republishes the upstream authorization server's public keys verbatim.
+        - `hybrid` mode: returns the union of local signing keys and upstream keys in a
+          single JWKS document. If any `kid` appears in both sets, the endpoint returns 500.
+
+        **Availability**: Served in all three modes (`local`, `proxy`, `hybrid`). Returns
+        503 if the upstream JWKS is unavailable (proxy/hybrid modes). Returns 500 if a
+        duplicate `kid` is detected across local and upstream key sets (hybrid mode).
 
         **Caching**: Responses include `Cache-Control: public, max-age=300` to allow
         clients to cache the key set for 5 minutes. Clients should respect this header
@@ -1444,12 +1461,30 @@ paths:
                     alg: ES256
                     x: "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU"
                     y: "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
-        "500":
-          description: Internal Server Error
+        "503":
+          description: Service Unavailable — upstream JWKS unreachable
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/OAuth2Error"
+                type: object
+                required:
+                  - error
+                properties:
+                  error:
+                    type: string
+                    example: "upstream key material temporarily unavailable"
+        "500":
+          description: Internal Server Error — duplicate kid conflict or other broker failure
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error
+                properties:
+                  error:
+                    type: string
+                    example: "JWKS configuration conflict requires operator action"
   /.well-known/oauth-authorization-server:
     get:
       summary: RFC 8414 OAuth2 Authorization Server Metadata
@@ -1459,11 +1494,13 @@ paths:
         OAuth2 capabilities and endpoints.
 
         **Mode-specific behavior**:
-        - `proxy` mode: `issuer` is the broker's own public URL. `jwks_uri` is absent (tokens are signed by the upstream server).
-        - `local` mode: `issuer` is the broker's own public URL. `jwks_uri` is present.
-        - `hybrid` mode: `issuer` is the broker's public URL. `jwks_uri` is present (both
-          proxy agents forwarded upstream and local/CIMD agents served locally). The metadata
-          reflects the union of capabilities for both proxy and local grant types.
+        - `proxy` mode: `issuer` is the broker's own public URL. `jwks_uri` points to the
+          broker's `/oauth2/jwks.json` endpoint, which republishes upstream keys.
+        - `local` mode: `issuer` is the broker's own public URL. `jwks_uri` points to the
+          broker's `/oauth2/jwks.json` endpoint, which serves locally-generated signing keys.
+        - `hybrid` mode: `issuer` is the broker's public URL. `jwks_uri` points to the
+          broker's `/oauth2/jwks.json` endpoint (union of local and upstream keys). The
+          metadata reflects the union of capabilities for both proxy and local grant types.
 
         **Caching**: Responses include `Cache-Control: public, max-age=3600` to allow
         clients to cache metadata for 1 hour.
@@ -1592,6 +1629,19 @@ components:
           minimum: 0
           description: Number of seconds since the server started accepting requests
           example: 3600
+        components:
+          type: object
+          description: |
+            Optional component-level health details.
+
+            In proxy and hybrid OAuth2 modes, `upstream_jwks` reports the upstream JWKS refresh state:
+
+            - `healthy`: Upstream key material is reachable and fresh
+            - `degraded`: Upstream refresh has failed or become stale
+          additionalProperties:
+            type: string
+          example:
+            upstream_jwks: healthy
     UserInfo:
       type: object
       required:

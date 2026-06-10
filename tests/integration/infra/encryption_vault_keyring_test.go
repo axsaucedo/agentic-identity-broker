@@ -5,6 +5,7 @@ package integration
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/kms"
@@ -17,7 +18,11 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/integration/bootstrap"
 )
 
-var sharedLS *bootstrap.LocalStackContainer
+var (
+	sharedLS     *bootstrap.LocalStackContainer
+	sharedLSErr  error
+	sharedLSOnce sync.Once
+)
 
 // Test service UUIDs — must match the IDs provisioned in bootstrap/localstack.go:preBranchKeysForLocalStack
 // and the UUIDs in fixtures.TestServices().
@@ -30,6 +35,14 @@ const (
 // requireSharedLS skips the test if LocalStack is unavailable (e.g. no Docker).
 func requireSharedLS(t *testing.T) *bootstrap.LocalStackContainer {
 	t.Helper()
+
+	sharedLSOnce.Do(func() {
+		sharedLS, sharedLSErr = bootstrap.StartLocalStackForSuite(context.Background())
+	})
+
+	if sharedLSErr != nil {
+		t.Skipf("LocalStack unavailable — ensure Docker or Colima is running: %v", sharedLSErr)
+	}
 	if sharedLS == nil {
 		t.Skip("LocalStack unavailable — ensure Docker or Colima is running")
 	}

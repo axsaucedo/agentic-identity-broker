@@ -141,6 +141,8 @@ See [values.yaml](values.yaml) for the complete list of configuration options.
 | `broker.oauth2AuthorizationServer.proxy.upstreamAuthorizeEndpoint` | Upstream authorize endpoint | `""` |
 | `broker.oauth2AuthorizationServer.proxy.upstreamTokenEndpoint` | Upstream token endpoint | `""` |
 | `broker.oauth2AuthorizationServer.proxy.upstreamTimeoutSeconds` | Upstream request timeout in seconds (0 = use application default of 30s) | `0` |
+| `broker.oauth2AuthorizationServer.proxy.upstreamJwksMinRefresh` | Minimum interval between upstream JWKS refresh attempts (empty = use application default of 15m) | `""` |
+| `broker.oauth2AuthorizationServer.proxy.upstreamJwksMaxRefresh` | Maximum interval between upstream JWKS refresh attempts (empty = use application default of 1h) | `""` |
 | `broker.oauth2AuthorizationServer.local.tokenTtl` | Access token validity period (required in local/hybrid mode) | `""` |
 | `broker.oauth2AuthorizationServer.local.tokenClaimsExpression` | CEL expression for custom JWT claims | `""` |
 | `broker.telemetry.serviceName` | Service name reported in every telemetry signal | `agentic-identity-broker` |
