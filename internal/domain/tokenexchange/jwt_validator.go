@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,10 +34,16 @@ type JWKSProvider interface {
 //
 // The validator is stateless and thread-safe for concurrent calls.
 type JWTValidator struct {
-	jwksProvider     JWKSProvider
-	expectedIssuer   string
-	brokerAudience   string
-	clockSkewSeconds int64
+	subjectTokenPolicy    JWTValidationPolicy
+	clientAssertionPolicy JWTValidationPolicy
+	brokerAudience        string
+	clockSkewSeconds      int64
+}
+
+// JWTValidationPolicy defines the key source and accepted issuer set for one JWT role.
+type JWTValidationPolicy struct {
+	JWKSProvider    JWKSProvider
+	ExpectedIssuers []string
 }
 
 // NewJWTValidator creates a new JWT validator.
@@ -56,11 +63,28 @@ func NewJWTValidator(
 	brokerAudience string,
 	clockSkewSeconds int64,
 ) (*JWTValidator, error) {
-	if jwksProvider == nil {
-		return nil, fmt.Errorf("jwks_provider cannot be nil")
+	policy := JWTValidationPolicy{
+		JWKSProvider:    jwksProvider,
+		ExpectedIssuers: []string{expectedIssuer},
 	}
-	if expectedIssuer == "" {
-		return nil, fmt.Errorf("expected_issuer cannot be empty")
+	return NewJWTValidatorWithPolicies(policy, policy, brokerAudience, clockSkewSeconds)
+}
+
+// NewJWTValidatorWithPolicies creates a JWT validator with distinct trust policies for
+// subject tokens and client assertions.
+func NewJWTValidatorWithPolicies(
+	subjectTokenPolicy JWTValidationPolicy,
+	clientAssertionPolicy JWTValidationPolicy,
+	brokerAudience string,
+	clockSkewSeconds int64,
+) (*JWTValidator, error) {
+	normalizedSubjectPolicy, err := normalizeValidationPolicy("subject_token", subjectTokenPolicy)
+	if err != nil {
+		return nil, err
+	}
+	normalizedClientAssertionPolicy, err := normalizeValidationPolicy("client_assertion", clientAssertionPolicy)
+	if err != nil {
+		return nil, err
 	}
 	if brokerAudience == "" {
 		return nil, fmt.Errorf("expected_audience cannot be empty")
@@ -73,10 +97,10 @@ func NewJWTValidator(
 	}
 
 	return &JWTValidator{
-		jwksProvider:     jwksProvider,
-		expectedIssuer:   expectedIssuer,
-		brokerAudience:   brokerAudience,
-		clockSkewSeconds: clockSkewSeconds,
+		subjectTokenPolicy:    normalizedSubjectPolicy,
+		clientAssertionPolicy: normalizedClientAssertionPolicy,
+		brokerAudience:        brokerAudience,
+		clockSkewSeconds:      clockSkewSeconds,
 	}, nil
 }
 
@@ -105,23 +129,12 @@ func (v *JWTValidator) ValidateSubjectToken(ctx context.Context, tokenString str
 	}
 
 	// Fetch JWKS and get the specific key
-	keyset, err := v.jwksProvider.GetKeySet(ctx)
+	keyset, err := v.subjectTokenPolicy.JWKSProvider.GetKeySet(ctx)
 	if err != nil {
 		return nil, NewServerErrorWithCause("failed to fetch JWKS for token validation", err)
 	}
 
-	// Parse with comprehensive validation using library options
-	// This combines signature, issuer, audience, and expiration verification
-	clockSkew := time.Duration(v.clockSkewSeconds) * time.Second
-	token, err := jwt.ParseString(
-		tokenString,
-		jwt.WithVerify(true),
-		jwt.WithKeySet(keyset),
-		jwt.WithValidate(true),
-		jwt.WithIssuer(v.expectedIssuer),
-		jwt.WithAudience(v.brokerAudience),
-		jwt.WithAcceptableSkew(clockSkew),
-	)
+	token, err := v.parseWithPolicy(tokenString, keyset, v.subjectTokenPolicy)
 	if err != nil {
 		return nil, v.mapParseError(err, "subject_token", tokenString)
 	}
@@ -151,23 +164,12 @@ func (v *JWTValidator) ValidateClientAssertion(ctx context.Context, tokenString 
 	}
 
 	// Fetch JWKS and get the specific key
-	keyset, err := v.jwksProvider.GetKeySet(ctx)
+	keyset, err := v.clientAssertionPolicy.JWKSProvider.GetKeySet(ctx)
 	if err != nil {
 		return nil, NewServerErrorWithCause("failed to fetch JWKS for client_assertion validation", err)
 	}
 
-	// Parse with comprehensive validation using library options
-	// This combines signature, issuer, audience, and expiration verification
-	clockSkew := time.Duration(v.clockSkewSeconds) * time.Second
-	token, err := jwt.ParseString(
-		tokenString,
-		jwt.WithVerify(true),
-		jwt.WithKeySet(keyset),
-		jwt.WithValidate(true),
-		jwt.WithIssuer(v.expectedIssuer),
-		jwt.WithAudience(v.brokerAudience),
-		jwt.WithAcceptableSkew(clockSkew),
-	)
+	token, err := v.parseWithPolicy(tokenString, keyset, v.clientAssertionPolicy)
 	if err != nil {
 		return nil, v.mapClientAssertionParseError(err, tokenString)
 	}
@@ -194,16 +196,16 @@ func (v *JWTValidator) mapParseError(err error, tokenType string, tokenString st
 	switch {
 	case errors.Is(err, jwt.InvalidIssuerError()):
 		return NewInvalidGrantError(
-			fmt.Sprintf("%s issuer validation failed: expected iss=%q", tokenType, v.expectedIssuer),
-		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
+			fmt.Sprintf("%s issuer validation failed: expected %s", tokenType, formatExpectedIssuers(v.subjectTokenPolicy.ExpectedIssuers)),
+		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.subjectTokenPolicy.ExpectedIssuers))
 	case errors.Is(err, jwt.InvalidAudienceError()):
 		return NewInvalidGrantError(
 			fmt.Sprintf("%s audience validation failed: expected aud=%q", tokenType, v.brokerAudience),
-		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
+		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.subjectTokenPolicy.ExpectedIssuers))
 	case errors.Is(err, jwt.TokenExpiredError()):
-		return NewInvalidGrantError(tokenType + " has expired").WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
+		return NewInvalidGrantError(tokenType + " has expired").WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.subjectTokenPolicy.ExpectedIssuers))
 	case errors.Is(err, jwt.TokenNotYetValidError()):
-		return NewInvalidGrantError(tokenType + " is not yet valid (nbf)").WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
+		return NewInvalidGrantError(tokenType + " is not yet valid (nbf)").WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.subjectTokenPolicy.ExpectedIssuers))
 	case errors.Is(err, jwt.ParseError()):
 		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed").WithCause(err)
 	default:
@@ -225,16 +227,16 @@ func (v *JWTValidator) mapClientAssertionParseError(err error, tokenString strin
 	switch {
 	case errors.Is(err, jwt.InvalidIssuerError()):
 		return NewInvalidClientError(
-			fmt.Sprintf("client_assertion issuer validation failed: expected iss=%q", v.expectedIssuer),
-		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
+			fmt.Sprintf("client_assertion issuer validation failed: expected %s", formatExpectedIssuers(v.clientAssertionPolicy.ExpectedIssuers)),
+		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.clientAssertionPolicy.ExpectedIssuers))
 	case errors.Is(err, jwt.InvalidAudienceError()):
 		return NewInvalidClientError(
 			fmt.Sprintf("client_assertion audience validation failed: expected aud=%q", v.brokerAudience),
-		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
+		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.clientAssertionPolicy.ExpectedIssuers))
 	case errors.Is(err, jwt.TokenExpiredError()):
-		return NewInvalidClientError("client_assertion has expired").WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
+		return NewInvalidClientError("client_assertion has expired").WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.clientAssertionPolicy.ExpectedIssuers))
 	case errors.Is(err, jwt.TokenNotYetValidError()):
-		return NewInvalidClientError("client_assertion is not yet valid (nbf)").WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
+		return NewInvalidClientError("client_assertion is not yet valid (nbf)").WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.clientAssertionPolicy.ExpectedIssuers))
 	case errors.Is(err, jwt.ParseError()):
 		return NewInvalidClientError("client_assertion is malformed or signature verification failed").WithCause(err)
 	default:
@@ -247,7 +249,7 @@ func (v *JWTValidator) mapClientAssertionParseError(err error, tokenString strin
 // vs actual values for iss, aud, sub, exp, and nbf. If parsing fails, returns an
 // empty string. Per SR-005, this never includes the raw JWT string, signature, or
 // full payload, but it may include specific claim values extracted from the payload.
-func (v *JWTValidator) extractDiagnostics(tokenString string) string {
+func (v *JWTValidator) extractDiagnostics(tokenString string, expectedIssuers []string) string {
 	if tokenString == "" {
 		return ""
 	}
@@ -263,7 +265,7 @@ func (v *JWTValidator) extractDiagnostics(tokenString string) string {
 	}
 
 	actualIss, _ := tok.Issuer()
-	parts = append(parts, fmt.Sprintf("expected_iss=%q actual_iss=%q", v.expectedIssuer, actualIss))
+	parts = append(parts, fmt.Sprintf("expected_iss=%s actual_iss=%q", formatExpectedIssuersForDiagnostics(expectedIssuers), actualIss))
 
 	actualAud, _ := tok.Audience()
 	quotedAud := make([]string, len(actualAud))
@@ -280,4 +282,86 @@ func (v *JWTValidator) extractDiagnostics(tokenString string) string {
 	}
 
 	return fmt.Sprintf("[%s]", strings.Join(parts, " "))
+}
+
+func (v *JWTValidator) parseWithPolicy(tokenString string, keyset jwk.Set, policy JWTValidationPolicy) (jwt.Token, error) {
+	clockSkew := time.Duration(v.clockSkewSeconds) * time.Second
+	var (
+		firstErr     error
+		preferredErr error
+	)
+
+	for _, issuer := range policy.ExpectedIssuers {
+		token, err := jwt.ParseString(
+			tokenString,
+			jwt.WithVerify(true),
+			jwt.WithKeySet(keyset),
+			jwt.WithValidate(true),
+			jwt.WithIssuer(issuer),
+			jwt.WithAudience(v.brokerAudience),
+			jwt.WithAcceptableSkew(clockSkew),
+		)
+		if err == nil {
+			return token, nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+		if !errors.Is(err, jwt.InvalidIssuerError()) {
+			preferredErr = err
+		}
+	}
+
+	if preferredErr != nil {
+		return nil, preferredErr
+	}
+	return nil, firstErr
+}
+
+func normalizeValidationPolicy(name string, policy JWTValidationPolicy) (JWTValidationPolicy, error) {
+	if policy.JWKSProvider == nil {
+		return JWTValidationPolicy{}, fmt.Errorf("%s jwks_provider cannot be nil", name)
+	}
+
+	issuers := make([]string, 0, len(policy.ExpectedIssuers))
+	for _, issuer := range policy.ExpectedIssuers {
+		if issuer == "" {
+			return JWTValidationPolicy{}, fmt.Errorf("%s expected_issuer cannot be empty", name)
+		}
+		if !slices.Contains(issuers, issuer) {
+			issuers = append(issuers, issuer)
+		}
+	}
+	if len(issuers) == 0 {
+		return JWTValidationPolicy{}, fmt.Errorf("%s expected_issuer cannot be empty", name)
+	}
+
+	return JWTValidationPolicy{
+		JWKSProvider:    policy.JWKSProvider,
+		ExpectedIssuers: issuers,
+	}, nil
+}
+
+func formatExpectedIssuers(issuers []string) string {
+	quoted := quoteStrings(issuers)
+	if len(quoted) == 1 {
+		return fmt.Sprintf(`iss=%s`, quoted[0])
+	}
+	return fmt.Sprintf("iss in [%s]", strings.Join(quoted, ","))
+}
+
+func formatExpectedIssuersForDiagnostics(issuers []string) string {
+	quoted := quoteStrings(issuers)
+	if len(quoted) == 1 {
+		return quoted[0]
+	}
+	return fmt.Sprintf("[%s]", strings.Join(quoted, ","))
+}
+
+func quoteStrings(values []string) []string {
+	quoted := make([]string, len(values))
+	for i, value := range values {
+		quoted[i] = fmt.Sprintf("%q", value)
+	}
+	return quoted
 }

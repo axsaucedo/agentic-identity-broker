@@ -151,6 +151,86 @@ func TestNewJWTValidator(t *testing.T) {
 	}
 }
 
+func TestNewJWTValidatorWithPolicies(t *testing.T) {
+	t.Parallel()
+
+	baseProvider := &MockJWKSProvider{keySet: jwk.NewSet()}
+	validSubjectPolicy := JWTValidationPolicy{
+		JWKSProvider:    baseProvider,
+		ExpectedIssuers: []string{"https://upstream.example.com", "https://broker.example.com"},
+	}
+	validClientPolicy := JWTValidationPolicy{
+		JWKSProvider:    baseProvider,
+		ExpectedIssuers: []string{"https://upstream.example.com"},
+	}
+
+	tests := []struct {
+		name                  string
+		subjectTokenPolicy    JWTValidationPolicy
+		clientAssertionPolicy JWTValidationPolicy
+		expectError           bool
+		errorContains         string
+	}{
+		{
+			name:                  "valid distinct policies",
+			subjectTokenPolicy:    validSubjectPolicy,
+			clientAssertionPolicy: validClientPolicy,
+		},
+		{
+			name: "subject policy requires jwks provider",
+			subjectTokenPolicy: JWTValidationPolicy{
+				ExpectedIssuers: []string{"https://upstream.example.com"},
+			},
+			clientAssertionPolicy: validClientPolicy,
+			expectError:           true,
+			errorContains:         "subject_token jwks_provider cannot be nil",
+		},
+		{
+			name:               "client assertion policy requires jwks provider",
+			subjectTokenPolicy: validSubjectPolicy,
+			clientAssertionPolicy: JWTValidationPolicy{
+				ExpectedIssuers: []string{"https://upstream.example.com"},
+			},
+			expectError:   true,
+			errorContains: "client_assertion jwks_provider cannot be nil",
+		},
+		{
+			name: "subject policy requires issuer",
+			subjectTokenPolicy: JWTValidationPolicy{
+				JWKSProvider: baseProvider,
+			},
+			clientAssertionPolicy: validClientPolicy,
+			expectError:           true,
+			errorContains:         "subject_token expected_issuer cannot be empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			validator, err := NewJWTValidatorWithPolicies(
+				tt.subjectTokenPolicy,
+				tt.clientAssertionPolicy,
+				"broker-id",
+				60,
+			)
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Nil(t, validator)
+				assert.ErrorContains(t, err, tt.errorContains)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, validator)
+			assert.Equal(t, []string{"https://upstream.example.com", "https://broker.example.com"}, validator.subjectTokenPolicy.ExpectedIssuers)
+			assert.Equal(t, []string{"https://upstream.example.com"}, validator.clientAssertionPolicy.ExpectedIssuers)
+		})
+	}
+}
+
 // TestValidateSubjectToken_EmptyToken tests handling of empty token
 func TestValidateSubjectToken_EmptyToken(t *testing.T) {
 	t.Parallel()
@@ -309,12 +389,12 @@ func TestExtractDiagnostics(t *testing.T) {
 
 	t.Run("empty token returns empty string", func(t *testing.T) {
 		t.Parallel()
-		assert.Equal(t, "", validator.extractDiagnostics(""))
+		assert.Equal(t, "", validator.extractDiagnostics("", validator.subjectTokenPolicy.ExpectedIssuers))
 	})
 
 	t.Run("unparseable token returns empty string", func(t *testing.T) {
 		t.Parallel()
-		assert.Equal(t, "", validator.extractDiagnostics("not-a-jwt"))
+		assert.Equal(t, "", validator.extractDiagnostics("not-a-jwt", validator.subjectTokenPolicy.ExpectedIssuers))
 	})
 
 	t.Run("parseable token returns expected vs actual claims", func(t *testing.T) {
@@ -328,7 +408,7 @@ func TestExtractDiagnostics(t *testing.T) {
 		serialized, signErr := jwt.Sign(tok, jwt.WithInsecureNoSignature())
 		require.NoError(t, signErr)
 
-		diag := validator.extractDiagnostics(string(serialized))
+		diag := validator.extractDiagnostics(string(serialized), validator.subjectTokenPolicy.ExpectedIssuers)
 		assert.Contains(t, diag, `sub="user@example.com"`)
 		assert.Contains(t, diag, `expected_iss="https://auth.example.com"`)
 		assert.Contains(t, diag, `actual_iss="https://wrong-issuer.com"`)
@@ -359,12 +439,16 @@ func TestExtractDiagnostics(t *testing.T) {
 // newTestKeyPair creates an ECDSA P-256 key pair for testing.
 // Returns the JWK private key and a key set containing the public key.
 func newTestKeyPair(t *testing.T) (jwk.Key, jwk.Set) {
+	return newTestKeyPairWithID(t, "test-kid")
+}
+
+func newTestKeyPairWithID(t *testing.T, kid string) (jwk.Key, jwk.Set) {
 	t.Helper()
 	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	jwkKey, err := jwk.Import(privKey)
 	require.NoError(t, err)
-	require.NoError(t, jwkKey.Set(jwk.KeyIDKey, "test-kid"))
+	require.NoError(t, jwkKey.Set(jwk.KeyIDKey, kid))
 	require.NoError(t, jwkKey.Set(jwk.AlgorithmKey, jwa.ES256()))
 
 	pubKey, err := jwkKey.PublicKey()
@@ -372,6 +456,116 @@ func newTestKeyPair(t *testing.T) (jwk.Key, jwk.Set) {
 	keySet := jwk.NewSet()
 	require.NoError(t, keySet.AddKey(pubKey))
 	return jwkKey, keySet
+}
+
+func mergeKeySets(t *testing.T, sets ...jwk.Set) jwk.Set {
+	t.Helper()
+
+	merged := jwk.NewSet()
+	for _, set := range sets {
+		for i := 0; i < set.Len(); i++ {
+			key, ok := set.Key(i)
+			require.True(t, ok)
+			require.NoError(t, merged.AddKey(key))
+		}
+	}
+	return merged
+}
+
+func newSignedToken(
+	t *testing.T,
+	signingKey jwk.Key,
+	issuer string,
+	audience []string,
+	subject string,
+	expiration time.Time,
+) string {
+	t.Helper()
+
+	tok, err := jwt.NewBuilder().
+		Issuer(issuer).
+		Audience(audience).
+		Subject(subject).
+		Expiration(expiration).
+		Build()
+	require.NoError(t, err)
+
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), signingKey))
+	require.NoError(t, err)
+
+	return string(signed)
+}
+
+func TestJWTValidatorWithSeparatePolicies(t *testing.T) {
+	t.Parallel()
+
+	const (
+		upstreamIssuer = "https://upstream.example.com"
+		localIssuer    = "https://broker.example.com"
+		audience       = "broker-id"
+	)
+
+	upstreamKey, upstreamSet := newTestKeyPairWithID(t, "upstream-kid")
+	localKey, localSet := newTestKeyPairWithID(t, "local-kid")
+	subjectTokenProvider := &MockJWKSProvider{keySet: mergeKeySets(t, upstreamSet, localSet)}
+	clientAssertionProvider := &MockJWKSProvider{keySet: upstreamSet}
+
+	validator, err := NewJWTValidatorWithPolicies(
+		JWTValidationPolicy{
+			JWKSProvider:    subjectTokenProvider,
+			ExpectedIssuers: []string{upstreamIssuer, localIssuer},
+		},
+		JWTValidationPolicy{
+			JWKSProvider:    clientAssertionProvider,
+			ExpectedIssuers: []string{upstreamIssuer},
+		},
+		audience,
+		60,
+	)
+	require.NoError(t, err)
+
+	t.Run("subject token signed by upstream is accepted", func(t *testing.T) {
+		t.Parallel()
+
+		tokenString := newSignedToken(t, upstreamKey, upstreamIssuer, []string{audience}, "upstream-user", time.Now().Add(time.Hour))
+
+		token, err := validator.ValidateSubjectToken(context.Background(), tokenString)
+
+		require.NoError(t, err)
+		require.NotNil(t, token)
+		issuer, ok := token.Issuer()
+		require.True(t, ok)
+		assert.Equal(t, upstreamIssuer, issuer)
+	})
+
+	t.Run("subject token signed by local broker key is accepted", func(t *testing.T) {
+		t.Parallel()
+
+		tokenString := newSignedToken(t, localKey, localIssuer, []string{audience}, "local-user", time.Now().Add(time.Hour))
+
+		token, err := validator.ValidateSubjectToken(context.Background(), tokenString)
+
+		require.NoError(t, err)
+		require.NotNil(t, token)
+		issuer, ok := token.Issuer()
+		require.True(t, ok)
+		assert.Equal(t, localIssuer, issuer)
+	})
+
+	t.Run("client assertion signed by local broker key is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		tokenString := newSignedToken(t, localKey, localIssuer, []string{audience}, "local-client", time.Now().Add(time.Hour))
+
+		_, err := validator.ValidateClientAssertion(context.Background(), tokenString)
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "malformed or signature verification failed")
+
+		tokenErr, ok := err.(*TokenExchangeError)
+		require.True(t, ok)
+		assert.Equal(t, "invalid_client", tokenErr.Code())
+	})
 }
 
 // TestMapParseError_RealLibraryErrors verifies that validation errors produced by the actual

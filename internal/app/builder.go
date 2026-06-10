@@ -591,78 +591,6 @@ func (b *Builder) Build() (*App, error) {
 		}
 	}
 
-	// Token exchange (RFC 8693) requires an upstream JWT issuer for JWKS validation.
-	// Only available in proxy/hybrid mode where an upstream issuer is configured.
-	if tokenExchangeEnabled {
-		// Validate required dependencies
-		if app.ConsentService == nil {
-			return nil, fmt.Errorf("token exchange service requires consent service, but storage repositories (Agents, Services, UserGrants) are not available")
-		}
-
-		// Create CEL evaluator with configuration
-		celConfig := tokenexchange.CELEvaluatorConfig{
-			PrincipalExpression:     b.config.TokenExchange.ClaimExtraction.PrincipalExpression,
-			AgentIDExpression:       b.config.TokenExchange.ClaimExtraction.AgentIDExpression,
-			AuthorizationExpression: b.config.TokenExchange.Authorization.CEL.Expression,
-			EvaluationTimeout:       b.config.TokenExchange.Authorization.CEL.EvaluationTimeout,
-		}
-
-		// T039: When feature is disabled, register resolveAgentIdByClientId CEL function so
-		// agent_id_expression can look up an agent by its upstream client_id.
-		// When enabled, the expression receives the UUID directly from the token — no lookup needed.
-		if !ov.multiAgentClient.Enabled {
-			celConfig.ResolveAgentIDByClientID = func(clientID string) (string, error) {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				agent, err := agentService.ResolveUniqueByClientID(ctx, id.ClientID(clientID))
-				if err != nil {
-					return "", fmt.Errorf("resolveAgentIdByClientId: %w", err)
-				}
-				return agent.ID.String(), nil
-			}
-		}
-
-		celEvaluator, err := tokenexchange.NewCELEvaluator(celConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create CEL evaluator for token exchange: %w", err)
-		}
-
-		// Create JWT validator using the shared upstream JWKS adapter.
-		// Per spec SR-001: Client assertion and subject_token JWTs validated against JWKS
-		brokerAudience := b.config.TokenExchange.ExpectedAudience
-		if brokerAudience == "" {
-			brokerAudience = tokenexchange.DefaultBrokerAudience
-		}
-		jwtValidator, err := tokenexchange.NewJWTValidator(
-			sharedUpstreamJWKS,
-			ov.upstreamIssuerURI,
-			brokerAudience,
-			tokenexchange.DefaultClockSkewTolerance, // Per spec FR-042: 60 second clock skew tolerance
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create JWT validator for token exchange: %w", err)
-		}
-
-		// Create token exchange service
-		// Per Constitution Principle VI: service depends on domain service, not raw repository
-		// SessionRepository is no longer needed - token lifecycle is managed through OAuth2SessionService
-		tokenExchangeService, err := tokenexchange.NewTokenExchangeService(
-			jwtValidator,
-			celEvaluator,
-			app.ProviderService,
-			app.OAuth2SessionService,
-			app.ConsentService,
-			app.PermissionSetService,
-			b.storage.Agents(),
-			&b.config.TokenExchange,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create token exchange service: %w", err)
-		}
-
-		app.TokenExchangeService = tokenExchangeService
-	}
-
 	// Create JWT pre-authentication adapter if configured
 	// Per Constitution Principle VII: Configuration-Driven Design — only create when JWT block present
 	if b.config.Server.EndUser.Authentication.JWT != nil {
@@ -740,6 +668,7 @@ func (b *Builder) Build() (*App, error) {
 	var proceedHandler enduser.AuthorizationProceedStrategy
 	var jwksHandler *enduserHandlers.JWKSHandler
 	var jwksPublisherHealth ports.JWKSPublisherHealthPort
+	var jwksPublisher ports.JWKSPublisherPort
 
 	localIssuerURI := ov.localIssuerURI
 
@@ -822,6 +751,7 @@ func (b *Builder) Build() (*App, error) {
 		if b.jwksPublisher != nil {
 			publisher = b.jwksPublisher
 		}
+		jwksPublisher = publisher
 		jwksHandler = enduserHandlers.NewJWKSHandler(publisher, b.logger)
 	case *ports.HybridOAuth2Config:
 		signingKeyService := wireLocalAdminHandlers()
@@ -861,6 +791,7 @@ func (b *Builder) Build() (*App, error) {
 		if healthPublisher, ok := hybridPublisher.(ports.JWKSPublisherHealthPort); ok {
 			jwksPublisherHealth = healthPublisher
 		}
+		jwksPublisher = hybridPublisher
 		jwksHandler = enduserHandlers.NewJWKSHandler(hybridPublisher, b.logger)
 	case *ports.ProxyOAuth2Config:
 		grantHandler, proceedHandler = buildProxyStrategies(cfg.UpstreamTokenEndpoint)
@@ -876,9 +807,95 @@ func (b *Builder) Build() (*App, error) {
 		if healthPublisher, ok := proxyPublisher.(ports.JWKSPublisherHealthPort); ok {
 			jwksPublisherHealth = healthPublisher
 		}
+		jwksPublisher = proxyPublisher
 		jwksHandler = enduserHandlers.NewJWKSHandler(proxyPublisher, b.logger)
 	default:
 		panic(fmt.Sprintf("BUG: unhandled OAuth2ModeConfig type %T — update strategy switch", oauthCfg))
+	}
+
+	// Token exchange trusts the broker-published JWKS surface for subject tokens,
+	// while client assertions remain tied to the upstream issuer and JWKS.
+	if tokenExchangeEnabled {
+		if app.ConsentService == nil {
+			return nil, fmt.Errorf("token exchange service requires consent service, but storage repositories (Agents, Services, UserGrants) are not available")
+		}
+		if jwksPublisher == nil {
+			return nil, fmt.Errorf("token exchange requires JWKS publisher, but none was wired")
+		}
+		if sharedUpstreamJWKS == nil {
+			return nil, fmt.Errorf("token exchange requires upstream JWKS adapter, but none was initialized")
+		}
+
+		celConfig := tokenexchange.CELEvaluatorConfig{
+			PrincipalExpression:     b.config.TokenExchange.ClaimExtraction.PrincipalExpression,
+			AgentIDExpression:       b.config.TokenExchange.ClaimExtraction.AgentIDExpression,
+			AuthorizationExpression: b.config.TokenExchange.Authorization.CEL.Expression,
+			EvaluationTimeout:       b.config.TokenExchange.Authorization.CEL.EvaluationTimeout,
+		}
+		if !ov.multiAgentClient.Enabled {
+			celConfig.ResolveAgentIDByClientID = func(clientID string) (string, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				agent, err := agentService.ResolveUniqueByClientID(ctx, id.ClientID(clientID))
+				if err != nil {
+					return "", fmt.Errorf("resolveAgentIdByClientId: %w", err)
+				}
+				return agent.ID.String(), nil
+			}
+		}
+
+		celEvaluator, err := tokenexchange.NewCELEvaluator(celConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create CEL evaluator for token exchange: %w", err)
+		}
+
+		clientAssertionJWKSAdapter := sharedUpstreamJWKS
+		subjectTokenJWKSAdapter, err := jwks.NewPublishedAdapter(jwksPublisher)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create published JWKS adapter for token exchange subject tokens: %w", err)
+		}
+
+		subjectTokenIssuers := []string{ov.upstreamIssuerURI}
+		if _, ok := oauthCfg.(*ports.HybridOAuth2Config); ok {
+			subjectTokenIssuers = append(subjectTokenIssuers, localIssuerURI)
+		}
+
+		brokerAudience := b.config.TokenExchange.ExpectedAudience
+		if brokerAudience == "" {
+			brokerAudience = tokenexchange.DefaultBrokerAudience
+		}
+
+		jwtValidator, err := tokenexchange.NewJWTValidatorWithPolicies(
+			tokenexchange.JWTValidationPolicy{
+				JWKSProvider:    subjectTokenJWKSAdapter,
+				ExpectedIssuers: subjectTokenIssuers,
+			},
+			tokenexchange.JWTValidationPolicy{
+				JWKSProvider:    clientAssertionJWKSAdapter,
+				ExpectedIssuers: []string{ov.upstreamIssuerURI},
+			},
+			brokerAudience,
+			tokenexchange.DefaultClockSkewTolerance,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create JWT validator for token exchange: %w", err)
+		}
+
+		tokenExchangeService, err := tokenexchange.NewTokenExchangeService(
+			jwtValidator,
+			celEvaluator,
+			app.ProviderService,
+			app.OAuth2SessionService,
+			app.ConsentService,
+			app.PermissionSetService,
+			b.storage.Agents(),
+			&b.config.TokenExchange,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create token exchange service: %w", err)
+		}
+
+		app.TokenExchangeService = tokenExchangeService
 	}
 
 	app.jwksPublisherHealth = jwksPublisherHealth
