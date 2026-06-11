@@ -629,7 +629,6 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 	// Step 1: Create chi.Mux with standard middleware
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
-	router.Use(middleware.RealIP)
 	router.Use(middleware.Logger)
 	router.Use(middleware.Recoverer)
 

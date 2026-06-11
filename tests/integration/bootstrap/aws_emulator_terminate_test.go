@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	dockercontainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
+	dockercontainer "github.com/moby/moby/api/types/container"
+	dockernetwork "github.com/moby/moby/api/types/network"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -52,7 +52,7 @@ func (c *fakeTestcontainersContainer) Endpoint(context.Context, string) (string,
 	return "", nil
 }
 
-func (c *fakeTestcontainersContainer) PortEndpoint(context.Context, nat.Port, string) (string, error) {
+func (c *fakeTestcontainersContainer) PortEndpoint(context.Context, string, string) (string, error) {
 	return "", nil
 }
 
@@ -64,11 +64,11 @@ func (c *fakeTestcontainersContainer) Inspect(context.Context) (*dockercontainer
 	return nil, nil
 }
 
-func (c *fakeTestcontainersContainer) MappedPort(context.Context, nat.Port) (nat.Port, error) {
-	return "", nil
+func (c *fakeTestcontainersContainer) MappedPort(context.Context, string) (dockernetwork.Port, error) {
+	return dockernetwork.Port{}, nil
 }
 
-func (c *fakeTestcontainersContainer) Ports(context.Context) (nat.PortMap, error) {
+func (c *fakeTestcontainersContainer) Ports(context.Context) (dockernetwork.PortMap, error) {
 	return nil, nil
 }
 
