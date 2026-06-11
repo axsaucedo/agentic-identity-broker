@@ -23,6 +23,8 @@ Previous analysis in [ADR 008: Encryption Context Optimization](008-encryption-c
 
 We will implement **envelope encryption with DEK per service_id context** using **AWS KMS Hierarchical Keyring with Branch Key caching** as the primary key management solution, with **context binding** for service isolation.
 
+> This ADR's `service_id` context rules apply specifically to the **OAuth2 token vault** (user-session access and refresh tokens). The later amendment to [ADR 008](008-encryption-context-optimization.md#amendment-2026-06-01-single-subject-context-extension-for-non-session-assets) extends the same single-subject pattern to non-session assets such as broker signing-key private material, which use `kid` instead of `service_id`.
+
 ### Core Architecture
 
 1. **Three-Layer Key Hierarchy**
@@ -68,7 +70,7 @@ We will implement **envelope encryption with DEK per service_id context** using 
 
 ### 2. Service-ID-Only Context Binding
 
-**Chosen**: `{"service_id": "oauth2"}` as encryption context
+**Chosen for OAuth2 user-session tokens**: `{"service_id": "oauth2"}` as encryption context
 
 **Alternative Considered**: Multi-field context with principal, session_id, timestamp
 **Analysis in**: [ADR 008: Encryption Context Optimization](008-encryption-context-optimization.md)
@@ -229,7 +231,7 @@ encrypted bytes in the repository. This maintains hexagonal architecture purity.
 
 ## Related Documents
 
-- [ADR 008: Encryption Context Optimization](008-encryption-context-optimization.md) - Context binding performance analysis
+- [ADR 008: Encryption Context Optimization](008-encryption-context-optimization.md) - Context binding performance analysis for OAuth2 token encryption, plus the 2026-06-01 amendment extending the same single-subject rule to non-session assets (for example signing-key private material using `kid`)
 - [ADR 012: Encryption Layer Separation](012-encryption-layer-separation.md) - Architectural pattern for domain vs. adapter encryption
 - [AWS Encryption Vault Specification](../specs/012-aws-encryption-vault/spec.md) - Functional requirements
 - [Error Contract](../specs/012-aws-encryption-vault/contracts/error-contract.md) - Error handling patterns

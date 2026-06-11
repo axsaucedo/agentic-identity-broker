@@ -45,6 +45,9 @@ oauth2_authorization_server:
   local:
     token_ttl: "1h"
     token_claims_expression: ""
+    signing_keys:
+      # Startup budget for initial signing-key bootstrap in hybrid mode.
+      bootstrap_timeout: 90s
 
   # Optional: enable CIMD support for CIMDClient agents (allowed in hybrid mode)
   # cimd:

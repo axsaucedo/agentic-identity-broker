@@ -8,23 +8,62 @@ import (
 
 	pgx "github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jmoiron/sqlx"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// Compile-time interface check
+// Compile-time interface checks
 var _ ports.SigningKeyRepository = (*SigningKeyRepo)(nil)
+var _ ports.SigningKeyBootstrapCoordinator = (*SigningKeyRepo)(nil)
 
 // SigningKeyRepo implements SigningKeyRepository using PostgreSQL.
 type SigningKeyRepo struct {
 	adapter *Adapter
 }
 
+// signingKeyBootstrapLockID is the advisory lock key guarding initial signing key bootstrap.
+const signingKeyBootstrapLockID int64 = 0x53494b4253545250
+
+type lockedSigningKeyRow struct {
+	KID         id.KeyID  `db:"kid"`
+	IsCurrent   bool      `db:"is_current"`
+	ActivatesAt time.Time `db:"activates_at"`
+}
+
 // NewSigningKeyRepo creates a new PostgreSQL signing key repository.
 func NewSigningKeyRepo(adapter *Adapter) *SigningKeyRepo {
 	return &SigningKeyRepo{adapter: adapter}
+}
+
+func (r *SigningKeyRepo) lockActiveSigningKeys(ctx context.Context, tx *sqlx.Tx) ([]lockedSigningKeyRow, error) {
+	var rows []lockedSigningKeyRow
+	err := tx.SelectContext(ctx, &rows,
+		`SELECT kid, is_current, activates_at
+		 FROM signing_keys
+		 WHERE removed_at IS NULL
+		 ORDER BY kid
+		 FOR UPDATE`)
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func currentUsableLockedSigningKey(rows []lockedSigningKeyRow, now time.Time) *lockedSigningKeyRow {
+	var best *lockedSigningKeyRow
+	for i := range rows {
+		row := &rows[i]
+		if row.ActivatesAt.After(now) {
+			continue
+		}
+		if best == nil || (!best.IsCurrent && row.IsCurrent) || (best.IsCurrent == row.IsCurrent && row.ActivatesAt.After(best.ActivatesAt)) {
+			best = row
+		}
+	}
+	return best
 }
 
 func (r *SigningKeyRepo) Create(ctx context.Context, key *storage.SigningKey) error {
@@ -99,7 +138,7 @@ func (r *SigningKeyRepo) GetByKID(ctx context.Context, kid id.KeyID) (*storage.S
 		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 			return nil, storage.NewStorageError("SigningKeyRepo.GetByKID", storage.ErrorKindNotFound, err, "signing key not found")
 		}
-		if errors.Is(err, context.DeadlineExceeded) {
+		if isContextTimeoutOrCanceled(err) {
 			return nil, storage.NewStorageError("SigningKeyRepo.GetByKID", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
 		return nil, storage.NewStorageError("SigningKeyRepo.GetByKID", storage.ErrorKindConnection, err, "failed to query signing key")
@@ -132,7 +171,7 @@ func (r *SigningKeyRepo) GetCurrent(ctx context.Context) (*storage.SigningKey, e
 		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 			return nil, storage.NewStorageError("SigningKeyRepo.GetCurrent", storage.ErrorKindNotFound, err, "no current signing key")
 		}
-		if errors.Is(err, context.DeadlineExceeded) {
+		if isContextTimeoutOrCanceled(err) {
 			return nil, storage.NewStorageError("SigningKeyRepo.GetCurrent", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
 		return nil, storage.NewStorageError("SigningKeyRepo.GetCurrent", storage.ErrorKindConnection, err, "failed to query current signing key")
@@ -158,11 +197,11 @@ func (r *SigningKeyRepo) ListActive(ctx context.Context) ([]*storage.SigningKey,
 	return keys, nil
 }
 
-// SetCurrent promotes a key to be the current signing key and sets activates_at = NOW()
-// because an explicit admin promotion targets a key already present in the JWKS.
-func (r *SigningKeyRepo) SetCurrent(ctx context.Context, kid id.KeyID) error {
+// SetCurrent promotes a key to be the current signing key using the domain-supplied
+// activation timestamp.
+func (r *SigningKeyRepo) SetCurrent(ctx context.Context, kid id.KeyID, activatesAt time.Time) (*storage.SigningKey, error) {
 	if r.adapter.db == nil {
-		return storage.NewStorageError("SigningKeyRepo.SetCurrent", storage.ErrorKindConnection, nil, "database not initialized")
+		return nil, storage.NewStorageError("SigningKeyRepo.SetCurrent", storage.ErrorKindConnection, nil, "database not initialized")
 	}
 
 	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
@@ -170,30 +209,47 @@ func (r *SigningKeyRepo) SetCurrent(ctx context.Context, kid id.KeyID) error {
 
 	tx, err := r.adapter.db.BeginTxx(execCtx, nil)
 	if err != nil {
-		return classifySigningKeyRepoError("SigningKeyRepo.SetCurrent", err, "failed to begin transaction")
+		return nil, classifySigningKeyRepoError("SigningKeyRepo.SetCurrent", err, "failed to begin transaction")
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	// Demote all current keys
-	_, err = tx.ExecContext(execCtx, `UPDATE signing_keys SET is_current = false WHERE is_current = true`)
+	lockedRows, err := r.lockActiveSigningKeys(execCtx, tx)
 	if err != nil {
-		return classifySigningKeyRepoError("SigningKeyRepo.SetCurrent", err, "failed to demote keys")
+		return nil, classifySigningKeyRepoError("SigningKeyRepo.SetCurrent", err, "failed to lock active signing keys")
 	}
 
-	// Promote the target key and reset activates_at to NOW() so it starts signing immediately.
-	result, err := tx.ExecContext(execCtx,
-		`UPDATE signing_keys SET is_current = true, activates_at = NOW() WHERE kid = $1 AND removed_at IS NULL`, kid)
-	if err != nil {
-		return classifySigningKeyRepoError("SigningKeyRepo.SetCurrent", err, "failed to promote key")
+	foundTarget := false
+	for _, row := range lockedRows {
+		if row.KID == kid {
+			foundTarget = true
+			break
+		}
 	}
-	if err := checkRowsAffected("SigningKeyRepo.SetCurrent", result, "signing key not found"); err != nil {
-		return err
+	if !foundTarget {
+		return nil, storage.NewStorageError("SigningKeyRepo.SetCurrent", storage.ErrorKindNotFound, nil, "signing key not found")
+	}
+
+	// Demote all current keys.
+	_, err = tx.ExecContext(execCtx, `UPDATE signing_keys SET is_current = false WHERE is_current = true`)
+	if err != nil {
+		return nil, classifySigningKeyRepoError("SigningKeyRepo.SetCurrent", err, "failed to demote keys")
+	}
+
+	// Promote the target key using the activation timestamp chosen by the domain service.
+	var key storage.SigningKey
+	err = tx.GetContext(execCtx, &key,
+		`UPDATE signing_keys
+		 SET is_current = true, activates_at = $2
+		 WHERE kid = $1 AND removed_at IS NULL
+		 RETURNING id, kid, algorithm, private_key_encrypted, is_current, activates_at, created_at, removed_at`, kid, activatesAt)
+	if err != nil {
+		return nil, classifySigningKeyRepoError("SigningKeyRepo.SetCurrent", err, "failed to promote key")
 	}
 
 	if err := tx.Commit(); err != nil {
-		return classifySigningKeyRepoError("SigningKeyRepo.SetCurrent", err, "failed to commit transaction")
+		return nil, classifySigningKeyRepoError("SigningKeyRepo.SetCurrent", err, "failed to commit transaction")
 	}
-	return nil
+	return &key, nil
 }
 
 func (r *SigningKeyRepo) Delete(ctx context.Context, kid id.KeyID) error {
@@ -204,13 +260,89 @@ func (r *SigningKeyRepo) Delete(ctx context.Context, kid id.KeyID) error {
 	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
 	defer cancel()
 
+	tx, err := r.adapter.db.BeginTxx(execCtx, nil)
+	if err != nil {
+		return classifySigningKeyRepoError("SigningKeyRepo.Delete", err, "failed to begin transaction")
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	lockedRows, err := r.lockActiveSigningKeys(execCtx, tx)
+	if err != nil {
+		return classifySigningKeyRepoError("SigningKeyRepo.Delete", err, "failed to lock active signing keys")
+	}
+
+	activeCount := len(lockedRows)
+	foundTarget := false
+	targetIsCurrent := false
+	for _, row := range lockedRows {
+		if row.KID == kid {
+			foundTarget = true
+			targetIsCurrent = row.IsCurrent
+			break
+		}
+	}
+
+	if !foundTarget {
+		return storage.NewStorageError("SigningKeyRepo.Delete", storage.ErrorKindNotFound, nil, "signing key not found")
+	}
+	if activeCount <= 1 {
+		return ports.ErrLastActiveKey
+	}
+	if targetIsCurrent {
+		return ports.ErrCurrentKey
+	}
+
 	now := time.Now()
-	result, err := r.adapter.db.ExecContext(execCtx,
+	if current := currentUsableLockedSigningKey(lockedRows, now); current != nil && current.KID == kid {
+		return ports.ErrEffectiveCurrentKey
+	}
+	result, err := tx.ExecContext(execCtx,
 		`UPDATE signing_keys SET removed_at = $1 WHERE kid = $2 AND removed_at IS NULL`, now, kid)
 	if err != nil {
 		return classifySigningKeyRepoError("SigningKeyRepo.Delete", err, "failed to delete signing key")
 	}
-	return checkRowsAffected("SigningKeyRepo.Delete", result, "signing key not found")
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return storage.NewStorageError("SigningKeyRepo.Delete", storage.ErrorKindUnknown, err, "failed to determine rows affected")
+	}
+	if rowsAffected != 1 {
+		return storage.NewStorageError("SigningKeyRepo.Delete", storage.ErrorKindUnknown, nil, "invariant violation: locked signing key was not updated")
+	}
+	if err := tx.Commit(); err != nil {
+		return classifySigningKeyRepoError("SigningKeyRepo.Delete", err, "failed to commit transaction")
+	}
+	return nil
+}
+
+func (r *SigningKeyRepo) WithBootstrapLock(ctx context.Context, fn func(context.Context) error) error {
+	if r.adapter.db == nil {
+		return storage.NewStorageError("SigningKeyRepo.WithBootstrapLock", storage.ErrorKindConnection, nil, "database not initialized")
+	}
+
+	conn, err := r.adapter.db.Connx(ctx)
+	if err != nil {
+		return classifySigningKeyRepoError("SigningKeyRepo.WithBootstrapLock", err, "failed to acquire database connection")
+	}
+	defer conn.Close() //nolint:errcheck
+
+	tx, err := conn.BeginTxx(ctx, nil)
+	if err != nil {
+		return classifySigningKeyRepoError("SigningKeyRepo.WithBootstrapLock", err, "failed to begin transaction")
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, signingKeyBootstrapLockID); err != nil {
+		return classifySigningKeyRepoError("SigningKeyRepo.WithBootstrapLock", err, "failed to acquire signing key bootstrap lock")
+	}
+
+	if err := fn(ctx); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return classifySigningKeyRepoError("SigningKeyRepo.WithBootstrapLock", err, "failed to commit transaction")
+	}
+	return nil
 }
 
 func (r *SigningKeyRepo) CountActive(ctx context.Context) (int, error) {
@@ -225,7 +357,7 @@ func (r *SigningKeyRepo) CountActive(ctx context.Context) (int, error) {
 	err := r.adapter.db.GetContext(queryCtx, &count,
 		`SELECT COUNT(*) FROM signing_keys WHERE removed_at IS NULL`)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
+		if isContextTimeoutOrCanceled(err) {
 			return 0, storage.NewStorageError("SigningKeyRepo.CountActive", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
 		return 0, storage.NewStorageError("SigningKeyRepo.CountActive", storage.ErrorKindConnection, err, "failed to count signing keys")
@@ -234,7 +366,7 @@ func (r *SigningKeyRepo) CountActive(ctx context.Context) (int, error) {
 }
 
 func classifySigningKeyRepoError(operation string, err error, message string) error {
-	if errors.Is(err, context.DeadlineExceeded) {
+	if isContextTimeoutOrCanceled(err) {
 		return storage.NewStorageError(operation, storage.ErrorKindTimeout, err, "operation exceeded timeout")
 	}
 	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
@@ -250,4 +382,8 @@ func classifySigningKeyRepoError(operation string, err error, message string) er
 		}
 	}
 	return storage.NewStorageError(operation, storage.ErrorKindConnection, err, message)
+}
+
+func isContextTimeoutOrCanceled(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
 }

@@ -14,7 +14,7 @@ Ports are **interfaces only** + minimal DTOs. No business logic. No implementati
 | `encryption.go` | `EncryptionPort`, `BranchKeyRepository`, `BranchKeyIdProvider` | Envelope encryption with AAD + branch key management. Alias: `BranchKeyManager = BranchKeyRepository` |
 | `jwks.go` | `JWKSPort`, `JWKSHealthPort` | JWKS retrieval with embedded health reporting plus the health-only facet |
 | `oauth2.go` | `OAuth2Service` | OAuth2 authorization + RFC 8414 metadata. DTOs: `AuthorizationRequest`, `AuthorizationDecision`, `MetadataResponse` |
-| `oauth2server.go` | See `oauth2server.go` for authoritative interface/error/DTO names | OAuth2 server signing key + credential generation ports. Read the file directly for the exact contract surface. |
+| `oauth2server.go` | `SigningKeyManager`, `SigningKeyBootstrapCoordinator`, `CredentialGenerator` | OAuth2 server signing key lifecycle, initial-key bootstrap coordination, and credential generation ports. Read the file directly for the exact contract surface. |
 | `server.go` | `HealthState` (enum) | Server lifecycle: `Starting`, `Healthy`, `ShuttingDown`, `Unhealthy` |
 | `storage.go` | `HealthChecker`, `UserRepository`, `AgentRepository`, `UserGrantRepository`, `UserSessionRepository` | All storage repos. Sentinel: `ErrNotFound` |
 | `thirdparty_provider.go` | `ThirdpartyOAuth2ProviderRepository` | Provider config storage. Uses `model.ThirdpartyOAuth2ProviderEntity` (encrypted `Secret`). Adapters never decrypt. |

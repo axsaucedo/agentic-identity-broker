@@ -52,6 +52,7 @@ var _ = Describe("US1: Client Credential Management (local mode)", func() {
 		}
 	})
 
+	// Scenario 1.1 from specs/025-oauth2-server/spec.md
 	It("generates credentials for an agent", func() {
 		resp, err := http.Post(
 			adminServer.BaseURL()+"/api/agents/"+agent.ID.String()+"/client-credentials",
@@ -68,6 +69,7 @@ var _ = Describe("US1: Client Credential Management (local mode)", func() {
 		Expect(body).To(HaveKey("created_at"))
 	})
 
+	// Scenario 1.2 from specs/025-oauth2-server/spec.md
 	It("rotates existing credentials", func() {
 		resp, _ := http.Post(
 			adminServer.BaseURL()+"/api/agents/"+agent.ID.String()+"/client-credentials",
@@ -90,6 +92,7 @@ var _ = Describe("US1: Client Credential Management (local mode)", func() {
 		Expect(body).To(HaveKey("client_secret"))
 	})
 
+	// Scenario 1.3 from specs/025-oauth2-server/spec.md
 	It("returns 404 for missing agent", func() {
 		resp, err := http.Post(
 			adminServer.BaseURL()+"/api/agents/00000000-0000-0000-0000-000000000099/client-credentials",
@@ -100,6 +103,7 @@ var _ = Describe("US1: Client Credential Management (local mode)", func() {
 		Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
 	})
 
+	// Scenario 1.4 from specs/025-oauth2-server/spec.md
 	It("gets credential metadata without secret", func() {
 		resp, _ := http.Post(
 			adminServer.BaseURL()+"/api/agents/"+agent.ID.String()+"/client-credentials",

@@ -249,6 +249,32 @@ The Identity Broker runs two independent HTTP servers on separate ports:
 - Health endpoints are available on both servers at `/health`
 - Graceful shutdown waits for in-flight requests to complete (up to timeout)
 
+#### Storage Configuration
+
+Storage configuration controls the persistence backend and steady-state timeout budgets used by storage-backed workflows.
+
+| Option | Type | Default Value | Valid Values | Required? | Environment Variable | CLI Flag | Description |
+|--------|------|---------------|--------------|-----------|----------------------|----------|-------------|
+| `storage.backend` | enum | `memory` | `memory`, `postgres` | No | `IDENTITY_BROKER_STORAGE_BACKEND` | N/A | Selects the storage backend. Use `postgres` for persistent or multi-replica deployments. |
+| `storage.postgres.connection_url` | string | - | PostgreSQL connection URL | Yes when `storage.backend=postgres` | `IDENTITY_BROKER_STORAGE_POSTGRES_URL` | N/A | PostgreSQL connection string for the persistent storage backend. |
+| `storage.timeouts.read` | duration | `5s` | Positive duration | No | N/A | N/A | Timeout for steady-state storage read operations. |
+| `storage.timeouts.write` | duration | `10s` | Positive duration | No | N/A | N/A | Timeout for steady-state storage write operations. |
+
+**Storage Configuration Notes:**
+- `storage.timeouts.read` and `storage.timeouts.write` cover steady-state repository operations.
+- The signing-key startup budget now lives at `oauth2_authorization_server.local.signing_keys.bootstrap_timeout` because it applies to local/hybrid token issuance rather than generic storage behavior.
+
+**Example YAML:**
+```yaml
+storage:
+  backend: postgres
+  postgres:
+    connection_url: ${IDENTITY_BROKER_STORAGE_POSTGRES_URL}
+  timeouts:
+    read: 5s
+    write: 10s
+```
+
 #### IPv4/IPv6 Dual-Stack Support
 
 The Identity Broker supports flexible network binding:
@@ -777,28 +803,29 @@ See `examples/config/oauth2-authorization-server.yaml` for a complete configurat
 
 ### OAuth2 Server Mode Configuration
 
-#### oauth2.auth_server
+#### oauth2_authorization_server
 
 **Description**: Controls the broker's OAuth2 operating mode. Three symmetric modes are supported:
 
-- **`proxy`**: OAuth2 requests are forwarded to an upstream authorization server. The broker acts as a transparent proxy — it handles consent and delegation, then routes the final authorization to the upstream. No local token issuance; no JWKS endpoint.
+- **`proxy`**: OAuth2 requests are forwarded to an upstream authorization server. The broker acts as a transparent proxy — it handles consent and delegation, then routes the final authorization to the upstream. No local token issuance; discovery and `jwks_uri` remain broker-hosted using upstream verification keys.
 - **`local`**: The broker acts as a standalone OAuth2 authorization server, minting its own JWT access tokens signed with managed asymmetric keys. Supports `client_credentials` and `authorization_code` (with PKCE) grant types, and exposes RFC 8414 discovery and JWKS endpoints.
 - **`hybrid`**: Both proxy and local paths coexist. Agents are classified by their properties: agents with an upstream `ClientID` are routed to the proxy path; local agents (no `ClientID`, no `client_uris`) and CIMD agents (`client_uris` set) are issued local tokens. Requires both `proxy` and `local` configuration sections.
 
 > **Note**: The mode name `issue_token` (used in earlier versions) is no longer valid. Use `local` instead.
 
-**Configuration block** (nested under `oauth2.auth_server`):
+**Configuration block** (nested under `oauth2_authorization_server`):
 
 | Option | Type | Default | Valid Values | Required? | Environment Variable | CLI Flag | Description |
 |--------|------|---------|--------------|-----------|----------------------|----------|-------------|
-| `oauth2.auth_server.mode` | enum | — | `proxy`, `local`, `hybrid` | Yes (if any auth server field is set) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE` | — | Operating mode. `proxy` forwards to upstream; `local` mints tokens locally; `hybrid` supports both. |
-| `oauth2.auth_server.proxy.upstream_issuer_uri` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI` | — | Upstream OAuth2 issuer URI. Used for proxy path routing. |
-| `oauth2.auth_server.proxy.upstream_authorize_endpoint` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT` | — | Upstream authorization endpoint. |
-| `oauth2.auth_server.proxy.upstream_token_endpoint` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT` | — | Upstream token endpoint. |
-| `oauth2.auth_server.proxy.upstream_jwks_min_refresh` | duration | `15m` | Go duration (e.g. `30s`, `5m`, `1h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_JWKS_MIN_REFRESH` | — | Minimum interval between upstream JWKS refresh attempts. Applies a floor to the cache cadence derived from upstream cache headers. |
-| `oauth2.auth_server.proxy.upstream_jwks_max_refresh` | duration | `1h` | Go duration (e.g. `5m`, `30m`, `2h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_JWKS_MAX_REFRESH` | — | Maximum interval between upstream JWKS refresh attempts. Caps how stale the broker will allow upstream JWKS cache entries to become. |
-| `oauth2.auth_server.local.token_ttl` | duration | `1h` | Go duration (e.g. `30m`, `2h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_TTL` | — | Validity period for locally issued JWT access tokens. |
-| `oauth2.auth_server.local.token_claims_expression` | string | `""` | CEL expression | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_CLAIMS_EXPRESSION` | — | CEL expression to inject custom claims into issued JWTs. |
+| `oauth2_authorization_server.mode` | enum | — | `proxy`, `local`, `hybrid` | Yes (if any auth server field is set) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE` | — | Operating mode. `proxy` forwards to upstream; `local` mints tokens locally; `hybrid` supports both. |
+| `oauth2_authorization_server.proxy.upstream_issuer_uri` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI` | — | Upstream OAuth2 issuer URI. Used for proxy path routing. |
+| `oauth2_authorization_server.proxy.upstream_authorize_endpoint` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT` | — | Upstream authorization endpoint. |
+| `oauth2_authorization_server.proxy.upstream_token_endpoint` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT` | — | Upstream token endpoint. |
+| `oauth2_authorization_server.proxy.upstream_jwks_min_refresh` | duration | `15m` | Go duration (e.g. `30s`, `5m`, `1h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_JWKS_MIN_REFRESH` | — | Minimum interval between upstream JWKS refresh attempts. Applies a floor to the cache cadence derived from upstream cache headers. |
+| `oauth2_authorization_server.proxy.upstream_jwks_max_refresh` | duration | `1h` | Go duration (e.g. `5m`, `30m`, `2h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_JWKS_MAX_REFRESH` | — | Maximum interval between upstream JWKS refresh attempts. Caps how stale the broker will allow upstream JWKS cache entries to become. |
+| `oauth2_authorization_server.local.token_ttl` | duration | `1h` | Go duration (e.g. `30m`, `2h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_TTL` | — | Validity period for locally issued JWT access tokens. |
+| `oauth2_authorization_server.local.token_claims_expression` | string | `""` | CEL expression | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_CLAIMS_EXPRESSION` | — | CEL expression to inject custom claims into issued JWTs. |
+| `oauth2_authorization_server.local.signing_keys.bootstrap_timeout` | duration | `90s` | Positive duration | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_SIGNING_KEYS_BOOTSTRAP_TIMEOUT` | — | Startup budget for signing-key bootstrap in local/hybrid mode. Covers advisory locking, key generation, encryption, and persistence. |
 
 **Required**: `oauth2_authorization_server.mode` is mandatory — the broker rejects startup when the block is absent or `mode` is empty or invalid. Set `mode` to `proxy`, `local`, or `hybrid` before deploying.
 
@@ -806,40 +833,41 @@ See `examples/config/oauth2-authorization-server.yaml` for a complete configurat
 
 **Proxy mode**:
 ```yaml
-oauth2:
-  auth_server:
-    mode: "proxy"
-    proxy:
-      upstream_issuer_uri: "https://auth.example.com"
-      upstream_authorize_endpoint: "https://auth.example.com/oauth/authorize"
-      upstream_token_endpoint: "https://auth.example.com/oauth/token"
-      upstream_jwks_min_refresh: "15m"
-      upstream_jwks_max_refresh: "1h"
+oauth2_authorization_server:
+  mode: "proxy"
+  proxy:
+    upstream_issuer_uri: "https://auth.example.com"
+    upstream_authorize_endpoint: "https://auth.example.com/oauth/authorize"
+    upstream_token_endpoint: "https://auth.example.com/oauth/token"
+    upstream_jwks_min_refresh: "15m"
+    upstream_jwks_max_refresh: "1h"
 ```
 
 **Local mode**:
 ```yaml
-oauth2:
-  auth_server:
-    mode: "local"
-    local:
-      token_ttl: "1h"
-      token_claims_expression: '{"team": agent.display_name}'
+oauth2_authorization_server:
+  mode: "local"
+  local:
+    token_ttl: "1h"
+    token_claims_expression: '{"team": agent.display_name}'
+    signing_keys:
+      bootstrap_timeout: 90s
 ```
 
 **Hybrid mode** (proxy and local agents coexist):
 ```yaml
-oauth2:
-  auth_server:
-    mode: "hybrid"
-    proxy:
-      upstream_issuer_uri: "https://auth.example.com"
-      upstream_authorize_endpoint: "https://auth.example.com/oauth/authorize"
-      upstream_token_endpoint: "https://auth.example.com/oauth/token"
-      upstream_jwks_min_refresh: "15m"
-      upstream_jwks_max_refresh: "1h"
-    local:
-      token_ttl: "1h"
+oauth2_authorization_server:
+  mode: "hybrid"
+  proxy:
+    upstream_issuer_uri: "https://auth.example.com"
+    upstream_authorize_endpoint: "https://auth.example.com/oauth/authorize"
+    upstream_token_endpoint: "https://auth.example.com/oauth/token"
+    upstream_jwks_min_refresh: "15m"
+    upstream_jwks_max_refresh: "1h"
+  local:
+    token_ttl: "1h"
+    signing_keys:
+      bootstrap_timeout: 90s
 ```
 
 **Security notes**:

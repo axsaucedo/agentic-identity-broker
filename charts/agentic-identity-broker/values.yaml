@@ -474,6 +474,9 @@ broker:
       tokenTtl: ""
       # -- CEL expression for custom token claims. Empty means no extra claims.
       tokenClaimsExpression: ""
+      signingKeys:
+        # -- Startup budget for signing-key bootstrap in local/hybrid mode. Defaults to 90s if empty.
+        bootstrapTimeout: ""
 
     # Multi-agent client sharing (Feature 021)
     # When enabled, multiple agents may share the same upstream OAuth2 client_id.

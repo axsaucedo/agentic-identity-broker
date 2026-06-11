@@ -252,6 +252,19 @@ func TestTokenExchangeExpectedAudienceConfiguration(t *testing.T) {
 	})
 }
 
+func TestSigningKeyBootstrapTimeoutConfiguration(t *testing.T) {
+	t.Run("bootstrap timeout is overridden by environment variable", func(t *testing.T) {
+		setMinimalConfigEnv(t)
+		t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_SIGNING_KEYS_BOOTSTRAP_TIMEOUT", "37s")
+
+		loader := NewLoader()
+		cfg, err := loader.GetConfig(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, 37*time.Second, cfg.OAuth2AuthServer.Local.SigningKeys.BootstrapTimeout)
+	})
+}
+
 func TestConfigLoader_UpstreamTimeout(t *testing.T) {
 	t.Run("proxy upstream timeout can be configured via environment variable", func(t *testing.T) {
 		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(t, 32))

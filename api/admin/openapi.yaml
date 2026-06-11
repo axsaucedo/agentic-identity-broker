@@ -1283,14 +1283,22 @@ paths:
                 error: not found
                 message: "Signing key with kid 'key-unknown' does not exist"
         '409':
-          description: Cannot delete last signing key
+          description: Cannot delete the last remaining signing key or the current signing key
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error: conflict
-                message: Cannot delete the last remaining signing key
+              examples:
+                last_key:
+                  summary: Last remaining signing key
+                  value:
+                    error: last_key
+                    message: cannot delete the last remaining signing key
+                current_key:
+                  summary: Current signing key
+                  value:
+                    error: current_key
+                    message: promote another signing key before removing the current key
         '500':
           $ref: '#/components/responses/InternalServerError'
 

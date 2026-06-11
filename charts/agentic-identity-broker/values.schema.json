@@ -716,6 +716,17 @@
                 "tokenClaimsExpression": {
                   "type": "string",
                   "description": "CEL expression for custom token claims"
+                },
+                "signingKeys": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Local signing-key startup configuration",
+                  "properties": {
+                    "bootstrapTimeout": {
+                      "type": "string",
+                      "description": "Startup budget for signing-key bootstrap in local/hybrid mode"
+                    }
+                  }
                 }
               }
             },

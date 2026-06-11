@@ -9,12 +9,13 @@ The identity broker can operate as a standalone OAuth2 authorization server usin
 Set `mode: local` in the OAuth2 authorization server configuration:
 
 ```yaml
-oauth2:
-  auth_server:
-    mode: "local"
-    local:
-      token_ttl: "1h"
-      token_claims_expression: '{"team": agent.display_name}'
+oauth2_authorization_server:
+  mode: "local"
+  local:
+    token_ttl: "1h"
+    token_claims_expression: '{"team": agent.display_name}'
+    signing_keys:
+      bootstrap_timeout: 90s
 ```
 
 ### Configuration Parameters
@@ -24,6 +25,7 @@ oauth2:
 | `mode` | Yes (if any field set) | — | Operating mode: `proxy`, `local`, or `hybrid`. Disabled when absent. |
 | `local.token_ttl` | No | `1h` | Access token validity period |
 | `local.token_claims_expression` | No | `""` | CEL expression for custom JWT claims |
+| `local.signing_keys.bootstrap_timeout` | No | `90s` | Startup budget for signing-key bootstrap coordination |
 
 ## Admin API
 

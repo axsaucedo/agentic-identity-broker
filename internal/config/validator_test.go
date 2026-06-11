@@ -646,8 +646,8 @@ func TestValidateCORSConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "wildcard origin passes",
-			cfg:     ports.CORSConfig{AllowedOrigins: []string{"*"}},
+			name:    "localhost origin passes",
+			cfg:     ports.CORSConfig{AllowedOrigins: []string{"http://localhost:3000"}},
 			prefix:  "server.enduser.cors",
 			wantErr: false,
 		},

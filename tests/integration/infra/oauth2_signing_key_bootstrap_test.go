@@ -1,0 +1,324 @@
+//go:build integration
+// +build integration
+
+package integration
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
+	e2ebootstrap "github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
+)
+
+func TestConcurrentLocalModeBootstrapUsesSingleSigningKeyAcrossReplicas(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	if !containerRuntimeAvailable() {
+		t.Skip("Skipping test: No container runtime available")
+	}
+
+	connStr, cleanupDatabase := setupMigratedPostgresDatabase(t)
+	defer cleanupDatabase()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	storage1, cleanupStorage1 := newPostgresStorageAdapter(t, connStr)
+	defer cleanupStorage1()
+	storage2, cleanupStorage2 := newPostgresStorageAdapter(t, connStr)
+	defer cleanupStorage2()
+
+	start := make(chan struct{})
+	results := make(chan buildResult, 2)
+	var wg sync.WaitGroup
+
+	for _, storage := range []*storageadapter.Adapter{storage1, storage2} {
+		wg.Add(1)
+		go func(storage *storageadapter.Adapter) {
+			defer wg.Done()
+			<-start
+			cfg := newLocalModePostgresConfig(connStr)
+			builtApp, err := e2ebootstrap.NewServerFactory(cfg, logger).BuildApp(storage)
+			results <- buildResult{app: builtApp, err: err}
+		}(storage)
+	}
+
+	close(start)
+	wg.Wait()
+	close(results)
+
+	apps := make([]*app.App, 0, 2)
+	for result := range results {
+		require.NoError(t, result.err)
+		require.NotNil(t, result.app)
+		apps = append(apps, result.app)
+	}
+	require.Len(t, apps, 2)
+	defer shutdownApp(t, apps[0])
+	defer shutdownApp(t, apps[1])
+
+	ctx := context.Background()
+	count, err := storage1.SigningKeys().CountActive(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+
+	current, err := storage1.SigningKeys().GetCurrent(ctx)
+	require.NoError(t, err)
+
+	agent := newLocalIntegrationAgent()
+	require.NoError(t, storage1.Agents().Create(ctx, agent))
+
+	adminServer, err := e2ebootstrap.NewAdminTestServer(apps[0], logger)
+	require.NoError(t, err)
+	defer adminServer.Close()
+
+	enduserServer1, err := e2ebootstrap.NewEndUserTestServer(apps[0], logger)
+	require.NoError(t, err)
+	defer enduserServer1.Close()
+
+	enduserServer2, err := e2ebootstrap.NewEndUserTestServer(apps[1], logger)
+	require.NoError(t, err)
+	defer enduserServer2.Close()
+
+	clientSecret := createClientCredentials(t, adminServer, agent.ID.String())
+
+	tokenFromReplica1 := issueClientCredentialsToken(t, enduserServer1, agent.ID.String(), clientSecret)
+	tokenFromReplica2 := issueClientCredentialsToken(t, enduserServer2, agent.ID.String(), clientSecret)
+
+	assert.Equal(t, string(current.KID), tokenKID(t, tokenFromReplica1))
+	assert.Equal(t, string(current.KID), tokenKID(t, tokenFromReplica2))
+
+	jwks1 := fetchJWKS(t, enduserServer1)
+	jwks2 := fetchJWKS(t, enduserServer2)
+
+	assert.Equal(t, 1, jwks1.Len())
+	assert.Equal(t, 1, jwks2.Len())
+	_, ok := jwks1.LookupKeyID(string(current.KID))
+	assert.True(t, ok)
+	_, ok = jwks2.LookupKeyID(string(current.KID))
+	assert.True(t, ok)
+}
+
+type buildResult struct {
+	app *app.App
+	err error
+}
+
+func containerRuntimeAvailable() bool {
+	if err := exec.Command("docker", "ps").Run(); err == nil {
+		return true
+	}
+	return exec.Command("podman", "ps").Run() == nil
+}
+
+func setupMigratedPostgresDatabase(t *testing.T) (string, func()) {
+	t.Helper()
+
+	ctx := context.Background()
+	container, cleanupContainer := setupTestContainer(t)
+
+	host, err := container.Host(ctx)
+	require.NoError(t, err)
+	port, err := container.MappedPort(ctx, "5432/tcp")
+	require.NoError(t, err)
+
+	connStr := fmt.Sprintf("postgres://testuser:testpass@%s:%s/testdb?sslmode=disable", host, port.Port())
+
+	projectRoot, err := findProjectRoot()
+	require.NoError(t, err)
+	migrationsDir, err := filepath.Abs(filepath.Join(projectRoot, "migrations"))
+	require.NoError(t, err)
+
+	migrationRunner, err := migrate.New("file://"+migrationsDir, connStr)
+	require.NoError(t, err)
+	defer migrationRunner.Close()
+
+	err = migrationRunner.Up()
+	if err != nil && err != migrate.ErrNoChange {
+		require.NoError(t, err)
+	}
+
+	return connStr, cleanupContainer
+}
+
+func newPostgresStorageAdapter(t *testing.T, connStr string) (*storageadapter.Adapter, func()) {
+	t.Helper()
+
+	adapter, err := storageadapter.NewAdapter(&ports.StorageConfig{
+		Backend: "postgres",
+		Postgres: ports.PostgresConfig{
+			ConnectionURL: connStr,
+		},
+		Timeouts: ports.StorageTimeouts{
+			Read:  5 * time.Second,
+			Write: 10 * time.Second,
+		},
+	})
+	require.NoError(t, err)
+
+	return adapter, func() {
+		require.NoError(t, adapter.Close(context.Background()))
+	}
+}
+
+func newLocalModePostgresConfig(connStr string) *ports.Config {
+	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	return &ports.Config{
+		Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server: ports.ServerConfig{
+			EndUser: ports.ServerInstanceConfig{
+				Port:      8000,
+				Bind:      "127.0.0.1",
+				PublicURL: "http://localhost:8000",
+				Authentication: ports.AuthenticationConfig{
+					Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+				},
+			},
+			Admin: ports.ServerInstanceConfig{
+				Port:      14000,
+				Bind:      "127.0.0.1",
+				PublicURL: "http://localhost:14000",
+				Authentication: ports.AuthenticationConfig{
+					Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+				},
+			},
+			Shutdown: ports.ShutdownConfig{Timeout: 5 * time.Second},
+		},
+		Storage: ports.StorageConfig{
+			Backend: "postgres",
+			Postgres: ports.PostgresConfig{
+				ConnectionURL: connStr,
+			},
+			Timeouts: ports.StorageTimeouts{
+				Read:  5 * time.Second,
+				Write: 10 * time.Second,
+			},
+		},
+		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
+		Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
+		OAuth2AuthServer: ports.OAuth2AuthServerConfig{
+			Mode: "local",
+			Local: ports.LocalModeConfig{
+				TokenTTL: time.Hour,
+				SigningKeys: ports.LocalSigningKeysConfig{
+					BootstrapTimeout: 5 * time.Second,
+				},
+			},
+		},
+	}
+}
+
+func newLocalIntegrationAgent() *domstorage.Agent {
+	now := time.Now().UTC()
+	return &domstorage.Agent{
+		ID:           id.NewAgentID(),
+		DisplayName:  "HA test agent",
+		Description:  "Agent used to verify cross-replica signing-key bootstrap",
+		RedirectURIs: []string{"https://client.example.com/callback"},
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+}
+
+func createClientCredentials(t *testing.T, adminServer *e2ebootstrap.TestServer, agentID string) string {
+	t.Helper()
+
+	resp, err := http.Post(
+		adminServer.BaseURL()+"/api/agents/"+agentID+"/client-credentials",
+		"application/json",
+		nil,
+	)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	clientSecret, ok := body["client_secret"].(string)
+	require.True(t, ok)
+	require.NotEmpty(t, clientSecret)
+	return clientSecret
+}
+
+func issueClientCredentialsToken(t *testing.T, server *e2ebootstrap.TestServer, clientID, clientSecret string) string {
+	t.Helper()
+
+	form := url.Values{
+		"grant_type":    {"client_credentials"},
+		"client_id":     {clientID},
+		"client_secret": {clientSecret},
+	}
+	resp, err := server.PublicPOST(
+		"/oauth2/token",
+		"application/x-www-form-urlencoded",
+		strings.NewReader(form.Encode()),
+	)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	accessToken, ok := body["access_token"].(string)
+	require.True(t, ok)
+	require.NotEmpty(t, accessToken)
+	return accessToken
+}
+
+func tokenKID(t *testing.T, accessToken string) string {
+	t.Helper()
+
+	msg, err := jws.Parse([]byte(accessToken))
+	require.NoError(t, err)
+	require.Len(t, msg.Signatures(), 1)
+	kid, ok := msg.Signatures()[0].ProtectedHeaders().KeyID()
+	require.True(t, ok)
+	require.NotEmpty(t, kid)
+	return kid
+}
+
+func fetchJWKS(t *testing.T, server *e2ebootstrap.TestServer) jwk.Set {
+	t.Helper()
+
+	resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	set, err := jwk.ParseReader(resp.Body)
+	require.NoError(t, err)
+	return set
+}
+
+func shutdownApp(t *testing.T, brokerApp *app.App) {
+	t.Helper()
+	if brokerApp == nil || brokerApp.Shutdown == nil {
+		return
+	}
+	require.NoError(t, brokerApp.Shutdown(context.Background()))
+}

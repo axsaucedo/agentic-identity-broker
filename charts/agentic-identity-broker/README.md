@@ -145,6 +145,7 @@ See [values.yaml](values.yaml) for the complete list of configuration options.
 | `broker.oauth2AuthorizationServer.proxy.upstreamJwksMaxRefresh` | Maximum interval between upstream JWKS refresh attempts (empty = use application default of 1h) | `""` |
 | `broker.oauth2AuthorizationServer.local.tokenTtl` | Access token validity period (required in local/hybrid mode) | `""` |
 | `broker.oauth2AuthorizationServer.local.tokenClaimsExpression` | CEL expression for custom JWT claims | `""` |
+| `broker.oauth2AuthorizationServer.local.signingKeys.bootstrapTimeout` | Startup budget for signing-key bootstrap coordination | `""` |
 | `broker.telemetry.serviceName` | Service name reported in every telemetry signal | `agentic-identity-broker` |
 | `broker.telemetry.resourceAttributes` | Additional OTel resource attributes (map) | `{}` |
 | `broker.telemetry.traces.enabled` | Enable trace export via OTLP | `true` |

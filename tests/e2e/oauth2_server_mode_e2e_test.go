@@ -15,7 +15,6 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
-	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 )
 
 var _ = Describe("US2: Server Mode Configuration (local mode)", func() {
@@ -29,6 +28,7 @@ var _ = Describe("US2: Server Mode Configuration (local mode)", func() {
 		storageFactory = bootstrap.NewStorageFactory(logger)
 	})
 
+	// Scenario 2.1 from specs/025-oauth2-server/spec.md
 	It("starts in local mode", func() {
 		config := fixtures.LocalConfig()
 		testStorage, err := storageFactory.NewTestStorage()
@@ -41,6 +41,7 @@ var _ = Describe("US2: Server Mode Configuration (local mode)", func() {
 		Expect(app).ToNot(BeNil())
 	})
 
+	// Scenario 2.2 from specs/025-oauth2-server/spec.md
 	It("no upstream URI needed in local mode", func() {
 		config := fixtures.LocalConfig()
 		Expect(config.OAuth2AuthServer.Proxy.UpstreamIssuerURI).To(BeEmpty())
@@ -56,12 +57,14 @@ var _ = Describe("US2: Server Mode Configuration (local mode)", func() {
 		Expect(app).ToNot(BeNil())
 	})
 
+	// Scenario 2.3 from specs/025-oauth2-server/spec.md
 	It("default is proxy mode", func() {
 		config := fixtures.DefaultOAuth2Config()
 		Expect(config.OAuth2AuthServer.Mode).To(Equal(servermode.Proxy))
 	})
 
-	It("starts with no signing keys until one is provisioned via the admin API", func() {
+	// Scenario 2.4 from specs/025-oauth2-server/spec.md
+	It("auto-generates an initial signing key at startup", func() {
 		config := fixtures.LocalConfig()
 		testStorage, err := storageFactory.NewTestStorage()
 		Expect(err).ToNot(HaveOccurred())
@@ -75,29 +78,38 @@ var _ = Describe("US2: Server Mode Configuration (local mode)", func() {
 		Expect(err).ToNot(HaveOccurred())
 		defer adminServer.Close()
 
-		// Before provisioning: no keys.
+		enduserServer, err := bootstrap.NewEndUserTestServer(app, logger)
+		Expect(err).ToNot(HaveOccurred())
+		defer enduserServer.Close()
+
 		resp, err := http.Get(adminServer.BaseURL() + "/api/oauth2-server/signing-keys")
 		Expect(err).ToNot(HaveOccurred())
 		defer func() { _ = resp.Body.Close() }()
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
-		var before map[string]interface{}
-		Expect(json.NewDecoder(resp.Body).Decode(&before)).ToNot(HaveOccurred())
-		Expect(before["items"].([]interface{})).To(BeEmpty())
 
-		// Provision via admin API.
-		Expect(helpers.ProvisionSigningKey(adminServer.BaseURL())).ToNot(HaveOccurred())
+		var listed map[string]interface{}
+		Expect(json.NewDecoder(resp.Body).Decode(&listed)).ToNot(HaveOccurred())
+		items := listed["items"].([]interface{})
+		Expect(items).To(HaveLen(1))
 
-		// After provisioning: one key present.
-		resp2, err := http.Get(adminServer.BaseURL() + "/api/oauth2-server/signing-keys")
+		key := items[0].(map[string]interface{})
+		Expect(key["kid"]).ToNot(BeEmpty())
+		Expect(key["is_current"]).To(BeTrue())
+
+		jwkResp, err := http.Get(enduserServer.BaseURL() + "/oauth2/jwks.json")
 		Expect(err).ToNot(HaveOccurred())
-		defer func() { _ = resp2.Body.Close() }()
-		Expect(resp2.StatusCode).To(Equal(http.StatusOK))
-		var after map[string]interface{}
-		Expect(json.NewDecoder(resp2.Body).Decode(&after)).ToNot(HaveOccurred())
-		Expect(len(after["items"].([]interface{}))).To(BeNumerically(">=", 1))
+		defer func() { _ = jwkResp.Body.Close() }()
+		Expect(jwkResp.StatusCode).To(Equal(http.StatusOK))
+
+		var jwks map[string]interface{}
+		Expect(json.NewDecoder(jwkResp.Body).Decode(&jwks)).ToNot(HaveOccurred())
+		keys := jwks["keys"].([]interface{})
+		Expect(keys).To(HaveLen(1))
+		Expect(keys[0].(map[string]interface{})["kid"]).To(Equal(key["kid"]))
 	})
 
-	It("returns server_error from /oauth2/token before signing key provisioning", func() {
+	// Scenario 2.4 from specs/025-oauth2-server/spec.md
+	It("issues tokens without manual signing key provisioning", func() {
 		config := fixtures.LocalConfig()
 		testStorage, err := storageFactory.NewTestStorage()
 		Expect(err).ToNot(HaveOccurred())
@@ -145,10 +157,11 @@ var _ = Describe("US2: Server Mode Configuration (local mode)", func() {
 		)
 		Expect(err).ToNot(HaveOccurred())
 		defer func() { _ = resp.Body.Close() }()
-		Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
-		var body map[string]string
+		var body map[string]interface{}
 		Expect(json.NewDecoder(resp.Body).Decode(&body)).ToNot(HaveOccurred())
-		Expect(body["error"]).To(Equal("server_error"))
+		Expect(body["access_token"]).ToNot(BeEmpty())
+		Expect(body["token_type"]).To(Equal("Bearer"))
 	})
 })

@@ -251,6 +251,10 @@ func modeStrategyFor(mode servermode.Mode) oauth2service.ModeStrategy {
 	}
 }
 
+var newSigningKeyStartupContext = func(timeout time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), timeout)
+}
+
 // Build constructs the App with all wired dependencies.
 // Returns error if required dependencies are missing or initialization fails.
 //
@@ -672,11 +676,17 @@ func (b *Builder) Build() (*App, error) {
 	var jwksPublisherHealth ports.JWKSPublisherHealthPort
 	var jwksPublisher ports.JWKSPublisherPort
 
+	signingKeyRepo := b.storage.SigningKeys()
+	signingKeyBootstrapCoordinator := b.storage.SigningKeyBootstrapCoordinator()
+	if signingKeyBootstrapCoordinator == nil {
+		return nil, fmt.Errorf("signing key bootstrap coordinator is required")
+	}
+
 	localIssuerURI := ov.localIssuerURI
 
 	// buildLocalProvider constructs the local token issuance infrastructure.
 	// Used in both "local" and "hybrid" modes.
-	buildLocalProvider := func(signingKeyService *oauth2server.SigningKeyService, tokenTTL time.Duration, claimsExpr string) (*oauth2server.Provider, error) {
+	buildLocalProvider := func(signingKeyService *oauth2server.SigningKeyService, tokenTTL time.Duration, claimsExpr string, bootstrapTimeout time.Duration) (*oauth2server.Provider, error) {
 		provider, err := oauth2server.NewProvider(
 			b.storage.AuthorizationCodes(),
 			b.storage.PKCESessions(),
@@ -692,19 +702,22 @@ func (b *Builder) Build() (*App, error) {
 			return nil, fmt.Errorf("failed to create OAuth2 server provider: %w", err)
 		}
 
-		count, err := signingKeyService.CountActive(context.Background())
-		if err != nil {
-			return nil, fmt.Errorf("failed to check signing keys: %w", err)
+		startupCtx, cancel := newSigningKeyStartupContext(bootstrapTimeout)
+		defer cancel()
+		if key, created, err := signingKeyService.EnsureInitialKey(startupCtx, "ES256"); err != nil {
+			return nil, fmt.Errorf("failed to ensure initial signing key: %w", err)
+		} else if created {
+			b.logger.Info("auto-generated initial signing key", "kid", key.KID, "algorithm", key.Algorithm)
 		}
-		if count == 0 {
-			b.logger.Error("no signing key provisioned — local token issuance will fail until a key is created",
-				"hint", "POST /api/oauth2-server/signing-keys")
-			return provider, nil
-		}
-		if _, err := signingKeyService.GetCurrent(context.Background()); err != nil {
+
+		readinessCtx, readinessCancel := newSigningKeyStartupContext(bootstrapTimeout)
+		defer readinessCancel()
+		if _, err := signingKeyService.GetCurrent(readinessCtx); err != nil {
 			var storageErr *domstorage.StorageError
 			if errors.As(err, &storageErr) && storageErr.Kind == domstorage.ErrorKindNotFound {
-				b.logger.Error("no currently-active signing key available — local token issuance will fail until a key activates or is promoted",
+				// Keep startup non-fatal here so the broker can continue serving JWKS while a
+				// grace-period key warms downstream caches before it starts signing tokens.
+				b.logger.Warn("no currently-active signing key available — local token issuance is unavailable until a key activates or is promoted",
 					"hint", "wait for activates_at or PUT /api/oauth2-server/signing-keys/{kid}/current")
 				return provider, nil
 			}
@@ -716,10 +729,10 @@ func (b *Builder) Build() (*App, error) {
 	// wireLocalAdminHandlers constructs the local-mode admin services and handlers.
 	// Used in both "local" and "hybrid" modes.
 	wireLocalAdminHandlers := func() *oauth2server.SigningKeyService {
-		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, app.BranchKeyManager, b.logger)
+		signingKeyService := oauth2server.NewSigningKeyService(signingKeyRepo, signingKeyBootstrapCoordinator, encryptor, app.BranchKeyManager, b.logger)
 		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), clientResolver, b.logger)
 		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
-		app.AdminHandlers.SigningKeys = admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger)
+		app.AdminHandlers.SigningKeys = admin.NewSigningKeysHandler(signingKeyService, b.logger)
 		return signingKeyService
 	}
 
@@ -739,7 +752,7 @@ func (b *Builder) Build() (*App, error) {
 	switch cfg := oauthCfg.(type) {
 	case *ports.LocalOAuth2Config:
 		signingKeyService := wireLocalAdminHandlers()
-		provider, err := buildLocalProvider(signingKeyService, cfg.TokenTTL, cfg.TokenClaimsExpression)
+		provider, err := buildLocalProvider(signingKeyService, cfg.TokenTTL, cfg.TokenClaimsExpression, cfg.SigningKeys.BootstrapTimeout)
 		if err != nil {
 			return nil, err
 		}
@@ -757,7 +770,7 @@ func (b *Builder) Build() (*App, error) {
 		jwksHandler = enduserHandlers.NewJWKSHandler(publisher, b.logger)
 	case *ports.HybridOAuth2Config:
 		signingKeyService := wireLocalAdminHandlers()
-		provider, err := buildLocalProvider(signingKeyService, cfg.Local.TokenTTL, cfg.Local.TokenClaimsExpression)
+		provider, err := buildLocalProvider(signingKeyService, cfg.Local.TokenTTL, cfg.Local.TokenClaimsExpression, cfg.Local.SigningKeys.BootstrapTimeout)
 		if err != nil {
 			return nil, err
 		}

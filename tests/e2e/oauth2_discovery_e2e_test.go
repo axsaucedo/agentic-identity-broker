@@ -51,6 +51,7 @@ var _ = Describe("US032: Discovery and JWKS", func() {
 		}
 	})
 
+	// Scenario 6.1 from specs/025-oauth2-server/spec.md
 	It("discovery endpoint returns metadata in local mode", func() {
 		resp, err := http.Get(enduserServer.BaseURL() + "/.well-known/oauth-authorization-server")
 		Expect(err).ToNot(HaveOccurred())
@@ -68,6 +69,7 @@ var _ = Describe("US032: Discovery and JWKS", func() {
 		Expect(body).To(HaveKey("code_challenge_methods_supported"))
 	})
 
+	// Scenario 6.2 from specs/025-oauth2-server/spec.md
 	It("JWKS endpoint returns valid key set", func() {
 		resp, err := http.Get(enduserServer.BaseURL() + "/oauth2/jwks.json")
 		Expect(err).ToNot(HaveOccurred())

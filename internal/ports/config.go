@@ -252,7 +252,7 @@ type PostgresConfig struct {
 	ConnectionURL string `mapstructure:"connection_url" validate:"required_if=Backend postgres"`
 }
 
-// StorageTimeouts defines timeout durations for storage operations.
+// StorageTimeouts defines timeout durations for steady-state storage operations.
 // Applied to all backends to prevent indefinite hangs.
 type StorageTimeouts struct {
 	Read  time.Duration `mapstructure:"read" validate:"required"`
@@ -349,13 +349,21 @@ type ProxyModeConfig struct {
 	UpstreamJWKSMaxRefresh    time.Duration `mapstructure:"upstream_jwks_max_refresh"`
 }
 
+const DefaultSigningKeyBootstrapTimeout = 90 * time.Second
+
 // LocalModeConfig holds local token issuance configuration for local/hybrid mode.
 type LocalModeConfig struct {
 	// IssuerURI is the JWT iss claim for locally-minted tokens. Optional — defaults to
 	// server.enduser.public_url when empty, allowing independent control behind CDNs or proxies.
-	IssuerURI             string        `mapstructure:"issuer_uri"`
-	TokenTTL              time.Duration `mapstructure:"token_ttl"`
-	TokenClaimsExpression string        `mapstructure:"token_claims_expression"`
+	IssuerURI             string                 `mapstructure:"issuer_uri"`
+	TokenTTL              time.Duration          `mapstructure:"token_ttl"`
+	TokenClaimsExpression string                 `mapstructure:"token_claims_expression"`
+	SigningKeys           LocalSigningKeysConfig `mapstructure:"signing_keys"`
+}
+
+// LocalSigningKeysConfig holds local signing-key startup settings.
+type LocalSigningKeysConfig struct {
+	BootstrapTimeout time.Duration `mapstructure:"bootstrap_timeout"`
 }
 
 // OAuth2AuthServerConfig represents configuration for OAuth2 authorization server functionality.
@@ -405,7 +413,7 @@ func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 		return c.newValidationError("oauth2_authorization_server.cimd.enabled requires mode 'local' or 'hybrid'; CIMD is incompatible with proxy mode")
 	}
 
-	if c.Local.TokenTTL != 0 || c.Local.TokenClaimsExpression != "" || c.Local.IssuerURI != "" {
+	if c.Local.TokenTTL != 0 || c.Local.TokenClaimsExpression != "" || c.Local.IssuerURI != "" || c.Local.SigningKeys.BootstrapTimeout != 0 {
 		return c.newValidationError("oauth2_authorization_server.local must be empty in proxy mode")
 	}
 
@@ -440,6 +448,9 @@ func (c *OAuth2AuthServerConfig) validateLocalMode() error {
 
 	c.applyLocalDefaults()
 	c.applySharedDefaults([]string{"authorization_code", "client_credentials"})
+	if err := c.validateLocalSigningKeys(); err != nil {
+		return err
+	}
 
 	if err := c.validateCIMDCache(); err != nil {
 		return err
@@ -459,6 +470,9 @@ func (c *OAuth2AuthServerConfig) validateHybridMode() error {
 	}
 	c.applyLocalDefaults()
 	c.applySharedDefaults([]string{"authorization_code", "client_credentials"})
+	if err := c.validateLocalSigningKeys(); err != nil {
+		return err
+	}
 	if err := c.validateCIMDCache(); err != nil {
 		return err
 	}
@@ -485,11 +499,21 @@ func (c *OAuth2AuthServerConfig) validateProxyFields(suffix string) error {
 	return nil
 }
 
-// applyLocalDefaults sets local-mode defaults (token TTL).
+// applyLocalDefaults sets local-mode defaults.
 func (c *OAuth2AuthServerConfig) applyLocalDefaults() {
 	if c.Local.TokenTTL == 0 {
 		c.Local.TokenTTL = time.Hour
 	}
+	if c.Local.SigningKeys.BootstrapTimeout == 0 {
+		c.Local.SigningKeys.BootstrapTimeout = DefaultSigningKeyBootstrapTimeout
+	}
+}
+
+func (c *OAuth2AuthServerConfig) validateLocalSigningKeys() error {
+	if c.Local.SigningKeys.BootstrapTimeout <= 0 {
+		return c.newValidationError("oauth2_authorization_server.local.signing_keys.bootstrap_timeout must be a positive duration")
+	}
+	return nil
 }
 
 // applySharedDefaults sets shared defaults for response types and grant types.
@@ -536,6 +560,7 @@ func (c *OAuth2AuthServerConfig) Resolve() (OAuth2ModeConfig, error) {
 			IssuerURI:              c.Local.IssuerURI,
 			TokenTTL:               c.Local.TokenTTL,
 			TokenClaimsExpression:  c.Local.TokenClaimsExpression,
+			SigningKeys:            c.Local.SigningKeys,
 			SupportedResponseTypes: c.SupportedResponseTypes,
 			SupportedGrantTypes:    c.SupportedGrantTypes,
 			CIMD:                   c.CIMD,
@@ -557,6 +582,7 @@ func (c *OAuth2AuthServerConfig) Resolve() (OAuth2ModeConfig, error) {
 				IssuerURI:              c.Local.IssuerURI,
 				TokenTTL:               c.Local.TokenTTL,
 				TokenClaimsExpression:  c.Local.TokenClaimsExpression,
+				SigningKeys:            c.Local.SigningKeys,
 				SupportedResponseTypes: c.SupportedResponseTypes,
 				SupportedGrantTypes:    c.SupportedGrantTypes,
 				CIMD:                   c.CIMD,

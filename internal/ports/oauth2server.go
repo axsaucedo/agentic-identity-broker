@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	ErrLastActiveKey = errors.New("cannot remove the last active signing key")
-	ErrCurrentKey    = errors.New("cannot remove the current signing key; promote another key first")
+	ErrLastActiveKey       = errors.New("cannot remove the last active signing key")
+	ErrCurrentKey          = errors.New("cannot remove the current signing key; promote another key first")
+	ErrEffectiveCurrentKey = errors.New("cannot remove a key that is still signing tokens; wait for the promoted key to activate or promote a different key")
 )
 
 // SigningKeyManager is the port for signing key lifecycle operations.
@@ -20,7 +21,18 @@ var (
 type SigningKeyManager interface {
 	GenerateAndStoreKey(ctx context.Context, algorithm string, makeCurrent bool) (*storage.SigningKey, error)
 	BuildJWKS(ctx context.Context) (jwk.Set, error)
+	ListKeys(ctx context.Context) ([]*storage.SigningKey, error)
+	PromoteKey(ctx context.Context, kid id.KeyID) (*storage.SigningKey, error)
 	DeleteKey(ctx context.Context, kid id.KeyID) error
+}
+
+// SigningKeyBootstrapCoordinator serializes initial signing-key bootstrap work
+// across broker instances that share the same backend.
+type SigningKeyBootstrapCoordinator interface {
+	// WithBootstrapLock serializes initial signing-key bootstrap across replicas.
+	// The coordinator may derive a deadline-bounded context from ctx and pass it
+	// to fn. Callers must not assume fn receives the original ctx unchanged.
+	WithBootstrapLock(ctx context.Context, fn func(context.Context) error) error
 }
 
 // CredentialGenerator is the port for generating broker client credentials.

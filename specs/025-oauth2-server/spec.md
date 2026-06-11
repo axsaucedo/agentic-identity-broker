@@ -12,7 +12,7 @@
 - Q: In `issue_token` mode, does the broker issue authorization codes itself or proxy the authorization step upstream? → A: Broker issues authorization codes itself — fully standalone. Identity is derived from the configured preauth method (X-Remote-User reverse-proxy header or JWT preauth), not from an upstream OAuth2 server redirect.
 - Q: What is the JWK rotation strategy? → A: Overlapping keys via `kid` — broker always signs new tokens with the current (latest) key but publishes and validates all configured active keys; old tokens remain valid until natural expiry.
 - Q: Which OAuth2 discovery document standard should the broker expose? → A: RFC 8414 only — `/.well-known/oauth-authorization-server`, including a `jwks_uri` field pointing to the JWKS endpoint.
-- Q: How should signing keys be stored and managed? → A: Database-persisted — signing keys are stored in PostgreSQL, managed via Admin API (add/remove/set-current). No env-var key at startup; Admin API is the sole provisioning surface.
+- Q: How should signing keys be stored and managed? → A: Database-persisted — signing keys are stored in PostgreSQL, managed via Admin API (add/remove/set-current). No env-var key at startup; the Admin API is the sole operator-facing provisioning and management surface. If no signing key exists at startup, the broker auto-generates the initial key (see below).
 - Q: What is the authorization code lifespan and is PKCE required? → A: Short-lived codes (60 seconds), PKCE required for all authorization code flows (RFC 7636 / RFC 9700).
 - Q: What happens at startup in `issue_token` mode if no signing key exists? → A: Broker auto-generates an initial signing key rather than failing to start.
 - Q: Where are redirect URIs registered and validated? → A: Redirect URIs are registered on the Agent entity (via the existing agent Admin API, new `redirect_uris` field); the authorization endpoint validates exact match against the registered list.
@@ -262,24 +262,28 @@ sequenceDiagram
 ### Configuration Requirements
 
 **Configuration Parameters**:
-- **`oauth2_authorization_server.mode`**: String, operating mode: `proxy` (default, existing behavior) or `issue_token` (local minting). Default: `proxy`
-- **`oauth2_authorization_server.issuer_uri`**: String, the broker's own issuer URI used in locally-minted tokens and the discovery document (required when `mode: issue_token`)
-- **`oauth2_authorization_server.token_ttl`**: Duration, lifetime of locally-issued access tokens. Default: 1 hour
-- **`oauth2_authorization_server.token_claims_expression`**: String, a CEL expression evaluated at token issuance time to produce custom claims for locally-issued access tokens. The expression receives `agent` (object: `id`, `client_id`, `display_name`), `principal` (object: `id` always present, `email` and `display_name` optional), and `request` (object: `grant_type`, `scopes`). MUST return a `map<string, dyn>` of additional claims to merge into the token. Default: `{}` (no additional claims). Only applicable in `issue_token` mode. Compiled and validated at startup.
+- **`oauth2_authorization_server.mode`**: String, operating mode: `proxy`, `local`, or `hybrid`. Local token minting uses `mode: local`; combined proxy + local issuance uses `mode: hybrid`.
+- **`oauth2_authorization_server.local.issuer_uri`**: String, the broker's own issuer URI used in locally-minted tokens and the discovery document (optional; defaults to the configured end-user public URL in local/hybrid mode)
+- **`oauth2_authorization_server.local.token_ttl`**: Duration, lifetime of locally-issued access tokens. Default: 1 hour
+- **`oauth2_authorization_server.local.token_claims_expression`**: String, a CEL expression evaluated at token issuance time to produce custom claims for locally-issued access tokens. The expression receives `agent` (object: `id`, `client_id`, `display_name`), `principal` (object: `id` always present, `email` and `display_name` optional), and `request` (object: `grant_type`, `scopes`). MUST return a `map<string, dyn>` of additional claims to merge into the token. Default: `{}` (no additional claims). Only applicable in local/hybrid mode. Compiled and validated at startup.
+- **`oauth2_authorization_server.local.signing_keys.bootstrap_timeout`**: Duration, startup budget for initial signing-key bootstrap coordination in local/hybrid mode. Default: 90 seconds
 
-Note: signing key material is NOT configured via env var or config file — keys are provisioned and managed exclusively via the Admin API and stored in the database.
+Note: signing key material is NOT configured via env var or config file — keys are stored in the database, operators manage them via the Admin API, and the broker may auto-generate the initial signing key on first startup when none exists.
 
 **Example YAML Configuration**:
 ```yaml
 oauth2_authorization_server:
-  mode: issue_token
-  issuer_uri: https://broker.example.com
-  token_ttl: 1h
-  token_claims_expression: |
-    {"team": agent.display_name, "environment": "production"}
+  mode: local
+  local:
+    issuer_uri: https://broker.example.com
+    token_ttl: 1h
+    token_claims_expression: |
+      {"team": agent.display_name, "environment": "production"}
+    signing_keys:
+      bootstrap_timeout: 90s
 ```
 
-**Configuration Location**: Will be added to `examples/config/oauth2-server-mode.yaml` and referenced in `examples/config/README.md`
+**Configuration Location**: See `examples/config/oauth2-server-mode.yaml` and `examples/config/README.md`.
 
 ### API Requirements
 

@@ -44,14 +44,18 @@ oauth2_authorization_server:
     # Example: adds team label from agent display name
     token_claims_expression: '{"team": agent.display_name}'
 
+    signing_keys:
+      # Startup budget for initial signing-key bootstrap in local mode.
+      bootstrap_timeout: 90s
+
 # Storage backend
 storage:
-  backend: "memory"  # Use "postgres" for production
+  backend: "memory" # Use "postgres" for production
 
 # Encryption for signing key private material
 encryption:
   memory:
-    raw_key: "base64-encoded-32-byte-key"  # Use "aws_kms" for production
+    raw_key: "base64-encoded-32-byte-key" # Use "aws_kms" for production
 
 # Logging
 log:

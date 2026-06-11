@@ -27,6 +27,30 @@ func TestNewAdapter_Memory(t *testing.T) {
 	assert.NotNil(t, adapter.Users())
 }
 
+func TestNewAdapter_MemoryExposesSigningKeyBootstrapCoordinator(t *testing.T) {
+	config := &ports.StorageConfig{
+		Backend: "memory",
+		Timeouts: ports.StorageTimeouts{
+			Read:  5 * time.Second,
+			Write: 10 * time.Second,
+		},
+	}
+
+	adapter, err := NewAdapter(config)
+	require.NoError(t, err)
+
+	coordinator := adapter.SigningKeyBootstrapCoordinator()
+	require.NotNil(t, coordinator)
+
+	called := false
+	err = coordinator.WithBootstrapLock(context.Background(), func(context.Context) error {
+		called = true
+		return nil
+	})
+	require.NoError(t, err)
+	assert.True(t, called)
+}
+
 func TestNewAdapter_Postgres(t *testing.T) {
 	config := &ports.StorageConfig{
 		Backend: "postgres",

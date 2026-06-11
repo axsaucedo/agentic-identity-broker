@@ -78,6 +78,7 @@ var _ = Describe("US3: Client Credentials Grant (local mode)", func() {
 		}
 	})
 
+	// Scenario 3.1 from specs/025-oauth2-server/spec.md
 	It("client_credentials grant issues signed token", func() {
 		form := url.Values{
 			"grant_type":    {"client_credentials"},
@@ -99,6 +100,7 @@ var _ = Describe("US3: Client Credentials Grant (local mode)", func() {
 		Expect(body["token_type"]).To(Equal("Bearer"))
 	})
 
+	// Scenario 3.2 from specs/025-oauth2-server/spec.md
 	It("invalid credentials returns 401", func() {
 		form := url.Values{
 			"grant_type":    {"client_credentials"},
@@ -115,6 +117,7 @@ var _ = Describe("US3: Client Credentials Grant (local mode)", func() {
 		Expect(resp.StatusCode).To(Equal(http.StatusUnauthorized))
 	})
 
+	// Scenario 3.3 from specs/025-oauth2-server/spec.md
 	It("token validates via JWKS", func() {
 		// Get token
 		form := url.Values{
@@ -147,6 +150,7 @@ var _ = Describe("US3: Client Credentials Grant (local mode)", func() {
 		Expect(jwks).To(HaveKey("keys"))
 	})
 
+	// Scenario 3.4 from specs/025-oauth2-server/spec.md
 	It("invalid_scope for excessive scopes", func() {
 		// Update agent with restricted scopes
 		agent.AllowedScopes = []string{"read"}

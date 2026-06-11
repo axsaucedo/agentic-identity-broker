@@ -29,7 +29,7 @@ func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository, *Signing
 	enc := &testEncryptor{}
 	logger := testSlogger()
 
-	signingKeySvc := NewSigningKeyService(signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
+	signingKeySvc := NewSigningKeyService(signingKeyRepo, signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
 
 	provider, err := NewProvider(
 		codeRepo,
@@ -753,7 +753,7 @@ func TestProvider_CEL_RequestGrantType(t *testing.T) {
 		enc := &testEncryptor{}
 		logger := testSlogger()
 
-		svc := NewSigningKeyService(signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
+		svc := NewSigningKeyService(signingKeyRepo, signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
 		p, err := NewProvider(codeRepo, memory.NewPKCESessionStore(), credRepo, &testClientResolver{agentRepo: agentRepo}, svc,
 			"https://broker.example.com", time.Hour, expr, logger)
 		require.NoError(t, err)

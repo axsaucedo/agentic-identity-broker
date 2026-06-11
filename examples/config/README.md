@@ -347,7 +347,7 @@ Annotated configuration example for the CIMD feature (Feature 028). Demonstrates
 # Merge into your existing oauth2_authorization_server configuration:
 oauth2_authorization_server:
   mode: "local"  # required: CIMD is only supported in local/hybrid mode
-  # ... token_ttl, etc. (under the local: section) ...
+  # ... token_ttl, signing_keys.bootstrap_timeout, etc. (under the local: section) ...
   cimd:
     enabled: true
     fetch_timeout: 1s
@@ -367,6 +367,7 @@ Key settings:
 - `mode: "local"` — switches from proxy mode to local token minting
 - `local.token_ttl` — access token validity period (default: 1h)
 - `local.token_claims_expression` — optional CEL expression for custom JWT claims
+- `local.signing_keys.bootstrap_timeout` — startup budget for signing-key bootstrap coordination
 
 **Usage:**
 ```bash
@@ -384,6 +385,7 @@ Key settings:
 - `proxy.*` — upstream OAuth2 server configuration (required)
 - `proxy.upstream_jwks_min_refresh` / `proxy.upstream_jwks_max_refresh` — optional JWKS refresh bounds for the upstream cache
 - `local.*` — local token issuance configuration (required)
+- `local.signing_keys.bootstrap_timeout` — startup budget for signing-key bootstrap coordination
 - `cimd.enabled` — optional CIMD support for URL-addressed agents
 
 **Usage:**

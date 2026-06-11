@@ -20,12 +20,14 @@ import (
 )
 
 type strategySigningKeyStore struct {
-	mu    sync.RWMutex
-	byID  map[id.SigningKeyID]*storage.SigningKey
-	byKID map[id.KeyID]*storage.SigningKey
+	mu          sync.RWMutex
+	bootstrapMu sync.Mutex
+	byID        map[id.SigningKeyID]*storage.SigningKey
+	byKID       map[id.KeyID]*storage.SigningKey
 }
 
 var _ ports.SigningKeyRepository = (*strategySigningKeyStore)(nil)
+var _ ports.SigningKeyBootstrapCoordinator = (*strategySigningKeyStore)(nil)
 
 func newStrategySigningKeyStore() *strategySigningKeyStore {
 	return &strategySigningKeyStore{
@@ -36,7 +38,7 @@ func newStrategySigningKeyStore() *strategySigningKeyStore {
 
 func newStrategyTestSigningKeyService() (*SigningKeyService, *strategySigningKeyStore) {
 	repo := newStrategySigningKeyStore()
-	return NewSigningKeyService(repo, &testEncryptor{}, newNoopBranchKeyManager(), testSlogger()), repo
+	return NewSigningKeyService(repo, repo, &testEncryptor{}, newNoopBranchKeyManager(), testSlogger()), repo
 }
 
 func cloneStrategySigningKey(key *storage.SigningKey) *storage.SigningKey {
@@ -128,20 +130,33 @@ func (s *strategySigningKeyStore) ListActive(_ context.Context) ([]*storage.Sign
 	return keys, nil
 }
 
-func (s *strategySigningKeyStore) SetCurrent(_ context.Context, kid id.KeyID) error {
+func (s *strategySigningKeyStore) SetCurrent(_ context.Context, kid id.KeyID, activatesAt time.Time) (*storage.SigningKey, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	target, exists := s.byKID[kid]
 	if !exists || target.RemovedAt != nil {
-		return storage.NewStorageError("strategySigningKeyStore.SetCurrent", storage.ErrorKindNotFound, nil, "signing key not found")
+		return nil, storage.NewStorageError("strategySigningKeyStore.SetCurrent", storage.ErrorKindNotFound, nil, "signing key not found")
 	}
 	for _, key := range s.byID {
 		key.IsCurrent = false
 	}
 	target.IsCurrent = true
-	target.ActivatesAt = time.Now()
-	return nil
+	target.ActivatesAt = activatesAt
+	return cloneStrategySigningKey(target), nil
+}
+
+func currentUsableStrategySigningKey(keys map[id.SigningKeyID]*storage.SigningKey, now time.Time) *storage.SigningKey {
+	var best *storage.SigningKey
+	for _, key := range keys {
+		if key.RemovedAt != nil || key.ActivatesAt.After(now) {
+			continue
+		}
+		if best == nil || (!best.IsCurrent && key.IsCurrent) || (best.IsCurrent == key.IsCurrent && key.ActivatesAt.After(best.ActivatesAt)) {
+			best = key
+		}
+	}
+	return best
 }
 
 func (s *strategySigningKeyStore) Delete(_ context.Context, kid id.KeyID) error {
@@ -152,9 +167,33 @@ func (s *strategySigningKeyStore) Delete(_ context.Context, kid id.KeyID) error 
 	if !exists || key.RemovedAt != nil {
 		return storage.NewStorageError("strategySigningKeyStore.Delete", storage.ErrorKindNotFound, nil, "signing key not found")
 	}
+
+	activeCount := 0
+	for _, existing := range s.byID {
+		if existing.RemovedAt == nil {
+			activeCount++
+		}
+	}
+	if activeCount <= 1 {
+		return ports.ErrLastActiveKey
+	}
+	if key.IsCurrent {
+		return ports.ErrCurrentKey
+	}
+
 	now := time.Now()
+	if current := currentUsableStrategySigningKey(s.byID, now); current != nil && current.KID == kid {
+		return ports.ErrEffectiveCurrentKey
+	}
+
 	key.RemovedAt = &now
 	return nil
+}
+
+func (s *strategySigningKeyStore) WithBootstrapLock(ctx context.Context, fn func(context.Context) error) error {
+	s.bootstrapMu.Lock()
+	defer s.bootstrapMu.Unlock()
+	return fn(ctx)
 }
 
 func (s *strategySigningKeyStore) CountActive(_ context.Context) (int, error) {
@@ -174,7 +213,7 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken_DecryptFailure(t *testing.T)
 	t.Run("decrypt failure returns wrapped error", func(t *testing.T) {
 		// Use failingDecryptor so Encrypt succeeds (key is stored) but Decrypt always fails.
 		repo := newStrategySigningKeyStore()
-		svc := NewSigningKeyService(repo, &failingDecryptor{}, newNoopBranchKeyManager(), testSlogger())
+		svc := NewSigningKeyService(repo, repo, &failingDecryptor{}, newNoopBranchKeyManager(), testSlogger())
 		ctx := context.Background()
 
 		// generateAndStore with time.Now() so activates_at is in the past and GetCurrent returns the key.
@@ -513,7 +552,7 @@ func TestJWXAccessTokenStrategy_GetCurrent_NonNotFoundError(t *testing.T) {
 	t.Run("connection error does not produce 'no signing key provisioned' message", func(t *testing.T) {
 		repo := &connectionErrorSigningKeyRepo{strategySigningKeyStore: newStrategySigningKeyStore()}
 		enc := &testEncryptor{}
-		svc := NewSigningKeyService(repo, enc, newNoopBranchKeyManager(), testSlogger())
+		svc := NewSigningKeyService(repo, repo, enc, newNoopBranchKeyManager(), testSlogger())
 		strategy, err := NewJWXAccessTokenStrategy(svc, "https://issuer.example.com", time.Hour, nil, testSlogger())
 		require.NoError(t, err)
 

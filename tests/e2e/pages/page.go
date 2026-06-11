@@ -35,6 +35,14 @@ import (
 	"github.com/playwright-community/playwright-go"
 )
 
+const screenshotWaitTimeoutMs = 10_000
+
+type screenshotPage interface {
+	WaitForLoadState(options ...playwright.PageWaitForLoadStateOptions) error
+	Evaluate(expression string, arg ...any) (any, error)
+	Screenshot(options ...playwright.PageScreenshotOptions) ([]byte, error)
+}
+
 // Page represents a Playwright page with common navigation and interaction utilities.
 // This is the base struct that all page objects (ConsentPage, AgentDetailPage, etc.) embed.
 // It provides high-level methods for navigation, waiting, and screenshots while keeping
@@ -284,40 +292,37 @@ func (p *Page) WaitForNavigation(ctx context.Context) error {
 //	// Take screenshot for comparison
 //	_ = p.TakeScreenshot(ctx, "consent_page_state")
 func (p *Page) TakeScreenshot(ctx context.Context, name string) error {
+	_ = ctx
+	return captureScreenshot(p.page, p.screenshotDir, name)
+}
+
+func captureScreenshot(page screenshotPage, screenshotDir, name string) error {
 	if name == "" {
 		return fmt.Errorf("screenshot name cannot be empty")
 	}
 
-	// Ensure screenshot directory exists
-	if err := os.MkdirAll(p.screenshotDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create screenshot directory %s: %w", p.screenshotDir, err)
+	if err := os.MkdirAll(screenshotDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create screenshot directory %s: %w", screenshotDir, err)
 	}
 
-	// Build full file path
-	filePath := filepath.Join(p.screenshotDir, name+".png")
+	filePath := filepath.Join(screenshotDir, name+".png")
 
-	// Wait for network to be idle before capturing to avoid intermediate loading states
-	// (spinners, skeleton screens) that cause screenshot flicker between runs.
-	screenshotTimeout := float64(10_000) // 10 seconds in milliseconds
-	if err := p.page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-		State:   playwright.LoadStateNetworkidle,
-		Timeout: &screenshotTimeout,
-	}); err != nil {
-		return fmt.Errorf("failed waiting for network idle before screenshot %s: %w", name, err)
+	if err := waitForScreenshotStability(page, name); err != nil {
+		return err
 	}
 
 	// Scroll to the top of the page before capturing so that the sticky
 	// header is always positioned at y=0 in the full-page composite image.
 	// Without this, the header's pixel position shifts depending on the
 	// current scroll offset at capture time, producing spurious diffs.
-	if _, err := p.page.Evaluate("window.scrollTo(0, 0)"); err != nil {
+	if _, err := page.Evaluate("window.scrollTo(0, 0)"); err != nil {
 		return fmt.Errorf("failed to scroll to top before screenshot %s: %w", name, err)
 	}
 
 	// Take screenshot with animations disabled so that CSS transitions
 	// (e.g. modal dialog entrance animations) are fast-forwarded to their
 	// final state.  This avoids flaky captures where a dialog is mid-fade.
-	data, err := p.page.Screenshot(playwright.PageScreenshotOptions{
+	data, err := page.Screenshot(playwright.PageScreenshotOptions{
 		Animations: playwright.ScreenshotAnimationsDisabled,
 		FullPage:   playwright.Bool(true),
 	})
@@ -325,12 +330,51 @@ func (p *Page) TakeScreenshot(ctx context.Context, name string) error {
 		return fmt.Errorf("failed to take screenshot %s: %w", filePath, err)
 	}
 
-	// Write screenshot to file
 	if err := os.WriteFile(filePath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write screenshot to %s: %w", filePath, err)
 	}
 
 	return nil
+}
+
+func waitForScreenshotStability(page screenshotPage, name string) error {
+	// Wait for network to be idle before capturing to avoid intermediate loading states
+	// (spinners, skeleton screens) that cause screenshot flicker between runs.
+	screenshotTimeout := float64(screenshotWaitTimeoutMs)
+	if err := page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State:   playwright.LoadStateNetworkidle,
+		Timeout: &screenshotTimeout,
+	}); err != nil {
+		if !isPlaywrightTimeout(err) {
+			return fmt.Errorf("failed waiting for network idle before screenshot %s: %w", name, err)
+		}
+
+		// Some SPA pages keep background requests alive long enough that Playwright never
+		// reports networkidle, even though the visible UI is already stable. In that case,
+		// fall back to waiting for fonts and a couple of animation frames instead of failing
+		// the test on screenshot bookkeeping alone.
+		if _, evalErr := page.Evaluate(`() => {
+			if (document.fonts && document.fonts.ready) {
+				return document.fonts.ready.catch(() => undefined)
+			}
+			return Promise.resolve()
+		}`); evalErr != nil {
+			return fmt.Errorf("failed waiting for font readiness before screenshot %s: %w", name, evalErr)
+		}
+		if _, evalErr := page.Evaluate(`() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`); evalErr != nil {
+			return fmt.Errorf("failed waiting for render stability before screenshot %s: %w", name, evalErr)
+		}
+	}
+
+	return nil
+}
+
+func isPlaywrightTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "timeout") || strings.Contains(message, "timed out")
 }
 
 // GetCurrentURL returns the current page URL.

@@ -65,6 +65,7 @@ type LocalOAuth2Config struct {
 	IssuerURI              string
 	TokenTTL               time.Duration
 	TokenClaimsExpression  string
+	SigningKeys            LocalSigningKeysConfig
 	SupportedResponseTypes []string
 	SupportedGrantTypes    []string
 	CIMD                   CIMDConfig

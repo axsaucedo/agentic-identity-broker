@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -31,27 +32,32 @@ const jwksCacheMaxAge = 300 * time.Second
 // will have learned about it before the first token signed with it appears.
 const jwksGracePeriod = 2 * jwksCacheMaxAge
 
+const bootstrapRecoveryProbeTimeout = 5 * time.Second
+
 // SigningKeyService manages signing key lifecycle including generation,
 // encryption, storage, and JWKS building.
 type SigningKeyService struct {
-	repo             ports.SigningKeyRepository
-	encryption       ports.EncryptionPort
-	branchKeyManager ports.BranchKeyManager
-	logger           *slog.Logger
+	repo                 ports.SigningKeyRepository
+	bootstrapCoordinator ports.SigningKeyBootstrapCoordinator
+	encryption           ports.EncryptionPort
+	branchKeyManager     ports.BranchKeyManager
+	logger               *slog.Logger
 }
 
 // NewSigningKeyService creates a new SigningKeyService.
 func NewSigningKeyService(
 	repo ports.SigningKeyRepository,
+	bootstrapCoordinator ports.SigningKeyBootstrapCoordinator,
 	encryption ports.EncryptionPort,
 	branchKeyManager ports.BranchKeyManager,
 	logger *slog.Logger,
 ) *SigningKeyService {
 	return &SigningKeyService{
-		repo:             repo,
-		encryption:       encryption,
-		branchKeyManager: branchKeyManager,
-		logger:           logger,
+		repo:                 repo,
+		bootstrapCoordinator: bootstrapCoordinator,
+		encryption:           encryption,
+		branchKeyManager:     branchKeyManager,
+		logger:               logger,
 	}
 }
 
@@ -142,6 +148,7 @@ func (s *SigningKeyService) BuildJWKS(ctx context.Context) (jwk.Set, error) {
 	}
 
 	set := jwk.NewSet()
+	processedKids := make(map[id.KeyID]struct{}, len(keys))
 	for _, key := range keys {
 		privPEM, err := s.encryption.Decrypt(ctx, key.PrivateKeyEncrypted, signingKeyEncCtx(key.KID))
 		if err != nil {
@@ -166,21 +173,40 @@ func (s *SigningKeyService) BuildJWKS(ctx context.Context) (jwk.Set, error) {
 			s.logger.Error("signing key has unrecognized algorithm, skipping", "kid", key.KID, "algorithm", key.Algorithm, "error", err)
 			continue
 		}
-		_ = jwkKey.Set(jwk.KeyIDKey, key.KID.String())
-		_ = jwkKey.Set(jwk.AlgorithmKey, jwaAlg)
-		_ = jwkKey.Set(jwk.KeyUsageKey, "sig")
+		if err := setJWKMetadata(jwkKey, key.KID, jwaAlg); err != nil {
+			s.logger.Error("failed to attach signing key metadata, skipping", "kid", key.KID, "error", err)
+			continue
+		}
 
 		if err := set.AddKey(jwkKey); err != nil {
 			s.logger.Error("failed to add signing key to JWKS, skipping", "kid", key.KID, "error", err)
 			continue
 		}
+		processedKids[key.KID] = struct{}{}
 	}
 
+	if current := currentSigningKey(keys, time.Now().UTC()); current != nil {
+		if _, ok := processedKids[current.KID]; !ok {
+			return nil, fmt.Errorf("failed to build JWKS: current signing key %s is missing from JWKS", current.KID)
+		}
+	}
 	if len(keys) > 0 && set.Len() == 0 {
 		return nil, fmt.Errorf("failed to build JWKS: all %d active key(s) failed processing", len(keys))
 	}
 
 	return set, nil
+}
+
+// ListKeys returns all active signing keys for admin listing.
+func (s *SigningKeyService) ListKeys(ctx context.Context) ([]*storage.SigningKey, error) {
+	return s.repo.ListActive(ctx)
+}
+
+// PromoteKey promotes a signing key and returns the updated key metadata.
+// Admin-driven promotion takes effect immediately because the target key is already
+// present in JWKS and the operator explicitly requested activation now.
+func (s *SigningKeyService) PromoteKey(ctx context.Context, kid id.KeyID) (*storage.SigningKey, error) {
+	return s.repo.SetCurrent(ctx, kid, time.Now().UTC())
 }
 
 // GetCurrent returns the active signing key used for token signing.
@@ -193,9 +219,64 @@ func (s *SigningKeyService) CountActive(ctx context.Context) (int, error) {
 	return s.repo.CountActive(ctx)
 }
 
-// DeleteKey removes a non-current signing key.
-// Returns an error if the key is the last active key or is the current key.
+// EnsureInitialKey creates a single immediately-active signing key when none exist.
+// The repository-backed bootstrap lock serializes this check-and-create flow across
+// replicas so concurrent startup cannot generate multiple initial keys. The bootstrap
+// callback may call repository methods that open their own transactions; correctness
+// depends on every bootstrap caller acquiring the same lock before entering the
+// callback, not on reusing the outer lock transaction for the inner write path.
+func (s *SigningKeyService) EnsureInitialKey(ctx context.Context, algorithm string) (*storage.SigningKey, bool, error) {
+	var created *storage.SigningKey
+
+	err := s.bootstrapCoordinator.WithBootstrapLock(ctx, func(lockCtx context.Context) error {
+		count, err := s.repo.CountActive(lockCtx)
+		if err != nil {
+			return fmt.Errorf("failed to count active keys: %w", err)
+		}
+		if count > 0 {
+			return nil
+		}
+
+		// Bootstrap activates immediately because no prior JWKS caches exist to invalidate.
+		created, err = s.generateAndStore(lockCtx, algorithm, true, time.Now().UTC())
+		if err != nil {
+			return fmt.Errorf("failed to generate initial signing key: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		if created != nil || isBootstrapTimeoutOrCancellation(err) {
+			recoveryCtx, cancel := context.WithTimeout(context.Background(), bootstrapRecoveryProbeTimeout)
+			defer cancel()
+
+			count, countErr := s.repo.CountActive(recoveryCtx)
+			if countErr != nil {
+				s.logger.Warn("bootstrap recovery count probe failed",
+					"created_locally", created != nil,
+					"error", err,
+					"recovery_error", countErr)
+			} else if count > 0 {
+				s.logger.Warn("bootstrap lock returned error after signing key bootstrap work; treating startup as recovered",
+					"active_key_count", count,
+					"created_locally", created != nil,
+					"error", err)
+				return created, created != nil, nil
+			}
+		}
+		return nil, false, err
+	}
+	return created, created != nil, nil
+}
+
+// DeleteKey removes a signing key after validating lifecycle invariants in the
+// domain service. Repository implementations still enforce the same rules
+// atomically as a fail-closed backstop for concurrent delete/promotion races.
 func (s *SigningKeyService) DeleteKey(ctx context.Context, kid id.KeyID) error {
+	key, err := s.repo.GetByKID(ctx, kid)
+	if err != nil {
+		return fmt.Errorf("failed to get signing key: %w", err)
+	}
+
 	count, err := s.repo.CountActive(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to count active keys: %w", err)
@@ -203,13 +284,16 @@ func (s *SigningKeyService) DeleteKey(ctx context.Context, kid id.KeyID) error {
 	if count <= 1 {
 		return ports.ErrLastActiveKey
 	}
-
-	key, err := s.repo.GetByKID(ctx, kid)
-	if err != nil {
-		return err
-	}
 	if key.IsCurrent {
 		return ports.ErrCurrentKey
+	}
+
+	keys, err := s.repo.ListActive(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list active keys: %w", err)
+	}
+	if current := currentSigningKey(keys, time.Now().UTC()); current != nil && current.KID == kid {
+		return ports.ErrEffectiveCurrentKey
 	}
 
 	return s.repo.Delete(ctx, kid)
@@ -218,6 +302,27 @@ func (s *SigningKeyService) DeleteKey(ctx context.Context, kid id.KeyID) error {
 // DecryptPrivateKey decrypts the private key material of a signing key.
 func (s *SigningKeyService) DecryptPrivateKey(ctx context.Context, key *storage.SigningKey) ([]byte, error) {
 	return s.encryption.Decrypt(ctx, key.PrivateKeyEncrypted, signingKeyEncCtx(key.KID))
+}
+
+func isBootstrapTimeoutOrCancellation(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	var storageErr *storage.StorageError
+	return errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindTimeout
+}
+
+func currentSigningKey(keys []*storage.SigningKey, now time.Time) *storage.SigningKey {
+	var best *storage.SigningKey
+	for _, key := range keys {
+		if key == nil || key.ActivatesAt.After(now) {
+			continue
+		}
+		if best == nil || (!best.IsCurrent && key.IsCurrent) || (best.IsCurrent == key.IsCurrent && key.ActivatesAt.After(best.ActivatesAt)) {
+			best = key
+		}
+	}
+	return best
 }
 
 func newSigningKeySubject(kid id.KeyID) (domainencryption.BranchKeySubject, error) {
@@ -259,7 +364,20 @@ func generateES256KeyPEM() ([]byte, error) {
 		Bytes: pkcs8Bytes,
 	}
 
-	return pem.EncodeToMemory(pemBlock), nil
+	return encodePEMBlock(pemBlock)
+}
+
+func encodePEMBlock(block *pem.Block) ([]byte, error) {
+	if block == nil {
+		return nil, fmt.Errorf("PEM block is required")
+	}
+
+	encoded := pem.EncodeToMemory(block)
+	if encoded == nil {
+		return nil, fmt.Errorf("failed to encode PEM block")
+	}
+
+	return encoded, nil
 }
 
 func publicKeyFromPEM(privPEM []byte, algorithm string) (interface{}, error) {
@@ -294,4 +412,17 @@ func algorithmToJWA(algorithm string) (jwa.SignatureAlgorithm, error) {
 	default:
 		return jwa.SignatureAlgorithm{}, fmt.Errorf("unrecognized algorithm: %q", algorithm)
 	}
+}
+
+func setJWKMetadata(jwkKey jwk.Key, kid id.KeyID, algorithm jwa.SignatureAlgorithm) error {
+	if err := jwkKey.Set(jwk.KeyIDKey, kid.String()); err != nil {
+		return fmt.Errorf("failed to set kid: %w", err)
+	}
+	if err := jwkKey.Set(jwk.AlgorithmKey, algorithm); err != nil {
+		return fmt.Errorf("failed to set alg: %w", err)
+	}
+	if err := jwkKey.Set(jwk.KeyUsageKey, "sig"); err != nil {
+		return fmt.Errorf("failed to set use: %w", err)
+	}
+	return nil
 }

@@ -46,6 +46,13 @@ func TestOAuth2AuthServerConfig_Validate_OppositeModeRejection(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("proxy mode with local.signing_keys.bootstrap_timeout set returns error", func(t *testing.T) {
+		cfg := validBaseOAuth2Config()
+		cfg.Local.SigningKeys.BootstrapTimeout = 45 * time.Second
+		err := cfg.Validate()
+		require.Error(t, err)
+	})
+
 	t.Run("proxy mode with no local settings — no error", func(t *testing.T) {
 		cfg := validBaseOAuth2Config()
 		err := cfg.Validate()
@@ -205,6 +212,23 @@ func TestOAuth2AuthServerConfig_Validate_LocalMode(t *testing.T) {
 		err := cfg.Validate()
 		require.NoError(t, err)
 		assert.Equal(t, time.Hour, cfg.Local.TokenTTL)
+		assert.Equal(t, DefaultSigningKeyBootstrapTimeout, cfg.Local.SigningKeys.BootstrapTimeout)
+	})
+
+	t.Run("local mode preserves explicit signing key bootstrap timeout", func(t *testing.T) {
+		cfg := validLocalOAuth2Config()
+		cfg.Local.SigningKeys.BootstrapTimeout = 45 * time.Second
+		err := cfg.Validate()
+		require.NoError(t, err)
+		assert.Equal(t, 45*time.Second, cfg.Local.SigningKeys.BootstrapTimeout)
+	})
+
+	t.Run("local mode rejects negative signing key bootstrap timeout", func(t *testing.T) {
+		cfg := validLocalOAuth2Config()
+		cfg.Local.SigningKeys.BootstrapTimeout = -1 * time.Second
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "signing_keys.bootstrap_timeout")
 	})
 
 	t.Run("local mode with proxy section set — error", func(t *testing.T) {
@@ -342,6 +366,26 @@ func TestOAuth2AuthServerConfig_Validate_CIMDGating(t *testing.T) {
 		err := cfg.Validate()
 		assert.NoError(t, err)
 	})
+
+	t.Run("hybrid mode preserves explicit signing key bootstrap timeout", func(t *testing.T) {
+		cfg := OAuth2AuthServerConfig{
+			Mode: "hybrid",
+			Proxy: ProxyModeConfig{
+				UpstreamIssuerURI:         "https://issuer.example.com",
+				UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://issuer.example.com/token",
+			},
+			Local: LocalModeConfig{
+				TokenTTL: time.Hour,
+				SigningKeys: LocalSigningKeysConfig{
+					BootstrapTimeout: 45 * time.Second,
+				},
+			},
+		}
+		err := cfg.Validate()
+		require.NoError(t, err)
+		assert.Equal(t, 45*time.Second, cfg.Local.SigningKeys.BootstrapTimeout)
+	})
 }
 
 // TestOAuth2AuthServerConfig_Resolve verifies that Resolve() propagates all config
@@ -358,6 +402,9 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		IssuerURI:             "https://auth.cdn.example.com",
 		TokenTTL:              2 * time.Hour,
 		TokenClaimsExpression: `{"sub": claims.sub}`,
+		SigningKeys: LocalSigningKeysConfig{
+			BootstrapTimeout: 45 * time.Second,
+		},
 	}
 	cimd := CIMDConfig{
 		Enabled: true,
@@ -425,6 +472,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		assert.Equal(t, localFields.IssuerURI, l.IssuerURI)
 		assert.Equal(t, localFields.TokenTTL, l.TokenTTL)
 		assert.Equal(t, localFields.TokenClaimsExpression, l.TokenClaimsExpression)
+		assert.Equal(t, localFields.SigningKeys, l.SigningKeys)
 		assert.Equal(t, sharedResponseTypes, l.SupportedResponseTypes)
 		assert.Equal(t, sharedGrantTypes, l.SupportedGrantTypes)
 		assert.Equal(t, cimd, l.CIMD)
@@ -436,6 +484,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		require.NoError(t, err)
 		l := result.(*LocalOAuth2Config)
 		assert.Equal(t, time.Hour, l.TokenTTL, "default local token TTL must be 1h")
+		assert.Equal(t, DefaultSigningKeyBootstrapTimeout, l.SigningKeys.BootstrapTimeout)
 		assert.Equal(t, []string{"code"}, l.SupportedResponseTypes)
 		assert.Equal(t, []string{"authorization_code", "client_credentials"}, l.SupportedGrantTypes)
 	})
@@ -466,6 +515,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		assert.Equal(t, localFields.IssuerURI, h.Local.IssuerURI)
 		assert.Equal(t, localFields.TokenTTL, h.Local.TokenTTL)
 		assert.Equal(t, localFields.TokenClaimsExpression, h.Local.TokenClaimsExpression)
+		assert.Equal(t, localFields.SigningKeys, h.Local.SigningKeys)
 		assert.Equal(t, sharedResponseTypes, h.Local.SupportedResponseTypes)
 		assert.Equal(t, sharedGrantTypes, h.Local.SupportedGrantTypes)
 		assert.Equal(t, cimd, h.Local.CIMD)
@@ -484,6 +534,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		require.NoError(t, err)
 		h := result.(*HybridOAuth2Config)
 		assert.Equal(t, time.Hour, h.Local.TokenTTL, "default hybrid local token TTL must be 1h")
+		assert.Equal(t, DefaultSigningKeyBootstrapTimeout, h.Local.SigningKeys.BootstrapTimeout)
 		assert.Equal(t, []string{"code"}, h.Proxy.SupportedResponseTypes, "default proxy response type")
 		assert.Equal(t, []string{"authorization_code", "client_credentials"}, h.Proxy.SupportedGrantTypes, "default hybrid grant types")
 		assert.Equal(t, []string{"code"}, h.Local.SupportedResponseTypes, "default local response type")

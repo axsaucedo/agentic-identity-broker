@@ -20,6 +20,11 @@ type lifecycleAdapter interface {
 	HealthCheck(context.Context) error
 }
 
+type signingKeyAdapter interface {
+	ports.SigningKeyRepository
+	ports.SigningKeyBootstrapCoordinator
+}
+
 // Adapter composes storage functionality.
 // Adapters implement repository interfaces (UserRepository, etc.)
 // This struct is returned by NewAdapter factory function.
@@ -32,7 +37,7 @@ type Adapter struct {
 	userSessions       ports.UserSessionRepository
 	permissionSets     ports.PermissionSetRepository
 	brokerCredentials  ports.ClientCredentialRepository
-	signingKeys        ports.SigningKeyRepository
+	signingKeys        signingKeyAdapter
 	authorizationCodes ports.AuthorizationCodeRepository
 	pkceSessions       ports.PKCESessionRepository
 }
@@ -68,6 +73,7 @@ func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 	agentRepo := memory.NewAgentRepository()
 	permissionSets := memory.NewPermissionSetRepository().WithAgentRepository(agentRepo)
 	userGrants := memory.NewUserGrantRepository().WithPermissionSetRepository(permissionSets)
+	signingKeys := memory.NewSigningKeyStore()
 	return &Adapter{
 		lifecycle:          memAdapter,
 		users:              memAdapter,
@@ -77,7 +83,7 @@ func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		userSessions:       memory.NewInMemoryUserSessionRepository(),
 		permissionSets:     permissionSets,
 		brokerCredentials:  memory.NewClientCredentialStore(),
-		signingKeys:        memory.NewSigningKeyStore(),
+		signingKeys:        signingKeys,
 		authorizationCodes: memory.NewAuthorizationCodeStore(),
 		pkceSessions:       memory.NewPKCESessionStore(),
 	}, nil
@@ -93,6 +99,8 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		return nil, err
 	}
 
+	signingKeys := postgres.NewSigningKeyRepo(pgAdapter)
+
 	return &Adapter{
 		lifecycle:          pgAdapter,
 		users:              pgAdapter,
@@ -102,7 +110,7 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		userSessions:       postgres.NewUserSessionRepository(pgAdapter),
 		permissionSets:     postgres.NewPermissionSetRepository(pgAdapter),
 		brokerCredentials:  postgres.NewClientCredentialRepo(pgAdapter),
-		signingKeys:        postgres.NewSigningKeyRepo(pgAdapter),
+		signingKeys:        signingKeys,
 		authorizationCodes: postgres.NewAuthorizationCodeRepo(pgAdapter),
 		pkceSessions:       postgres.NewPKCESessionRepo(pgAdapter),
 	}, nil
@@ -191,6 +199,11 @@ func (a *Adapter) BrokerCredentials() ports.ClientCredentialRepository {
 
 // SigningKeys returns the SigningKeyRepository interface implementation.
 func (a *Adapter) SigningKeys() ports.SigningKeyRepository {
+	return a.signingKeys
+}
+
+// SigningKeyBootstrapCoordinator returns the bootstrap coordinator for signing-key startup.
+func (a *Adapter) SigningKeyBootstrapCoordinator() ports.SigningKeyBootstrapCoordinator {
 	return a.signingKeys
 }
 

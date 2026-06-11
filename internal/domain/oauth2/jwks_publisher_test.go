@@ -37,6 +37,14 @@ func (m *mockSigningKeyManager) BuildJWKS(ctx context.Context) (jwk.Set, error) 
 	return m.buildFn(ctx)
 }
 
+func (m *mockSigningKeyManager) ListKeys(_ context.Context) ([]*storage.SigningKey, error) {
+	panic("not implemented")
+}
+
+func (m *mockSigningKeyManager) PromoteKey(_ context.Context, _ id.KeyID) (*storage.SigningKey, error) {
+	panic("not implemented")
+}
+
 func (m *mockSigningKeyManager) DeleteKey(_ context.Context, _ id.KeyID) error {
 	panic("not implemented")
 }

@@ -209,7 +209,8 @@ All admin endpoints require admin-level access (no principal authentication — 
 | Status | Error | Description |
 |---|---|---|
 | `404 Not Found` | `key_not_found` | No active key with this `kid` exists |
-| `409 Conflict` | `last_key` | Cannot remove the last remaining active key — at least one must exist |
+| `409 Conflict` | `last_key` | Cannot delete the last remaining signing key |
+| `409 Conflict` | `current_key` | Promote another signing key before removing the current key |
 
 ---
 

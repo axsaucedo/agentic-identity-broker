@@ -23,6 +23,8 @@ import (
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockJWKSPublisher is a minimal JWKS publisher stub for builder tests.
@@ -218,6 +220,19 @@ func TestBuilderMinimalConfiguration(t *testing.T) {
 }
 
 // TestBuilderMissingRequiredDependency validates that the builder rejects invalid configurations.
+func TestNewSigningKeyStartupContext(t *testing.T) {
+	timeout := 3 * time.Second
+	ctx, cancel := newSigningKeyStartupContext(timeout)
+	defer cancel()
+
+	deadline, ok := ctx.Deadline()
+	require.True(t, ok, "startup context should have a deadline")
+
+	remaining := time.Until(deadline)
+	assert.GreaterOrEqual(t, remaining, 2*time.Second)
+	assert.LessOrEqual(t, remaining, timeout)
+}
+
 func TestBuilderMissingRequiredDependency(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -513,6 +528,9 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 		}
 		if got := app.EnduserHealthComponents(); got["upstream_jwks"] != "degraded" {
 			t.Fatalf("EnduserHealthComponents()[\"upstream_jwks\"] = %q, want %q", got["upstream_jwks"], "degraded")
+		}
+		if app.AdminHandlers.SigningKeys != nil {
+			t.Error("proxy mode must not wire signing key admin handlers")
 		}
 	})
 
@@ -884,9 +902,7 @@ func TestBuilder_ShutdownStopsUpstreamJWKSAdapterWorkers(t *testing.T) {
 	}
 }
 
-// TestBuilder_MissingOAuth2AuthServerConfig verifies that Build() fails when the
-// oauth2_authorization_server block is absent. Mode is mandatory — no default exists.
-func TestBuilder_LocalModeWarnsWhenNoCurrentSigningKeyExists(t *testing.T) {
+func TestBuilder_LocalModeSigningKeyReadiness(t *testing.T) {
 	newConfig := func(jweKey string) *ports.Config {
 		return &ports.Config{
 			Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
@@ -932,7 +948,92 @@ func TestBuilder_LocalModeWarnsWhenNoCurrentSigningKeyExists(t *testing.T) {
 
 	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
 
-	t.Run("logs when only a grace-period key exists", func(t *testing.T) {
+	t.Run("auto-generates an initial signing key when none exist", func(t *testing.T) {
+		adapter := newStorage(t)
+
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+		app, err := NewBuilder().WithConfig(newConfig(jweKey)).WithStorage(adapter).WithLogger(logger).Build()
+		if err != nil {
+			t.Fatalf("Build() failed: %v", err)
+		}
+		if app == nil {
+			t.Fatal("expected non-nil app")
+		}
+
+		count, err := adapter.SigningKeys().CountActive(context.Background())
+		if err != nil {
+			t.Fatalf("CountActive() failed: %v", err)
+		}
+		if count != 1 {
+			t.Fatalf("expected one auto-generated signing key, got %d", count)
+		}
+
+		current, err := adapter.SigningKeys().GetCurrent(context.Background())
+		if err != nil {
+			t.Fatalf("GetCurrent() failed: %v", err)
+		}
+		if current.ActivatesAt.After(time.Now().Add(time.Second)) {
+			t.Fatalf("expected auto-generated signing key to be immediately active, activates_at=%s", current.ActivatesAt)
+		}
+		if !strings.Contains(logBuf.String(), "auto-generated initial signing key") {
+			t.Fatalf("expected auto-generation log entry, got: %s", logBuf.String())
+		}
+	})
+
+	t.Run("uses the local signing-key bootstrap timeout for both startup contexts", func(t *testing.T) {
+		adapter := newStorage(t)
+
+		originalNewSigningKeyStartupContext := newSigningKeyStartupContext
+		t.Cleanup(func() {
+			newSigningKeyStartupContext = originalNewSigningKeyStartupContext
+		})
+
+		calls := 0
+		var requestedTimeouts []time.Duration
+		newSigningKeyStartupContext = func(timeout time.Duration) (context.Context, context.CancelFunc) {
+			calls++
+			requestedTimeouts = append(requestedTimeouts, timeout)
+			return context.WithCancel(context.Background())
+		}
+
+		cfg := newConfig(jweKey)
+		cfg.OAuth2AuthServer.Local.SigningKeys.BootstrapTimeout = 12 * time.Second
+
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+		app, err := NewBuilder().WithConfig(cfg).WithStorage(adapter).WithLogger(logger).Build()
+		require.NoError(t, err)
+		require.NotNil(t, app)
+		assert.Equal(t, 2, calls)
+		require.Len(t, requestedTimeouts, 2)
+		assert.Equal(t, cfg.OAuth2AuthServer.Local.SigningKeys.BootstrapTimeout, requestedTimeouts[0])
+		assert.Equal(t, cfg.OAuth2AuthServer.Local.SigningKeys.BootstrapTimeout, requestedTimeouts[1])
+	})
+
+	t.Run("propagates EnsureInitialKey failure from bootstrap", func(t *testing.T) {
+		adapter := newStorage(t)
+
+		originalNewSigningKeyStartupContext := newSigningKeyStartupContext
+		t.Cleanup(func() {
+			newSigningKeyStartupContext = originalNewSigningKeyStartupContext
+		})
+
+		newSigningKeyStartupContext = func(time.Duration) (context.Context, context.CancelFunc) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			return ctx, func() {}
+		}
+
+		_, err := NewBuilder().WithConfig(newConfig(jweKey)).WithStorage(adapter).WithLogger(slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))).Build()
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "failed to ensure initial signing key")
+		assert.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("warns when only a grace-period key exists", func(t *testing.T) {
 		adapter := newStorage(t)
 		err := adapter.SigningKeys().Create(context.Background(), &domstorage.SigningKey{
 			ID:                  id.NewSigningKeyID(),
@@ -948,7 +1049,7 @@ func TestBuilder_LocalModeWarnsWhenNoCurrentSigningKeyExists(t *testing.T) {
 		}
 
 		var logBuf bytes.Buffer
-		logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelError}))
+		logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 		app, err := NewBuilder().WithConfig(newConfig(jweKey)).WithStorage(adapter).WithLogger(logger).Build()
 		if err != nil {
@@ -957,8 +1058,118 @@ func TestBuilder_LocalModeWarnsWhenNoCurrentSigningKeyExists(t *testing.T) {
 		if app == nil {
 			t.Fatal("expected non-nil app")
 		}
-		if !strings.Contains(logBuf.String(), "no currently-active signing key available") {
-			t.Fatalf("expected readiness warning in logs, got: %s", logBuf.String())
+		assert.Contains(t, logBuf.String(), `"level":"WARN"`)
+		assert.Contains(t, logBuf.String(), "no currently-active signing key available")
+		assert.Contains(t, logBuf.String(), "local token issuance is unavailable")
+	})
+}
+
+func TestBuilder_HybridModeSigningKeyReadiness(t *testing.T) {
+	newConfig := func(jweKey string, upstreamURL string) *ports.Config {
+		return &ports.Config{
+			Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+			Server: ports.ServerConfig{
+				EndUser: ports.ServerInstanceConfig{
+					Port: 8000, Bind: "::1", PublicURL: "http://localhost:8000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Admin: ports.ServerInstanceConfig{
+					Port: 14000, Bind: "::1", PublicURL: "http://localhost:14000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Shutdown: ports.ShutdownConfig{Timeout: 5 * time.Second},
+			},
+			Storage: ports.StorageConfig{
+				Backend:  "memory",
+				Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+			},
+			ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
+			Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
+			Security:         ports.SecurityConfig{SkipThirdpartyHTTPSValidation: true},
+			OAuth2AuthServer: ports.OAuth2AuthServerConfig{
+				Mode: "hybrid",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         upstreamURL,
+					UpstreamAuthorizeEndpoint: upstreamURL + "/authorize",
+					UpstreamTokenEndpoint:     upstreamURL + "/token",
+				},
+				Local: ports.LocalModeConfig{TokenTTL: time.Hour},
+			},
+		}
+	}
+
+	newStorage := func(t *testing.T) *storage.Adapter {
+		t.Helper()
+		a, err := storage.NewAdapter(&ports.StorageConfig{
+			Backend:  "memory",
+			Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+		})
+		if err != nil {
+			t.Fatalf("storage.NewAdapter: %v", err)
+		}
+		return a
+	}
+
+	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+
+	t.Run("auto-generates an initial signing key when none exist", func(t *testing.T) {
+		adapter := newStorage(t)
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch r.URL.Path {
+			case "/.well-known/oauth-authorization-server":
+				baseURL := "http://" + r.Host
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"issuer":                 baseURL,
+					"authorization_endpoint": baseURL + "/authorize",
+					"token_endpoint":         baseURL + "/token",
+					"jwks_uri":               baseURL + "/.well-known/jwks.json",
+				})
+			case "/.well-known/jwks.json":
+				_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{}})
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer upstream.Close()
+
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+		app, err := NewBuilder().WithConfig(newConfig(jweKey, upstream.URL)).WithStorage(adapter).WithLogger(logger).Build()
+		if err != nil {
+			t.Fatalf("Build() failed: %v", err)
+		}
+		if app == nil {
+			t.Fatal("expected non-nil app")
+		}
+		defer func() {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			_ = app.Shutdown(shutdownCtx)
+		}()
+
+		count, err := adapter.SigningKeys().CountActive(context.Background())
+		if err != nil {
+			t.Fatalf("CountActive() failed: %v", err)
+		}
+		if count != 1 {
+			t.Fatalf("expected one auto-generated signing key, got %d", count)
+		}
+
+		current, err := adapter.SigningKeys().GetCurrent(context.Background())
+		if err != nil {
+			t.Fatalf("GetCurrent() failed: %v", err)
+		}
+		if current.ActivatesAt.After(time.Now().Add(time.Second)) {
+			t.Fatalf("expected auto-generated signing key to be immediately active, activates_at=%s", current.ActivatesAt)
+		}
+		if !strings.Contains(logBuf.String(), "auto-generated initial signing key") {
+			t.Fatalf("expected auto-generation log entry, got: %s", logBuf.String())
 		}
 	})
 }

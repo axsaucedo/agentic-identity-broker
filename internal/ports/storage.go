@@ -369,10 +369,13 @@ type SigningKeyRepository interface {
 	// ListActive returns all signing keys that have not been removed.
 	ListActive(ctx context.Context) ([]*storage.SigningKey, error)
 
-	// SetCurrent promotes a key to be the current signing key.
-	SetCurrent(ctx context.Context, kid id.KeyID) error
+	// SetCurrent promotes a key to be the current signing key using the domain-supplied
+	// activation timestamp and returns the updated metadata.
+	SetCurrent(ctx context.Context, kid id.KeyID, activatesAt time.Time) (*storage.SigningKey, error)
 
 	// Delete soft-deletes a signing key by setting removed_at.
+	// Implementations must enforce signing-key invariants atomically:
+	// the current key cannot be removed and at least one active key must remain.
 	Delete(ctx context.Context, kid id.KeyID) error
 
 	// CountActive returns the number of non-removed signing keys.

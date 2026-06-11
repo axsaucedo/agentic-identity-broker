@@ -259,7 +259,7 @@ func applyMigrations(t *testing.T, container testcontainers.Container) {
 
 func applyMigrationsToDatabase(t *testing.T, container testcontainers.Container, dbName string) {
 	t.Helper()
-	applyMigrationsUpToDatabase(t, container, dbName, 20)
+	applyMigrationsUpToDatabase(t, container, dbName, 21)
 }
 
 // applyMigrationsUpTo applies migrations sequentially against the default database.
@@ -304,6 +304,7 @@ func applyMigrationsUpToDatabase(t *testing.T, container testcontainers.Containe
 		{"018_add_agent_permission_sets.up.sql", 18},
 		{"019_migrate_user_grants_to_permission_sets.up.sql", 19},
 		{"020_add_service_scope_requirement_type.up.sql", 20},
+		{"021_enforce_single_current_signing_key.up.sql", 21},
 	}
 
 	for _, migration := range migrations {
