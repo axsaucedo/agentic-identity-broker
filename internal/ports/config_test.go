@@ -73,9 +73,9 @@ func TestOAuth2AuthServerConfig_Validate_OppositeModeRejection(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("local mode with proxy.upstream_timeout_seconds set returns error", func(t *testing.T) {
+	t.Run("local mode with proxy.upstream_timeout set returns error", func(t *testing.T) {
 		cfg := validLocalOAuth2Config()
-		cfg.Proxy.UpstreamTimeoutSeconds = 30
+		cfg.Proxy.UpstreamTimeout = 30 * time.Second
 		err := cfg.Validate()
 		require.Error(t, err)
 	})
@@ -172,6 +172,15 @@ func TestOAuth2AuthServerConfig_Validate_ProxyMode(t *testing.T) {
 		cfg.Proxy.UpstreamTokenEndpoint = ""
 		err := cfg.Validate()
 		require.Error(t, err)
+	})
+
+	t.Run("proxy mode with negative upstream_timeout — error", func(t *testing.T) {
+		cfg := validBaseOAuth2Config()
+		cfg.Proxy.UpstreamTimeout = -5 * time.Second
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "upstream_timeout")
+		assert.Contains(t, err.Error(), "positive duration")
 	})
 
 	t.Run("proxy mode with local section set — error", func(t *testing.T) {
@@ -343,7 +352,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		UpstreamIssuerURI:         "https://issuer.example.com",
 		UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
 		UpstreamTokenEndpoint:     "https://issuer.example.com/token",
-		UpstreamTimeoutSeconds:    45,
+		UpstreamTimeout:           45 * time.Second,
 	}
 	localFields := LocalModeConfig{
 		IssuerURI:             "https://auth.cdn.example.com",
@@ -377,7 +386,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		assert.Equal(t, proxyFields.UpstreamIssuerURI, p.UpstreamIssuerURI)
 		assert.Equal(t, proxyFields.UpstreamAuthorizeEndpoint, p.UpstreamAuthorizeEndpoint)
 		assert.Equal(t, proxyFields.UpstreamTokenEndpoint, p.UpstreamTokenEndpoint)
-		assert.Equal(t, proxyFields.UpstreamTimeoutSeconds, p.UpstreamTimeoutSeconds)
+		assert.Equal(t, proxyFields.UpstreamTimeout, p.UpstreamTimeout)
 		assert.Equal(t, sharedResponseTypes, p.SupportedResponseTypes)
 		assert.Equal(t, sharedGrantTypes, p.SupportedGrantTypes)
 		assert.Equal(t, mac, p.MultiAgentClient)
@@ -390,13 +399,13 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 				UpstreamIssuerURI:         proxyFields.UpstreamIssuerURI,
 				UpstreamAuthorizeEndpoint: proxyFields.UpstreamAuthorizeEndpoint,
 				UpstreamTokenEndpoint:     proxyFields.UpstreamTokenEndpoint,
-				UpstreamTimeoutSeconds:    0,
+				UpstreamTimeout:           0,
 			},
 		}
 		result, err := cfg.Resolve()
 		require.NoError(t, err)
 		p := result.(*ProxyOAuth2Config)
-		assert.Equal(t, 30, p.UpstreamTimeoutSeconds, "default timeout must be 30s")
+		assert.Equal(t, 30*time.Second, p.UpstreamTimeout, "default timeout must be 30s")
 		assert.Equal(t, []string{"code"}, p.SupportedResponseTypes, "default response type must be 'code'")
 		assert.Equal(t, []string{"authorization_code"}, p.SupportedGrantTypes, "default proxy grant type")
 	})
@@ -449,7 +458,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		assert.Equal(t, proxyFields.UpstreamIssuerURI, h.Proxy.UpstreamIssuerURI)
 		assert.Equal(t, proxyFields.UpstreamAuthorizeEndpoint, h.Proxy.UpstreamAuthorizeEndpoint)
 		assert.Equal(t, proxyFields.UpstreamTokenEndpoint, h.Proxy.UpstreamTokenEndpoint)
-		assert.Equal(t, proxyFields.UpstreamTimeoutSeconds, h.Proxy.UpstreamTimeoutSeconds)
+		assert.Equal(t, proxyFields.UpstreamTimeout, h.Proxy.UpstreamTimeout)
 		assert.Equal(t, sharedResponseTypes, h.Proxy.SupportedResponseTypes)
 		assert.Equal(t, sharedGrantTypes, h.Proxy.SupportedGrantTypes)
 		assert.Equal(t, mac, h.Proxy.MultiAgentClient)
@@ -479,7 +488,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		assert.Equal(t, []string{"authorization_code", "client_credentials"}, h.Proxy.SupportedGrantTypes, "default hybrid grant types")
 		assert.Equal(t, []string{"code"}, h.Local.SupportedResponseTypes, "default local response type")
 		assert.Equal(t, []string{"authorization_code", "client_credentials"}, h.Local.SupportedGrantTypes, "default hybrid grant types")
-		assert.Equal(t, 30, h.Proxy.UpstreamTimeoutSeconds, "default hybrid proxy timeout must be 30s")
+		assert.Equal(t, 30*time.Second, h.Proxy.UpstreamTimeout, "default hybrid proxy timeout must be 30s")
 	})
 
 	t.Run("invalid mode returns error without panicking", func(t *testing.T) {

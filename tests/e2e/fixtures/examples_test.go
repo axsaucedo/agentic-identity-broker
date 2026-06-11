@@ -197,13 +197,13 @@ func TestConfigFixtures(t *testing.T) {
 	})
 
 	t.Run("OAuth2ConfigWithTimeout", func(t *testing.T) {
-		c := OAuth2ConfigWithTimeout(60)
+		c := OAuth2ConfigWithTimeout(60 * time.Second)
 		if c == nil {
 			t.Fatal("OAuth2ConfigWithTimeout returned nil")
 		}
-		if c.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds != 60 {
-			t.Errorf("got UpstreamTimeoutSeconds %d, want %d",
-				c.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds, 60)
+		if c.OAuth2AuthServer.Proxy.UpstreamTimeout != 60*time.Second {
+			t.Errorf("got UpstreamTimeout %v, want %v",
+				c.OAuth2AuthServer.Proxy.UpstreamTimeout, 60*time.Second)
 		}
 		if err := c.OAuth2AuthServer.Validate(); err != nil {
 			t.Errorf("validation failed: %v", err)

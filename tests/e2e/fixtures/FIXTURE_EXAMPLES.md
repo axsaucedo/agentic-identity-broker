@@ -367,7 +367,7 @@ config := fixtures.DefaultOAuth2Config()
 //     UpstreamTokenEndpoint:     "http://localhost:19000/token"
 //     SupportedResponseTypes:    ["code"]
 //     SupportedGrantTypes:       ["authorization_code", "refresh_token"]
-//     UpstreamTimeoutSeconds:    30
+//     UpstreamTimeout:           30 * time.Second
 //     Mode:                      "proxy"
 //   }
 // }
@@ -399,20 +399,20 @@ config := fixtures.OAuth2ConfigWithUpstream(mockUpstream.Server.URL)
 server, _ := bootstrap.NewServerFactory(config).Build()
 ```
 
-### OAuth2ConfigWithTimeout(60)
+### OAuth2ConfigWithTimeout(60 * time.Second)
 
 ```go
-config := fixtures.OAuth2ConfigWithTimeout(60)
+config := fixtures.OAuth2ConfigWithTimeout(60 * time.Second)
 // Output: DefaultOAuth2Config() with override:
 // OAuth2AuthServer: {
-//   UpstreamTimeoutSeconds: 60
+//   UpstreamTimeout: 60 * time.Second
 //   // ... other fields same as DefaultOAuth2Config()
 // }
 ```
 
 **Use Case**: Testing timeout behavior
 ```go
-config := fixtures.OAuth2ConfigWithTimeout(2) // 2 second timeout
+config := fixtures.OAuth2ConfigWithTimeout(2 * time.Second)
 // Test upstream failures when response takes > 2 seconds
 ```
 

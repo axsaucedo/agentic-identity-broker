@@ -320,6 +320,10 @@ func TestConfigurationFromExamples(t *testing.T) {
 				t.Errorf("Expected bind %q, got %q", tt.expectedBind, cfg.Server.EndUser.Bind)
 			}
 
+			if tt.name == "production config" && cfg.OAuth2AuthServer.Proxy.UpstreamTimeout != 30*time.Second {
+				t.Errorf("Expected proxy upstream timeout %v, got %v", 30*time.Second, cfg.OAuth2AuthServer.Proxy.UpstreamTimeout)
+			}
+
 			// Verify sources are tracked
 			sources := loader.GetSources()
 			if len(sources) == 0 {
@@ -338,5 +342,41 @@ func TestConfigurationFromExamples(t *testing.T) {
 				t.Error("Expected YAML source to be tracked")
 			}
 		})
+	}
+}
+
+func TestConfigurationParsesProxyUpstreamTimeoutFromYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	err := os.WriteFile(configPath, []byte(`oauth2_authorization_server:
+  mode: proxy
+  proxy:
+    upstream_issuer_uri: https://idp.example.com
+    upstream_authorize_endpoint: https://idp.example.com/oauth2/authorize
+    upstream_token_endpoint: https://idp.example.com/oauth2/token
+    upstream_timeout: 500ms
+`), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+
+	t.Setenv("IDENTITY_BROKER_CONFIG_PATH", configPath)
+	t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", testJWESigningKey)
+	t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", testEncryptionKey)
+	t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+	t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+
+	loader := config.NewLoader()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cfg, err := loader.GetConfig(ctx)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.OAuth2AuthServer.Proxy.UpstreamTimeout != 500*time.Millisecond {
+		t.Fatalf("Expected proxy upstream timeout %v, got %v", 500*time.Millisecond, cfg.OAuth2AuthServer.Proxy.UpstreamTimeout)
 	}
 }

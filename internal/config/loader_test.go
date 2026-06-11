@@ -2,7 +2,10 @@ package config
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
@@ -246,5 +249,65 @@ func TestTokenExchangeExpectedAudienceConfiguration(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "my-custom-gateway-audience", cfg.TokenExchange.ExpectedAudience,
 			"expected_audience should be overridden by IDENTITY_BROKER_TOKEN_EXCHANGE_EXPECTED_AUDIENCE env var")
+	})
+}
+
+func TestConfigLoader_UpstreamTimeout(t *testing.T) {
+	t.Run("proxy upstream timeout can be configured via environment variable", func(t *testing.T) {
+		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(t, 32))
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(t, 32))
+		t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+		t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+		t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "proxy")
+		t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI", "https://idp.example.com")
+		t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT", "https://idp.example.com/oauth2/authorize")
+		t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT", "https://idp.example.com/oauth2/token")
+		t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TIMEOUT", "45s")
+
+		loader := NewLoader()
+		cfg, err := loader.GetConfig(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, 45*time.Second, cfg.OAuth2AuthServer.Proxy.UpstreamTimeout)
+	})
+
+	assertLoaderRejectsInvalidUpstreamTimeout := func(t *testing.T, upstreamTimeoutYAML string) {
+		t.Helper()
+
+		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(t, 32))
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(t, 32))
+		t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+		t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+
+		configPath := filepath.Join(t.TempDir(), "config.yaml")
+		require.NoError(t, os.WriteFile(configPath, []byte(`oauth2_authorization_server:
+  mode: proxy
+  proxy:
+    upstream_issuer_uri: https://idp.example.com
+    upstream_authorize_endpoint: https://idp.example.com/oauth2/authorize
+    upstream_token_endpoint: https://idp.example.com/oauth2/token
+    upstream_timeout: `+upstreamTimeoutYAML+`
+`), 0o600))
+		t.Setenv("IDENTITY_BROKER_CONFIG_PATH", configPath)
+
+		loader := NewLoader()
+		_, err := loader.GetConfig(context.Background())
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "upstream_timeout")
+		assert.Contains(t, err.Error(), "duration")
+		assert.NotContains(t, err.Error(), `field "config"`)
+	}
+
+	t.Run("bare numeric YAML upstream timeout is rejected", func(t *testing.T) {
+		assertLoaderRejectsInvalidUpstreamTimeout(t, "30")
+	})
+
+	t.Run("empty string YAML upstream timeout is rejected", func(t *testing.T) {
+		assertLoaderRejectsInvalidUpstreamTimeout(t, `""`)
+	})
+
+	t.Run("float YAML upstream timeout is rejected", func(t *testing.T) {
+		assertLoaderRejectsInvalidUpstreamTimeout(t, "30.5")
 	})
 }

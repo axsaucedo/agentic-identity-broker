@@ -19,7 +19,7 @@
 
 **Purpose**: Configuration schema and examples
 
-- [X] T001 Add OAuth2AuthServerConfig to internal/config/schema.go with upstream_issuer_uri, upstream_authorize_endpoint, upstream_token_endpoint, supported_response_types, supported_grant_types, upstream_timeout_seconds, mode fields (public URL is sourced from server.enduser.public_url)
+- [X] T001 Add OAuth2AuthServerConfig to internal/config/schema.go with upstream_issuer_uri, upstream_authorize_endpoint, upstream_token_endpoint, supported_response_types, supported_grant_types, upstream_timeout, mode fields (public URL is sourced from server.enduser.public_url)
 - [X] T002 [P] Implement Validate() method for OAuth2AuthServerConfig in internal/config/schema.go validating required fields and HTTPS URLs
 - [X] T003 [P] Unit test for OAuth2AuthServerConfig.Validate() in internal/config/schema_test.go with table-driven tests covering valid config, missing required fields, non-HTTPS URLs, and default value assignment
 - [X] T004 [P] Create examples/config/oauth2-authorization-server.yaml with complete configuration example

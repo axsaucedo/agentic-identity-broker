@@ -21,17 +21,15 @@ import (
 // - Modern cipher suites selected by Go (excludes weak ciphers)
 //
 // Parameters:
-// - timeoutSeconds: Maximum time for an HTTP request (includes connection, request, response)
+// - timeout: Maximum time for an HTTP request (includes connection, request, response)
 //
 // Returns:
 // - *http.Client configured for secure upstream communication
 // - error if certificate pool cannot be loaded
-func NewSecureUpstreamClient(timeoutSeconds int) (*http.Client, error) {
-	if timeoutSeconds <= 0 {
-		timeoutSeconds = 30
+func NewSecureUpstreamClient(timeout time.Duration) (*http.Client, error) {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
 	}
-
-	timeout := time.Duration(timeoutSeconds) * time.Second
 
 	// Load system certificate pool for TLS validation
 	certPool, err := x509.SystemCertPool()

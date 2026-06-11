@@ -54,10 +54,16 @@ encryption:
 
 # OAuth2 Authorization Server (upstream provider)
 oauth2_authorization_server:
-  # Upstream OAuth2 server configuration
-  upstream_issuer_uri: http://127.0.0.1:9001
-  upstream_authorize_endpoint: http://127.0.0.1:9001/oauth/authorize
-  upstream_token_endpoint: http://127.0.0.1:9001/oauth/token
+  # Operation mode: proxy (default), local, or hybrid
+  mode: proxy
+
+  # Upstream OAuth2 server configuration (proxy and hybrid modes)
+  proxy:
+    upstream_issuer_uri: http://127.0.0.1:9001
+    upstream_authorize_endpoint: http://127.0.0.1:9001/oauth/authorize
+    upstream_token_endpoint: http://127.0.0.1:9001/oauth/token
+    # Upstream request timeout
+    upstream_timeout: 10s
 
   # Supported OAuth2 response types
   supported_response_types:
@@ -67,12 +73,6 @@ oauth2_authorization_server:
   supported_grant_types:
     - authorization_code
     - refresh_token
-
-  # Upstream request timeout
-  upstream_timeout_seconds: 10
-
-  # Operation mode: proxy (default) or authorization_server
-  mode: proxy
 
 # Security configuration
 security:

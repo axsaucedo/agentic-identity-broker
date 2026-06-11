@@ -1,9 +1,12 @@
+# yamllint disable-file
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  # pi-lens-ignore: YAML:0
   name: {{ include "agentic-identity-broker.fullname" . }}-config
   namespace: {{ include "agentic-identity-broker.namespace" . }}
   labels:
+    # pi-lens-ignore: YAML:0
     {{- include "agentic-identity-broker.labels" . | nindent 4 }}
 data:
   config.yaml: |
@@ -126,12 +129,14 @@ data:
         {{- end }}
       {{- end }}
       {{- with .Values.broker.oauth2AuthorizationServer.proxy }}
-      {{- if or .upstreamIssuerUri .upstreamAuthorizeEndpoint .upstreamTokenEndpoint .upstreamTimeoutSeconds .upstreamJwksMinRefresh .upstreamJwksMaxRefresh }}
+      {{- if or .upstreamIssuerUri .upstreamAuthorizeEndpoint .upstreamTokenEndpoint .upstreamTimeout .upstreamJwksMinRefresh .upstreamJwksMaxRefresh }}
       proxy:
         upstream_issuer_uri: {{ .upstreamIssuerUri }}
         upstream_authorize_endpoint: {{ .upstreamAuthorizeEndpoint }}
         upstream_token_endpoint: {{ .upstreamTokenEndpoint }}
-        upstream_timeout_seconds: {{ .upstreamTimeoutSeconds }}
+        {{- if .upstreamTimeout }}
+        upstream_timeout: {{ .upstreamTimeout | quote }}
+        {{- end }}
         {{- if .upstreamJwksMinRefresh }}
         upstream_jwks_min_refresh: {{ .upstreamJwksMinRefresh | quote }}
         {{- end }}

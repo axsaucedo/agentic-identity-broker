@@ -4,21 +4,24 @@ import (
 	"crypto/tls"
 	"net/http"
 	"testing"
+	"time"
 )
 
 // TestNewSecureUpstreamClient verifies TLS configuration and client setup.
 func TestNewSecureUpstreamClient(t *testing.T) {
 	tests := []struct {
 		name                  string
-		timeoutSeconds        int
+		timeout               time.Duration
+		expectedTimeout       time.Duration
 		verifyTLSConfig       func(t *testing.T, tlsConfig *tls.Config)
 		verifyTransportConfig func(t *testing.T, tr *http.Transport)
 		wantErr               bool
 	}{
 		{
-			name:           "valid client with positive timeout",
-			timeoutSeconds: 30,
-			wantErr:        false,
+			name:            "valid client with positive timeout",
+			timeout:         30 * time.Second,
+			expectedTimeout: 30 * time.Second,
+			wantErr:         false,
 			verifyTLSConfig: func(t *testing.T, tlsConfig *tls.Config) {
 				// Verify TLS minimum version
 				if tlsConfig.MinVersion != tls.VersionTLS12 {
@@ -37,9 +40,10 @@ func TestNewSecureUpstreamClient(t *testing.T) {
 			},
 		},
 		{
-			name:           "client with zero timeout defaults to 30 seconds",
-			timeoutSeconds: 0,
-			wantErr:        false,
+			name:            "client with zero timeout defaults to 30 seconds",
+			timeout:         0,
+			expectedTimeout: 30 * time.Second,
+			wantErr:         false,
 			verifyTLSConfig: func(t *testing.T, tlsConfig *tls.Config) {
 				if tlsConfig.MinVersion != tls.VersionTLS12 {
 					t.Errorf("MinVersion = %d, want tls.VersionTLS12 (%d)", tlsConfig.MinVersion, tls.VersionTLS12)
@@ -50,9 +54,10 @@ func TestNewSecureUpstreamClient(t *testing.T) {
 			},
 		},
 		{
-			name:           "client with negative timeout defaults to 30 seconds",
-			timeoutSeconds: -1,
-			wantErr:        false,
+			name:            "client with negative timeout defaults to 30 seconds",
+			timeout:         -1 * time.Second,
+			expectedTimeout: 30 * time.Second,
+			wantErr:         false,
 			verifyTLSConfig: func(t *testing.T, tlsConfig *tls.Config) {
 				if tlsConfig.MinVersion != tls.VersionTLS12 {
 					t.Errorf("MinVersion = %d, want tls.VersionTLS12 (%d)", tlsConfig.MinVersion, tls.VersionTLS12)
@@ -60,9 +65,21 @@ func TestNewSecureUpstreamClient(t *testing.T) {
 			},
 		},
 		{
-			name:           "client with custom timeout",
-			timeoutSeconds: 60,
-			wantErr:        false,
+			name:            "client with sub-second timeout",
+			timeout:         100 * time.Millisecond,
+			expectedTimeout: 100 * time.Millisecond,
+			wantErr:         false,
+			verifyTLSConfig: func(t *testing.T, tlsConfig *tls.Config) {
+				if tlsConfig.MinVersion != tls.VersionTLS12 {
+					t.Errorf("MinVersion = %d, want tls.VersionTLS12 (%d)", tlsConfig.MinVersion, tls.VersionTLS12)
+				}
+			},
+		},
+		{
+			name:            "client with custom timeout",
+			timeout:         60 * time.Second,
+			expectedTimeout: 60 * time.Second,
+			wantErr:         false,
 			verifyTLSConfig: func(t *testing.T, tlsConfig *tls.Config) {
 				if tlsConfig.MinVersion != tls.VersionTLS12 {
 					t.Errorf("MinVersion = %d, want tls.VersionTLS12 (%d)", tlsConfig.MinVersion, tls.VersionTLS12)
@@ -73,7 +90,7 @@ func TestNewSecureUpstreamClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewSecureUpstreamClient(tt.timeoutSeconds)
+			client, err := NewSecureUpstreamClient(tt.timeout)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewSecureUpstreamClient() error = %v, wantErr %v", err, tt.wantErr)
@@ -103,9 +120,8 @@ func TestNewSecureUpstreamClient(t *testing.T) {
 				tt.verifyTLSConfig(t, transport.TLSClientConfig)
 			}
 
-			// Verify client timeout is set
-			if client.Timeout == 0 {
-				t.Error("Client timeout should not be zero")
+			if client.Timeout != tt.expectedTimeout {
+				t.Errorf("Client timeout = %v, want %v", client.Timeout, tt.expectedTimeout)
 			}
 
 			// Verify transport connection settings
@@ -122,7 +138,7 @@ func TestNewSecureUpstreamClient(t *testing.T) {
 // TestSecureUpstreamClient_RejectsInsecureCertificates verifies that the client
 // rejects connections with invalid certificates (this would need real servers to fully test).
 func TestSecureUpstreamClient_RejectsInsecureCertificates(t *testing.T) {
-	client, err := NewSecureUpstreamClient(30)
+	client, err := NewSecureUpstreamClient(30 * time.Second)
 	if err != nil {
 		t.Fatalf("NewSecureUpstreamClient() error = %v", err)
 	}
@@ -165,7 +181,7 @@ func TestSecureUpstreamClient_TLSVersions(t *testing.T) {
 		{"TLS 1.3", tls.VersionTLS13, true},  // Supported
 	}
 
-	client, err := NewSecureUpstreamClient(30)
+	client, err := NewSecureUpstreamClient(30 * time.Second)
 	if err != nil {
 		t.Fatalf("NewSecureUpstreamClient() error = %v", err)
 	}

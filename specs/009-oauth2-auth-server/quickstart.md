@@ -31,7 +31,7 @@ type OAuth2AuthServerConfig struct {
     UpstreamTokenEndpoint     string   `mapstructure:"upstream_token_endpoint"`
     SupportedResponseTypes    []string `mapstructure:"supported_response_types"`
     SupportedGrantTypes       []string `mapstructure:"supported_grant_types"`
-    UpstreamTimeoutSeconds    int      `mapstructure:"upstream_timeout_seconds"`
+    UpstreamTimeout           time.Duration `mapstructure:"upstream_timeout"`
 }
 
 // Validate validates OAuth2 configuration
@@ -60,8 +60,8 @@ func (c *OAuth2AuthServerConfig) Validate() error {
     if len(c.SupportedGrantTypes) == 0 {
         c.SupportedGrantTypes = []string{"authorization_code", "refresh_token"}
     }
-    if c.UpstreamTimeoutSeconds == 0 {
-        c.UpstreamTimeoutSeconds = 30
+    if c.UpstreamTimeout == 0 {
+        c.UpstreamTimeout = 30 * time.Second
     }
 
     return nil
@@ -87,7 +87,7 @@ oauth2_authorization_server:
     - "refresh_token"
 
   # Upstream request timeout (optional)
-  upstream_timeout_seconds: 30
+  upstream_timeout: 30s
 ```
 
 ---
@@ -474,7 +474,7 @@ oauth2Service := oauth2.NewService(agentRepo, grantRepo, &oauth2.OAuth2Config{
 })
 
 // Create secure upstream HTTP client
-upstreamClient, err := NewSecureUpstreamClient(time.Duration(cfg.OAuth2AuthServer.UpstreamTimeoutSeconds) * time.Second)
+upstreamClient, err := NewSecureUpstreamClient(cfg.OAuth2AuthServer.UpstreamTimeout)
 if err != nil {
     return nil, fmt.Errorf("failed to create upstream client: %w", err)
 }

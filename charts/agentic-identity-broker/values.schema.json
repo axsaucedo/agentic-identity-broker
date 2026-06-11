@@ -676,10 +676,9 @@
                   "type": "string",
                   "description": "Upstream token endpoint"
                 },
-                "upstreamTimeoutSeconds": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "description": "Upstream request timeout in seconds (0 = use application default of 30s)"
+                "upstreamTimeout": {
+                  "type": "string",
+                  "description": "Upstream request timeout (empty = use application default of 30s; accepts Go duration syntax: 30s, 500ms, 2m)"
                 },
                 "upstreamJwksMinRefresh": {
                   "type": "string",

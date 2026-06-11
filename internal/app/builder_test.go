@@ -377,7 +377,7 @@ func TestBuilderTokenExchangeExpectedAudience(t *testing.T) {
 					UpstreamIssuerURI:         upstream.URL,
 					UpstreamAuthorizeEndpoint: upstream.URL + "/oauth/authorize",
 					UpstreamTokenEndpoint:     upstream.URL + "/oauth/token",
-					UpstreamTimeoutSeconds:    5,
+					UpstreamTimeout:           5 * time.Second,
 				},
 			},
 			TokenExchange: ports.TokenExchangeConfig{
@@ -624,7 +624,7 @@ func TestBuilder_ProxyJWKSFailsWhenStartupMetadataDiscoveryFails(t *testing.T) {
 					UpstreamIssuerURI:         upstreamURL,
 					UpstreamAuthorizeEndpoint: upstreamURL + "/authorize",
 					UpstreamTokenEndpoint:     upstreamURL + "/token",
-					UpstreamTimeoutSeconds:    1,
+					UpstreamTimeout:           time.Second,
 					UpstreamJWKSMinRefresh:    time.Second,
 					UpstreamJWKSMaxRefresh:    time.Second,
 				},
@@ -701,7 +701,7 @@ func TestBuilder_HybridJWKSWarnsWhenStartupProbeFails(t *testing.T) {
 					UpstreamIssuerURI:         upstreamURL,
 					UpstreamAuthorizeEndpoint: upstreamURL + "/authorize",
 					UpstreamTokenEndpoint:     upstreamURL + "/token",
-					UpstreamTimeoutSeconds:    1,
+					UpstreamTimeout:           time.Second,
 					UpstreamJWKSMinRefresh:    time.Second,
 					UpstreamJWKSMaxRefresh:    time.Second,
 				},
@@ -803,7 +803,7 @@ func TestBuilder_ShutdownStopsUpstreamJWKSAdapterWorkers(t *testing.T) {
 					UpstreamIssuerURI:         upstreamURL,
 					UpstreamAuthorizeEndpoint: upstreamURL + "/authorize",
 					UpstreamTokenEndpoint:     upstreamURL + "/token",
-					UpstreamTimeoutSeconds:    1,
+					UpstreamTimeout:           time.Second,
 				},
 			}
 		case "hybrid":
@@ -813,7 +813,7 @@ func TestBuilder_ShutdownStopsUpstreamJWKSAdapterWorkers(t *testing.T) {
 					UpstreamIssuerURI:         upstreamURL,
 					UpstreamAuthorizeEndpoint: upstreamURL + "/authorize",
 					UpstreamTokenEndpoint:     upstreamURL + "/token",
-					UpstreamTimeoutSeconds:    1,
+					UpstreamTimeout:           time.Second,
 				},
 				Local: ports.LocalModeConfig{TokenTTL: time.Hour},
 			}
@@ -1088,7 +1088,7 @@ func TestBuilder_SharedUpstreamJWKSAdapter(t *testing.T) {
 				UpstreamIssuerURI:         upstream.URL,
 				UpstreamAuthorizeEndpoint: upstream.URL + "/authorize",
 				UpstreamTokenEndpoint:     upstream.URL + "/token",
-				UpstreamTimeoutSeconds:    5,
+				UpstreamTimeout:           5 * time.Second,
 			},
 			MultiAgentClient: ports.MultiAgentClientConfig{
 				Enabled:          true,
@@ -1149,18 +1149,31 @@ func TestModeStrategyFor_PanicsOnUnknownMode(t *testing.T) {
 
 func TestProxyOAuth2ConfigUpstreamTimeout(t *testing.T) {
 	tests := []struct {
-		configured int
+		configured time.Duration
 		want       time.Duration
 	}{
-		{0, 30 * time.Second},  // zero → application default
-		{5, 5 * time.Second},   // explicit proxy config
-		{60, 60 * time.Second}, // custom timeout
+		{0, 30 * time.Second},                            // zero → application default
+		{500 * time.Millisecond, 500 * time.Millisecond}, // sub-second timeout
+		{5 * time.Second, 5 * time.Second},               // explicit proxy config
+		{60 * time.Second, 60 * time.Second},             // custom timeout
 	}
 	for _, tt := range tests {
-		cfg := &ports.ProxyOAuth2Config{UpstreamTimeoutSeconds: tt.configured}
-		got := cfg.UpstreamTimeout()
-		if got != tt.want {
-			t.Errorf("UpstreamTimeout() with %d seconds = %v, want %v", tt.configured, got, tt.want)
+		cfg := ports.OAuth2AuthServerConfig{
+			Mode: "proxy",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "https://issuer.example.com",
+				UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://issuer.example.com/token",
+				UpstreamTimeout:           tt.configured,
+			},
+		}
+		resolved, err := cfg.Resolve()
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		p := resolved.(*ports.ProxyOAuth2Config)
+		if p.UpstreamTimeout != tt.want {
+			t.Errorf("UpstreamTimeout with configured=%v = %v, want %v", tt.configured, p.UpstreamTimeout, tt.want)
 		}
 	}
 }

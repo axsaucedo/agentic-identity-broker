@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -269,7 +270,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 			config := fixtures.DefaultOAuth2Config()
 			config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = "http://localhost:19999/authorize"
 			config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = "http://localhost:19999/token"
-			config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds = 1 // Short timeout to fail fast
+			config.OAuth2AuthServer.Proxy.UpstreamTimeout = 100 * time.Millisecond // Short timeout to fail fast
 
 			// Rebuild server with unreachable upstream
 			factory := bootstrap.NewServerFactory(config, logger)
@@ -317,7 +318,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 			DeferCleanup(mockUpstream.Close)
 
 			config := fixtures.OAuth2ConfigWithUpstream(mockUpstream.URL())
-			config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds = 1
+			config.OAuth2AuthServer.Proxy.UpstreamTimeout = time.Second
 
 			factory := bootstrap.NewServerFactory(config, logger)
 			built, err := factory.BuildApp(testStorage)

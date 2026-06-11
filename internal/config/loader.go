@@ -7,12 +7,14 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	mapstructure "github.com/go-viper/mapstructure/v2"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -69,9 +71,10 @@ func (l *Loader) GetConfig(ctx context.Context) (*ports.Config, error) {
 
 	// Unmarshal to Config struct
 	var cfg ports.Config
-	if err := l.v.Unmarshal(&cfg); err != nil {
+	if err := l.v.Unmarshal(&cfg, func(c *mapstructure.DecoderConfig) {
+		c.DecodeHook = mapstructure.ComposeDecodeHookFunc(rejectNumericDurationHook(), c.DecodeHook)
+	}); err != nil {
 		return nil, &config.ConfigError{
-			Field:    "config",
 			Expected: "valid configuration structure",
 			Err:      err,
 		}
@@ -206,6 +209,7 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("oauth2_authorization_server.proxy.upstream_issuer_uri", "IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI")
 	_ = l.v.BindEnv("oauth2_authorization_server.proxy.upstream_authorize_endpoint", "IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT")
 	_ = l.v.BindEnv("oauth2_authorization_server.proxy.upstream_token_endpoint", "IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT")
+	_ = l.v.BindEnv("oauth2_authorization_server.proxy.upstream_timeout", "IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TIMEOUT")
 	_ = l.v.BindEnv("oauth2_authorization_server.local.token_ttl", "IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_TTL")
 	_ = l.v.BindEnv("oauth2_authorization_server.local.token_claims_expression", "IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_CLAIMS_EXPRESSION")
 
@@ -571,6 +575,28 @@ func (l *Loader) validateSecurePattern(value string) error {
 
 // bindFlags binds Cobra command flags to Viper configuration.
 // CLI flags have the highest precedence and override all other sources.
+func rejectNumericDurationHook() mapstructure.DecodeHookFuncType {
+	durationType := reflect.TypeOf(time.Duration(0))
+
+	return func(from reflect.Type, to reflect.Type, data any) (any, error) {
+		if from == nil || to != durationType {
+			return data, nil
+		}
+		if from == durationType || from.Kind() == reflect.String {
+			return data, nil
+		}
+
+		switch from.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+			reflect.Float32, reflect.Float64:
+			return nil, fmt.Errorf("duration values must use Go duration strings like '30s' or '500ms', not bare numbers")
+		default:
+			return data, nil
+		}
+	}
+}
+
 func (l *Loader) bindFlags() error {
 	if l.cmd == nil {
 		// No command set, skip flag binding

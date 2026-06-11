@@ -37,7 +37,7 @@ oauth2_authorization_server:
     upstream_issuer_uri: "https://auth.example.com"
     upstream_authorize_endpoint: "https://auth.example.com/authorize"
     upstream_token_endpoint: "https://auth.example.com/token"
-    upstream_timeout_seconds: 30
+    upstream_timeout: 30s
     upstream_jwks_min_refresh: "15m"
     upstream_jwks_max_refresh: "1h"
 

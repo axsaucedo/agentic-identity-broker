@@ -26,7 +26,7 @@ type ProxyOAuth2Config struct {
 	UpstreamIssuerURI         string
 	UpstreamAuthorizeEndpoint string
 	UpstreamTokenEndpoint     string
-	UpstreamTimeoutSeconds    int
+	UpstreamTimeout           time.Duration
 	UpstreamJWKSMinRefresh    time.Duration
 	UpstreamJWKSMaxRefresh    time.Duration
 	SupportedResponseTypes    []string
@@ -38,12 +38,6 @@ func (*ProxyOAuth2Config) oauth2ModeConfig()           {}
 func (*ProxyOAuth2Config) ServerMode() servermode.Mode { return servermode.Proxy }
 func (c *ProxyOAuth2Config) ResponseTypes() []string   { return c.SupportedResponseTypes }
 func (c *ProxyOAuth2Config) GrantTypes() []string      { return c.SupportedGrantTypes }
-func (c *ProxyOAuth2Config) UpstreamTimeout() time.Duration {
-	if c.UpstreamTimeoutSeconds == 0 {
-		return 30 * time.Second
-	}
-	return time.Duration(c.UpstreamTimeoutSeconds) * time.Second
-}
 
 func (c *ProxyOAuth2Config) JWKSMinRefresh() time.Duration {
 	if c.UpstreamJWKSMinRefresh == 0 {

@@ -41,7 +41,7 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 					UpstreamIssuerURI:         "https://auth.example.com",
 					UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 					UpstreamTokenEndpoint:     "https://auth.example.com/token",
-					UpstreamTimeoutSeconds:    60,
+					UpstreamTimeout:           60 * time.Second,
 				},
 				SupportedResponseTypes: []string{"code"},
 				SupportedGrantTypes:    []string{"authorization_code"},
@@ -111,7 +111,7 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 					UpstreamIssuerURI:         "https://auth.example.com",
 					UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 					UpstreamTokenEndpoint:     "https://auth.example.com/token",
-					UpstreamTimeoutSeconds:    0, // zero, should be set to default 30
+					UpstreamTimeout:           0, // zero, should be set to default 30s
 				},
 			},
 			wantErr:      false,
@@ -163,8 +163,8 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 				if len(tt.config.SupportedGrantTypes) == 0 {
 					t.Error("SupportedGrantTypes should have default values")
 				}
-				if tt.config.Proxy.UpstreamTimeoutSeconds == 0 {
-					t.Error("UpstreamTimeoutSeconds should have default value")
+				if tt.config.Proxy.UpstreamTimeout == 0 {
+					t.Error("UpstreamTimeout should have default value")
 				}
 				if tt.config.Mode == "" {
 					t.Error("Mode should have default value")
@@ -175,7 +175,7 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 			if !tt.wantErr && tt.wantDefaults {
 				assert.True(t, slices.Contains(tt.config.SupportedResponseTypes, "code"), "SupportedResponseTypes should contain 'code'")
 				assert.True(t, slices.Contains(tt.config.SupportedGrantTypes, "authorization_code"), "SupportedGrantTypes should contain 'authorization_code'")
-				assert.Equal(t, 30, tt.config.Proxy.UpstreamTimeoutSeconds, "UpstreamTimeoutSeconds should be 30")
+				assert.Equal(t, 30*time.Second, tt.config.Proxy.UpstreamTimeout, "UpstreamTimeout should be 30s")
 				assert.Equal(t, servermode.Proxy, tt.config.Mode, "Mode should be 'proxy'")
 			}
 		})
@@ -353,12 +353,12 @@ func TestOAuth2AuthServerConfig_PartialConfigFails(t *testing.T) {
 		assert.Error(t, err, "partial config with only token_claims_expression must fail")
 	})
 
-	t.Run("only upstream_timeout_seconds set fails validation", func(t *testing.T) {
+	t.Run("only upstream_timeout set fails validation", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			Proxy: ports.ProxyModeConfig{UpstreamTimeoutSeconds: 60},
+			Proxy: ports.ProxyModeConfig{UpstreamTimeout: 60 * time.Second},
 		}
 		err := cfg.Validate()
-		assert.Error(t, err, "partial config with only upstream_timeout_seconds must fail")
+		assert.Error(t, err, "partial config with only upstream_timeout must fail")
 	})
 
 	t.Run("only multi_agent_client.agent_id_param_name set fails validation", func(t *testing.T) {

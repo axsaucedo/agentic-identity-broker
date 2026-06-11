@@ -68,7 +68,7 @@ type OAuth2AuthServerConfig struct {
     UpstreamTokenEndpoint     string                `mapstructure:"upstream_token_endpoint"`
     SupportedResponseTypes    []string              `mapstructure:"supported_response_types"`
     SupportedGrantTypes       []string              `mapstructure:"supported_grant_types"`
-    UpstreamTimeoutSeconds    int                   `mapstructure:"upstream_timeout_seconds"`
+    UpstreamTimeout           time.Duration         `mapstructure:"upstream_timeout"`
     Mode                      string                `mapstructure:"mode"`
     // NEW: optional multi-agent client sharing configuration
     MultiAgentClient          MultiAgentClientConfig `mapstructure:"multi_agent_client"`

@@ -69,7 +69,7 @@ func DefaultOAuth2Config() *ports.Config {
 				UpstreamIssuerURI:         upstreamURL,
 				UpstreamAuthorizeEndpoint: upstreamURL + "/authorize",
 				UpstreamTokenEndpoint:     upstreamURL + "/token",
-				UpstreamTimeoutSeconds:    30,
+				UpstreamTimeout:           30 * time.Second,
 			},
 			SupportedResponseTypes: []string{"code"},
 			SupportedGrantTypes:    []string{"authorization_code", "refresh_token"},
@@ -96,7 +96,7 @@ func OAuth2ConfigWithUpstream(upstreamURL string) *ports.Config {
 	config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = upstreamURL
 	config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = upstreamURL + "/oauth/authorize"
 	config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = upstreamURL + "/oauth/token"
-	config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds = 2
+	config.OAuth2AuthServer.Proxy.UpstreamTimeout = 2 * time.Second
 	config.OAuth2AuthServer.Proxy.UpstreamJWKSMinRefresh = 1 * time.Second
 	config.OAuth2AuthServer.Proxy.UpstreamJWKSMaxRefresh = 2 * time.Second
 	return config
@@ -127,11 +127,10 @@ func OAuth2ConfigWithTokenExchange(upstreamURL string) *ports.Config {
 
 // OAuth2ConfigWithTimeout returns a config with a custom upstream timeout.
 // Useful for testing timeout behavior.
-// TimeoutSeconds: specified by caller
 // All other settings match DefaultOAuth2Config().
-func OAuth2ConfigWithTimeout(timeoutSeconds int) *ports.Config {
+func OAuth2ConfigWithTimeout(timeout time.Duration) *ports.Config {
 	config := DefaultOAuth2Config()
-	config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds = timeoutSeconds
+	config.OAuth2AuthServer.Proxy.UpstreamTimeout = timeout
 	return config
 }
 
@@ -446,7 +445,7 @@ func HybridConfig(upstreamURL string) *ports.Config {
 	config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = upstreamURL
 	config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = upstreamURL + "/oauth/authorize"
 	config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = upstreamURL + "/oauth/token"
-	config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds = 2
+	config.OAuth2AuthServer.Proxy.UpstreamTimeout = 2 * time.Second
 	config.OAuth2AuthServer.Proxy.UpstreamJWKSMinRefresh = 1 * time.Second
 	config.OAuth2AuthServer.Proxy.UpstreamJWKSMaxRefresh = 2 * time.Second
 	config.OAuth2AuthServer.Local.TokenTTL = time.Hour

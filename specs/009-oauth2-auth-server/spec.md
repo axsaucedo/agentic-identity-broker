@@ -154,7 +154,7 @@ OAuth2 clients and libraries need to discover the identity broker's OAuth2 endpo
 - **server.enduser.public_url**: String (configured under `server.enduser`), the public base URL of the identity broker used for OAuth2 metadata (issuer) and redirects (e.g., "https://identity-broker.example.com"), required, no default
 - **supported_response_types**: Array of strings, OAuth2 response types supported by the broker (e.g., ["code"]), optional, default: ["code"]
 - **supported_grant_types**: Array of strings, OAuth2 grant types supported by the broker (e.g., ["authorization_code", "refresh_token"]), optional, default: ["authorization_code", "refresh_token"]
-- **upstream_timeout_seconds**: Integer, timeout in seconds for HTTP requests to the upstream OAuth2 server, optional, default: 30
+- **upstream_timeout**: Duration string, timeout for HTTP requests to the upstream OAuth2 server (e.g., "30s"), optional, default: 30s
 - **mode**: Enum with only one value: "delegate_upstream"; No default for this value, so it must be configured. 
 
 **Example YAML Configuration**:
@@ -179,7 +179,7 @@ oauth2_authorization_server:
     - "refresh_token"
 
   # Upstream request timeout (optional)
-  upstream_timeout_seconds: 30
+  upstream_timeout: 30s
 ```
 
 **Configuration Location**: Will be added to `examples/config/oauth2-authorization-server.yaml` and referenced in `examples/config/README.md`

@@ -95,7 +95,7 @@ type ProxyModeConfig struct {
     UpstreamIssuerURI         string
     UpstreamAuthorizeEndpoint string
     UpstreamTokenEndpoint     string
-    UpstreamTimeoutSeconds    int
+    UpstreamTimeout           time.Duration
 }
 
 type LocalModeConfig struct {

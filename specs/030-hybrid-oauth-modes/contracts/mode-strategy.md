@@ -14,7 +14,7 @@ oauth2_authorization_server:
     upstream_issuer_uri: string
     upstream_authorize_endpoint: string
     upstream_token_endpoint: string
-    upstream_timeout_seconds: int       # default: 30
+    upstream_timeout: duration          # default: "30s"
 
   local:                               # required in local + hybrid modes
     token_ttl: duration                 # default: "1h"

@@ -191,13 +191,15 @@ type oauthResolved struct {
 }
 
 func extractOAuthValues(cfg ports.OAuth2ModeConfig, publicURL string) oauthResolved {
+	// Keep the 30s upstream default even for local mode: the builder always constructs
+	// an outbound HTTP client for upstream OAuth2 and JWKS-related calls elsewhere.
 	r := oauthResolved{upstreamTimeout: 30 * time.Second, localIssuerURI: publicURL}
 	switch c := cfg.(type) {
 	case *ports.ProxyOAuth2Config:
 		r.upstreamIssuerURI = c.UpstreamIssuerURI
 		r.upstreamAuthorizeEndpoint = c.UpstreamAuthorizeEndpoint
 		r.upstreamTokenEndpoint = c.UpstreamTokenEndpoint
-		r.upstreamTimeout = c.UpstreamTimeout()
+		r.upstreamTimeout = c.UpstreamTimeout
 		r.jwksMinRefresh = c.JWKSMinRefresh()
 		r.jwksMaxRefresh = c.JWKSMaxRefresh()
 		r.responseTypes = c.SupportedResponseTypes
@@ -217,7 +219,7 @@ func extractOAuthValues(cfg ports.OAuth2ModeConfig, publicURL string) oauthResol
 		r.upstreamIssuerURI = c.Proxy.UpstreamIssuerURI
 		r.upstreamAuthorizeEndpoint = c.Proxy.UpstreamAuthorizeEndpoint
 		r.upstreamTokenEndpoint = c.Proxy.UpstreamTokenEndpoint
-		r.upstreamTimeout = c.Proxy.UpstreamTimeout()
+		r.upstreamTimeout = c.Proxy.UpstreamTimeout
 		r.jwksMinRefresh = c.Proxy.JWKSMinRefresh()
 		r.jwksMaxRefresh = c.Proxy.JWKSMaxRefresh()
 		r.responseTypes = c.ResponseTypes()

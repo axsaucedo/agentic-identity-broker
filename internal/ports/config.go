@@ -64,7 +64,7 @@ type ServerInstanceConfig struct {
 
 // CORSConfig contains CORS (Cross-Origin Resource Sharing) configuration.
 // When AllowedOrigins is empty, CORS headers are not added (production default — secure by default).
-// Use explicit localhost origins during development, for example ["http://localhost:3000"].
+// Use explicit localhost origins during development, for example ["http://localhost:5173"], instead of wildcard access.
 type CORSConfig struct {
 	// AllowedOrigins lists origins allowed for cross-origin requests.
 	// Use explicit localhost origins during development instead of wildcard access.
@@ -344,7 +344,7 @@ type ProxyModeConfig struct {
 	UpstreamIssuerURI         string        `mapstructure:"upstream_issuer_uri"`
 	UpstreamAuthorizeEndpoint string        `mapstructure:"upstream_authorize_endpoint"`
 	UpstreamTokenEndpoint     string        `mapstructure:"upstream_token_endpoint"`
-	UpstreamTimeoutSeconds    int           `mapstructure:"upstream_timeout_seconds"`
+	UpstreamTimeout           time.Duration `mapstructure:"upstream_timeout"`
 	UpstreamJWKSMinRefresh    time.Duration `mapstructure:"upstream_jwks_min_refresh"`
 	UpstreamJWKSMaxRefresh    time.Duration `mapstructure:"upstream_jwks_max_refresh"`
 }
@@ -433,7 +433,8 @@ func (c *OAuth2AuthServerConfig) validateMultiAgentClient() error {
 // validateLocalMode validates configuration for local mode (local token minting).
 func (c *OAuth2AuthServerConfig) validateLocalMode() error {
 	if c.Proxy.UpstreamIssuerURI != "" || c.Proxy.UpstreamAuthorizeEndpoint != "" ||
-		c.Proxy.UpstreamTokenEndpoint != "" || c.Proxy.UpstreamTimeoutSeconds != 0 {
+		c.Proxy.UpstreamTokenEndpoint != "" || c.Proxy.UpstreamTimeout != 0 ||
+		c.Proxy.UpstreamJWKSMinRefresh != 0 || c.Proxy.UpstreamJWKSMaxRefresh != 0 {
 		return c.newValidationError("oauth2_authorization_server.proxy must be empty in local mode")
 	}
 
@@ -475,8 +476,11 @@ func (c *OAuth2AuthServerConfig) validateProxyFields(suffix string) error {
 	if c.Proxy.UpstreamTokenEndpoint == "" {
 		return c.newValidationError("oauth2_authorization_server.proxy.upstream_token_endpoint" + suffix)
 	}
-	if c.Proxy.UpstreamTimeoutSeconds == 0 {
-		c.Proxy.UpstreamTimeoutSeconds = 30
+	if c.Proxy.UpstreamTimeout < 0 {
+		return c.newValidationError("oauth2_authorization_server.proxy.upstream_timeout must be a positive duration (e.g. 30s, 500ms)")
+	}
+	if c.Proxy.UpstreamTimeout == 0 {
+		c.Proxy.UpstreamTimeout = 30 * time.Second
 	}
 	return nil
 }
@@ -520,7 +524,7 @@ func (c *OAuth2AuthServerConfig) Resolve() (OAuth2ModeConfig, error) {
 			UpstreamIssuerURI:         c.Proxy.UpstreamIssuerURI,
 			UpstreamAuthorizeEndpoint: c.Proxy.UpstreamAuthorizeEndpoint,
 			UpstreamTokenEndpoint:     c.Proxy.UpstreamTokenEndpoint,
-			UpstreamTimeoutSeconds:    c.Proxy.UpstreamTimeoutSeconds,
+			UpstreamTimeout:           c.Proxy.UpstreamTimeout,
 			UpstreamJWKSMinRefresh:    c.Proxy.UpstreamJWKSMinRefresh,
 			UpstreamJWKSMaxRefresh:    c.Proxy.UpstreamJWKSMaxRefresh,
 			SupportedResponseTypes:    c.SupportedResponseTypes,
@@ -542,7 +546,7 @@ func (c *OAuth2AuthServerConfig) Resolve() (OAuth2ModeConfig, error) {
 				UpstreamIssuerURI:         c.Proxy.UpstreamIssuerURI,
 				UpstreamAuthorizeEndpoint: c.Proxy.UpstreamAuthorizeEndpoint,
 				UpstreamTokenEndpoint:     c.Proxy.UpstreamTokenEndpoint,
-				UpstreamTimeoutSeconds:    c.Proxy.UpstreamTimeoutSeconds,
+				UpstreamTimeout:           c.Proxy.UpstreamTimeout,
 				UpstreamJWKSMinRefresh:    c.Proxy.UpstreamJWKSMinRefresh,
 				UpstreamJWKSMaxRefresh:    c.Proxy.UpstreamJWKSMaxRefresh,
 				SupportedResponseTypes:    c.SupportedResponseTypes,

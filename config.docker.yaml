@@ -54,7 +54,7 @@ oauth2_authorization_server:
     upstream_issuer_uri: http://upstream-oauth2:9001
     upstream_authorize_endpoint: http://localhost:9001/oauth/authorize
     upstream_token_endpoint: http://upstream-oauth2:9001/oauth/token
-    upstream_timeout_seconds: 10
+    upstream_timeout: 10s
 
   # Local path: agents without a ClientID are issued tokens locally.
   local:
