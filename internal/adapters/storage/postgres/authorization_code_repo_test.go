@@ -20,213 +20,173 @@ func setupAuthCodeTestDB(t *testing.T) (*Adapter, func()) {
 	return setupMigratedAdapter(t)
 }
 
-func TestAuthorizationCodeRepo_Create(t *testing.T) {
+func TestAuthorizationCodeRepo(t *testing.T) {
 	adapter, cleanup := setupAuthCodeTestDB(t)
 	defer cleanup()
 
-	// Create agent first (FK constraint)
-	agent := createTestAgent(t, adapter)
-	repo := NewAuthorizationCodeRepo(adapter)
-
-	code := &storage.AuthorizationCode{
-		ID:            id.NewAuthorizationCodeID(),
-		CodeHash:      "sha256hashvalue1234567890abcdef",
-		AgentID:       agent.ID,
-		Principal:     id.NewPrincipal("user@example.com"),
-		RedirectURI:   "http://localhost:9999/callback",
-		CodeChallenge: "S256challenge",
-		Scope:         "read write",
-		ExpiresAt:     time.Now().UTC().Add(60 * time.Second),
-		CreatedAt:     time.Now().UTC(),
-	}
-
-	err := repo.Create(context.Background(), code)
-	require.NoError(t, err)
-}
-
-func TestAuthorizationCodeRepo_FindByCodeHash(t *testing.T) {
-	adapter, cleanup := setupAuthCodeTestDB(t)
-	defer cleanup()
-
-	agent := createTestAgent(t, adapter)
 	repo := NewAuthorizationCodeRepo(adapter)
 	ctx := context.Background()
 
-	codeHash := "findbyhash" + id.NewAuthorizationCodeID().String()[:10]
-	code := &storage.AuthorizationCode{
-		ID:            id.NewAuthorizationCodeID(),
-		CodeHash:      codeHash,
-		AgentID:       agent.ID,
-		Principal:     id.NewPrincipal("user@example.com"),
-		RedirectURI:   "http://localhost:9999/callback",
-		CodeChallenge: "S256challenge",
-		Scope:         "read",
-		ExpiresAt:     time.Now().UTC().Add(60 * time.Second),
-		CreatedAt:     time.Now().UTC(),
-	}
-	err := repo.Create(ctx, code)
-	require.NoError(t, err)
+	t.Run("Create", func(t *testing.T) {
+		agent := createTestAgent(t, adapter)
+		code := &storage.AuthorizationCode{
+			ID:            id.NewAuthorizationCodeID(),
+			CodeHash:      "sha256hashvalue" + id.NewAuthorizationCodeID().String()[:12],
+			AgentID:       agent.ID,
+			Principal:     id.NewPrincipal("user@example.com"),
+			RedirectURI:   "http://localhost:9999/callback",
+			CodeChallenge: "S256challenge",
+			Scope:         "read write",
+			ExpiresAt:     time.Now().UTC().Add(60 * time.Second),
+			CreatedAt:     time.Now().UTC(),
+		}
 
-	got, err := repo.FindByCodeHash(ctx, codeHash)
-	require.NoError(t, err)
-	assert.Equal(t, codeHash, got.CodeHash)
-	assert.Equal(t, agent.ID, got.AgentID)
-	assert.Equal(t, "user@example.com", got.Principal.String())
-}
+		err := repo.Create(ctx, code)
+		require.NoError(t, err)
+	})
 
-func TestAuthorizationCodeRepo_MarkUsed(t *testing.T) {
-	adapter, cleanup := setupAuthCodeTestDB(t)
-	defer cleanup()
+	t.Run("FindByCodeHash", func(t *testing.T) {
+		agent := createTestAgent(t, adapter)
+		codeHash := "findbyhash" + id.NewAuthorizationCodeID().String()[:10]
+		code := &storage.AuthorizationCode{
+			ID:            id.NewAuthorizationCodeID(),
+			CodeHash:      codeHash,
+			AgentID:       agent.ID,
+			Principal:     id.NewPrincipal("user@example.com"),
+			RedirectURI:   "http://localhost:9999/callback",
+			CodeChallenge: "S256challenge",
+			Scope:         "read",
+			ExpiresAt:     time.Now().UTC().Add(60 * time.Second),
+			CreatedAt:     time.Now().UTC(),
+		}
+		err := repo.Create(ctx, code)
+		require.NoError(t, err)
 
-	agent := createTestAgent(t, adapter)
-	repo := NewAuthorizationCodeRepo(adapter)
-	ctx := context.Background()
+		got, err := repo.FindByCodeHash(ctx, codeHash)
+		require.NoError(t, err)
+		assert.Equal(t, codeHash, got.CodeHash)
+		assert.Equal(t, agent.ID, got.AgentID)
+		assert.Equal(t, "user@example.com", got.Principal.String())
+	})
 
-	code := &storage.AuthorizationCode{
-		ID:            id.NewAuthorizationCodeID(),
-		CodeHash:      "markused" + id.NewAuthorizationCodeID().String()[:10],
-		AgentID:       agent.ID,
-		Principal:     id.NewPrincipal("user@example.com"),
-		RedirectURI:   "http://localhost:9999/callback",
-		CodeChallenge: "S256challenge",
-		Scope:         "read",
-		ExpiresAt:     time.Now().UTC().Add(60 * time.Second),
-		CreatedAt:     time.Now().UTC(),
-	}
-	err := repo.Create(ctx, code)
-	require.NoError(t, err)
+	t.Run("MarkUsed", func(t *testing.T) {
+		agent := createTestAgent(t, adapter)
+		code := &storage.AuthorizationCode{
+			ID:            id.NewAuthorizationCodeID(),
+			CodeHash:      "markused" + id.NewAuthorizationCodeID().String()[:10],
+			AgentID:       agent.ID,
+			Principal:     id.NewPrincipal("user@example.com"),
+			RedirectURI:   "http://localhost:9999/callback",
+			CodeChallenge: "S256challenge",
+			Scope:         "read",
+			ExpiresAt:     time.Now().UTC().Add(60 * time.Second),
+			CreatedAt:     time.Now().UTC(),
+		}
+		err := repo.Create(ctx, code)
+		require.NoError(t, err)
 
-	err = repo.MarkUsed(ctx, code.ID)
-	require.NoError(t, err)
+		err = repo.MarkUsed(ctx, code.ID)
+		require.NoError(t, err)
 
-	// Verify it's marked as used
-	got, err := repo.FindByCodeHash(ctx, code.CodeHash)
-	require.NoError(t, err)
-	assert.NotNil(t, got.UsedAt)
-}
+		got, err := repo.FindByCodeHash(ctx, code.CodeHash)
+		require.NoError(t, err)
+		assert.NotNil(t, got.UsedAt)
+	})
 
-func TestAuthorizationCodeRepo_UniqueCodeHash(t *testing.T) {
-	adapter, cleanup := setupAuthCodeTestDB(t)
-	defer cleanup()
+	t.Run("UniqueCodeHash", func(t *testing.T) {
+		agent := createTestAgent(t, adapter)
+		codeHash := "uniquehash" + id.NewAuthorizationCodeID().String()[:10]
+		code1 := &storage.AuthorizationCode{
+			ID:            id.NewAuthorizationCodeID(),
+			CodeHash:      codeHash,
+			AgentID:       agent.ID,
+			Principal:     id.NewPrincipal("user@example.com"),
+			RedirectURI:   "http://localhost:9999/callback",
+			CodeChallenge: "S256challenge",
+			Scope:         "read",
+			ExpiresAt:     time.Now().UTC().Add(60 * time.Second),
+			CreatedAt:     time.Now().UTC(),
+		}
+		err := repo.Create(ctx, code1)
+		require.NoError(t, err)
 
-	agent := createTestAgent(t, adapter)
-	repo := NewAuthorizationCodeRepo(adapter)
-	ctx := context.Background()
+		code2 := &storage.AuthorizationCode{
+			ID:            id.NewAuthorizationCodeID(),
+			CodeHash:      codeHash,
+			AgentID:       agent.ID,
+			Principal:     id.NewPrincipal("user2@example.com"),
+			RedirectURI:   "http://localhost:9999/callback",
+			CodeChallenge: "S256challenge2",
+			Scope:         "write",
+			ExpiresAt:     time.Now().UTC().Add(60 * time.Second),
+			CreatedAt:     time.Now().UTC(),
+		}
+		err = repo.Create(ctx, code2)
+		assert.Error(t, err, "duplicate code_hash should fail unique constraint")
+	})
 
-	codeHash := "uniquehash" + id.NewAuthorizationCodeID().String()[:10]
-	code1 := &storage.AuthorizationCode{
-		ID:            id.NewAuthorizationCodeID(),
-		CodeHash:      codeHash,
-		AgentID:       agent.ID,
-		Principal:     id.NewPrincipal("user@example.com"),
-		RedirectURI:   "http://localhost:9999/callback",
-		CodeChallenge: "S256challenge",
-		Scope:         "read",
-		ExpiresAt:     time.Now().UTC().Add(60 * time.Second),
-		CreatedAt:     time.Now().UTC(),
-	}
-	err := repo.Create(ctx, code1)
-	require.NoError(t, err)
+	t.Run("FindByCodeHash expired unused", func(t *testing.T) {
+		agent := createTestAgent(t, adapter)
+		codeHash := "expired-unused-" + id.NewAuthorizationCodeID().String()[:10]
+		code := &storage.AuthorizationCode{
+			ID:            id.NewAuthorizationCodeID(),
+			CodeHash:      codeHash,
+			AgentID:       agent.ID,
+			Principal:     id.NewPrincipal("user@example.com"),
+			RedirectURI:   "http://localhost/callback",
+			CodeChallenge: "S256challenge",
+			Scope:         "read",
+			ExpiresAt:     time.Now().UTC().Add(-10 * time.Minute),
+			CreatedAt:     time.Now().UTC().Add(-15 * time.Minute),
+		}
+		err := repo.Create(ctx, code)
+		require.NoError(t, err)
 
-	code2 := &storage.AuthorizationCode{
-		ID:            id.NewAuthorizationCodeID(),
-		CodeHash:      codeHash, // same hash
-		AgentID:       agent.ID,
-		Principal:     id.NewPrincipal("user2@example.com"),
-		RedirectURI:   "http://localhost:9999/callback",
-		CodeChallenge: "S256challenge2",
-		Scope:         "write",
-		ExpiresAt:     time.Now().UTC().Add(60 * time.Second),
-		CreatedAt:     time.Now().UTC(),
-	}
-	err = repo.Create(ctx, code2)
-	assert.Error(t, err, "duplicate code_hash should fail unique constraint")
-}
+		got, err := repo.FindByCodeHash(ctx, codeHash)
+		require.NoError(t, err)
+		assert.Equal(t, code.ID, got.ID)
+		assert.Nil(t, got.UsedAt, "repo must not filter by expiry — domain layer owns that check")
+	})
 
-func TestAuthorizationCodeRepo_FindByCodeHash_ExpiredUnused(t *testing.T) {
-	adapter, cleanup := setupAuthCodeTestDB(t)
-	defer cleanup()
+	t.Run("FindByCodeHash not found", func(t *testing.T) {
+		_, err := repo.FindByCodeHash(ctx, "nonexistentcodehash")
+		require.Error(t, err)
 
-	agent := createTestAgent(t, adapter)
-	repo := NewAuthorizationCodeRepo(adapter)
-	ctx := context.Background()
+		var se *storage.StorageError
+		require.True(t, errors.As(err, &se))
+		assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
+	})
 
-	codeHash := "expired-unused-" + id.NewAuthorizationCodeID().String()[:10]
-	code := &storage.AuthorizationCode{
-		ID:            id.NewAuthorizationCodeID(),
-		CodeHash:      codeHash,
-		AgentID:       agent.ID,
-		Principal:     id.NewPrincipal("user@example.com"),
-		RedirectURI:   "http://localhost/callback",
-		CodeChallenge: "S256challenge",
-		Scope:         "read",
-		ExpiresAt:     time.Now().UTC().Add(-10 * time.Minute), // expired
-		CreatedAt:     time.Now().UTC().Add(-15 * time.Minute),
-	}
-	err := repo.Create(ctx, code)
-	require.NoError(t, err)
+	t.Run("FindByCodeHash timeout", func(t *testing.T) {
+		timeoutCtx, cancel := context.WithDeadline(ctx, time.Now().Add(-time.Second))
+		defer cancel()
 
-	got, err := repo.FindByCodeHash(ctx, codeHash)
-	require.NoError(t, err)
-	assert.Equal(t, code.ID, got.ID)
-	assert.Nil(t, got.UsedAt, "repo must not filter by expiry — domain layer owns that check")
-}
+		_, err := repo.FindByCodeHash(timeoutCtx, "somehash")
+		require.Error(t, err)
 
-func TestAuthorizationCodeRepo_FindByCodeHash_NotFound(t *testing.T) {
-	adapter, cleanup := setupAuthCodeTestDB(t)
-	defer cleanup()
+		var se *storage.StorageError
+		require.True(t, errors.As(err, &se))
+		assert.Equal(t, storage.ErrorKindTimeout, se.Kind)
+	})
 
-	repo := NewAuthorizationCodeRepo(adapter)
-	_, err := repo.FindByCodeHash(context.Background(), "nonexistentcodehash")
-	require.Error(t, err)
+	t.Run("DeleteExpired", func(t *testing.T) {
+		agent := createTestAgent(t, adapter)
+		code := &storage.AuthorizationCode{
+			ID:            id.NewAuthorizationCodeID(),
+			CodeHash:      "expired" + id.NewAuthorizationCodeID().String()[:10],
+			AgentID:       agent.ID,
+			Principal:     id.NewPrincipal("user@example.com"),
+			RedirectURI:   "http://localhost:9999/callback",
+			CodeChallenge: "S256challenge",
+			Scope:         "read",
+			ExpiresAt:     time.Now().UTC().Add(-10 * time.Second),
+			CreatedAt:     time.Now().UTC().Add(-70 * time.Second),
+		}
+		err := repo.Create(ctx, code)
+		require.NoError(t, err)
 
-	var se *storage.StorageError
-	require.True(t, errors.As(err, &se))
-	assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
-}
-
-func TestAuthorizationCodeRepo_FindByCodeHash_Timeout(t *testing.T) {
-	adapter, cleanup := setupAuthCodeTestDB(t)
-	defer cleanup()
-
-	repo := NewAuthorizationCodeRepo(adapter)
-
-	// Use an already-expired deadline so the query immediately gets context.DeadlineExceeded.
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
-	defer cancel()
-
-	_, err := repo.FindByCodeHash(ctx, "somehash")
-	require.Error(t, err)
-
-	var se *storage.StorageError
-	require.True(t, errors.As(err, &se))
-	assert.Equal(t, storage.ErrorKindTimeout, se.Kind)
-}
-
-func TestAuthorizationCodeRepo_DeleteExpired(t *testing.T) {
-	adapter, cleanup := setupAuthCodeTestDB(t)
-	defer cleanup()
-
-	agent := createTestAgent(t, adapter)
-	repo := NewAuthorizationCodeRepo(adapter)
-	ctx := context.Background()
-
-	// Create an expired code
-	code := &storage.AuthorizationCode{
-		ID:            id.NewAuthorizationCodeID(),
-		CodeHash:      "expired" + id.NewAuthorizationCodeID().String()[:10],
-		AgentID:       agent.ID,
-		Principal:     id.NewPrincipal("user@example.com"),
-		RedirectURI:   "http://localhost:9999/callback",
-		CodeChallenge: "S256challenge",
-		Scope:         "read",
-		ExpiresAt:     time.Now().UTC().Add(-10 * time.Second), // already expired
-		CreatedAt:     time.Now().UTC().Add(-70 * time.Second),
-	}
-	err := repo.Create(ctx, code)
-	require.NoError(t, err)
-
-	count, err := repo.DeleteExpired(ctx)
-	require.NoError(t, err)
-	assert.GreaterOrEqual(t, count, 1)
+		count, err := repo.DeleteExpired(ctx)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, count, 1)
+	})
 }

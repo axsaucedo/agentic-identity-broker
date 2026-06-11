@@ -6,6 +6,8 @@
 
 Two test suites with distinct purposes, frameworks, and infrastructure needs:
 
+**Read the suite-specific guidance before changing either layer.**
+
 | Suite | Framework | Scope | Storage | Container Runtime |
 |---|---|---|---|---|
 | `e2e/` | Ginkgo v2 / Gomega | Full system via HTTP | In-memory | Not required |
@@ -21,6 +23,8 @@ See [`e2e/AGENTS.md`](e2e/AGENTS.md) for full rules, directory layout, test patt
 
 ## Integration Tests (`tests/integration/`)
 
+See [`integration/AGENTS.md`](integration/AGENTS.md) for helper APIs, shared PostgreSQL bootstrap patterns, and performance guardrails.
+
 ### Purpose
 
 Integration coverage is split into two slices:
@@ -35,28 +39,24 @@ This keeps the default integration loop cheap while preserving a heavier infra-b
 tests/integration/
   bootstrap/
     aws_emulator.go                LocalStack-compatible AWS emulator (KMS + DynamoDB) lifecycle
+    aws_emulator_*_test.go         Emulator bootstrap, environment, and termination coverage
+    postgres.go                    Shared PostgreSQL container + template database cloning helpers
   infra/                           Infra-backed integration tests (build tag: integration)
     main_test.go                   Shared AWS emulator suite lifecycle
-    encryption_vault_keyring_test.go AWS KMS hierarchical keyring with the AWS emulator
-    agent_service_requirements_migration_test.go   Migration verification for service requirements
+    *_test.go                      AWS keyring, signing-key bootstrap, and migration verification suites
   storage/
     lifecycle_test.go              Memory adapter full lifecycle + concurrency
     infra/
       postgres_test.go             PostgreSQL adapter with testcontainers (build tag: integration)
       thirdparty_service_test.go   PostgreSQL third-party service integration (build tag: integration)
   migrations/
-    framework.go                   Testcontainers PostgreSQL + go-migrate framework
+    doc.go                         Integration build tag marker
+    framework.go                   PostgreSQL + go-migrate helper framework
+    main_test.go                   Shared PostgreSQL container teardown
     migrations_test.go             Migration up/down verification with real database
-  config_test.go                   Configuration loading integration tests
-  server_test.go                   Server startup, port connectivity, atomic failure
-  health_test.go                   Health check endpoint integration
-  principal_middleware_test.go     X-Remote-User middleware integration
-  oauth2_authorize_test.go         Authorization endpoint integration
-  oauth2_metadata_test.go          Metadata endpoint integration
-  oauth2_token_test.go             Token endpoint integration
-  oauth2_sessions_api_test.go      OAuth2 session management API
-  user_sessions_test.go            User session lifecycle
-  agent_repository_service_requirements_memory_test.go  Memory-backed service requirement coverage
+  http_wait_test.go                Polling helper coverage for local server readiness
+  *_test.go                        Self-contained integration suites for config, endpoints, sessions,
+                                   agent resolution, emulator narratives, and helm/chart validation
 ```
 
 ### Build Tags
@@ -91,6 +91,10 @@ just test-integration-all                                        # Runs both lay
 - **Cleanup**: `defer` for container termination, environment variable restoration
 - **Container runtime**: Autodetects Docker or Podman; skips if neither available
 - **Ryuk disabled**: `TESTCONTAINERS_RYUK_DISABLED=true` for Podman/constrained Docker compatibility
+- **Shared PostgreSQL helpers**: Prefer `bootstrap.RequireSharedPostgres()` + template DB cloning for infra-backed tests instead of starting one container per test.
+- **Shared-DB subtests**: For low-risk repository suites, it is acceptable to reuse one cloned DB across sequential `t.Run(...)` subtests — see `tests/integration/AGENTS.md` for the stability rules (unique fixtures, no `t.Parallel()`, avoid raw global counts).
+- **HTTP readiness**: Prefer polling helpers (for example `waitForEndpoint`) over fixed sleeps when waiting for local servers.
+- **Performance-sensitive failure tests**: Use short, explicit retry/TTL settings and bounded handlers instead of long `time.Sleep(...)` delays.
 
 ### Test Categories
 
@@ -102,3 +106,10 @@ just test-integration-all                                        # Runs both lay
 | Encryption keyring | `infra/encryption_vault_keyring_test.go` | LocalStack-compatible AWS emulator (KMS + DynamoDB) |
 | HTTP endpoints | `oauth2_*.go`, `server_test.go` | None (httptest) |
 | Config/middleware | `config_test.go`, `principal_middleware_test.go` | None |
+
+### Performance Guardrails
+
+- Treat infra-backed tests as a shared CI budget: prefer **one shared container per package** with cloned databases over repeated container startup.
+- If you add a new PostgreSQL-backed test package, give it a `TestMain` that terminates the shared container and keep databases isolated via clones, not separate containers.
+- Keep package-level tests independent so `go test -tags=integration -p 2 ...` remains safe.
+- Avoid introducing unconditional screenshot/browser work into non-frontend suites.

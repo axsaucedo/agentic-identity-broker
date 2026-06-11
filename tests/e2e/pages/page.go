@@ -293,6 +293,9 @@ func (p *Page) WaitForNavigation(ctx context.Context) error {
 //	_ = p.TakeScreenshot(ctx, "consent_page_state")
 func (p *Page) TakeScreenshot(ctx context.Context, name string) error {
 	_ = ctx
+	if !captureScreenshotsEnabled() {
+		return nil
+	}
 	return captureScreenshot(p.page, p.screenshotDir, name)
 }
 
@@ -429,4 +432,9 @@ func (p *Page) Close() error {
 		return nil
 	}
 	return p.page.Close()
+}
+
+func captureScreenshotsEnabled() bool {
+	value := strings.TrimSpace(os.Getenv("E2E_CAPTURE_SCREENSHOTS"))
+	return strings.EqualFold(value, "true") || value == "1"
 }

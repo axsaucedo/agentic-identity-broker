@@ -599,15 +599,15 @@ func TestHandleCallback_RetryExhausted(t *testing.T) {
 }
 
 func TestHandleCallback_ContextCancellationDuringRetry(t *testing.T) {
-	// Create a context with a short timeout that will expire during retries
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-
-	service, _, providerService := setupService(t)
+	// Use production-like retry delays here so the request fails once, then the
+	// context expires while waiting for the next retry.
+	service, _, providerService := setupServiceWithConfig(t, func(config *oauth2session.Config) {
+		config.RetryBaseDelay = 250 * time.Millisecond
+	})
 
 	serviceID := id.NewServiceID()
 	thirdPartyService := createTestService(serviceID)
-	err := providerService.Create(ctx, thirdPartyService)
+	err := providerService.Create(context.Background(), thirdPartyService)
 	require.NoError(t, err)
 
 	principal := id.Principal("user@example.com")
@@ -634,7 +634,11 @@ func TestHandleCallback_ContextCancellationDuringRetry(t *testing.T) {
 	err = providerService.Update(context.Background(), thirdPartyService)
 	require.NoError(t, err)
 
-	// Call HandleCallback with short timeout context - should be cancelled before completion
+	// Create a context that expires after the initial setup work but before the
+	// next retry is allowed to run, then call HandleCallback with it.
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+
 	req := &oauth2session.HandleCallbackRequest{
 		ServiceID: serviceID,
 		Code:      "auth-code",
@@ -1032,6 +1036,16 @@ func newTestEncryption(t *testing.T) ports.EncryptionPort {
 
 func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.InMemoryThirdpartyOAuth2ProviderRepository, *thirdparty.ThirdpartyOAuth2ProviderService) {
 	t.Helper()
+	return setupServiceWithConfig(t, func(config *oauth2session.Config) {
+		config.RetryBaseDelay = 10 * time.Millisecond
+	})
+}
+
+func setupServiceWithConfig(
+	t *testing.T,
+	configure func(*oauth2session.Config),
+) (*oauth2session.OAuth2SessionService, *memory.InMemoryThirdpartyOAuth2ProviderRepository, *thirdparty.ThirdpartyOAuth2ProviderService) {
+	t.Helper()
 
 	// Create test JWE key
 	key, err := jwk.Import([]byte("test-secret-key-must-be-32-bytes"))
@@ -1050,6 +1064,9 @@ func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.In
 	// Create service
 	config := oauth2session.DefaultConfig()
 	config.CallbackBaseURL = "https://broker.example.com"
+	if configure != nil {
+		configure(&config)
+	}
 
 	// Use real encryption for unit tests
 	encryption := newTestEncryption(t)

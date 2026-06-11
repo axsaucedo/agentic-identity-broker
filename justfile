@@ -1,12 +1,16 @@
 # Variable definitions
 NAME := "agentic-identity-broker"
 IMAGE_NAME := env_var_or_default("IMAGE_NAME", "agentic-identity-broker")
-GINKGO_PROCS := env_var_or_default("GINKGO_PROCS", num_cpus())
+GINKGO_PROCS := env_var_or_default("GINKGO_PROCS", "4")
+GINKGO_BACKEND_PROCS := env_var_or_default("GINKGO_BACKEND_PROCS", GINKGO_PROCS)
+GINKGO_EXTPROC_PROCS := env_var_or_default("GINKGO_EXTPROC_PROCS", GINKGO_PROCS)
 NUM_CPUS := num_cpus()
 VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
 GO_FAST_TEST_PACKAGES := `go list ./... | grep -Ev '(/specs/|/web/node_modules/|/tests/e2e$|/tests/e2e/frontend$|/tests/e2e/extproc$|/tests/integration($|/))' | tr '\n' ' '`
 INTEGRATION_INFRA_TEST_PACKAGES := "./tests/integration/infra/... ./tests/integration/migrations/... ./tests/integration/storage/infra/... ./internal/adapters/storage/postgres/..."
-INTEGRATION_INFRA_PACKAGE_PROCS := env_var_or_default("INTEGRATION_INFRA_PACKAGE_PROCS", "1")
+INTEGRATION_INFRA_PACKAGE_PROCS := env_var_or_default("INTEGRATION_INFRA_PACKAGE_PROCS", "2")
+GINKGO_FRONTEND_PROCS := env_var_or_default("GINKGO_FRONTEND_PROCS", "2")
+E2E_CAPTURE_SCREENSHOTS := env_var_or_default("E2E_CAPTURE_SCREENSHOTS", "false")
 
 # Determine container runtime (docker or podman)
 # Prefer docker over podman when both are available for better multi-arch support
@@ -89,7 +93,7 @@ test-coverage-summary:
 test-e2e-backend:
     @echo "Running backend E2E suite..."
     @if command -v ginkgo > /dev/null; then \
-        ginkgo -v --procs={{GINKGO_PROCS}} ./tests/e2e/; \
+        ginkgo -v --procs={{GINKGO_BACKEND_PROCS}} ./tests/e2e/; \
     else \
         echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
         exit 1; \
@@ -100,7 +104,7 @@ test-e2e-backend-coverage:
     @echo "Running backend E2E suite with coverage..."
     @mkdir -p coverage
     @if command -v ginkgo > /dev/null; then \
-        ginkgo -v --procs={{GINKGO_PROCS}} --cover --coverprofile=e2e-backend.out --output-dir=coverage ./tests/e2e/; \
+        ginkgo -v --procs={{GINKGO_BACKEND_PROCS}} --cover --coverprofile=e2e-backend.out --output-dir=coverage ./tests/e2e/; \
         go tool cover -html=coverage/e2e-backend.out -o coverage/e2e-backend.html; \
         echo "Backend E2E coverage report generated at coverage/e2e-backend.html"; \
     else \
@@ -122,7 +126,7 @@ test-e2e-backend-watch:
 test-e2e-extproc:
     @echo "Running ExtProc E2E suite..."
     @if command -v ginkgo > /dev/null; then \
-        ginkgo -v --procs={{GINKGO_PROCS}} ./tests/e2e/extproc/; \
+        ginkgo -v --procs={{GINKGO_EXTPROC_PROCS}} ./tests/e2e/extproc/; \
     else \
         echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
         exit 1; \
@@ -133,7 +137,7 @@ test-e2e-extproc-coverage:
     @echo "Running ExtProc E2E suite with coverage..."
     @mkdir -p coverage
     @if command -v ginkgo > /dev/null; then \
-        ginkgo -v --procs={{GINKGO_PROCS}} --cover --coverprofile=e2e-extproc.out --output-dir=coverage ./tests/e2e/extproc/; \
+        ginkgo -v --procs={{GINKGO_EXTPROC_PROCS}} --cover --coverprofile=e2e-extproc.out --output-dir=coverage ./tests/e2e/extproc/; \
         go tool cover -html=coverage/e2e-extproc.out -o coverage/e2e-extproc.html; \
         echo "ExtProc E2E coverage report generated at coverage/e2e-extproc.html"; \
     else \
@@ -145,21 +149,21 @@ test-e2e-extproc-coverage:
 test-e2e-frontend: web-build
     #!/usr/bin/env bash
     set -euo pipefail
-    E2E_FRONTEND_MODE=built ginkgo -v ./tests/e2e/frontend/
+    E2E_FRONTEND_MODE=built E2E_CAPTURE_SCREENSHOTS={{E2E_CAPTURE_SCREENSHOTS}} ginkgo -v --procs={{GINKGO_FRONTEND_PROCS}} --output-interceptor-mode=none ./tests/e2e/frontend/
 
 # Run the frontend E2E acceptance suite against a Vite dev server
 # NOTE: Requires 'just web-dev' running in another terminal
 test-e2e-frontend-dev:
     #!/usr/bin/env bash
     set -euo pipefail
-    E2E_FRONTEND_MODE=dev ginkgo -v ./tests/e2e/frontend/
+    E2E_FRONTEND_MODE=dev E2E_CAPTURE_SCREENSHOTS={{E2E_CAPTURE_SCREENSHOTS}} ginkgo -v --procs={{GINKGO_FRONTEND_PROCS}} --output-interceptor-mode=none ./tests/e2e/frontend/
 
 # Run the frontend E2E acceptance suite with coverage report
 test-e2e-frontend-coverage: web-build
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p coverage
-    E2E_FRONTEND_MODE=built ginkgo -v --cover --coverprofile=e2e-frontend.out --output-dir=coverage ./tests/e2e/frontend/
+    E2E_FRONTEND_MODE=built E2E_CAPTURE_SCREENSHOTS={{E2E_CAPTURE_SCREENSHOTS}} ginkgo -v --procs={{GINKGO_FRONTEND_PROCS}} --output-interceptor-mode=none --cover --coverprofile=e2e-frontend.out --output-dir=coverage ./tests/e2e/frontend/
     go tool cover -html=coverage/e2e-frontend.out -o coverage/e2e-frontend.html
     echo "Frontend E2E coverage report generated at coverage/e2e-frontend.html"
 
@@ -246,7 +250,7 @@ install-tools:
     @command -v golangci-lint > /dev/null || bash scripts/golangci-lint-install.sh -b /usr/local/bin v2.11.4
     @golangci-lint --version 2>/dev/null | grep -q "version 2.11" || bash scripts/golangci-lint-install.sh -b /usr/local/bin v2.11.4
     @command -v go-junit-report > /dev/null || go install github.com/jstemmer/go-junit-report/v2@v2.1.0
-    @command -v ginkgo       > /dev/null || go install github.com/onsi/ginkgo/v2/ginkgo@v2.28.1
+    @command -v ginkgo       > /dev/null || go install github.com/onsi/ginkgo/v2/ginkgo@v2.29.0
     @if [ -d "$HOME/.cache/ms-playwright" ] && [ -n "$(ls -A "$HOME/.cache/ms-playwright" 2>/dev/null)" ] && [ -f "$HOME/.cache/ms-playwright-go/1.57.0/package/cli.js" ]; then \
         echo "Playwright driver and browsers already installed, skipping download"; \
     else \
@@ -343,7 +347,7 @@ verify-junit:
     FAST_PID=$!
     echo "  [fast]       PID $FAST_PID"
 
-    (cd web && npm ci --silent && npm test --silent -- --run --reporter=junit) \
+    (cd web && if [ ! -d node_modules ]; then npm ci --silent; fi && npm test --silent -- --run --reporter=junit) \
         > test-results/web-unit-junit.xml 2>test-results/web-unit.log &
     WEB_UNIT_PID=$!
     echo "  [web-unit]   PID $WEB_UNIT_PID"
@@ -464,19 +468,19 @@ verify-junit:
         exit 1
     fi
 
-    ginkgo run -v --procs={{GINKGO_PROCS}} \
+    ginkgo run -v --procs={{GINKGO_BACKEND_PROCS}} \
         --junit-report=test-results/e2e-backend-junit.xml ./tests/e2e/ \
         > test-results/e2e-backend.log 2>&1 &
     E2E_BACKEND_PID=$!
     echo "  [e2e-backend]  PID $E2E_BACKEND_PID"
 
-    ginkgo run -v --procs={{GINKGO_PROCS}} \
+    ginkgo run -v --procs={{GINKGO_EXTPROC_PROCS}} \
         --junit-report=test-results/e2e-extproc-junit.xml ./tests/e2e/extproc/ \
         > test-results/e2e-extproc.log 2>&1 &
     E2E_EXTPROC_PID=$!
     echo "  [e2e-extproc]  PID $E2E_EXTPROC_PID"
 
-    E2E_FRONTEND_MODE=built ginkgo run -v \
+    E2E_FRONTEND_MODE=built E2E_CAPTURE_SCREENSHOTS={{E2E_CAPTURE_SCREENSHOTS}} ginkgo run -v --procs={{GINKGO_FRONTEND_PROCS}} --output-interceptor-mode=none \
         --junit-report=test-results/e2e-frontend-junit.xml ./tests/e2e/frontend/ \
         > test-results/e2e-frontend.log 2>&1 &
     E2E_FRONTEND_PID=$!
@@ -563,6 +567,17 @@ web-install:
     @echo "Installing web dependencies..."
     cd web && npm install
 
+# Install web dependencies only when missing
+web-ensure-deps:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -d web/node_modules ]; then
+        echo "Web dependencies already installed"
+    else
+        echo "Installing web dependencies..."
+        cd web && npm install
+    fi
+
 # Install web dependencies for CI with strict engine checking
 web-ci:
     @echo "Installing web dependencies for CI..."
@@ -575,17 +590,17 @@ web-dev:
     cd web && npm run dev
 
 # Build web frontend
-web-build: web-install
+web-build: web-ensure-deps
     @echo "Building web frontend..."
     cd web && npm run build
 
 # Run web frontend tests
-web-test: web-install
+web-test: web-ensure-deps
     @echo "Running web frontend tests..."
     cd web && npm test -- --run
 
 # Run web frontend tests with coverage
-web-test-coverage: web-install
+web-test-coverage: web-ensure-deps
     @echo "Running web frontend tests with coverage..."
     cd web && npm run test:coverage
 

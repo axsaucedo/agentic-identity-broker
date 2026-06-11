@@ -106,10 +106,7 @@ func TestFrontendE2E(t *testing.T) {
 // 6. Verify frontend is accessible
 var _ = BeforeSuite(func() {
 	// Step 1: Initialize structured logger
-	logHandler := slog.NewTextHandler(GinkgoWriter, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})
-	logger := slog.New(logHandler)
+	logger := bootstrap.TestLogger(slog.LevelInfo)
 
 	// Verify working directory for relative paths
 	// This is important for the SPA handler to find web/dist/consent/index.html

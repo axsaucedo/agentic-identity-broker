@@ -36,10 +36,12 @@ pipeline:
           just check
       - desc: "Run verification suite"
         cmd: |
-          GINKGO_PROCS=8 cdp-wrap-cmd "just verify-junit" "cdp-tool upload-test-results -t junit $(pwd)/test-results/all-tests-junit.xml"
+          GINKGO_BACKEND_PROCS=4 GINKGO_EXTPROC_PROCS=4 GINKGO_FRONTEND_PROCS=2 E2E_CAPTURE_SCREENSHOTS=false \
+            cdp-wrap-cmd "just verify-junit" "cdp-tool upload-test-results -t junit $(pwd)/test-results/all-tests-junit.xml"
       - desc: "Run artifacts build test"
         cmd: |
           just build-all
+          test -f web/dist/consent/index.html
 
   - id: release
     type: script

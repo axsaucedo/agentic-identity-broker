@@ -7,8 +7,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -21,23 +19,25 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/integration/bootstrap"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
-
-// init disables Ryuk for Podman compatibility
-func init() {
-	if os.Getenv("TESTCONTAINERS_RYUK_DISABLED") == "" {
-		os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-	}
-}
 
 // testKEKForIntegration is the deterministic test KEK used for encryption in integration tests.
 // This is the base64 encoding of known test bytes — NOT for production use.
 const testKEKForIntegration = "ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA="
+
+var thirdpartyProviderMigrations = []bootstrap.SQLMigration{
+	{File: "001_create_agents.up.sql", Version: 1},
+	{File: "002_create_thirdparty_services.up.sql", Version: 2},
+	{File: "003_create_user_grants.up.sql", Version: 3},
+	{File: "004_create_user_sessions.up.sql", Version: 4},
+	{File: "005_add_agent_service_requirements.up.sql", Version: 5},
+	{File: "006_add_service_protected_resources.up.sql", Version: 6},
+	{File: "007_add_oauth2_flavor.up.sql", Version: 7},
+}
 
 // newTestEncryption creates a real memory encryption adapter using the deterministic test KEK.
 func newTestEncryption(t *testing.T) ports.EncryptionPort {
@@ -47,146 +47,39 @@ func newTestEncryption(t *testing.T) ports.EncryptionPort {
 	return enc
 }
 
-// setupPostgreSQLContainer creates a PostgreSQL test container
-func setupPostgreSQLContainer(t *testing.T) (testcontainers.Container, string, func()) {
+func setupThirdpartyProviderTestHarness(
+	t *testing.T,
+) (context.Context, *postgres.PostgresThirdpartyOAuth2ProviderRepository, *thirdparty.ThirdpartyOAuth2ProviderService, func()) {
 	t.Helper()
 
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
+	sharedPostgres := bootstrap.RequireSharedPostgres(t)
+	_, connStr, cleanupDB := sharedPostgres.SetupDatabaseFromTemplate(t, "thirdparty_provider_migrations_007", func(t *testing.T, dbName string) {
+		sharedPostgres.ApplyMigrationsUpTo(t, dbName, thirdpartyProviderMigrations, 7)
+	})
+
+	config := &ports.StorageConfig{
+		Backend: "postgres",
+		Postgres: ports.PostgresConfig{
+			ConnectionURL: connStr,
+		},
 	}
+
+	adapter, err := postgres.NewAdapter(config)
+	require.NoError(t, err)
 
 	ctx := context.Background()
+	require.NoError(t, adapter.Initialize(ctx))
 
-	req := testcontainers.ContainerRequest{
-		Image:        "postgres:15-alpine",
-		ExposedPorts: []string{"5432/tcp"},
-		Env: map[string]string{
-			"POSTGRES_USER":     "testuser",
-			"POSTGRES_PASSWORD": "testpass",
-			"POSTGRES_DB":       "testdb",
-		},
-		WaitingFor: wait.ForLog("database system is ready to accept connections").
-			WithOccurrence(2).
-			WithStartupTimeout(30 * time.Second),
-	}
-
-	genericReq := testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, genericReq)
-	require.NoError(t, err)
-
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
-
-	port, err := container.MappedPort(ctx, "5432")
-	require.NoError(t, err)
-
-	connStr := "postgres://testuser:testpass@" + host + ":" + port.Port() + "/testdb?sslmode=disable"
+	encryption := newTestEncryption(t)
+	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
 
 	cleanup := func() {
-		container.Terminate(ctx)
+		require.NoError(t, adapter.Close(ctx))
+		cleanupDB()
 	}
 
-	return container, connStr, cleanup
-}
-
-// applyMigrations applies database migrations to the test container
-func applyMigrations(t *testing.T, container testcontainers.Container) {
-	t.Helper()
-
-	ctx := context.Background()
-
-	// First, create schema_migrations table
-	schemaSQL := `
-		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version BIGINT PRIMARY KEY,
-			dirty BOOLEAN NOT NULL DEFAULT FALSE
-		);
-	`
-	exitCode, _, err := container.Exec(ctx, []string{
-		"psql",
-		"-U", "testuser",
-		"-d", "testdb",
-		"-c", schemaSQL,
-	})
-	if err != nil || exitCode != 0 {
-		t.Logf("Warning: Failed to create schema_migrations table (exit %d): %v", exitCode, err)
-	}
-
-	// Find project root (where migrations folder is)
-	projectRoot, err := findProjectRoot()
-	require.NoError(t, err)
-
-	migrationsDir := filepath.Join(projectRoot, "migrations")
-
-	// Read and apply each migration file
-	migrations := []struct {
-		file    string
-		version int64
-	}{
-		{"001_create_agents.up.sql", 1},
-		{"002_create_thirdparty_services.up.sql", 2},
-		{"003_create_user_grants.up.sql", 3},
-		{"004_create_user_sessions.up.sql", 4},
-		{"005_add_agent_service_requirements.up.sql", 5},
-		{"006_add_service_protected_resources.up.sql", 6},
-		{"007_add_oauth2_flavor.up.sql", 7},
-	}
-
-	for _, migration := range migrations {
-		migrationPath := filepath.Join(migrationsDir, migration.file)
-		data, err := os.ReadFile(migrationPath)
-		if err != nil {
-			t.Fatalf("Could not read migration %s: %v", migration.file, err)
-		}
-
-		// Execute migration SQL directly in container
-		exitCode, _, err := container.Exec(ctx, []string{
-			"psql",
-			"-U", "testuser",
-			"-d", "testdb",
-			"-c", string(data),
-		})
-
-		if err != nil || exitCode != 0 {
-			t.Fatalf("Migration %s failed (exit %d): %v", migration.file, exitCode, err)
-		}
-
-		// Record migration version
-		versionSQL := fmt.Sprintf("INSERT INTO schema_migrations (version, dirty) VALUES (%d, FALSE) ON CONFLICT DO NOTHING;", migration.version)
-		exitCode, _, err = container.Exec(ctx, []string{
-			"psql",
-			"-U", "testuser",
-			"-d", "testdb",
-			"-c", versionSQL,
-		})
-		if err != nil || exitCode != 0 {
-			t.Fatalf("Failed to record migration version %d: %v", migration.version, err)
-		}
-	}
-}
-
-// findProjectRoot walks up the directory tree to find the project root
-func findProjectRoot() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", os.ErrNotExist
-		}
-		dir = parent
-	}
+	return ctx, repo, providerService, cleanup
 }
 
 // createTestService is a helper to create a test service entity with specified properties.
@@ -224,29 +117,9 @@ func createTestService(serviceNameOrID, displayName string, protectedResources [
 
 // TestFindByProtectedResource_SingleMatch tests the happy path: single matching service
 func TestFindByProtectedResource_SingleMatch(t *testing.T) {
-	container, connStr, cleanup := setupPostgreSQLContainer(t)
+	ctx, repo, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
 	defer cleanup()
-
-	applyMigrations(t, container)
-
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connStr,
-		},
-	}
-
-	adapter, err := postgres.NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-	defer adapter.Close(ctx)
-
-	encryption := newTestEncryption(t)
-	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
+	var err error
 
 	// Create service with protected resources
 	entity := createTestService(
@@ -269,29 +142,9 @@ func TestFindByProtectedResource_SingleMatch(t *testing.T) {
 
 // TestFindByProtectedResource_NoMatch tests error case: no matching service
 func TestFindByProtectedResource_NoMatch(t *testing.T) {
-	container, connStr, cleanup := setupPostgreSQLContainer(t)
+	ctx, repo, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
 	defer cleanup()
-
-	applyMigrations(t, container)
-
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connStr,
-		},
-	}
-
-	adapter, err := postgres.NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-	defer adapter.Close(ctx)
-
-	encryption := newTestEncryption(t)
-	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
+	var err error
 
 	// Create service without matching resource
 	entity := createTestService(
@@ -316,29 +169,9 @@ func TestFindByProtectedResource_NoMatch(t *testing.T) {
 
 // TestFindByProtectedResource_AmbiguousMatch tests error case: multiple services match same resource
 func TestFindByProtectedResource_AmbiguousMatch(t *testing.T) {
-	container, connStr, cleanup := setupPostgreSQLContainer(t)
+	ctx, repo, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
 	defer cleanup()
-
-	applyMigrations(t, container)
-
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connStr,
-		},
-	}
-
-	adapter, err := postgres.NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-	defer adapter.Close(ctx)
-
-	encryption := newTestEncryption(t)
-	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
+	var err error
 
 	// Create two services with overlapping resources (misconfiguration)
 	service1 := createTestService(
@@ -371,29 +204,9 @@ func TestFindByProtectedResource_AmbiguousMatch(t *testing.T) {
 
 // TestFindByProtectedResource_URINormalization tests URI normalization (trailing slash removal)
 func TestFindByProtectedResource_URINormalization(t *testing.T) {
-	container, connStr, cleanup := setupPostgreSQLContainer(t)
+	ctx, repo, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
 	defer cleanup()
-
-	applyMigrations(t, container)
-
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connStr,
-		},
-	}
-
-	adapter, err := postgres.NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-	defer adapter.Close(ctx)
-
-	encryption := newTestEncryption(t)
-	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
+	var err error
 
 	// Create service with normalized URI (no trailing slash)
 	entity := createTestService(
@@ -415,29 +228,9 @@ func TestFindByProtectedResource_URINormalization(t *testing.T) {
 
 // TestFindByProtectedResource_MultipleServicesNonOverlapping tests multiple services without overlap
 func TestFindByProtectedResource_MultipleServicesNonOverlapping(t *testing.T) {
-	container, connStr, cleanup := setupPostgreSQLContainer(t)
+	ctx, repo, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
 	defer cleanup()
-
-	applyMigrations(t, container)
-
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connStr,
-		},
-	}
-
-	adapter, err := postgres.NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-	defer adapter.Close(ctx)
-
-	encryption := newTestEncryption(t)
-	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
+	var err error
 
 	// Create three services with different resources
 	service1 := createTestService(
@@ -505,29 +298,9 @@ func TestFindByProtectedResource_MultipleServicesNonOverlapping(t *testing.T) {
 
 // TestFindByProtectedResource_EmptyProtectedResources tests service without protected_resources
 func TestFindByProtectedResource_EmptyProtectedResources(t *testing.T) {
-	container, connStr, cleanup := setupPostgreSQLContainer(t)
+	ctx, repo, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
 	defer cleanup()
-
-	applyMigrations(t, container)
-
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connStr,
-		},
-	}
-
-	adapter, err := postgres.NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-	defer adapter.Close(ctx)
-
-	encryption := newTestEncryption(t)
-	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
+	var err error
 
 	// Create service without protected_resources
 	entity := createTestService(
@@ -550,29 +323,9 @@ func TestFindByProtectedResource_EmptyProtectedResources(t *testing.T) {
 
 // TestFindByProtectedResource_CaseSensitive tests that resource matching is case-sensitive
 func TestFindByProtectedResource_CaseSensitive(t *testing.T) {
-	container, connStr, cleanup := setupPostgreSQLContainer(t)
+	ctx, repo, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
 	defer cleanup()
-
-	applyMigrations(t, container)
-
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connStr,
-		},
-	}
-
-	adapter, err := postgres.NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-	defer adapter.Close(ctx)
-
-	encryption := newTestEncryption(t)
-	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
+	var err error
 
 	// Create service with specific case
 	entity := createTestService(
@@ -596,29 +349,9 @@ func TestFindByProtectedResource_CaseSensitive(t *testing.T) {
 
 // TestFindByProtectedResource_MixedScenarios tests combination of scenarios
 func TestFindByProtectedResource_MixedScenarios(t *testing.T) {
-	container, connStr, cleanup := setupPostgreSQLContainer(t)
+	ctx, repo, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
 	defer cleanup()
-
-	applyMigrations(t, container)
-
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connStr,
-		},
-	}
-
-	adapter, err := postgres.NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-	defer adapter.Close(ctx)
-
-	encryption := newTestEncryption(t)
-	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
+	var err error
 
 	// Service 1: has resources
 	service1 := createTestService(
@@ -697,29 +430,9 @@ func TestFindByProtectedResource_MixedScenarios(t *testing.T) {
 
 // TestFindByProtectedResource_ClientSecretDecrypted tests that client_secret is properly decrypted
 func TestFindByProtectedResource_ClientSecretDecrypted(t *testing.T) {
-	container, connStr, cleanup := setupPostgreSQLContainer(t)
+	ctx, _, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
 	defer cleanup()
-
-	applyMigrations(t, container)
-
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connStr,
-		},
-	}
-
-	adapter, err := postgres.NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-	defer adapter.Close(ctx)
-
-	encryption := newTestEncryption(t)
-	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
+	var err error
 
 	// Create service with a specific secret
 	entity := createTestService(
@@ -742,27 +455,9 @@ func TestFindByProtectedResource_ClientSecretDecrypted(t *testing.T) {
 
 // TestFindByProtectedResource_InvalidResourceURI tests validation of empty resource URI
 func TestFindByProtectedResource_InvalidResourceURI(t *testing.T) {
-	container, connStr, cleanup := setupPostgreSQLContainer(t)
+	ctx, repo, _, cleanup := setupThirdpartyProviderTestHarness(t)
 	defer cleanup()
-
-	applyMigrations(t, container)
-
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connStr,
-		},
-	}
-
-	adapter, err := postgres.NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-	defer adapter.Close(ctx)
-
-	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	var err error
 
 	// Try to find with empty resource URI
 	found, err := repo.FindByProtectedResource(ctx, "")
@@ -778,29 +473,9 @@ func TestFindByProtectedResource_InvalidResourceURI(t *testing.T) {
 // TestFindByProtectedResource_GINIndexQuery tests query efficiency (GIN index behavior)
 // This test verifies the query uses array containment with @> operator which leverages GIN index
 func TestFindByProtectedResource_GINIndexQuery(t *testing.T) {
-	container, connStr, cleanup := setupPostgreSQLContainer(t)
+	ctx, repo, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
 	defer cleanup()
-
-	applyMigrations(t, container)
-
-	config := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: connStr,
-		},
-	}
-
-	adapter, err := postgres.NewAdapter(config)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = adapter.Initialize(ctx)
-	require.NoError(t, err)
-	defer adapter.Close(ctx)
-
-	encryption := newTestEncryption(t)
-	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, &noop.BranchKeyManager{}, nil, false, slog.Default())
+	var err error
 
 	// Create multiple services to test query efficiency
 	servicesByName := make(map[string]*model.ThirdpartyOAuth2ProviderEntity)

@@ -330,11 +330,9 @@ func TestGetKeySet_RecordsSpanErrorOnFailure(t *testing.T) {
 
 // TestGetKeySet_ContextCancelled tests cancellation handling
 func TestGetKeySet_ContextCancelled(t *testing.T) {
-	// Create mock server that delays response
+	// Create mock server that blocks until the caller cancels the request.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(2 * time.Second)
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"keys": []}`))
+		<-r.Context().Done()
 	}))
 	defer server.Close()
 
@@ -764,13 +762,13 @@ func TestHealthState_TracksBackgroundRefreshLifecycle(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "public, max-age=1")
+		w.Header().Set("Cache-Control", "public, max-age=0")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(jwksJSON)
 	}))
 	defer server.Close()
 
-	adapter, err := NewJWKSAdapter(server.URL, server.Client(), time.Second, time.Second, testLogger())
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), 200*time.Millisecond, 200*time.Millisecond, testLogger())
 	require.NoError(t, err)
 	defer func() { _ = adapter.Shutdown(context.Background()) }()
 
@@ -784,12 +782,12 @@ func TestHealthState_TracksBackgroundRefreshLifecycle(t *testing.T) {
 	upstreamHealthy.Store(false)
 	require.Eventually(t, func() bool {
 		return adapter.HealthState() == ports.ComponentHealthDegraded
-	}, 5*time.Second, 100*time.Millisecond)
+	}, 4*time.Second, 50*time.Millisecond)
 
 	upstreamHealthy.Store(true)
 	require.Eventually(t, func() bool {
 		return adapter.HealthState() == ports.ComponentHealthHealthy
-	}, 5*time.Second, 100*time.Millisecond)
+	}, 4*time.Second, 50*time.Millisecond)
 }
 
 func TestGetKeySet_ReturnsErrorWhenCachedMaterialExpiresAfterRefreshFailure(t *testing.T) {
@@ -812,13 +810,13 @@ func TestGetKeySet_ReturnsErrorWhenCachedMaterialExpiresAfterRefreshFailure(t *t
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "public, max-age=1")
+		w.Header().Set("Cache-Control", "public, max-age=0")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(jwksJSON)
 	}))
 	defer server.Close()
 
-	adapter, err := NewJWKSAdapter(server.URL, server.Client(), time.Second, time.Second, testLogger())
+	adapter, err := NewJWKSAdapter(server.URL, server.Client(), 200*time.Millisecond, 200*time.Millisecond, testLogger())
 	require.NoError(t, err)
 	defer func() { _ = adapter.Shutdown(context.Background()) }()
 
@@ -831,7 +829,7 @@ func TestGetKeySet_ReturnsErrorWhenCachedMaterialExpiresAfterRefreshFailure(t *t
 	upstreamHealthy.Store(false)
 	require.Eventually(t, func() bool {
 		return adapter.HealthState() == ports.ComponentHealthDegraded
-	}, 5*time.Second, 100*time.Millisecond)
+	}, 4*time.Second, 50*time.Millisecond)
 
 	_, err = adapter.GetKeySet(ctx)
 	require.Error(t, err)

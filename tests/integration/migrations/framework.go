@@ -5,39 +5,31 @@ package migrations_test
 
 import (
 	"context"
-	"encoding/binary"
+	"database/sql"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/integration/bootstrap"
 )
 
-// init disables Ryuk for Podman/Docker compatibility
-// Ryuk tries to use "bridge" network which may not be available in some Docker configurations
-func init() {
-	if os.Getenv("TESTCONTAINERS_RYUK_DISABLED") == "" {
-		os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-	}
-}
-
-// MigrationTestFramework provides reusable migration testing infrastructure
+// MigrationTestFramework provides reusable migration testing infrastructure.
 type MigrationTestFramework struct {
-	container     testcontainers.Container
+	db            *sql.DB
 	connStr       string
+	dbName        string
 	migrationsDir string
+	cleanup       func()
 }
 
-// NewMigrationTestFramework creates a test database and initializes the framework
+// NewMigrationTestFramework creates a test database and initializes the framework.
 func NewMigrationTestFramework(t *testing.T) *MigrationTestFramework {
 	t.Helper()
 
@@ -45,73 +37,49 @@ func NewMigrationTestFramework(t *testing.T) *MigrationTestFramework {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// Find migrations directory relative to this test file
 	migrationsDir := filepath.Join("..", "..", "..", "migrations")
-
-	// Convert to absolute path for reliable go-migrate resolution
 	absPath, err := filepath.Abs(migrationsDir)
 	if err != nil {
 		t.Fatalf("Failed to resolve migrations directory: %v", err)
 	}
-	migrationsDir = absPath
 
-	// Setup PostgreSQL container
-	ctx := context.Background()
-	req := testcontainers.ContainerRequest{
-		Image:        "postgres:15-alpine",
-		ExposedPorts: []string{"5432/tcp"},
-		Env: map[string]string{
-			"POSTGRES_USER":     "testuser",
-			"POSTGRES_PASSWORD": "testpass",
-			"POSTGRES_DB":       "testdb",
-		},
-		WaitingFor: wait.ForLog("database system is ready to accept connections").
-			WithOccurrence(2).
-			WithStartupTimeout(30 * time.Second),
-	}
+	postgres := bootstrap.RequireSharedPostgres(t)
+	dbName, connStr, cleanup := postgres.SetupDatabaseFromTemplate(t, "migration_framework_blank", func(t *testing.T, dbName string) {})
 
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
+	db, err := sql.Open("pgx", connStr)
 	require.NoError(t, err)
-
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
-
-	port, err := container.MappedPort(ctx, "5432")
-	require.NoError(t, err)
-
-	connStr := fmt.Sprintf(
-		"postgres://testuser:testpass@%s:%s/testdb?sslmode=disable",
-		host, port.Port(),
-	)
+	require.NoError(t, db.PingContext(context.Background()))
 
 	return &MigrationTestFramework{
-		container:     container,
+		db:            db,
 		connStr:       connStr,
-		migrationsDir: migrationsDir,
+		dbName:        dbName,
+		migrationsDir: absPath,
+		cleanup:       cleanup,
 	}
 }
 
-// Cleanup terminates the test database
+// Cleanup closes the database handle and drops the test database.
 func (f *MigrationTestFramework) Cleanup(t *testing.T) {
 	t.Helper()
-	f.container.Terminate(context.Background())
+	if f.db != nil {
+		require.NoError(t, f.db.Close())
+	}
+	if f.cleanup != nil {
+		f.cleanup()
+	}
 }
 
-// Up runs migrations up to the specified version
+// Up runs migrations up to the specified version.
 func (f *MigrationTestFramework) Up(t *testing.T, targetVersion uint) error {
 	t.Helper()
 
-	// Use file:/// (with 3 slashes) for absolute path
 	migrationsURL := "file://" + f.migrationsDir
 	t.Logf("Applying migrations up to version %d from: %s", targetVersion, migrationsURL)
 
 	m, err := migrate.New(migrationsURL, f.connStr)
 	require.NoErrorf(t, err, "failed to create migrate instance")
-
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 
 	if err := m.Migrate(targetVersion); err != nil && err != migrate.ErrNoChange {
 		return fmt.Errorf("migration to version %d failed: %w", targetVersion, err)
@@ -120,7 +88,7 @@ func (f *MigrationTestFramework) Up(t *testing.T, targetVersion uint) error {
 	return nil
 }
 
-// UpAll runs all available migrations
+// UpAll runs all available migrations.
 func (f *MigrationTestFramework) UpAll(t *testing.T) error {
 	t.Helper()
 
@@ -128,7 +96,6 @@ func (f *MigrationTestFramework) UpAll(t *testing.T) error {
 	t.Logf("Migration source URL: %s", migrationsURL)
 	t.Logf("Migrations directory exists: %s", f.migrationsDir)
 
-	// List the files in the migrations directory
 	files, err := filepath.Glob(filepath.Join(f.migrationsDir, "*.sql"))
 	if err == nil {
 		t.Logf("Found %d SQL files:", len(files))
@@ -139,21 +106,17 @@ func (f *MigrationTestFramework) UpAll(t *testing.T) error {
 
 	m, err := migrate.New(migrationsURL, f.connStr)
 	require.NoErrorf(t, err, "failed to create migrate instance")
+	defer func() { _, _ = m.Close() }()
 
-	defer m.Close()
-
-	// Log available migrations
 	s, d, err := m.Version()
 	if err != migrate.ErrNilVersion {
 		t.Logf("Current migration version: source=%d, dirty=%v", s, d)
 	}
 
-	// Apply all migrations
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return fmt.Errorf("migration up failed: %w", err)
 	}
 
-	// Log final state
 	s, d, err = m.Version()
 	if err != migrate.ErrNilVersion && err != nil {
 		return err
@@ -163,23 +126,19 @@ func (f *MigrationTestFramework) UpAll(t *testing.T) error {
 	return nil
 }
 
-// Down rolls back migrations down to the specified version
+// Down rolls back migrations down to the specified version.
 func (f *MigrationTestFramework) Down(t *testing.T, targetVersion uint) error {
 	t.Helper()
 
 	m, err := migrate.New("file://"+f.migrationsDir, f.connStr)
 	require.NoErrorf(t, err, "failed to create migrate instance")
+	defer func() { _, _ = m.Close() }()
 
-	defer m.Close()
-
-	// Rollback to specific version using Steps
-	// Get current version to calculate steps
 	currentVersion, _, err := m.Version()
 	if err != nil && err != migrate.ErrNilVersion {
 		return fmt.Errorf("failed to get current version: %w", err)
 	}
 
-	// Calculate steps needed to reach target version
 	steps := int(currentVersion) - int(targetVersion)
 	if steps > 0 {
 		if err := m.Steps(-steps); err != nil && err != migrate.ErrNoChange {
@@ -190,7 +149,7 @@ func (f *MigrationTestFramework) Down(t *testing.T, targetVersion uint) error {
 	return nil
 }
 
-// DownAll rolls back all migrations
+// DownAll rolls back all migrations.
 func (f *MigrationTestFramework) DownAll(t *testing.T) error {
 	t.Helper()
 
@@ -199,16 +158,13 @@ func (f *MigrationTestFramework) DownAll(t *testing.T) error {
 
 	m, err := migrate.New(migrationsURL, f.connStr)
 	require.NoErrorf(t, err, "failed to create migrate instance")
+	defer func() { _, _ = m.Close() }()
 
-	defer m.Close()
-
-	// Log current state
 	s, d, err := m.Version()
 	if err != migrate.ErrNilVersion {
 		t.Logf("Before Down: source=%d, dirty=%v", s, d)
 	}
 
-	// Roll back all migrations using Steps
 	for i := 0; ; i++ {
 		currentVersion, _, err := m.Version()
 		if err == migrate.ErrNilVersion {
@@ -220,7 +176,6 @@ func (f *MigrationTestFramework) DownAll(t *testing.T) error {
 		}
 
 		t.Logf("Rolling back from version %d...", currentVersion)
-
 		if err := m.Steps(-1); err != nil {
 			if err == migrate.ErrNoChange {
 				t.Logf("No more migrations to rollback")
@@ -243,7 +198,6 @@ func (f *MigrationTestFramework) DownAll(t *testing.T) error {
 		}
 	}
 
-	// Log final state
 	s, d, err = m.Version()
 	if err == migrate.ErrNilVersion {
 		t.Logf("After Down: version=0 (no migrations), dirty=%v", d)
@@ -257,7 +211,7 @@ func (f *MigrationTestFramework) DownAll(t *testing.T) error {
 	return nil
 }
 
-// Version returns the current migration version
+// Version returns the current migration version.
 func (f *MigrationTestFramework) Version(t *testing.T) (uint, bool, error) {
 	t.Helper()
 
@@ -265,101 +219,47 @@ func (f *MigrationTestFramework) Version(t *testing.T) (uint, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
-
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 
 	version, dirty, err := m.Version()
-	// If no migrations have been applied yet, m.Version() returns ErrNilVersion
-	// In this case, we should return version 0
 	if err == migrate.ErrNilVersion {
 		return 0, false, nil
 	}
 	return version, dirty, err
 }
 
-// QuerySQL executes a SQL query and returns results
+// QuerySQL executes a SQL query and returns the first column of the first row as text.
+// Additional rows are intentionally ignored; callers that need multi-row results
+// should use f.db.QueryContext directly.
 func (f *MigrationTestFramework) QuerySQL(t *testing.T, query string) (string, error) {
 	t.Helper()
 
-	ctx := context.Background()
-	exitCode, outReader, err := f.container.Exec(ctx, []string{
-		"psql",
-		"-U", "testuser",
-		"-d", "testdb",
-		"-A", // Unaligned output for easier parsing
-		"-t", // Tuples only (no headers)
-		"-c", query,
-	})
-
-	if exitCode != 0 {
-		return "", fmt.Errorf("psql exited with code %d: %v", exitCode, err)
+	row := f.db.QueryRowContext(context.Background(), query)
+	var value any
+	if err := row.Scan(&value); err != nil {
+		return "", err
 	}
 
-	output, err := io.ReadAll(outReader)
-	if err != nil {
-		return "", fmt.Errorf("failed to read psql output: %v", err)
+	switch v := value.(type) {
+	case nil:
+		return "", nil
+	case []byte:
+		return string(v), nil
+	default:
+		return fmt.Sprint(v), nil
 	}
-
-	return string(decodeExecOutput(output)), nil
 }
 
-// decodeExecOutput strips Docker's multiplexed exec stream headers when present.
-// Podman typically returns plain output, so we fall back to the original bytes when
-// the stream does not match the Docker stdcopy framing format.
-func decodeExecOutput(raw []byte) []byte {
-	if len(raw) < 8 {
-		return raw
-	}
-
-	decoded := make([]byte, 0, len(raw))
-	for offset := 0; offset < len(raw); {
-		if offset+8 > len(raw) {
-			return raw
-		}
-		if raw[offset] > 2 || raw[offset+1] != 0 || raw[offset+2] != 0 || raw[offset+3] != 0 {
-			return raw
-		}
-
-		frameLen := int(binary.BigEndian.Uint32(raw[offset+4 : offset+8]))
-		offset += 8
-		if frameLen < 0 || offset+frameLen > len(raw) {
-			return raw
-		}
-
-		decoded = append(decoded, raw[offset:offset+frameLen]...)
-		offset += frameLen
-	}
-
-	if len(decoded) == 0 {
-		return raw
-	}
-
-	return decoded
-}
-
-// ExecuteSQL executes a SQL statement (no output)
-func (f *MigrationTestFramework) ExecuteSQL(t *testing.T, sql string) error {
+// ExecuteSQL executes a SQL statement.
+func (f *MigrationTestFramework) ExecuteSQL(t *testing.T, statement string) error {
 	t.Helper()
-
-	ctx := context.Background()
-	exitCode, _, err := f.container.Exec(ctx, []string{
-		"psql",
-		"-U", "testuser",
-		"-d", "testdb",
-		"-c", sql,
-	})
-
-	if exitCode != 0 {
-		return fmt.Errorf("psql exited with code %d: %v", exitCode, err)
-	}
-
-	return nil
+	_, err := f.db.ExecContext(context.Background(), statement)
+	return err
 }
 
-// ColumnExists checks if a column exists in a table
+// ColumnExists checks if a column exists in a table.
 func (f *MigrationTestFramework) ColumnExists(t *testing.T, table, column string) (bool, error) {
 	t.Helper()
-
 	result, err := f.QuerySQL(t, fmt.Sprintf(`
 		SELECT COUNT(*) FROM information_schema.columns
 		WHERE table_name = '%s' AND column_name = '%s';
@@ -367,48 +267,37 @@ func (f *MigrationTestFramework) ColumnExists(t *testing.T, table, column string
 	if err != nil {
 		return false, err
 	}
-
 	return strings.TrimSpace(result) != "0", nil
 }
 
-// IndexExists checks if an index exists
+// IndexExists checks if an index exists.
 func (f *MigrationTestFramework) IndexExists(t *testing.T, indexName string) (bool, error) {
 	t.Helper()
-
 	result, err := f.QuerySQL(t, fmt.Sprintf(`
 		SELECT COUNT(*) FROM pg_indexes WHERE indexname = '%s';
 	`, indexName))
 	if err != nil {
 		return false, err
 	}
-
 	return strings.TrimSpace(result) != "0", nil
 }
 
-// GetColumnType returns the data type of a column
+// GetColumnType returns the data type of a column.
 func (f *MigrationTestFramework) GetColumnType(t *testing.T, table, column string) (string, error) {
 	t.Helper()
-
-	result, err := f.QuerySQL(t, fmt.Sprintf(`
+	return f.QuerySQL(t, fmt.Sprintf(`
 		SELECT data_type FROM information_schema.columns
 		WHERE table_name = '%s' AND column_name = '%s';
 	`, table, column))
-	if err != nil {
-		return "", err
-	}
-
-	return result, nil
 }
 
-// CountRows returns the number of rows in a table
+// CountRows returns the number of rows in a table.
 func (f *MigrationTestFramework) CountRows(t *testing.T, table string, where ...string) (int64, error) {
 	t.Helper()
-
 	whereClause := ""
 	if len(where) > 0 {
 		whereClause = fmt.Sprintf("WHERE %s", where[0])
 	}
-
 	result, err := f.QuerySQL(t, fmt.Sprintf(`
 		SELECT COUNT(*) FROM %s %s;
 	`, table, whereClause))
@@ -417,14 +306,16 @@ func (f *MigrationTestFramework) CountRows(t *testing.T, table string, where ...
 	}
 
 	var count int64
-	fmt.Sscanf(result, "%d", &count)
+	_, err = fmt.Sscanf(result, "%d", &count)
+	if err != nil {
+		return 0, err
+	}
 	return count, nil
 }
 
-// TableExists checks if a table exists
+// TableExists checks if a table exists.
 func (f *MigrationTestFramework) TableExists(t *testing.T, tableName string) (bool, error) {
 	t.Helper()
-
 	result, err := f.QuerySQL(t, fmt.Sprintf(`
 		SELECT COUNT(*) FROM information_schema.tables
 		WHERE table_name = '%s';
@@ -432,6 +323,5 @@ func (f *MigrationTestFramework) TableExists(t *testing.T, tableName string) (bo
 	if err != nil {
 		return false, err
 	}
-
 	return strings.TrimSpace(result) != "0", nil
 }

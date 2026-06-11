@@ -4,148 +4,65 @@
 package postgres
 
 import (
-	"context"
+	"database/sql"
 	"fmt"
-	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// setupAgentTestDBWithMigrations creates an isolated test database with migrations 001-N applied.
-// After applying up to upToMigration, it always applies remaining schema migrations
-// (009+) that the application-layer repositories require for their SQL queries.
-func setupAgentTestDBWithMigrations(t *testing.T, upToMigration int) (*Adapter, func()) {
+func setupAgentConstraintTestDB(t *testing.T, upToMigration int) (*sql.DB, func()) {
 	t.Helper()
 
-	connString, cleanup := setupDatabaseFromTemplate(t, fmt.Sprintf("agent_core_%d", upToMigration), func(t *testing.T, dbName string) {
-		container := requireSharedTestContainer(t)
-		ctx := context.Background()
-		projectRoot, err := findProjectRoot()
-		require.NoError(t, err)
-		migrationsDir := filepath.Join(projectRoot, "migrations")
-
-		createSchemaMigrationsTable(t, ctx, container, dbName)
-
-		coreMigrations := []struct {
-			file    string
-			version int64
-		}{
-			{"001_create_agents.up.sql", 1},
-			{"002_create_thirdparty_services.up.sql", 2},
-			{"003_create_user_grants.up.sql", 3},
-			{"004_create_user_sessions.up.sql", 4},
-			{"005_add_agent_service_requirements.up.sql", 5},
-			{"006_add_service_protected_resources.up.sql", 6},
-			{"007_add_oauth2_flavor.up.sql", 7},
-			{"008_drop_agent_client_id_unique.up.sql", 8},
-		}
-
-		for _, m := range coreMigrations {
-			if int(m.version) > upToMigration {
-				break
-			}
-			applyOneMigration(t, ctx, container, dbName, migrationsDir, m.file, m.version)
-		}
-
-		additionalMigrations := []struct {
-			file    string
-			version int64
-		}{
-			{"009_add_agent_redirect_uris.up.sql", 9},
-			{"010_create_client_credentials.up.sql", 10},
-			{"011_create_signing_keys.up.sql", 11},
-			{"012_create_authorization_codes.up.sql", 12},
-			{"013_add_client_id_to_auth_codes.up.sql", 13},
-			{"014_create_pkce_sessions.up.sql", 14},
-			{"015_add_cimd_support.up.sql", 15},
-			{"017_add_permission_sets.up.sql", 17},
-			{"018_add_agent_permission_sets.up.sql", 18},
-			{"019_migrate_user_grants_to_permission_sets.up.sql", 19},
-			{"020_add_service_scope_requirement_type.up.sql", 20},
-		}
-		for _, m := range additionalMigrations {
-			applyOneMigration(t, ctx, container, dbName, migrationsDir, m.file, m.version)
-		}
+	connString, cleanup := setupDatabaseFromTemplate(t, fmt.Sprintf("agent_constraint_%d", upToMigration), func(t *testing.T, dbName string) {
+		applyMigrationsUpToDatabase(t, requireSharedTestContainer(t), dbName, upToMigration)
 	})
 
-	config := testStorageConfig(connString)
-	adapter, err := NewAdapter(config)
+	db, err := sql.Open("pgx", connString)
 	require.NoError(t, err)
-	ctx := context.Background()
-	require.NoError(t, adapter.Initialize(ctx))
+	require.NoError(t, db.Ping())
 
-	return adapter, func() {
-		require.NoError(t, adapter.Close(ctx))
+	return db, func() {
+		require.NoError(t, db.Close())
 		cleanup()
 	}
+}
+
+func insertAgentRow(t *testing.T, db *sql.DB, clientID, displayName string) error {
+	t.Helper()
+
+	_, err := db.Exec(`
+		INSERT INTO agents (id, client_id, display_name, description, created_at, updated_at)
+		VALUES (uuid_generate_v4(), $1, $2, 'test description', NOW(), NOW())
+	`, clientID, displayName)
+	return err
 }
 
 // T042: Integration test for migration 008 — drop/restore agents.client_id unique constraint.
 func TestMigration008_AgentClientIDUniqueConstraint(t *testing.T) {
 	t.Run("after migration 008: two agents can share the same client_id", func(t *testing.T) {
-		adapter, cleanup := setupAgentTestDBWithMigrations(t, 8)
+		db, cleanup := setupAgentConstraintTestDB(t, 8)
 		defer cleanup()
 
-		repo := NewAgentRepository(adapter)
-		ctx := context.Background()
-		now := time.Now().UTC()
+		const sharedClientID = "shared-upstream-client-008"
+		require.NoError(t, insertAgentRow(t, db, sharedClientID, "Agent One"))
+		require.NoError(t, insertAgentRow(t, db, sharedClientID, "Agent Two"))
 
-		sharedClientID := id.ClientID("shared-upstream-client-008")
-
-		agent1 := &storage.Agent{
-			ClientID:    &sharedClientID,
-			DisplayName: "Agent One",
-			Description: "First agent",
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		}
-		err := repo.Create(ctx, agent1)
-		require.NoError(t, err, "first agent with shared client_id should be created")
-
-		agent2 := &storage.Agent{
-			ClientID:    &sharedClientID,
-			DisplayName: "Agent Two",
-			Description: "Second agent",
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		}
-		err = repo.Create(ctx, agent2)
-		assert.NoError(t, err, "second agent with same client_id must succeed after migration 008")
+		var count int
+		err := db.QueryRow(`SELECT COUNT(*) FROM agents WHERE client_id = $1`, sharedClientID).Scan(&count)
+		require.NoError(t, err)
+		assert.Equal(t, 2, count, "migration 008 should allow duplicate client_id rows")
 	})
 
 	t.Run("before migration 008 (migrations 001-007): duplicate client_id is rejected by DB constraint", func(t *testing.T) {
-		adapter, cleanup := setupAgentTestDBWithMigrations(t, 7)
+		db, cleanup := setupAgentConstraintTestDB(t, 7)
 		defer cleanup()
 
-		repo := NewAgentRepository(adapter)
-		ctx := context.Background()
-		now := time.Now().UTC()
+		const sharedClientID = "unique-client-pre-008"
+		require.NoError(t, insertAgentRow(t, db, sharedClientID, "Agent One"))
 
-		sharedClientID := id.ClientID("unique-client-pre-008")
-
-		agent1 := &storage.Agent{
-			ClientID:    &sharedClientID,
-			DisplayName: "Agent One",
-			Description: "First agent",
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		}
-		err := repo.Create(ctx, agent1)
-		require.NoError(t, err, "first agent should be created")
-
-		agent2 := &storage.Agent{
-			ClientID:    &sharedClientID,
-			DisplayName: "Agent Two",
-			Description: "Duplicate",
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		}
-		err = repo.Create(ctx, agent2)
-		assert.Error(t, err, "second agent with duplicate client_id must fail before migration 008 (DB UNIQUE constraint)")
+		err := insertAgentRow(t, db, sharedClientID, "Agent Two")
+		assert.Error(t, err, "second agent with duplicate client_id must fail before migration 008")
 	})
 }

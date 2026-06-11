@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -34,6 +33,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 	e2ebootstrap "github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
+	testbootstrap "github.com/agentic-identity-broker/agentic-identity-broker/tests/integration/bootstrap"
 )
 
 func TestConcurrentLocalModeBootstrapUsesSingleSigningKeyAcrossReplicas(t *testing.T) {
@@ -139,31 +139,25 @@ func containerRuntimeAvailable() bool {
 func setupMigratedPostgresDatabase(t *testing.T) (string, func()) {
 	t.Helper()
 
-	ctx := context.Background()
-	container, cleanupContainer := setupTestContainer(t)
-
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
-	port, err := container.MappedPort(ctx, "5432/tcp")
-	require.NoError(t, err)
-
-	connStr := fmt.Sprintf("postgres://testuser:testpass@%s:%s/testdb?sslmode=disable", host, port.Port())
-
-	projectRoot, err := findProjectRoot()
-	require.NoError(t, err)
-	migrationsDir, err := filepath.Abs(filepath.Join(projectRoot, "migrations"))
-	require.NoError(t, err)
-
-	migrationRunner, err := migrate.New("file://"+migrationsDir, connStr)
-	require.NoError(t, err)
-	defer migrationRunner.Close()
-
-	err = migrationRunner.Up()
-	if err != nil && err != migrate.ErrNoChange {
+	postgres := testbootstrap.RequireSharedPostgres(t)
+	_, connStr, cleanupDatabase := postgres.SetupDatabaseFromTemplate(t, "oauth2_signing_key_bootstrap_full_migrations", func(t *testing.T, dbName string) {
+		projectRoot, err := testbootstrap.FindProjectRoot()
 		require.NoError(t, err)
-	}
+		migrationsDir, err := filepath.Abs(filepath.Join(projectRoot, "migrations"))
+		require.NoError(t, err)
 
-	return connStr, cleanupContainer
+		migrationConnStr := postgres.ConnectionString(dbName)
+		migrationRunner, err := migrate.New("file://"+migrationsDir, migrationConnStr)
+		require.NoError(t, err)
+		defer func() { _, _ = migrationRunner.Close() }()
+
+		err = migrationRunner.Up()
+		if err != nil && err != migrate.ErrNoChange {
+			require.NoError(t, err)
+		}
+	})
+
+	return connStr, cleanupDatabase
 }
 
 func newPostgresStorageAdapter(t *testing.T, connStr string) (*storageadapter.Adapter, func()) {

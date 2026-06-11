@@ -43,10 +43,13 @@ func TestTokenExchanger_TLS_ExchangeTimeout_SetOnHTTPClient(t *testing.T) {
 	require.NoError(t, err)
 	defer exchanger.Shutdown()
 
-	// Verify the timeout is honoured: make a request to a hanging server
-	// with a short timeout and assert it terminates within that window.
+	// Verify the timeout is honoured: make a request to a handler that blocks
+	// longer than the client timeout but still returns promptly during cleanup.
 	hangServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(5 * time.Second)
+		select {
+		case <-r.Context().Done():
+		case <-time.After(200 * time.Millisecond):
+		}
 	}))
 	defer hangServer.Close()
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/require"
 
 	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
 )
@@ -48,7 +49,7 @@ func TestHealthEndpoint(t *testing.T) {
 	}()
 
 	// Wait for server to start
-	time.Sleep(500 * time.Millisecond)
+	waitForEndpoint(t, fmt.Sprintf("http://localhost:%d/health", config.Port))
 
 	// Test health endpoint format
 	t.Run("ResponseFormat", func(t *testing.T) {
@@ -133,8 +134,20 @@ func TestHealthEndpoint(t *testing.T) {
 			t.Fatalf("Failed to decode first health response: %v", err)
 		}
 
-		// Wait a bit
-		time.Sleep(1 * time.Second)
+		// Wait until uptime advances
+		require.Eventually(t, func() bool {
+			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
+			if err != nil {
+				return false
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			var health httpAdapter.HealthResponse
+			if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
+				return false
+			}
+			return health.UptimeSeconds > health1.UptimeSeconds
+		}, 2*time.Second, 25*time.Millisecond)
 
 		// Get second health response
 		resp2, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))

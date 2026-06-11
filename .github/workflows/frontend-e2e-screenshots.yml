@@ -59,7 +59,7 @@ jobs:
 
       - name: Install Ginkgo
         if: steps.skip-check.outputs.skip != 'true'
-        run: go install github.com/onsi/ginkgo/v2/ginkgo@v2.28.1
+        run: go install github.com/onsi/ginkgo/v2/ginkgo@v2.29.0
 
       - name: Install Playwright browsers
         if: steps.skip-check.outputs.skip != 'true'
@@ -76,7 +76,7 @@ jobs:
       - name: Run frontend E2E tests
         if: steps.skip-check.outputs.skip != 'true'
         id: tests
-        run: E2E_FRONTEND_MODE=built ginkgo -v ./tests/e2e/frontend/
+        run: E2E_FRONTEND_MODE=built E2E_CAPTURE_SCREENSHOTS=true ginkgo -v ./tests/e2e/frontend/
         continue-on-error: true
 
       - name: Build screenshot diff tool

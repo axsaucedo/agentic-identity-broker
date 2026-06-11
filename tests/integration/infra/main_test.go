@@ -32,6 +32,9 @@ func TestMain(m *testing.M) {
 			fmt.Fprintf(os.Stderr, "failed to restore AWS emulator environment: %v\n", err)
 		}
 	}
+	if err := bootstrap.TerminateSharedPostgres(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to terminate shared PostgreSQL container: %v\n", err)
+	}
 
 	os.Exit(code)
 }

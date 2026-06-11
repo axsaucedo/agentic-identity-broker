@@ -30,151 +30,123 @@ func insertTestService(t *testing.T, adapter *Adapter, serviceID id.ServiceID) {
 			(id, display_name, client_id, client_secret_encrypted, oauth2_flavor,
 			 issuer_uri, enable_discovery, token_endpoint, authorize_endpoint, scopes)
 		VALUES
-			($1, 'Test Service', 'test-client', '\x00', 'standard',
+			($1, 'Test Service', $2, '\x00', 'standard',
 			 'https://example.com', false, 'https://example.com/token',
 			 'https://example.com/authorize', '[]')
-	`, serviceID)
+	`, serviceID, "test-client-"+serviceID.String()[:8])
 	require.NoError(t, err)
 }
 
-// TestUserSessionRepository_FindByPrincipalAndService_ScopesScan reproduces the
-// bug where FindByPrincipalAndService fails with:
-//
-//	sql: Scan error on column index 8, name "scope": unsupported Scan,
-//	storing driver.Value type string into type *[]string
-//
-// The root cause: pgx/v5/stdlib returns PostgreSQL TEXT[] as a string literal
-// (e.g. "{genie}") and []string has no sql.Scanner implementation.
-func TestUserSessionRepository_FindByPrincipalAndService_ScopesScan(t *testing.T) {
+func TestUserSessionRepository(t *testing.T) {
 	adapter, cleanup := setupUserSessionTestDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
-	serviceID := id.NewServiceID()
-	insertTestService(t, adapter, serviceID)
-
 	repo := NewUserSessionRepository(adapter)
-	principal := id.Principal("user@example.com")
-
-	session := &storage.UserSession{
-		ID:                   id.NewSessionID(),
-		Principal:            principal,
-		ServiceID:            serviceID,
-		EncryptedAccessToken: []byte("encrypted-token"),
-		TokenType:            "Bearer",
-		Scope:                []string{"genie"},
-		EncryptionContext:    storage.EncryptionContext{ServiceID: serviceID},
-		InitiatedAt:          time.Now().UTC(),
-		CreatedAt:            time.Now().UTC(),
-		UpdatedAt:            time.Now().UTC(),
-	}
-
-	err := repo.Create(ctx, session)
-	require.NoError(t, err, "Create should succeed")
-
-	// This is the operation that previously failed with:
-	// "sql: Scan error on column index 8, name "scope": unsupported Scan,
-	//  storing driver.Value type string into type *[]string"
-	found, err := repo.FindByPrincipalAndService(ctx, principal, serviceID)
-	require.NoError(t, err, "FindByPrincipalAndService must not return a scan error")
-	require.NotNil(t, found)
-
-	assert.Equal(t, []string{"genie"}, found.Scope, "scopes must round-trip through TEXT[]")
-	assert.Equal(t, session.TokenType, found.TokenType)
-	assert.Equal(t, session.Principal, found.Principal)
-}
-
-func TestUserSessionRepository_FindByPrincipalAndService_MultipleScopes(t *testing.T) {
-	adapter, cleanup := setupUserSessionTestDB(t)
-	defer cleanup()
-
 	ctx := context.Background()
-	serviceID := id.NewServiceID()
-	insertTestService(t, adapter, serviceID)
 
-	repo := NewUserSessionRepository(adapter)
-	principal := id.Principal("user@example.com")
+	t.Run("FindByPrincipalAndService scopes scan", func(t *testing.T) {
+		serviceID := id.NewServiceID()
+		insertTestService(t, adapter, serviceID)
+		principal := id.Principal("user-find-one@example.com")
 
-	session := &storage.UserSession{
-		ID:                   id.NewSessionID(),
-		Principal:            principal,
-		ServiceID:            serviceID,
-		EncryptedAccessToken: []byte("encrypted-token"),
-		TokenType:            "Bearer",
-		Scope:                []string{"sql-warehouses", "genie", "clusters"},
-		EncryptionContext:    storage.EncryptionContext{ServiceID: serviceID},
-		InitiatedAt:          time.Now().UTC(),
-		CreatedAt:            time.Now().UTC(),
-		UpdatedAt:            time.Now().UTC(),
-	}
+		session := &storage.UserSession{
+			ID:                   id.NewSessionID(),
+			Principal:            principal,
+			ServiceID:            serviceID,
+			EncryptedAccessToken: []byte("encrypted-token"),
+			TokenType:            "Bearer",
+			Scope:                []string{"genie"},
+			EncryptionContext:    storage.EncryptionContext{ServiceID: serviceID},
+			InitiatedAt:          time.Now().UTC(),
+			CreatedAt:            time.Now().UTC(),
+			UpdatedAt:            time.Now().UTC(),
+		}
 
-	require.NoError(t, repo.Create(ctx, session))
+		err := repo.Create(ctx, session)
+		require.NoError(t, err, "Create should succeed")
 
-	found, err := repo.FindByPrincipalAndService(ctx, principal, serviceID)
-	require.NoError(t, err)
-	require.NotNil(t, found)
-	assert.ElementsMatch(t, []string{"sql-warehouses", "genie", "clusters"}, found.Scope)
-}
+		found, err := repo.FindByPrincipalAndService(ctx, principal, serviceID)
+		require.NoError(t, err, "FindByPrincipalAndService must not return a scan error")
+		require.NotNil(t, found)
+		assert.Equal(t, []string{"genie"}, found.Scope, "scopes must round-trip through TEXT[]")
+		assert.Equal(t, session.TokenType, found.TokenType)
+		assert.Equal(t, session.Principal, found.Principal)
+	})
 
-func TestUserSessionRepository_Get_ScopesScan(t *testing.T) {
-	adapter, cleanup := setupUserSessionTestDB(t)
-	defer cleanup()
+	t.Run("FindByPrincipalAndService multiple scopes", func(t *testing.T) {
+		serviceID := id.NewServiceID()
+		insertTestService(t, adapter, serviceID)
+		principal := id.Principal("user-find-many@example.com")
 
-	ctx := context.Background()
-	serviceID := id.NewServiceID()
-	insertTestService(t, adapter, serviceID)
+		session := &storage.UserSession{
+			ID:                   id.NewSessionID(),
+			Principal:            principal,
+			ServiceID:            serviceID,
+			EncryptedAccessToken: []byte("encrypted-token"),
+			TokenType:            "Bearer",
+			Scope:                []string{"sql-warehouses", "genie", "clusters"},
+			EncryptionContext:    storage.EncryptionContext{ServiceID: serviceID},
+			InitiatedAt:          time.Now().UTC(),
+			CreatedAt:            time.Now().UTC(),
+			UpdatedAt:            time.Now().UTC(),
+		}
 
-	repo := NewUserSessionRepository(adapter)
+		require.NoError(t, repo.Create(ctx, session))
 
-	session := &storage.UserSession{
-		ID:                   id.NewSessionID(),
-		Principal:            id.Principal("user@example.com"),
-		ServiceID:            serviceID,
-		EncryptedAccessToken: []byte("encrypted-token"),
-		TokenType:            "Bearer",
-		Scope:                []string{"genie"},
-		EncryptionContext:    storage.EncryptionContext{ServiceID: serviceID},
-		InitiatedAt:          time.Now().UTC(),
-		CreatedAt:            time.Now().UTC(),
-		UpdatedAt:            time.Now().UTC(),
-	}
+		found, err := repo.FindByPrincipalAndService(ctx, principal, serviceID)
+		require.NoError(t, err)
+		require.NotNil(t, found)
+		assert.ElementsMatch(t, []string{"sql-warehouses", "genie", "clusters"}, found.Scope)
+	})
 
-	require.NoError(t, repo.Create(ctx, session))
+	t.Run("Get scopes scan", func(t *testing.T) {
+		serviceID := id.NewServiceID()
+		insertTestService(t, adapter, serviceID)
 
-	found, err := repo.Get(ctx, session.ID)
-	require.NoError(t, err)
-	require.NotNil(t, found)
-	assert.Equal(t, []string{"genie"}, found.Scope)
-}
+		session := &storage.UserSession{
+			ID:                   id.NewSessionID(),
+			Principal:            id.Principal("user-get@example.com"),
+			ServiceID:            serviceID,
+			EncryptedAccessToken: []byte("encrypted-token"),
+			TokenType:            "Bearer",
+			Scope:                []string{"genie"},
+			EncryptionContext:    storage.EncryptionContext{ServiceID: serviceID},
+			InitiatedAt:          time.Now().UTC(),
+			CreatedAt:            time.Now().UTC(),
+			UpdatedAt:            time.Now().UTC(),
+		}
 
-func TestUserSessionRepository_ListByPrincipal_ScopesScan(t *testing.T) {
-	adapter, cleanup := setupUserSessionTestDB(t)
-	defer cleanup()
+		require.NoError(t, repo.Create(ctx, session))
 
-	ctx := context.Background()
-	serviceID := id.NewServiceID()
-	insertTestService(t, adapter, serviceID)
+		found, err := repo.Get(ctx, session.ID)
+		require.NoError(t, err)
+		require.NotNil(t, found)
+		assert.Equal(t, []string{"genie"}, found.Scope)
+	})
 
-	repo := NewUserSessionRepository(adapter)
-	principal := id.Principal("user@example.com")
+	t.Run("ListByPrincipal scopes scan", func(t *testing.T) {
+		serviceID := id.NewServiceID()
+		insertTestService(t, adapter, serviceID)
+		principal := id.Principal("user-list@example.com")
 
-	session := &storage.UserSession{
-		ID:                   id.NewSessionID(),
-		Principal:            principal,
-		ServiceID:            serviceID,
-		EncryptedAccessToken: []byte("encrypted-token"),
-		TokenType:            "Bearer",
-		Scope:                []string{"genie"},
-		EncryptionContext:    storage.EncryptionContext{ServiceID: serviceID},
-		InitiatedAt:          time.Now().UTC(),
-		CreatedAt:            time.Now().UTC(),
-		UpdatedAt:            time.Now().UTC(),
-	}
+		session := &storage.UserSession{
+			ID:                   id.NewSessionID(),
+			Principal:            principal,
+			ServiceID:            serviceID,
+			EncryptedAccessToken: []byte("encrypted-token"),
+			TokenType:            "Bearer",
+			Scope:                []string{"genie"},
+			EncryptionContext:    storage.EncryptionContext{ServiceID: serviceID},
+			InitiatedAt:          time.Now().UTC(),
+			CreatedAt:            time.Now().UTC(),
+			UpdatedAt:            time.Now().UTC(),
+		}
 
-	require.NoError(t, repo.Create(ctx, session))
+		require.NoError(t, repo.Create(ctx, session))
 
-	sessions, err := repo.ListByPrincipal(ctx, principal)
-	require.NoError(t, err)
-	require.Len(t, sessions, 1)
-	assert.Equal(t, []string{"genie"}, sessions[0].Scope)
+		sessions, err := repo.ListByPrincipal(ctx, principal)
+		require.NoError(t, err)
+		require.Len(t, sessions, 1)
+		assert.Equal(t, []string{"genie"}, sessions[0].Scope)
+	})
 }

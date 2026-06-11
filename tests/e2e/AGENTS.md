@@ -15,41 +15,35 @@
 ```
 tests/e2e/
   e2e_suite_test.go               Ginkgo suite entrypoint
-  bootstrap/                       Server + storage initialization (volatile layer)
-    test_server.go                 TestServer wrapper — AuthenticatedGET/POST, PublicGET
-    server_factory.go              Builds production app.App via DI
-    storage.go                     In-memory storage initialization
-    playwright.go                  Playwright browser lifecycle for frontend tests
-  fixtures/                        Deterministic test data factories
-    agents.go                      ValidAgent(), AgentWithClientID(), AgentWithURLs()
-    grants.go                      ActiveGrant(), ExpiredGrant(), IndefiniteGrant()
-    principals.go                  DefaultPrincipal(), AnotherPrincipal(), AdminPrincipal()
-    config.go                      DefaultOAuth2Config(), OAuth2ConfigWithUpstream()
-    services.go                    Third-party OAuth2 service fixtures
-    sessions.go                    User session fixtures
-    encryption.go                  Encryption-related fixtures
-  helpers/                         Test utilities
-    http_helpers.go                Response body parsing, status assertions
-    jwt_helpers.go                 JWT creation/validation for tests
-    mock_upstream.go               Mock OAuth2 upstream server
-  matchers/                        Custom Gomega matchers
-    oauth2_matchers.go             HaveOAuth2Error(), BeRedirectTo(), ContainOAuth2Metadata()
-  pages/                           Page objects for Playwright frontend tests
-    page.go                        Base Page struct — navigation, waiting
-    consent_page.go                ConsentPage — approve/deny interactions
-  frontend/                        Frontend E2E tests (Playwright) — see frontend/AGENTS.md
-  Test files (62+ scenarios)
-    oauth2_authorize_test.go       Authorization endpoint (23 scenarios)
-    oauth2_token_test.go           Token endpoint (12 scenarios)
-    oauth2_metadata_test.go        Metadata endpoint (8 scenarios)
-    oauth2_security_test.go        Security validation (12 scenarios)
-    oauth2_edge_cases_test.go      Edge cases (7 scenarios)
-    agent_permission_requirements_test.go  Agent service requirement scenarios
-    encryption_vault_raw_test.go   Encryption vault E2E scenarios
-    token_exchange_test.go         RFC 8693 token exchange scenarios
+  bootstrap/                      Volatile production-bootstrap wrappers
+    test_server.go                TestServer wrapper — AuthenticatedGET/POST, PublicGET
+    server_factory.go             Builds production app.App via DI
+    storage.go                    In-memory storage initialization
+    logger.go, telemetry.go       Quiet logging and telemetry helpers for parallel runs
+    playwright.go                 Playwright browser lifecycle for frontend tests
+    cimd.go                       CIMD-specific bootstrap helpers
+  fixtures/                       Deterministic test data factories
+    *.go                          Agents, grants, principals, OAuth2 config, services, sessions,
+                                  encryption, and multi-agent fixtures
+  helpers/                        Shared HTTP/JWT/upstream/JWKS/PKCE/signing-key utilities
+  matchers/                       Custom Gomega matchers for OAuth2, telemetry, and claims
+  pages/                          Page objects for Playwright frontend tests
+    page.go                       Base Page struct — navigation, waiting
+    consent_page.go               ConsentPage — approve/deny interactions
+  extproc/                        ExtProc E2E suite and supporting specs
+  frontend/                       Frontend E2E tests (Playwright) — see frontend/AGENTS.md
+  *_test.go                       Backend E2E specs covering OAuth2 flows, CIMD, token exchange,
+                                  grants, sessions, permission sets, JWKS, telemetry, and mode boundaries
+  screenshots/                    Optional maintained screenshot artifacts
 ```
 
 ## Architecture: Stable vs Volatile Layers
+
+### Performance-sensitive helpers
+
+- `bootstrap.TestLogger()` discards log output unless `E2E_VERBOSE=1`; use it for new suites to avoid I/O contention under parallel Ginkgo workers.
+- `e2e_suite_test.go` uses `SynchronizedBeforeSuite` to share the mock upstream across backend workers; prefer suite-level sharing like this over per-spec servers when the upstream is read-only.
+- Prefer `Eventually`/polling helpers over `time.Sleep(...)` in new specs. Fixed sleeps slow down the parallel backend suite and make CI noisier.
 
 **Stable layer** (test scenarios): HTTP contract tests. Use `server.AuthenticatedGET()`, `server.PublicGET()`. No knowledge of internal routing or DI. Rarely change during refactoring.
 
@@ -125,3 +119,9 @@ just test-e2e-backend-watch    # Backend E2E watch mode for TDD
 just test-e2e                  # All backend, ExtProc, and frontend E2E suites
 ginkgo -v --focus="pattern" ./tests/e2e/    # Focused backend run
 ```
+
+### Parallelism expectations
+
+- Backend E2E is expected to run with `GINKGO_PROCS` workers; keep specs isolated so parallel execution stays safe.
+- ExtProc E2E also uses Ginkgo parallelism, but some agentgateway container scenarios are `Ordered` by design — do not convert those casually.
+- Frontend E2E uses a separate suite and has additional screenshot rules in `frontend/AGENTS.md`.

@@ -74,7 +74,8 @@ func TestServerStartup(t *testing.T) {
 	})
 
 	// Wait for servers to be ready
-	time.Sleep(500 * time.Millisecond)
+	waitForEndpoint(t, fmt.Sprintf("http://localhost:%d/health", enduserConfig.Port))
+	waitForEndpoint(t, fmt.Sprintf("http://localhost:%d/health", adminConfig.Port))
 
 	// Test enduser server health endpoint
 	t.Run("EndUserHealth", func(t *testing.T) {
@@ -168,7 +169,7 @@ func TestPortConnectivity(t *testing.T) {
 	}()
 
 	// Wait for server to start
-	time.Sleep(500 * time.Millisecond)
+	waitForEndpoint(t, fmt.Sprintf("http://127.0.0.1:%d/health", config.Port))
 
 	// Test IPv4 connectivity
 	t.Run("IPv4", func(t *testing.T) {

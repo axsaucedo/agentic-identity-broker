@@ -37,210 +37,165 @@ func createTestAgent(t *testing.T, adapter *Adapter) *storage.Agent {
 	return agent
 }
 
-func TestClientCredentialRepo_Create(t *testing.T) {
+func TestClientCredentialRepo(t *testing.T) {
 	adapter, cleanup := setupCredentialTestDB(t)
 	defer cleanup()
 
-	agent := createTestAgent(t, adapter)
-	repo := NewClientCredentialRepo(adapter)
-
-	cred := &storage.ClientCredential{
-		ID:         id.NewCredentialID(),
-		AgentID:    agent.ID,
-		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
-		CreatedAt:  time.Now().UTC(),
-	}
-
-	err := repo.Create(context.Background(), cred)
-	require.NoError(t, err)
-}
-
-func TestClientCredentialRepo_GetByAgentID(t *testing.T) {
-	adapter, cleanup := setupCredentialTestDB(t)
-	defer cleanup()
-
-	agent := createTestAgent(t, adapter)
 	repo := NewClientCredentialRepo(adapter)
 	ctx := context.Background()
 
-	cred := &storage.ClientCredential{
-		ID:         id.NewCredentialID(),
-		AgentID:    agent.ID,
-		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
-		CreatedAt:  time.Now().UTC(),
-	}
-	err := repo.Create(ctx, cred)
-	require.NoError(t, err)
+	t.Run("Create", func(t *testing.T) {
+		agent := createTestAgent(t, adapter)
+		cred := &storage.ClientCredential{
+			ID:         id.NewCredentialID(),
+			AgentID:    agent.ID,
+			SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
+			CreatedAt:  time.Now().UTC(),
+		}
 
-	got, err := repo.GetByAgentID(ctx, agent.ID)
-	require.NoError(t, err)
-	assert.Equal(t, cred.AgentID, got.AgentID)
-	assert.Equal(t, cred.SecretHash, got.SecretHash)
-}
+		err := repo.Create(ctx, cred)
+		require.NoError(t, err)
+	})
 
-func TestClientCredentialRepo_GetByClientID(t *testing.T) {
-	adapter, cleanup := setupCredentialTestDB(t)
-	defer cleanup()
+	t.Run("GetByAgentID", func(t *testing.T) {
+		agent := createTestAgent(t, adapter)
+		cred := &storage.ClientCredential{
+			ID:         id.NewCredentialID(),
+			AgentID:    agent.ID,
+			SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
+			CreatedAt:  time.Now().UTC(),
+		}
+		err := repo.Create(ctx, cred)
+		require.NoError(t, err)
 
-	agent := createTestAgent(t, adapter)
-	repo := NewClientCredentialRepo(adapter)
-	ctx := context.Background()
+		got, err := repo.GetByAgentID(ctx, agent.ID)
+		require.NoError(t, err)
+		assert.Equal(t, cred.AgentID, got.AgentID)
+		assert.Equal(t, cred.SecretHash, got.SecretHash)
+	})
 
-	clientID := id.NewClientID(agent.ID.String())
-	cred := &storage.ClientCredential{
-		ID:         id.NewCredentialID(),
-		AgentID:    agent.ID,
-		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
-		CreatedAt:  time.Now().UTC(),
-	}
-	err := repo.Create(ctx, cred)
-	require.NoError(t, err)
+	t.Run("GetByClientID", func(t *testing.T) {
+		agent := createTestAgent(t, adapter)
+		clientID := id.NewClientID(agent.ID.String())
+		cred := &storage.ClientCredential{
+			ID:         id.NewCredentialID(),
+			AgentID:    agent.ID,
+			SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
+			CreatedAt:  time.Now().UTC(),
+		}
+		err := repo.Create(ctx, cred)
+		require.NoError(t, err)
 
-	got, err := repo.GetByClientID(ctx, clientID)
-	require.NoError(t, err)
-	assert.Equal(t, agent.ID, got.AgentID)
-	assert.Equal(t, cred.SecretHash, got.SecretHash)
-}
+		got, err := repo.GetByClientID(ctx, clientID)
+		require.NoError(t, err)
+		assert.Equal(t, agent.ID, got.AgentID)
+		assert.Equal(t, cred.SecretHash, got.SecretHash)
+	})
 
-func TestClientCredentialRepo_GetByAgentID_Timeout(t *testing.T) {
-	adapter, cleanup := setupCredentialTestDB(t)
-	defer cleanup()
+	t.Run("GetByAgentID timeout", func(t *testing.T) {
+		timeoutCtx, cancel := context.WithDeadline(ctx, time.Now().Add(-time.Second))
+		defer cancel()
 
-	repo := NewClientCredentialRepo(adapter)
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
-	defer cancel()
+		_, err := repo.GetByAgentID(timeoutCtx, id.NewAgentID())
+		require.Error(t, err)
 
-	_, err := repo.GetByAgentID(ctx, id.NewAgentID())
-	require.Error(t, err)
+		var se *storage.StorageError
+		require.True(t, errors.As(err, &se))
+		assert.Equal(t, storage.ErrorKindTimeout, se.Kind)
+	})
 
-	var se *storage.StorageError
-	require.True(t, errors.As(err, &se))
-	assert.Equal(t, storage.ErrorKindTimeout, se.Kind)
-}
+	t.Run("GetByClientID timeout", func(t *testing.T) {
+		timeoutCtx, cancel := context.WithDeadline(ctx, time.Now().Add(-time.Second))
+		defer cancel()
 
-func TestClientCredentialRepo_GetByClientID_Timeout(t *testing.T) {
-	adapter, cleanup := setupCredentialTestDB(t)
-	defer cleanup()
+		_, err := repo.GetByClientID(timeoutCtx, id.NewClientID(id.NewAgentID().String()))
+		require.Error(t, err)
 
-	repo := NewClientCredentialRepo(adapter)
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
-	defer cancel()
+		var se *storage.StorageError
+		require.True(t, errors.As(err, &se))
+		assert.Equal(t, storage.ErrorKindTimeout, se.Kind)
+	})
 
-	_, err := repo.GetByClientID(ctx, id.NewClientID(id.NewAgentID().String()))
-	require.Error(t, err)
+	t.Run("GetByAgentID not found", func(t *testing.T) {
+		_, err := repo.GetByAgentID(ctx, id.NewAgentID())
+		require.Error(t, err)
 
-	var se *storage.StorageError
-	require.True(t, errors.As(err, &se))
-	assert.Equal(t, storage.ErrorKindTimeout, se.Kind)
-}
+		var se *storage.StorageError
+		require.True(t, errors.As(err, &se))
+		assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
+	})
 
-func TestClientCredentialRepo_GetByAgentID_NotFound(t *testing.T) {
-	adapter, cleanup := setupCredentialTestDB(t)
-	defer cleanup()
+	t.Run("GetByClientID not found", func(t *testing.T) {
+		_, err := repo.GetByClientID(ctx, id.NewClientID(id.NewAgentID().String()))
+		require.Error(t, err)
 
-	repo := NewClientCredentialRepo(adapter)
-	_, err := repo.GetByAgentID(context.Background(), id.NewAgentID())
-	require.Error(t, err)
+		var se *storage.StorageError
+		require.True(t, errors.As(err, &se))
+		assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
+	})
 
-	var se *storage.StorageError
-	require.True(t, errors.As(err, &se))
-	assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
-}
+	t.Run("Delete", func(t *testing.T) {
+		agent := createTestAgent(t, adapter)
+		cred := &storage.ClientCredential{
+			ID:         id.NewCredentialID(),
+			AgentID:    agent.ID,
+			SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
+			CreatedAt:  time.Now().UTC(),
+		}
+		err := repo.Create(ctx, cred)
+		require.NoError(t, err)
 
-func TestClientCredentialRepo_GetByClientID_NotFound(t *testing.T) {
-	adapter, cleanup := setupCredentialTestDB(t)
-	defer cleanup()
+		err = repo.Delete(ctx, agent.ID)
+		require.NoError(t, err)
 
-	repo := NewClientCredentialRepo(adapter)
-	_, err := repo.GetByClientID(context.Background(), id.NewClientID(id.NewAgentID().String()))
-	require.Error(t, err)
+		_, err = repo.GetByAgentID(ctx, agent.ID)
+		require.Error(t, err)
+		var se *storage.StorageError
+		require.True(t, errors.As(err, &se))
+		assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
+	})
 
-	var se *storage.StorageError
-	require.True(t, errors.As(err, &se))
-	assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
-}
+	t.Run("UniquePerAgent", func(t *testing.T) {
+		agent := createTestAgent(t, adapter)
+		cred1 := &storage.ClientCredential{
+			ID:         id.NewCredentialID(),
+			AgentID:    agent.ID,
+			SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash1",
+			CreatedAt:  time.Now().UTC(),
+		}
+		err := repo.Create(ctx, cred1)
+		require.NoError(t, err)
 
-func TestClientCredentialRepo_Delete(t *testing.T) {
-	adapter, cleanup := setupCredentialTestDB(t)
-	defer cleanup()
+		cred2 := &storage.ClientCredential{
+			ID:         id.NewCredentialID(),
+			AgentID:    agent.ID,
+			SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash2",
+			CreatedAt:  time.Now().UTC(),
+		}
+		err = repo.Create(ctx, cred2)
+		assert.Error(t, err, "second credential for same agent should fail unique constraint")
+	})
 
-	agent := createTestAgent(t, adapter)
-	repo := NewClientCredentialRepo(adapter)
-	ctx := context.Background()
+	t.Run("UniqueClientID", func(t *testing.T) {
+		agent1 := createTestAgent(t, adapter)
+		_ = createTestAgent(t, adapter)
 
-	cred := &storage.ClientCredential{
-		ID:         id.NewCredentialID(),
-		AgentID:    agent.ID,
-		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
-		CreatedAt:  time.Now().UTC(),
-	}
-	err := repo.Create(ctx, cred)
-	require.NoError(t, err)
+		cred1 := &storage.ClientCredential{
+			ID:         id.NewCredentialID(),
+			AgentID:    agent1.ID,
+			SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash1",
+			CreatedAt:  time.Now().UTC(),
+		}
+		err := repo.Create(ctx, cred1)
+		require.NoError(t, err)
 
-	err = repo.Delete(ctx, agent.ID)
-	require.NoError(t, err)
-
-	_, err = repo.GetByAgentID(ctx, agent.ID)
-	require.Error(t, err)
-	var se *storage.StorageError
-	require.True(t, errors.As(err, &se))
-	assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
-}
-
-func TestClientCredentialRepo_UniquePerAgent(t *testing.T) {
-	adapter, cleanup := setupCredentialTestDB(t)
-	defer cleanup()
-
-	agent := createTestAgent(t, adapter)
-	repo := NewClientCredentialRepo(adapter)
-	ctx := context.Background()
-
-	cred1 := &storage.ClientCredential{
-		ID:         id.NewCredentialID(),
-		AgentID:    agent.ID,
-		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash1",
-		CreatedAt:  time.Now().UTC(),
-	}
-	err := repo.Create(ctx, cred1)
-	require.NoError(t, err)
-
-	// Second credential for the same agent must fail (UNIQUE on agent_id).
-	cred2 := &storage.ClientCredential{
-		ID:         id.NewCredentialID(),
-		AgentID:    agent.ID,
-		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash2",
-		CreatedAt:  time.Now().UTC(),
-	}
-	err = repo.Create(ctx, cred2)
-	assert.Error(t, err, "second credential for same agent should fail unique constraint")
-}
-
-func TestClientCredentialRepo_UniqueClientID(t *testing.T) {
-	adapter, cleanup := setupCredentialTestDB(t)
-	defer cleanup()
-
-	agent1 := createTestAgent(t, adapter)
-	agent2 := createTestAgent(t, adapter)
-	repo := NewClientCredentialRepo(adapter)
-	ctx := context.Background()
-
-	cred1 := &storage.ClientCredential{
-		ID:         id.NewCredentialID(),
-		AgentID:    agent1.ID,
-		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash1",
-		CreatedAt:  time.Now().UTC(),
-	}
-	err := repo.Create(ctx, cred1)
-	require.NoError(t, err)
-
-	// Using agent1's agent_id for a second credential must fail the UNIQUE constraint.
-	cred2 := &storage.ClientCredential{
-		ID:         id.NewCredentialID(),
-		AgentID:    agent1.ID,
-		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash2",
-		CreatedAt:  time.Now().UTC(),
-	}
-	err = repo.Create(ctx, cred2)
-	assert.Error(t, err, "duplicate agent_id should fail unique constraint")
-	_ = agent2 // agent2 exists to represent a distinct principal in this constraint test
+		cred2 := &storage.ClientCredential{
+			ID:         id.NewCredentialID(),
+			AgentID:    agent1.ID,
+			SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash2",
+			CreatedAt:  time.Now().UTC(),
+		}
+		err = repo.Create(ctx, cred2)
+		assert.Error(t, err, "duplicate agent_id should fail unique constraint")
+	})
 }

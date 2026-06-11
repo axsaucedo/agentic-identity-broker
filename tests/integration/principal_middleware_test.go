@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
@@ -69,8 +68,8 @@ func TestPrincipalMiddlewareExtraction(t *testing.T) {
 	go func() { _ = testServer.ListenAndServe() }()
 	defer func() { _ = testServer.Shutdown(context.Background()) }()
 
-	// Give server time to start
-	time.Sleep(100 * time.Millisecond)
+	// Wait for server to start
+	waitForEndpoint(t, "http://127.0.0.1:18100/public")
 
 	tests := []struct {
 		name              string
@@ -182,7 +181,7 @@ func TestPrincipalMiddlewareValidation(t *testing.T) {
 	go func() { _ = testServer.ListenAndServe() }()
 	defer func() { _ = testServer.Shutdown(context.Background()) }()
 
-	time.Sleep(100 * time.Millisecond)
+	waitForEndpoint(t, "http://127.0.0.1:18101/admin/users")
 
 	tests := []struct {
 		name           string
@@ -281,7 +280,7 @@ func TestPrincipalMiddlewareUnicodeSupport(t *testing.T) {
 	go func() { _ = testServer.ListenAndServe() }()
 	defer func() { _ = testServer.Shutdown(context.Background()) }()
 
-	time.Sleep(100 * time.Millisecond)
+	waitForEndpoint(t, "http://127.0.0.1:18102/user")
 
 	tests := []struct {
 		name      string
@@ -367,7 +366,7 @@ func TestPrincipalMiddlewareWhitespaceHandling(t *testing.T) {
 	go func() { _ = testServer.ListenAndServe() }()
 	defer func() { _ = testServer.Shutdown(context.Background()) }()
 
-	time.Sleep(100 * time.Millisecond)
+	waitForEndpoint(t, "http://127.0.0.1:18103/principal")
 
 	tests := []struct {
 		name              string
@@ -461,7 +460,7 @@ func TestPrincipalMiddlewareCustomHeader(t *testing.T) {
 	go func() { _ = testServer.ListenAndServe() }()
 	defer func() { _ = testServer.Shutdown(context.Background()) }()
 
-	time.Sleep(100 * time.Millisecond)
+	waitForEndpoint(t, "http://127.0.0.1:18104/verify")
 
 	tests := []struct {
 		name           string

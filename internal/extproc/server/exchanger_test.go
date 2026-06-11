@@ -232,9 +232,13 @@ func TestTokenExchanger_Exchange_Non200Response_ReturnsError(t *testing.T) {
 
 // Spec: FR-010 — Timeout returns error
 func TestTokenExchanger_Exchange_Timeout_ReturnsError(t *testing.T) {
-	// Create a server that hangs
+	// Create a server that blocks longer than the client timeout but still
+	// returns promptly during cleanup so httptest.Server.Close() does not stall.
 	hangServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(10 * time.Second) // far longer than exchange_timeout
+		select {
+		case <-r.Context().Done():
+		case <-time.After(200 * time.Millisecond):
+		}
 	}))
 	defer hangServer.Close()
 
