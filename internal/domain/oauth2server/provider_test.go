@@ -808,6 +808,73 @@ func TestProvider_CEL_RequestGrantType(t *testing.T) {
 	})
 }
 
+func TestProvider_CEL_AudienceListClaimFailsAuthorizationCodeExchange(t *testing.T) {
+	providerWithCEL := func(t *testing.T, expr string) (*Provider, *memory.AgentRepository) {
+		t.Helper()
+		codeRepo := memory.NewAuthorizationCodeStore()
+		credRepo := memory.NewClientCredentialStore()
+		agentRepo := memory.NewAgentRepository()
+		signingKeyRepo := memory.NewSigningKeyStore()
+		enc := &testEncryptor{}
+		logger := testSlogger()
+
+		svc := NewSigningKeyService(signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
+		p, err := NewProvider(
+			codeRepo,
+			memory.NewPKCESessionStore(),
+			credRepo,
+			&testClientResolver{agentRepo: agentRepo},
+			svc,
+			"https://broker.example.com",
+			time.Hour,
+			expr,
+			logger,
+		)
+		require.NoError(t, err)
+
+		_, err = svc.generateAndStore(context.Background(), "ES256", true, time.Now())
+		require.NoError(t, err)
+
+		return p, agentRepo
+	}
+
+	const expr = `{"agent_name": agent.display_name, "cid": agent.id, "https://identity.zalando.com/global-uuid": principal.id, "aud": ["https://agentic.identity.zalando.com"]}`
+
+	provider, agentRepo := providerWithCEL(t, expr)
+	agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
+	agent.RedirectURIs = []string{"http://localhost:8080/callback"}
+	agent.DisplayName = "Visual Studio Code"
+	_ = agentRepo.Update(context.Background(), agent)
+
+	verifier := "pkce-verifier-for-aud-list-regression-test-abcde"
+	challenge := generateS256Challenge(verifier)
+
+	code, err := provider.HandleAuthorize(
+		context.Background(),
+		agent.ID.String(),
+		"http://localhost:8080/callback",
+		"code",
+		"read",
+		"state",
+		challenge,
+		"S256",
+		id.NewPrincipal("user@example.com"),
+	)
+	require.NoError(t, err)
+
+	_, err = provider.HandleAuthorizationCodeExchange(
+		context.Background(),
+		agent.ID.String(),
+		plaintext,
+		code,
+		"http://localhost:8080/callback",
+		verifier,
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrServerError)
+	assert.EqualError(t, err, "server_error: The authorization server encountered an unexpected condition that prevented it from fulfilling the request.")
+}
+
 // generateS256Challenge generates a PKCE S256 challenge from a verifier.
 func generateS256Challenge(verifier string) string {
 	hash := sha256.Sum256([]byte(verifier))

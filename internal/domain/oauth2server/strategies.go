@@ -112,7 +112,14 @@ func (s *JWXAccessTokenStrategy) GenerateAccessToken(ctx context.Context, reques
 	if s.customClaimsEval != nil {
 		customClaims, err := s.customClaimsEval.Evaluate(ctx, requester)
 		if err != nil {
-			return "", "", fmt.Errorf("token claims expression evaluation failed: %w", err)
+			evalErr := fmt.Errorf("token claims expression evaluation failed: %w", err)
+			s.logger.ErrorContext(ctx, "token claims expression evaluation failed",
+				"client_id", requester.GetClient().GetID(),
+				"subject", subject,
+				"granted_scopes", requester.GetGrantedScopes(),
+				"error", evalErr,
+			)
+			return "", "", evalErr
 		}
 		for k, v := range customClaims {
 			if baseClaims[k] {
@@ -125,7 +132,14 @@ func (s *JWXAccessTokenStrategy) GenerateAccessToken(ctx context.Context, reques
 
 	token, err := builder.Build()
 	if err != nil {
-		return "", "", fmt.Errorf("failed to build JWT: %w", err)
+		buildErr := fmt.Errorf("failed to build JWT: %w", err)
+		s.logger.ErrorContext(ctx, "failed to build JWT",
+			"client_id", requester.GetClient().GetID(),
+			"subject", subject,
+			"granted_scopes", requester.GetGrantedScopes(),
+			"error", buildErr,
+		)
+		return "", "", buildErr
 	}
 
 	// 6. Sign with kid

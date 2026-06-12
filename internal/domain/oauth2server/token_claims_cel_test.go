@@ -89,6 +89,36 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 		assert.Equal(t, agentID.String(), claims["agent_uuid"])
 	})
 
+	t.Run("expression with public client uses broker agent id when available", func(t *testing.T) {
+		eval, err := NewTokenClaimsEvaluator(`{"agent_uuid": agent.id}`)
+		require.NoError(t, err)
+
+		agentID := id.NewAgentID()
+		clientMetadataURI := "https://vscode.dev/oauth/client-metadata.json"
+		req := &fosite.Request{
+			Client: &publicClient{
+				clientID: clientMetadataURI,
+				agent: &storage.Agent{
+					ID:          agentID,
+					DisplayName: "VS Code",
+				},
+				redirectURIs: []string{"https://insiders.vscode.dev/redirect"},
+			},
+			Session: &fosite.DefaultSession{
+				Subject: "user@example.com",
+				ExpiresAt: map[fosite.TokenType]time.Time{
+					fosite.AccessToken: time.Now().Add(time.Hour),
+				},
+			},
+			GrantedScope: []string{"read"},
+		}
+
+		claims, err := eval.Evaluate(context.Background(), req)
+		require.NoError(t, err)
+		assert.Equal(t, agentID.String(), claims["agent_uuid"])
+		assert.NotEqual(t, clientMetadataURI, claims["agent_uuid"])
+	})
+
 	t.Run("expression with principal.id works", func(t *testing.T) {
 		eval, err := NewTokenClaimsEvaluator(`{"user": principal.id}`)
 		require.NoError(t, err)

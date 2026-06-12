@@ -229,6 +229,32 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken_DecryptFailure(t *testing.T)
 	})
 }
 
+func TestJWXAccessTokenStrategy_GenerateAccessToken_CELAudienceListFails(t *testing.T) {
+	svc, _ := newStrategyTestSigningKeyService()
+	ctx := context.Background()
+
+	_, err := svc.generateAndStore(ctx, "ES256", true, time.Now())
+	require.NoError(t, err)
+
+	expr := `{"agent_name": agent.display_name, "cid": agent.id, "https://identity.zalando.com/global-uuid": principal.id, "aud": ["https://agentic.identity.zalando.com"]}`
+	eval, err := NewTokenClaimsEvaluator(expr)
+	require.NoError(t, err)
+
+	logger, buf := bufLogger()
+	strategy, err := NewJWXAccessTokenStrategy(svc, "https://issuer.example.com", time.Hour, eval, logger)
+	require.NoError(t, err)
+
+	req := buildTestRequest("agent", "user@example.com", []string{"read"})
+	_, _, err = strategy.GenerateAccessToken(ctx, req)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, `failed to set claim "aud"`)
+	assert.ErrorContains(t, err, `invalid type: []ref.Val`)
+	assert.Contains(t, buf.String(), "failed to build JWT")
+	assert.Contains(t, buf.String(), "failed to set claim")
+	assert.Contains(t, buf.String(), "aud")
+	assert.Contains(t, buf.String(), `invalid type: []ref.Val`)
+}
+
 func TestRandomCodeStrategy_GenerateAuthorizeCode(t *testing.T) {
 	strategy := &RandomCodeStrategy{}
 

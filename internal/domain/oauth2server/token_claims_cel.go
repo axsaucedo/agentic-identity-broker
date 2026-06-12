@@ -61,15 +61,19 @@ func (e *TokenClaimsEvaluator) Evaluate(_ context.Context, requester fosite.Requ
 		return nil, nil
 	}
 
-	// Build agent context: id=agent UUID, client_id=upstream OAuth2 client ID,
-	// display_name from the agent entity if available.
+	// Build agent context: prefer the broker agent UUID when the underlying Agent
+	// is available, otherwise fall back to the OAuth2 client identifier.
+	agentID := requester.GetClient().GetID()
 	agentCtx := map[string]interface{}{
-		"id":           requester.GetClient().GetID(),
+		"id":           agentID,
 		"client_id":    "",
 		"display_name": "",
 	}
 	if h, ok := requester.GetClient().(agentHolder); ok {
 		if agent := h.getAgent(); agent != nil {
+			if !agent.ID.IsZero() {
+				agentCtx["id"] = agent.ID.String()
+			}
 			if agent.ClientID != nil {
 				agentCtx["client_id"] = agent.ClientID.String()
 			}
