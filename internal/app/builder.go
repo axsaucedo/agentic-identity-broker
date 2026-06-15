@@ -848,15 +848,7 @@ func (b *Builder) Build() (*App, error) {
 			EvaluationTimeout:       b.config.TokenExchange.Authorization.CEL.EvaluationTimeout,
 		}
 		if !ov.multiAgentClient.Enabled {
-			celConfig.ResolveAgentIDByClientID = func(clientID string) (string, error) {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				agent, err := agentService.ResolveUniqueByClientID(ctx, id.ClientID(clientID))
-				if err != nil {
-					return "", fmt.Errorf("resolveAgentIdByClientId: %w", err)
-				}
-				return agent.ID.String(), nil
-			}
+			celConfig.ResolveAgentIDByClientID = newTokenExchangeAgentIDResolver(agentService, b.config.Storage.Timeouts.Read)
 		}
 
 		celEvaluator, err := tokenexchange.NewCELEvaluator(celConfig)
@@ -942,4 +934,31 @@ func (b *Builder) Build() (*App, error) {
 	}
 
 	return app, nil
+}
+
+func newTokenExchangeAgentIDResolver(agentService *agentsservice.Service, timeout time.Duration) func(string) (string, error) {
+	return func(rawIdentifier string) (string, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		agent, err := agentService.ResolveUniqueByClientID(ctx, id.ClientID(rawIdentifier))
+		if err == nil {
+			return agent.ID.String(), nil
+		}
+		if !ports.IsNotFoundErr(err) {
+			return "", fmt.Errorf("resolveAgentIdByClientId: %w", err)
+		}
+
+		parsedAgentID, parseErr := id.ParseAgentID(rawIdentifier)
+		if parseErr != nil {
+			return "", fmt.Errorf("resolveAgentIdByClientId: %w", parseErr)
+		}
+
+		agent, err = agentService.Get(ctx, parsedAgentID)
+		if err != nil {
+			return "", fmt.Errorf("resolveAgentIdByClientId: %w", err)
+		}
+
+		return agent.ID.String(), nil
+	}
 }

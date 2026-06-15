@@ -818,7 +818,7 @@ func TestProvider_CEL_AudienceListClaimFailsAuthorizationCodeExchange(t *testing
 		enc := &testEncryptor{}
 		logger := testSlogger()
 
-		svc := NewSigningKeyService(signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
+		svc := NewSigningKeyService(signingKeyRepo, signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
 		p, err := NewProvider(
 			codeRepo,
 			memory.NewPKCESessionStore(),

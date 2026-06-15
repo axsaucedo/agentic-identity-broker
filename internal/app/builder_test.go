@@ -19,6 +19,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	agentsservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/agents"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -596,6 +597,119 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 			t.Error("hybrid mode must wire a JWKS handler")
 		}
 	})
+}
+
+func TestNewTokenExchangeAgentIDResolver(t *testing.T) {
+	newService := func(repo ports.AgentRepository) *agentsservice.Service {
+		return agentsservice.NewService(repo, builderTestRequirementValidator{}, slog.Default(), false)
+	}
+
+	t.Run("resolves upstream client ID before any UUID fallback", func(t *testing.T) {
+		agentID := id.NewAgentID()
+		repo := &builderTestAgentRepo{
+			byClientID: map[id.ClientID]*domstorage.Agent{
+				id.ClientID("upstream-client"): {
+					ID:          agentID,
+					DisplayName: "Agent",
+					Description: "desc",
+				},
+			},
+		}
+
+		resolve := newTokenExchangeAgentIDResolver(newService(repo), time.Second)
+		got, err := resolve("upstream-client")
+		require.NoError(t, err)
+		assert.Equal(t, agentID.String(), got)
+	})
+
+	t.Run("falls back to agent UUID when client ID lookup is not found", func(t *testing.T) {
+		agentID := id.NewAgentID()
+		repo := &builderTestAgentRepo{
+			byID: map[id.AgentID]*domstorage.Agent{
+				agentID: {
+					ID:          agentID,
+					DisplayName: "Agent",
+					Description: "desc",
+				},
+			},
+		}
+
+		resolve := newTokenExchangeAgentIDResolver(newService(repo), time.Second)
+		got, err := resolve(agentID.String())
+		require.NoError(t, err)
+		assert.Equal(t, agentID.String(), got)
+	})
+
+	t.Run("ambiguous client ID still fails even when raw value parses as UUID", func(t *testing.T) {
+		rawIdentifier := id.NewAgentID().String()
+		firstAgentID := id.NewAgentID()
+		repo := &builderTestAgentRepo{
+			byClientID: map[id.ClientID]*domstorage.Agent{
+				id.ClientID(rawIdentifier): {
+					ID:          firstAgentID,
+					DisplayName: "Agent A",
+					Description: "desc",
+				},
+			},
+			existsOtherWithClientID: true,
+		}
+
+		resolve := newTokenExchangeAgentIDResolver(newService(repo), time.Second)
+		_, err := resolve(rawIdentifier)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "ambiguous")
+	})
+}
+
+type builderTestRequirementValidator struct{}
+
+func (builderTestRequirementValidator) ValidateServiceRequirements(context.Context, []domstorage.ServiceRequirement) error {
+	return nil
+}
+
+type builderTestAgentRepo struct {
+	byID                    map[id.AgentID]*domstorage.Agent
+	byClientID              map[id.ClientID]*domstorage.Agent
+	getErr                  error
+	getByClientIDErr        error
+	existsOtherWithClientID bool
+	existsOtherErr          error
+}
+
+func (r *builderTestAgentRepo) Create(context.Context, *domstorage.Agent) error { return nil }
+
+func (r *builderTestAgentRepo) Get(_ context.Context, agentID id.AgentID) (*domstorage.Agent, error) {
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	if agent, ok := r.byID[agentID]; ok {
+		return agent.Copy(), nil
+	}
+	return nil, ports.ErrNotFound
+}
+
+func (r *builderTestAgentRepo) Update(context.Context, *domstorage.Agent) error { return nil }
+
+func (r *builderTestAgentRepo) Delete(context.Context, id.AgentID) error { return nil }
+
+func (r *builderTestAgentRepo) List(context.Context) ([]*domstorage.Agent, error) { return nil, nil }
+
+func (r *builderTestAgentRepo) GetByClientID(_ context.Context, clientID id.ClientID) (*domstorage.Agent, error) {
+	if r.getByClientIDErr != nil {
+		return nil, r.getByClientIDErr
+	}
+	if agent, ok := r.byClientID[clientID]; ok {
+		return agent.Copy(), nil
+	}
+	return nil, ports.ErrNotFound
+}
+
+func (r *builderTestAgentRepo) ExistsOtherWithClientID(context.Context, id.ClientID, *id.AgentID) (bool, error) {
+	return r.existsOtherWithClientID, r.existsOtherErr
+}
+
+func (r *builderTestAgentRepo) GetByClientURI(context.Context, string) (*domstorage.Agent, error) {
+	return nil, ports.ErrNotFound
 }
 
 func TestBuilder_ProxyJWKSFailsWhenStartupMetadataDiscoveryFails(t *testing.T) {
