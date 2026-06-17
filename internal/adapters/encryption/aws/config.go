@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -194,6 +195,22 @@ func validateRoleARN(roleARN string) error {
 	// For now, let AWS SDK validate the ARN during actual assumption
 
 	return nil
+}
+
+// parseDynamoDBTimeout parses the DynamoDB context timeout duration from config.
+// Returns (0, nil) when awsCfg is nil or DynamoDBTimeout is not set.
+func parseDynamoDBTimeout(awsCfg *ports.AWSKMSConfig) (time.Duration, error) {
+	if awsCfg == nil || awsCfg.DynamoDBTimeout == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(awsCfg.DynamoDBTimeout)
+	if err != nil {
+		return 0, fmt.Errorf("invalid dynamodb_timeout %q: %w", awsCfg.DynamoDBTimeout, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("invalid dynamodb_timeout %q: must be a positive duration", awsCfg.DynamoDBTimeout)
+	}
+	return d, nil
 }
 
 // validateSecuritySettings performs basic security validation for configuration warnings.

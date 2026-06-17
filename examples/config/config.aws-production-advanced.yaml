@@ -82,9 +82,8 @@ encryption:
     # Only set to true for development/AWS emulator scenarios
     # disable_ssl: false
 
-    # Timeout Configuration for DynamoDB operations
-    dynamodb_read_timeout: ${IDENTITY_BROKER_ENCRYPTION_DYNAMODB_READ_TIMEOUT:5s}
-    dynamodb_write_timeout: ${IDENTITY_BROKER_ENCRYPTION_DYNAMODB_WRITE_TIMEOUT:10s}
+    # Timeout Configuration for DynamoDB operations (applied as context timeout per call)
+    dynamodb_timeout: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TIMEOUT:5s}
 
 # Production Deployment Patterns:
 
@@ -118,8 +117,7 @@ encryption:
 # - IDENTITY_BROKER_ENCRYPTION_DYNAMODB_REGION
 # - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME
 # - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL
-# - IDENTITY_BROKER_ENCRYPTION_DYNAMODB_READ_TIMEOUT
-# - IDENTITY_BROKER_ENCRYPTION_DYNAMODB_WRITE_TIMEOUT
+# - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TIMEOUT
 #
 # Network/VPC settings (rare):
 # - IDENTITY_BROKER_KMS_ENDPOINT

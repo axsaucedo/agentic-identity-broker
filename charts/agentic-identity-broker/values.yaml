@@ -416,10 +416,8 @@ broker:
       region: ""
       # -- AWS region of the DynamoDB table
       dynamodbRegion: ""
-      # -- Read timeout for DynamoDB operations
-      dynamodbReadTimeout: ""
-      # -- Write timeout for DynamoDB operations
-      dynamodbWriteTimeout: ""
+      # -- Timeout for DynamoDB operations (context timeout applied per call, e.g., "5s", "10s")
+      dynamodbTimeout: ""
 
   # OAuth2 Authorization Server configuration
   oauth2AuthorizationServer:

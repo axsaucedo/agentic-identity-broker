@@ -2,12 +2,15 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -344,4 +347,73 @@ func containsAWSError(errMsg string) bool {
 		}
 	}
 	return false
+}
+
+func TestParseDynamoDBTimeout(t *testing.T) {
+	tests := []struct {
+		name                   string
+		cfg                    *ports.AWSKMSConfig
+		want                   time.Duration
+		expectError            bool
+		errorContains          string
+		expectNonEncryptionErr bool
+	}{
+		{
+			name: "nil config returns zero",
+			cfg:  nil,
+			want: 0,
+		},
+		{
+			name: "empty string returns zero",
+			cfg:  &ports.AWSKMSConfig{},
+			want: 0,
+		},
+		{
+			name: "valid timeout",
+			cfg:  &ports.AWSKMSConfig{DynamoDBTimeout: "5s"},
+			want: 5 * time.Second,
+		},
+		{
+			name: "sub-second timeout",
+			cfg:  &ports.AWSKMSConfig{DynamoDBTimeout: "500ms"},
+			want: 500 * time.Millisecond,
+		},
+		{
+			name:                   "invalid duration",
+			cfg:                    &ports.AWSKMSConfig{DynamoDBTimeout: "not-a-duration"},
+			expectError:            true,
+			errorContains:          "invalid dynamodb_timeout",
+			expectNonEncryptionErr: true,
+		},
+		{
+			name:                   "negative duration",
+			cfg:                    &ports.AWSKMSConfig{DynamoDBTimeout: "-5s"},
+			expectError:            true,
+			errorContains:          "invalid dynamodb_timeout",
+			expectNonEncryptionErr: true,
+		},
+		{
+			name:                   "zero duration",
+			cfg:                    &ports.AWSKMSConfig{DynamoDBTimeout: "0s"},
+			expectError:            true,
+			errorContains:          "invalid dynamodb_timeout",
+			expectNonEncryptionErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseDynamoDBTimeout(tt.cfg)
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+
+				var encErr *domainencryption.EncryptionError
+				assert.Equal(t, tt.expectNonEncryptionErr, !errors.As(err, &encErr), "unexpected encryption error classification")
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
 }

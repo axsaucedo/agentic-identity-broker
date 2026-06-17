@@ -775,13 +775,14 @@ type AWSKMSConfig struct {
 	// Examples: "us-east-1", "eu-west-1", "ap-southeast-1"
 	DynamoDBRegion string `mapstructure:"dynamodb_region"`
 
-	// DynamoDBReadTimeout specifies timeout for DynamoDB read operations.
-	// Format: duration string. Valid range: 1s to 5m. Defaults to "5s".
-	DynamoDBReadTimeout string `mapstructure:"dynamodb_read_timeout"`
-
-	// DynamoDBWriteTimeout specifies timeout for DynamoDB write operations.
-	// Format: duration string. Valid range: 1s to 5m. Defaults to "5s".
-	DynamoDBWriteTimeout string `mapstructure:"dynamodb_write_timeout"`
+	// DynamoDBTimeout specifies the context timeout applied to each top-level
+	// keystore/encrypt/decrypt operation that performs DynamoDB access.
+	// The timeout is enforced via context.WithTimeout at the call site so that the
+	// standard Go context cancellation chain is respected end-to-end.
+	// This deadline is shared by all downstream calls made during that operation,
+	// including DynamoDB and any other AWS service calls involved.
+	// Format: duration string (e.g., "5s", "10s", "1m"). Defaults to no timeout when empty.
+	DynamoDBTimeout string `mapstructure:"dynamodb_timeout"`
 
 	// AWS SDK Configuration (optional - empty/falsy values use AWS SDK defaults)
 

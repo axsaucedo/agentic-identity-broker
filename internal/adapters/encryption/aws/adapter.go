@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -30,6 +31,18 @@ const (
 	DefaultBranchKeyTableName = "IdentityBrokerEncryptionBranchKeys"
 )
 
+// errDynamoDBTimeout is set as the context cause when the adapter's internal dynamoDBTimeout fires.
+// Using context.Cause against this sentinel distinguishes adapter-triggered timeouts from a caller
+// deadline that coincidentally expires as context.DeadlineExceeded at the same time.
+var errDynamoDBTimeout = errors.New("adapter dynamodb_timeout")
+
+// encryptionSDKClient is the minimal subset of the AWS Encryption SDK client used by AWSAdapter,
+// enabling mock injection in tests without requiring real AWS infrastructure.
+type encryptionSDKClient interface {
+	Encrypt(ctx context.Context, params esdktypes.EncryptInput) (*esdktypes.EncryptOutput, error)
+	Decrypt(ctx context.Context, params esdktypes.DecryptInput) (*esdktypes.DecryptOutput, error)
+}
+
 // AWSAdapter implements the EncryptionPort interface using AWS Encryption SDK.
 // Focuses solely on runtime encryption/decryption operations.
 // Supports envelope encryption with AWS KMS hierarchical keyring (production) and environment variable KEK injection (development).
@@ -37,8 +50,9 @@ const (
 //
 // Branch key provisioning is handled separately by AWSBranchKeyManager to maintain clean separation of concerns.
 type AWSAdapter struct {
-	encryptionClient *client.Client    // AWS Encryption SDK client for encrypt/decrypt operations
-	keyring          mpltypes.IKeyring // Keyring (AWS KMS hierarchical, KMS, or Raw AES)
+	encryptionClient encryptionSDKClient // AWS Encryption SDK client for encrypt/decrypt operations
+	keyring          mpltypes.IKeyring   // Keyring (AWS KMS hierarchical, KMS, or Raw AES)
+	dynamoDBTimeout  time.Duration       // per-operation context timeout applied to DynamoDB branch key fetches
 }
 
 // NewAWSEncryption creates an AWS Encryption SDK adapter with automatic fan-out to supported scenarios:
@@ -70,6 +84,9 @@ func NewAWSEncryption(keyMaterial, dynamoDBTableName string, branchKeyTTL time.D
 	}
 
 	// Scenario B: AWS KMS ARN for production (hierarchical keyring with DynamoDB caching)
+	// Note: this path synthesises an AWSKMSConfig with only KeyARN set, so dynamoDBTimeout
+	// is always 0 (disabled). Use NewEncryptionAdapter with a fully populated AWSKMSConfig
+	// to enable the per-operation DynamoDB timeout.
 	if strings.HasPrefix(keyMaterial, "arn:aws:kms:") {
 		awsConfig := &ports.AWSKMSConfig{
 			KeyARN: keyMaterial,
@@ -146,6 +163,7 @@ func newAdapterWithKMSARNAndKeyStore(kmsARN, dynamoDBTableName string, branchKey
 	adapter := &AWSAdapter{
 		encryptionClient: encryptionClient,
 		keyring:          keyring,
+		dynamoDBTimeout:  keyStore.dynamoDBTimeout,
 	}
 
 	return adapter, keyStore, nil
@@ -241,6 +259,15 @@ func (a *AWSAdapter) Encrypt(ctx context.Context, plaintext []byte, encryptionCo
 	// Extract service_id from context for logging (sanitized)
 	serviceID := encryptionContext["service_id"]
 
+	// Apply a per-operation timeout when configured. This deadline is shared by
+	// all downstream calls within the operation (DynamoDB branch key fetches and
+	// KMS key-wrapping calls made by the hierarchical keyring).
+	if a.dynamoDBTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeoutCause(ctx, a.dynamoDBTimeout, errDynamoDBTimeout)
+		defer cancel()
+	}
+
 	// Fail fast if the caller's context is already done before touching the SDK.
 	// Keyrings that perform no network I/O (raw AES) succeed even on a cancelled
 	// context, so without this pre-check the ctx.Err() guard in the error path
@@ -281,6 +308,20 @@ func (a *AWSAdapter) Encrypt(ctx context.Context, plaintext []byte, encryptionCo
 		// (encryption context AAD mismatch), signalling "do not retry" to callers
 		// instead of the correct "transient, retry after backoff" semantics.
 		if ctxErr := ctx.Err(); ctxErr != nil {
+			if errors.Is(context.Cause(ctx), errDynamoDBTimeout) {
+				slog.Error("encryption_failed",
+					"operation", "encrypt",
+					"service_id", serviceID,
+					"error_kind", encryption.ErrorKindKEKUnavailable,
+					"reason", "dynamodb_timeout",
+					"dynamodb_timeout", a.dynamoDBTimeout,
+					"sdk_error", err,
+				)
+				return nil, encryption.NewKEKUnavailableError(
+					fmt.Sprintf("encryption timed out after configured dynamodb_timeout=%s", a.dynamoDBTimeout),
+					err,
+				)
+			}
 			slog.Error("encryption_failed",
 				"operation", "encrypt",
 				"service_id", serviceID,
@@ -403,6 +444,15 @@ func (a *AWSAdapter) Decrypt(ctx context.Context, ciphertext []byte, encryptionC
 		return nil, encryption.NewDecryptionFailedError("ciphertext cannot be empty", nil)
 	}
 
+	// Apply a per-operation timeout when configured. This deadline is shared by
+	// all downstream calls within the operation (DynamoDB branch key fetches and
+	// KMS key-wrapping calls made by the hierarchical keyring).
+	if a.dynamoDBTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeoutCause(ctx, a.dynamoDBTimeout, errDynamoDBTimeout)
+		defer cancel()
+	}
+
 	// Fail fast if the caller's context is already done before touching the SDK.
 	// Keyrings that perform no network I/O (raw AES) succeed even on a cancelled
 	// context, so without this pre-check the ctx.Err() guard in the error path
@@ -442,6 +492,20 @@ func (a *AWSAdapter) Decrypt(ctx context.Context, ciphertext []byte, encryptionC
 		// (encryption context AAD mismatch), signalling "do not retry" to callers
 		// instead of the correct "transient, retry after backoff" semantics.
 		if ctxErr := ctx.Err(); ctxErr != nil {
+			if errors.Is(context.Cause(ctx), errDynamoDBTimeout) {
+				slog.Error("decryption_failed",
+					"operation", "decrypt",
+					"service_id", serviceID,
+					"error_kind", encryption.ErrorKindKEKUnavailable,
+					"reason", "dynamodb_timeout",
+					"dynamodb_timeout", a.dynamoDBTimeout,
+					"sdk_error", err,
+				)
+				return nil, encryption.NewKEKUnavailableError(
+					fmt.Sprintf("decryption timed out after configured dynamodb_timeout=%s", a.dynamoDBTimeout),
+					err,
+				)
+			}
 			slog.Error("decryption_failed",
 				"operation", "decrypt",
 				"service_id", serviceID,

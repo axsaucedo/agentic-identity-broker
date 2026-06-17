@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	domconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
@@ -455,6 +456,27 @@ func validateAWSKMSConfig(cfg *ports.AWSKMSConfig) error {
 			"valid AWS KMS ARN with at least 6 colon-separated parts",
 			nil,
 		)
+	}
+
+	// Validate DynamoDBTimeout when set
+	if cfg.DynamoDBTimeout != "" {
+		d, err := time.ParseDuration(cfg.DynamoDBTimeout)
+		if err != nil {
+			return formatValidationError(
+				"encryption.aws_kms.dynamodb_timeout",
+				cfg.DynamoDBTimeout,
+				"valid positive duration (e.g. 5s, 30s)",
+				err,
+			)
+		}
+		if d <= 0 {
+			return formatValidationError(
+				"encryption.aws_kms.dynamodb_timeout",
+				cfg.DynamoDBTimeout,
+				"positive duration (must be > 0)",
+				nil,
+			)
+		}
 	}
 
 	return nil

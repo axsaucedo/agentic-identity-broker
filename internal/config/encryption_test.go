@@ -150,12 +150,11 @@ func TestEncryptionConfigBackend_AWSKMSBackend(t *testing.T) {
 		},
 		Encryption: ports.EncryptionConfig{
 			AWSKMS: &ports.AWSKMSConfig{
-				KeyARN:               "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
-				DynamoDBTableName:    "IdentityBrokerEncryptionBranchKeys",
-				BranchKeyTTL:         "1h",
-				DynamoDBRegion:       "us-east-1",
-				DynamoDBReadTimeout:  "5s",
-				DynamoDBWriteTimeout: "5s",
+				KeyARN:            "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+				DynamoDBTableName: "IdentityBrokerEncryptionBranchKeys",
+				BranchKeyTTL:      "1h",
+				DynamoDBRegion:    "us-east-1",
+				DynamoDBTimeout:   "5s",
 			},
 			Memory: nil, // Only AWS KMS backend should be set
 		},
@@ -292,12 +291,11 @@ func TestEncryptionConfigValidation_AWSKMSValidation(t *testing.T) {
 		{
 			name: "valid_complete_config",
 			awsKMSConfig: &ports.AWSKMSConfig{
-				KeyARN:               "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
-				DynamoDBTableName:    "IdentityBrokerEncryptionBranchKeys",
-				BranchKeyTTL:         "1h",
-				DynamoDBRegion:       "us-east-1",
-				DynamoDBReadTimeout:  "5s",
-				DynamoDBWriteTimeout: "5s",
+				KeyARN:            "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+				DynamoDBTableName: "IdentityBrokerEncryptionBranchKeys",
+				BranchKeyTTL:      "1h",
+				DynamoDBRegion:    "us-east-1",
+				DynamoDBTimeout:   "5s",
 			},
 			shouldFail: false,
 		},
@@ -324,6 +322,33 @@ func TestEncryptionConfigValidation_AWSKMSValidation(t *testing.T) {
 				// Other fields optional with defaults
 			},
 			shouldFail: false,
+		},
+		{
+			name: "negative_dynamodb_timeout",
+			awsKMSConfig: &ports.AWSKMSConfig{
+				KeyARN:          "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+				DynamoDBTimeout: "-5s",
+			},
+			shouldFail:    true,
+			expectedField: "encryption.aws_kms.dynamodb_timeout",
+		},
+		{
+			name: "zero_dynamodb_timeout",
+			awsKMSConfig: &ports.AWSKMSConfig{
+				KeyARN:          "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+				DynamoDBTimeout: "0s",
+			},
+			shouldFail:    true,
+			expectedField: "encryption.aws_kms.dynamodb_timeout",
+		},
+		{
+			name: "invalid_dynamodb_timeout",
+			awsKMSConfig: &ports.AWSKMSConfig{
+				KeyARN:          "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+				DynamoDBTimeout: "not-a-duration",
+			},
+			shouldFail:    true,
+			expectedField: "encryption.aws_kms.dynamodb_timeout",
 		},
 	}
 
@@ -458,8 +483,7 @@ func TestEncryptionConfig_EnvironmentVariableBinding(t *testing.T) {
 	// ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME -> encryption.aws_kms.dynamodb_table_name
 	// ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL -> encryption.aws_kms.branch_key_ttl
 	// ENCRYPTION_AWS_KMS_DYNAMODB_REGION -> encryption.aws_kms.dynamodb_region
-	// ENCRYPTION_AWS_KMS_DYNAMODB_READ_TIMEOUT -> encryption.aws_kms.dynamodb_read_timeout
-	// ENCRYPTION_AWS_KMS_DYNAMODB_WRITE_TIMEOUT -> encryption.aws_kms.dynamodb_write_timeout
+	// ENCRYPTION_AWS_KMS_DYNAMODB_TIMEOUT -> encryption.aws_kms.dynamodb_timeout
 
 	// Test Memory environment variables should map to:
 	// ENCRYPTION_MEMORY_RAW_KEY -> encryption.memory.raw_key
@@ -474,8 +498,7 @@ func TestEncryptionConfig_EnvironmentVariableBinding(t *testing.T) {
 		_ = cfg.AWSKMS.DynamoDBTableName
 		_ = cfg.AWSKMS.BranchKeyTTL
 		_ = cfg.AWSKMS.DynamoDBRegion
-		_ = cfg.AWSKMS.DynamoDBReadTimeout
-		_ = cfg.AWSKMS.DynamoDBWriteTimeout
+		_ = cfg.AWSKMS.DynamoDBTimeout
 	}
 
 	if cfg.Memory != nil {

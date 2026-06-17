@@ -183,8 +183,7 @@ func TestAWSKMSConfigurationEnvironmentVariables(t *testing.T) {
 		t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
 		t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "local")
 		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN", "arn:aws:kms:us-east-1:123456789012:key/12345678")
-		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_READ_TIMEOUT", "10s")
-		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_WRITE_TIMEOUT", "15s")
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TIMEOUT", "10s")
 		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL", "30m")
 
 		loader := NewLoader()
@@ -192,8 +191,7 @@ func TestAWSKMSConfigurationEnvironmentVariables(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, cfg.Encryption.AWSKMS)
-		assert.Equal(t, "10s", cfg.Encryption.AWSKMS.DynamoDBReadTimeout)
-		assert.Equal(t, "15s", cfg.Encryption.AWSKMS.DynamoDBWriteTimeout)
+		assert.Equal(t, "10s", cfg.Encryption.AWSKMS.DynamoDBTimeout)
 		assert.Equal(t, "30m", cfg.Encryption.AWSKMS.BranchKeyTTL)
 	})
 }

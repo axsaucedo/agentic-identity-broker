@@ -345,8 +345,8 @@ func (b *Builder) Build() (*App, error) {
 			"dynamodb_table", b.config.Encryption.AWSKMS.DynamoDBTableName,
 			"dynamodb_region", b.config.Encryption.AWSKMS.DynamoDBRegion,
 			"branch_key_ttl", b.config.Encryption.AWSKMS.BranchKeyTTL,
-			"dynamodb_read_timeout", b.config.Encryption.AWSKMS.DynamoDBReadTimeout,
-			"dynamodb_write_timeout", b.config.Encryption.AWSKMS.DynamoDBWriteTimeout)
+			"dynamodb_timeout", b.config.Encryption.AWSKMS.DynamoDBTimeout,
+			"branch_key_manager_wired", branchKeyManager != nil)
 	} else {
 		b.logger.Info("Memory encryption adapter initialized")
 	}

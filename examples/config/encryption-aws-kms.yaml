@@ -44,13 +44,10 @@ encryption:
     # Examples: "us-east-1", "eu-west-1", "ap-southeast-1"
     # dynamodb_region: "eu-central-1"
 
-    # Timeout for DynamoDB read operations (optional)
-    # Default: "5s"
-    # dynamodb_read_timeout: "5s"
-
-    # Timeout for DynamoDB write operations (optional)
-    # Default: "5s"
-    # dynamodb_write_timeout: "5s"
+    # Context timeout applied to each DynamoDB operation (optional)
+    # Applied via context.WithTimeout, respecting the standard Go context cancellation chain.
+    # Default: no timeout (relies on caller context or AWS SDK defaults)
+    # dynamodb_timeout: "5s"
 
   # Memory backend is NOT configured (exactly one backend must be specified)
   # memory: null

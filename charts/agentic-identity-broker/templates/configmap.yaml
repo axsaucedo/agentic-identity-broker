@@ -92,11 +92,8 @@ data:
         {{- if .Values.broker.encryption.awsKms.dynamodbRegion }}
         dynamodb_region: {{ .Values.broker.encryption.awsKms.dynamodbRegion | quote }}
         {{- end }}
-        {{- if .Values.broker.encryption.awsKms.dynamodbReadTimeout }}
-        dynamodb_read_timeout: {{ .Values.broker.encryption.awsKms.dynamodbReadTimeout | quote }}
-        {{- end }}
-        {{- if .Values.broker.encryption.awsKms.dynamodbWriteTimeout }}
-        dynamodb_write_timeout: {{ .Values.broker.encryption.awsKms.dynamodbWriteTimeout | quote }}
+        {{- if .Values.broker.encryption.awsKms.dynamodbTimeout }}
+        dynamodb_timeout: {{ .Values.broker.encryption.awsKms.dynamodbTimeout | quote }}
         {{- end }}
       {{- end }}
     {{- end }}

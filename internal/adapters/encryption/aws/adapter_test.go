@@ -2,9 +2,15 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
+	"time"
+
+	esdktypes "github.com/aws/aws-encryption-sdk/releases/go/encryption-sdk/awscryptographyencryptionsdksmithygeneratedtypes"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 )
@@ -487,6 +493,167 @@ func isDecryptionFailedError(err error) bool {
 	return ok && encErr.Kind == encryption.ErrorKindDecryptionFailed
 }
 
+// testMockEncryptionSDKClient calls onCall with the context received from the SDK call
+// and returns the resulting error. Tests configure onCall to either wait for the context
+// to expire (dynamodb_timeout path) or cancel the parent context (context_error path).
+type testMockEncryptionSDKClient struct {
+	onCall func(ctx context.Context) error
+}
+
+func (m *testMockEncryptionSDKClient) Encrypt(ctx context.Context, _ esdktypes.EncryptInput) (*esdktypes.EncryptOutput, error) {
+	return nil, m.onCall(ctx)
+}
+
+func (m *testMockEncryptionSDKClient) Decrypt(ctx context.Context, _ esdktypes.DecryptInput) (*esdktypes.DecryptOutput, error) {
+	return nil, m.onCall(ctx)
+}
+
+// TestEncryptDecryptPostCallContextExpiry guards the post-SDK-call classification branch
+// (lines ~304-335 for Encrypt, ~499-530 for Decrypt).  The pre-check path is already
+// covered by TestCancelledContextClassifiedAsKEKUnavailable; these tests cover expiry that
+// occurs DURING the SDK call so the pre-check was not triggered.
+//
+// dynamodb_timeout: a non-zero dynamoDBTimeout causes Encrypt/Decrypt to wrap the caller's
+// context with context.WithTimeoutCause.  The mock blocks on the derived ctx.Done() so the
+// adapter's own internal timeout fires mid-call.  The error message must include the
+// configured duration, proving the real internal-timeout path was exercised.
+//
+// context_error: no internal timeout; the mock cancels the parent context and returns an
+// error to drive the non-sentinel context_error branch.
+func TestEncryptDecryptPostCallContextExpiry(t *testing.T) {
+	const testKEK = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+	const internalTimeout = 1 * time.Millisecond
+
+	// Produce a valid ciphertext for the Decrypt sub-tests.
+	realAdapter, _, err := NewAWSEncryption(testKEK, "", 0)
+	require.NoError(t, err)
+
+	encCtx := map[string]string{"service_id": "test-svc"}
+	plaintext := []byte("test-token")
+
+	ciphertext, err := realAdapter.Encrypt(context.Background(), plaintext, encCtx)
+	require.NoError(t, err)
+
+	t.Run("Encrypt/dynamodb_timeout", func(t *testing.T) {
+		mock := &testMockEncryptionSDKClient{
+			onCall: func(ctx context.Context) error {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(100 * time.Millisecond):
+					return errors.New("test guard: context did not expire — WithTimeoutCause not applied")
+				}
+			},
+		}
+		adapter := &AWSAdapter{encryptionClient: mock, dynamoDBTimeout: internalTimeout}
+
+		_, encErr := adapter.Encrypt(context.Background(), plaintext, encCtx)
+		require.Error(t, encErr)
+		assert.True(t, isKEKUnavailableError(encErr), "expected KEKUnavailable, got %v (type %T)", encErr, encErr)
+		assert.Contains(t, encErr.Error(), "dynamodb_timeout="+internalTimeout.String())
+	})
+
+	t.Run("Encrypt/context_error", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		mock := &testMockEncryptionSDKClient{
+			onCall: func(_ context.Context) error {
+				cancel()
+				return errors.New("mock error after parent cancel")
+			},
+		}
+		adapter := &AWSAdapter{encryptionClient: mock, dynamoDBTimeout: time.Minute}
+
+		_, encErr := adapter.Encrypt(ctx, plaintext, encCtx)
+		require.Error(t, encErr)
+		assert.True(t, isKEKUnavailableError(encErr), "expected KEKUnavailable, got %v (type %T)", encErr, encErr)
+		assert.NotContains(t, encErr.Error(), "dynamodb_timeout")
+	})
+
+	t.Run("Decrypt/dynamodb_timeout", func(t *testing.T) {
+		mock := &testMockEncryptionSDKClient{
+			onCall: func(ctx context.Context) error {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(100 * time.Millisecond):
+					return errors.New("test guard: context did not expire — WithTimeoutCause not applied")
+				}
+			},
+		}
+		adapter := &AWSAdapter{encryptionClient: mock, dynamoDBTimeout: internalTimeout}
+
+		_, decErr := adapter.Decrypt(context.Background(), ciphertext, encCtx)
+		require.Error(t, decErr)
+		assert.True(t, isKEKUnavailableError(decErr), "expected KEKUnavailable, got %v (type %T)", decErr, decErr)
+		assert.Contains(t, decErr.Error(), "dynamodb_timeout="+internalTimeout.String())
+	})
+
+	t.Run("Decrypt/context_error", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		mock := &testMockEncryptionSDKClient{
+			onCall: func(_ context.Context) error {
+				cancel()
+				return errors.New("mock error after parent cancel")
+			},
+		}
+		adapter := &AWSAdapter{encryptionClient: mock, dynamoDBTimeout: time.Minute}
+
+		_, decErr := adapter.Decrypt(ctx, ciphertext, encCtx)
+		require.Error(t, decErr)
+		assert.True(t, isKEKUnavailableError(decErr), "expected KEKUnavailable, got %v (type %T)", decErr, decErr)
+		assert.NotContains(t, decErr.Error(), "dynamodb_timeout")
+	})
+}
+
+func TestEncryptDecryptTimeoutErrorChainPreservesSDKError(t *testing.T) {
+	const internalTimeout = 1 * time.Millisecond
+	plaintext := []byte("test-token")
+	ciphertext := []byte("not-empty")
+	encryptionContext := map[string]string{"service_id": "test-svc"}
+
+	t.Run("Encrypt", func(t *testing.T) {
+		sdkErr := errors.New("mock sdk timeout after context expiry")
+		adapter := &AWSAdapter{
+			encryptionClient: &testMockEncryptionSDKClient{
+				onCall: func(ctx context.Context) error {
+					<-ctx.Done()
+					return sdkErr
+				},
+			},
+			dynamoDBTimeout: internalTimeout,
+		}
+
+		_, err := adapter.Encrypt(context.Background(), plaintext, encryptionContext)
+		require.Error(t, err)
+		assert.True(t, isKEKUnavailableError(err), "expected KEKUnavailable, got %v (type %T)", err, err)
+		assert.ErrorIs(t, err, sdkErr)
+		assert.False(t, errors.Is(err, context.DeadlineExceeded), "timeout path should preserve the SDK error, not context.DeadlineExceeded")
+	})
+
+	t.Run("Decrypt", func(t *testing.T) {
+		sdkErr := errors.New("mock sdk timeout after context expiry")
+		adapter := &AWSAdapter{
+			encryptionClient: &testMockEncryptionSDKClient{
+				onCall: func(ctx context.Context) error {
+					<-ctx.Done()
+					return sdkErr
+				},
+			},
+			dynamoDBTimeout: internalTimeout,
+		}
+
+		_, err := adapter.Decrypt(context.Background(), ciphertext, encryptionContext)
+		require.Error(t, err)
+		assert.True(t, isKEKUnavailableError(err), "expected KEKUnavailable, got %v (type %T)", err, err)
+		assert.ErrorIs(t, err, sdkErr)
+		assert.False(t, errors.Is(err, context.DeadlineExceeded), "timeout path should preserve the SDK error, not context.DeadlineExceeded")
+	})
+}
+
 // BenchmarkEncrypt benchmarks encryption performance
 func BenchmarkEncrypt(b *testing.B) {
 	// Setup: Create adapter with env var KEK
@@ -732,6 +899,108 @@ func TestAdapterInterfaceImplementation(t *testing.T) {
 	if string(decrypted) != string(plaintext) {
 		t.Errorf("Decrypt should return original plaintext: expected %q, got %q", string(plaintext), string(decrypted))
 	}
+}
+
+// TestEncryptContextClassification verifies that the ctx.Err() guard correctly
+// distinguishes a caller-supplied deadline from the adapter's own dynamoDBTimeout.
+//
+// Regression guard: the previous implementation used
+//
+//	errors.Is(ctxErr, context.DeadlineExceeded) && dynamoDBTimeout > 0
+//
+// which fires for ANY DeadlineExceeded, including the caller's — misattributing a
+// caller timeout as a DynamoDB misconfiguration. The fix uses context.Cause, which
+// is only set to errDynamoDBTimeout when our internal timer fires.
+func TestEncryptContextClassification(t *testing.T) {
+	const testKEK = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+	base, err := newAdapterWithBase64KEK(testKEK)
+	require.NoError(t, err)
+	adapter := &AWSAdapter{
+		encryptionClient: base.encryptionClient,
+		keyring:          base.keyring,
+		dynamoDBTimeout:  5 * time.Second,
+	}
+	encCtx := map[string]string{"service_id": "12345678-1234-1234-1234-123456789012"}
+	plaintext := []byte("test")
+
+	t.Run("parent_deadline_classified_as_context_error", func(t *testing.T) {
+		// context.WithDeadline with a past time creates a DeadlineExceeded context
+		// synchronously — no sleep needed.  The old code would wrongly emit
+		// dynamodb_timeout here because DeadlineExceeded && dynamoDBTimeout>0 is true.
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Millisecond))
+		defer cancel()
+
+		_, err := adapter.Encrypt(ctx, plaintext, encCtx)
+
+		require.Error(t, err)
+		var encErr *encryption.EncryptionError
+		require.ErrorAs(t, err, &encErr)
+		assert.Equal(t, encryption.ErrorKindKEKUnavailable, encErr.Kind)
+		assert.Contains(t, encErr.Message, "cancelled")
+		assert.NotContains(t, encErr.Message, "dynamodb_timeout=")
+	})
+
+	t.Run("pre_cancelled_with_internal_sentinel_classified_as_context_error", func(t *testing.T) {
+		// The adapter creates its own WithTimeoutCause context immediately before the pre-call
+		// ctx.Err() guard, so a pre-cancelled caller context never represents an internal
+		// dynamodb_timeout expiry in production. Even if the caller uses our sentinel as a
+		// cancellation cause, the pre-call fast path should stay on the generic context_error
+		// classification.
+		ctx, cancel := context.WithCancelCause(context.Background())
+		cancel(errDynamoDBTimeout)
+
+		_, err := adapter.Encrypt(ctx, plaintext, encCtx)
+
+		require.Error(t, err)
+		var encErr *encryption.EncryptionError
+		require.ErrorAs(t, err, &encErr)
+		assert.Equal(t, encryption.ErrorKindKEKUnavailable, encErr.Kind)
+		assert.Contains(t, encErr.Message, "cancelled")
+		assert.NotContains(t, encErr.Message, "dynamodb_timeout=")
+	})
+}
+
+// TestDecryptContextClassification mirrors TestEncryptContextClassification for Decrypt.
+func TestDecryptContextClassification(t *testing.T) {
+	const testKEK = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+	base, err := newAdapterWithBase64KEK(testKEK)
+	require.NoError(t, err)
+	adapter := &AWSAdapter{
+		encryptionClient: base.encryptionClient,
+		keyring:          base.keyring,
+		dynamoDBTimeout:  5 * time.Second,
+	}
+	encCtx := map[string]string{"service_id": "12345678-1234-1234-1234-123456789012"}
+	// Non-empty to pass the length guard; actual content irrelevant — context fires first.
+	fakeCiphertext := []byte("not-empty")
+
+	t.Run("parent_deadline_classified_as_context_error", func(t *testing.T) {
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Millisecond))
+		defer cancel()
+
+		_, err := adapter.Decrypt(ctx, fakeCiphertext, encCtx)
+
+		require.Error(t, err)
+		var encErr *encryption.EncryptionError
+		require.ErrorAs(t, err, &encErr)
+		assert.Equal(t, encryption.ErrorKindKEKUnavailable, encErr.Kind)
+		assert.Contains(t, encErr.Message, "cancelled")
+		assert.NotContains(t, encErr.Message, "dynamodb_timeout=")
+	})
+
+	t.Run("pre_cancelled_with_internal_sentinel_classified_as_context_error", func(t *testing.T) {
+		ctx, cancel := context.WithCancelCause(context.Background())
+		cancel(errDynamoDBTimeout)
+
+		_, err := adapter.Decrypt(ctx, fakeCiphertext, encCtx)
+
+		require.Error(t, err)
+		var encErr *encryption.EncryptionError
+		require.ErrorAs(t, err, &encErr)
+		assert.Equal(t, encryption.ErrorKindKEKUnavailable, encErr.Kind)
+		assert.Contains(t, encErr.Message, "cancelled")
+		assert.NotContains(t, encErr.Message, "dynamodb_timeout=")
+	})
 }
 
 // T045 [US2] Unit test: Plaintext KEK never logged
