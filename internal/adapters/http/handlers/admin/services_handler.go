@@ -2,6 +2,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -192,7 +194,10 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Validate protected_resources (RFC 8693 resource URIs)
+	// Defense-in-depth: normalize and validate protected_resources here so the duplicate
+	// check below operates on canonical URIs. The domain service repeats this
+	// authoritatively before persistence.
+	entity.NormalizeProtectedResources()
 	if err := entity.ValidateProtectedResources(); err != nil {
 		h.logger.Warn("protected_resources validation failed",
 			"service_id", entity.ID,
@@ -201,16 +206,8 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Check for duplicate resource URIs across existing services (T022)
-	for _, resource := range entity.ProtectedResources {
-		existing, err := h.providerService.FindByProtectedResource(ctx, resource)
-		if err == nil && existing != nil {
-			h.logger.Warn("duplicate protected resource",
-				"resource", resource,
-				"service_id", existing.ID)
-			h.writeError(w, http.StatusConflict, "conflict", "protected resource URI already configured for another service")
-			return
-		}
+	if !h.checkProtectedResourceConflicts(ctx, w, r, entity, id.ServiceID{}, "CreateService") {
+		return
 	}
 
 	// Create service (branch key provisioning and encryption handled by domain service)
@@ -354,7 +351,10 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Validate protected_resources
+	// Defense-in-depth: normalize and validate protected_resources here so the duplicate
+	// check below operates on canonical URIs. The domain service repeats this
+	// authoritatively before persistence.
+	entity.NormalizeProtectedResources()
 	if err := entity.ValidateProtectedResources(); err != nil {
 		h.logger.Warn("protected_resources validation failed",
 			"service_id", entity.ID,
@@ -363,16 +363,8 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Check for duplicate resource URIs across other services (T022)
-	for _, resource := range entity.ProtectedResources {
-		existingByResource, err := h.providerService.FindByProtectedResource(ctx, resource)
-		if err == nil && existingByResource != nil && existingByResource.ID != entity.ID {
-			h.logger.Warn("duplicate protected resource",
-				"resource", resource,
-				"service_id", existingByResource.ID)
-			h.writeError(w, http.StatusConflict, "conflict", "protected resource URI already configured for another service")
-			return
-		}
+	if !h.checkProtectedResourceConflicts(ctx, w, r, entity, entity.ID, "UpdateService") {
+		return
 	}
 
 	// Update in domain service (handles encryption if secret changed)
@@ -388,6 +380,52 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 	// Return updated service with redacted secret
 	resp := h.toResponse(entity.RedactedCopy())
 	h.writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *ServicesHandler) checkProtectedResourceConflicts(
+	ctx context.Context,
+	w http.ResponseWriter,
+	r *http.Request,
+	entity *model.ThirdpartyOAuth2ProviderEntity,
+	excludeServiceID id.ServiceID,
+	operation string,
+) bool {
+	for _, resource := range entity.ProtectedResources {
+		existing, err := h.providerService.FindByProtectedResource(ctx, resource)
+		switch {
+		case err == nil && existing == nil:
+			continue
+		case err == nil && existing.ID == excludeServiceID:
+			continue
+		case err == nil:
+			h.logger.Warn("duplicate protected resource",
+				"resource", resource,
+				"service_id", existing.ID)
+			h.writeError(w, http.StatusConflict, "conflict", "protected resource URI already configured for another service")
+			return false
+		case tokenexchange.IsResourceNotConfigured(err):
+			continue
+		case tokenexchange.IsResourceAmbiguous(err):
+			h.logger.Warn("protected resource lookup is ambiguous",
+				"resource", resource,
+				"error", err)
+			h.writeError(w, http.StatusConflict, "conflict", "protected resource URI already configured for another service")
+			return false
+		default:
+			var storageErr *storage.StorageError
+			if errors.As(err, &storageErr) {
+				h.handleStorageError(w, r, operation+"DuplicateCheck", err)
+				return false
+			}
+			h.logger.Error("protected resource duplicate check failed",
+				"resource", resource,
+				"error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return false
+		}
+	}
+
+	return true
 }
 
 // DeleteService handles DELETE /api/services/:service-id

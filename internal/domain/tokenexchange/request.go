@@ -140,6 +140,9 @@ func (req *TokenExchangeRequest) Validate() error {
 	if req.Resource == "" {
 		return NewInvalidRequestError("resource parameter is required")
 	}
+	if _, err := NewResourceURI(req.Resource); err != nil {
+		return NewInvalidRequestError(err.Error())
+	}
 
 	return nil
 }

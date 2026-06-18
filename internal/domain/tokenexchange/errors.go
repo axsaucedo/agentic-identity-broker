@@ -2,6 +2,7 @@
 package tokenexchange
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -181,6 +182,37 @@ func NewInvalidTargetErrorWithDetails(description, details string) *TokenExchang
 		httpStatus:  400,
 		details:     details,
 	}
+}
+
+const (
+	invalidTargetResourceNotFoundDescription  = "no service configured for the requested resource"
+	invalidTargetResourceAmbiguousDescription = "multiple services configured for the same resource"
+	invalidTargetResourceNotFoundDetails      = "resource_not_found"
+	invalidTargetResourceAmbiguousDetails     = "resource_ambiguous"
+)
+
+// IsResourceNotConfigured reports whether err means no service matched the requested resource.
+func IsResourceNotConfigured(err error) bool {
+	return hasInvalidTargetDetails(err, invalidTargetResourceNotFoundDetails, invalidTargetResourceNotFoundDescription)
+}
+
+// IsResourceAmbiguous reports whether err means multiple services matched the requested resource.
+func IsResourceAmbiguous(err error) bool {
+	return hasInvalidTargetDetails(err, invalidTargetResourceAmbiguousDetails, invalidTargetResourceAmbiguousDescription)
+}
+
+func hasInvalidTargetDetails(err error, details, description string) bool {
+	var tokenErr *TokenExchangeError
+	if !errors.As(err, &tokenErr) {
+		return false
+	}
+	if tokenErr.Code() != "invalid_target" {
+		return false
+	}
+	if tokenErr.Details() == details {
+		return true
+	}
+	return tokenErr.Details() == "" && tokenErr.Description() == description
 }
 
 // NewAccessDeniedError creates an error for authorization failures.

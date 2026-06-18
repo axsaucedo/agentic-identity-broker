@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 )
 
 // isAllowedHTTPSScheme checks if a URL uses an allowed scheme.
@@ -313,6 +314,14 @@ func (e *ThirdpartyOAuth2ProviderEntity) enrichForGoogleFlavor(credential string
 	}
 
 	return nil
+}
+
+// NormalizeProtectedResources canonicalizes protected_resources in place so lookups
+// and uniqueness checks compare stable URI forms.
+func (e *ThirdpartyOAuth2ProviderEntity) NormalizeProtectedResources() {
+	for i, resourceURI := range e.ProtectedResources {
+		e.ProtectedResources[i] = urivalidation.NormalizeResourceURI(resourceURI)
+	}
 }
 
 // ValidateProtectedResources validates all protected resource URIs are valid absolute URLs.

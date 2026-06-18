@@ -258,3 +258,59 @@ func TestThirdpartyOAuth2ProviderEntity_ValidateForCreate_FlavorDispatch(t *test
 		})
 	}
 }
+
+func TestThirdpartyOAuth2ProviderEntity_NormalizeProtectedResources(t *testing.T) {
+	t.Parallel()
+
+	t.Run("normalizes each protected resource in place", func(t *testing.T) {
+		t.Parallel()
+
+		entity := &ThirdpartyOAuth2ProviderEntity{
+			ProtectedResources: []string{
+				"https://api.example.com/",
+				"https://api.example.com/v1///",
+				"https://api.example.com/v2",
+			},
+		}
+
+		entity.NormalizeProtectedResources()
+
+		assert.Equal(t, []string{
+			"https://api.example.com",
+			"https://api.example.com/v1",
+			"https://api.example.com/v2",
+		}, entity.ProtectedResources)
+	})
+
+	t.Run("nil slice remains nil", func(t *testing.T) {
+		t.Parallel()
+
+		entity := &ThirdpartyOAuth2ProviderEntity{}
+
+		entity.NormalizeProtectedResources()
+
+		assert.Nil(t, entity.ProtectedResources)
+	})
+
+	t.Run("empty slice remains empty", func(t *testing.T) {
+		t.Parallel()
+
+		entity := &ThirdpartyOAuth2ProviderEntity{ProtectedResources: []string{}}
+
+		entity.NormalizeProtectedResources()
+
+		assert.Empty(t, entity.ProtectedResources)
+	})
+
+	t.Run("normalization is idempotent", func(t *testing.T) {
+		t.Parallel()
+
+		entity := &ThirdpartyOAuth2ProviderEntity{ProtectedResources: []string{"https://api.example.com///"}}
+
+		entity.NormalizeProtectedResources()
+		firstPass := append([]string(nil), entity.ProtectedResources...)
+		entity.NormalizeProtectedResources()
+
+		assert.Equal(t, firstPass, entity.ProtectedResources)
+	})
+}

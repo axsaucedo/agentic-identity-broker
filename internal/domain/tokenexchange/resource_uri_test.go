@@ -37,10 +37,22 @@ func TestNewResourceURI(t *testing.T) {
 			expectValue: "https://api.github.com",
 		},
 		{
-			name:        "remove multiple trailing slashes (only one removed)",
+			name:        "remove multiple trailing slashes",
 			input:       "https://api.github.com//",
 			expectError: false,
-			expectValue: "https://api.github.com/",
+			expectValue: "https://api.github.com",
+		},
+		{
+			name:        "preserve query trailing slash while trimming path",
+			input:       "https://api.github.com/?target=/",
+			expectError: false,
+			expectValue: "https://api.github.com?target=/",
+		},
+		{
+			name:        "preserve fragment trailing slash while trimming path",
+			input:       "https://api.github.com/v3/#section/",
+			expectError: false,
+			expectValue: "https://api.github.com/v3#section/",
 		},
 		{
 			name:        "empty string",
@@ -186,6 +198,21 @@ func TestNormalize(t *testing.T) {
 			name:     "URI with port but no trailing slash",
 			input:    "http://localhost:8080",
 			expected: "http://localhost:8080",
+		},
+		{
+			name:     "URI with multiple trailing slashes",
+			input:    "https://api.github.com///",
+			expected: "https://api.github.com",
+		},
+		{
+			name:     "URI with query slash preserved",
+			input:    "https://api.github.com/?target=/",
+			expected: "https://api.github.com?target=/",
+		},
+		{
+			name:     "URI with fragment slash preserved",
+			input:    "https://api.github.com/v3/#section/",
+			expected: "https://api.github.com/v3#section/",
 		},
 		{
 			name:     "empty string",

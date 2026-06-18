@@ -1164,10 +1164,14 @@ func TestHybridTokenGrantStrategy_DispatchByClientType(t *testing.T) {
 // 400 unsupported_grant_type (not 500 server_error) when TokenExchangeService is nil.
 // This covers the local-mode deployment where token exchange is not wired.
 func TestHandleTokenExchange_NilService(t *testing.T) {
+	var logs strings.Builder
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+
 	handler := &OAuth2TokenHandler{
 		GrantHandler:  NewLocalGrantStrategy(fixedMinting(nil, nil), nil),
 		OAuth2Service: newLocalModeOAuth2Service(),
 		TokenExchange: nil,
+		Logger:        logger,
 	}
 	form := "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange" +
 		"&subject_token=sometoken&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aaccess_token"
@@ -1181,6 +1185,7 @@ func TestHandleTokenExchange_NilService(t *testing.T) {
 	var body map[string]string
 	_ = json.NewDecoder(w.Body).Decode(&body)
 	assert.Equal(t, "unsupported_grant_type", body["error"])
+	assert.Contains(t, logs.String(), "WARN", "nil TokenExchange must log at Warn level")
 }
 
 // TestOAuth2TokenHandler_UnauthorizedClient_Returns400 verifies that an unauthorized_client

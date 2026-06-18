@@ -241,6 +241,18 @@ func TestTokenExchangeRequest_InvalidResource(t *testing.T) {
 			wantCode:   "invalid_request",
 			wantErrMsg: "resource parameter is required",
 		},
+		{
+			name:       "invalid percent-encoding",
+			resource:   "https://api.example.com/%GG/",
+			wantCode:   "invalid_request",
+			wantErrMsg: "resource URI is not a valid URL",
+		},
+		{
+			name:       "relative resource URI",
+			resource:   "api.example.com",
+			wantCode:   "invalid_request",
+			wantErrMsg: "resource URI must include a scheme",
+		},
 	}
 
 	for _, tt := range tests {
@@ -263,6 +275,9 @@ func TestTokenExchangeRequest_InvalidResource(t *testing.T) {
 			if texErr, ok := err.(*TokenExchangeError); ok {
 				if texErr.Code() != tt.wantCode {
 					t.Errorf("error code = %q, want %q", texErr.Code(), tt.wantCode)
+				}
+				if !strings.Contains(texErr.Description(), tt.wantErrMsg) {
+					t.Errorf("error description = %q, want substring %q", texErr.Description(), tt.wantErrMsg)
 				}
 			}
 		})

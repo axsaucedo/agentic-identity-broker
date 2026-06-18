@@ -290,6 +290,39 @@ func TestThirdpartyOAuth2ProviderService_Create_EncryptsAndStores(t *testing.T) 
 	mockRepo.AssertExpectations(t)
 }
 
+func TestThirdpartyOAuth2ProviderService_Create_NormalizesProtectedResourcesBeforePersist(t *testing.T) {
+	mockRepo := new(MockRepository)
+	mockEnc := new(MockEncryption)
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
+
+	ctx := context.Background()
+	entity := minimalValidEntity(id.NewServiceID(), model.NewPlaintextSecret("supersecret"))
+	entity.ProtectedResources = []string{
+		"https://api.example.com/",
+		"https://api.example.com/v1///",
+	}
+
+	mockEnc.On("Encrypt", ctx, []byte("supersecret"), map[string]string{"service_id": entity.ID.String()}).
+		Return([]byte("encrypted-bytes"), nil)
+	mockRepo.On("Create", ctx, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
+		return e.Secret.IsEncrypted() &&
+			assert.ObjectsAreEqual([]string{
+				"https://api.example.com",
+				"https://api.example.com/v1",
+			}, e.ProtectedResources)
+	})).Return(nil)
+
+	err := svc.Create(ctx, entity)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"https://api.example.com",
+		"https://api.example.com/v1",
+	}, entity.ProtectedResources)
+	mockEnc.AssertExpectations(t)
+	mockRepo.AssertExpectations(t)
+}
+
 func TestThirdpartyOAuth2ProviderService_Create_GeneratesIDIfEmpty(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
@@ -538,6 +571,40 @@ func TestThirdpartyOAuth2ProviderService_Update_WithNewSecret(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.True(t, entity.Secret.IsEncrypted(), "secret must be encrypted after update")
+	mockEnc.AssertExpectations(t)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestThirdpartyOAuth2ProviderService_Update_NormalizesProtectedResourcesBeforePersist(t *testing.T) {
+	mockRepo := new(MockRepository)
+	mockEnc := new(MockEncryption)
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, newNoopBranchKeyManager(), nil, false, slog.Default())
+
+	ctx := context.Background()
+	svcID := id.NewServiceID()
+	entity := minimalValidEntity(svcID, model.NewPlaintextSecret("new-secret"))
+	entity.ProtectedResources = []string{
+		"https://api.example.com/",
+		"https://api.example.com/v1///",
+	}
+
+	mockEnc.On("Encrypt", ctx, []byte("new-secret"), map[string]string{"service_id": svcID.String()}).
+		Return([]byte("new-encrypted"), nil)
+	mockRepo.On("Update", ctx, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
+		return e.Secret.IsEncrypted() &&
+			assert.ObjectsAreEqual([]string{
+				"https://api.example.com",
+				"https://api.example.com/v1",
+			}, e.ProtectedResources)
+	})).Return(nil)
+
+	err := svc.Update(ctx, entity)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"https://api.example.com",
+		"https://api.example.com/v1",
+	}, entity.ProtectedResources)
 	mockEnc.AssertExpectations(t)
 	mockRepo.AssertExpectations(t)
 }

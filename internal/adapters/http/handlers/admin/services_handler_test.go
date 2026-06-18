@@ -21,6 +21,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 )
@@ -220,6 +221,178 @@ func TestServicesHandler_CreateService(t *testing.T) {
 		assert.Contains(t, resp.Message, "display_name is required")
 
 		mockRepo.AssertNotCalled(t, "Create")
+	})
+
+	t.Run("protected_resources are normalized before create", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+
+		reqBody := ServiceRequest{
+			DisplayName:  "API Service",
+			ClientID:     "api-client-id",
+			ClientSecret: "api-client-secret",
+			IssuerURI:    "https://api.example.com",
+			Discovery:    DiscoveryConfigRequest{EnableDiscovery: false},
+			Endpoints: &OAuth2EndpointsRequest{
+				TokenEndpoint:     "https://api.example.com/token",
+				AuthorizeEndpoint: "https://api.example.com/authorize",
+			},
+			Scopes: []OAuthScopeRequest{{ScopeValue: "read", Description: "Read access"}},
+			ProtectedResources: []string{
+				"https://api.example.com/",
+				"https://api.example.com/v2",
+			},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		mockRepo.On("FindByProtectedResource", mock.Anything, "https://api.example.com").
+			Return(nil, tokenexchange.NewInvalidTargetErrorWithDetails("no service configured for the requested resource", "resource_not_found")).Once()
+		mockRepo.On("FindByProtectedResource", mock.Anything, "https://api.example.com/v2").
+			Return(nil, tokenexchange.NewInvalidTargetErrorWithDetails("no service configured for the requested resource", "resource_not_found")).Once()
+
+		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
+			return len(e.ProtectedResources) == 2 &&
+				e.ProtectedResources[0] == "https://api.example.com" &&
+				e.ProtectedResources[1] == "https://api.example.com/v2"
+		})).Return(nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/third-party/oauth2/clients", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateService(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+
+		var resp ServiceResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, []string{
+			"https://api.example.com",
+			"https://api.example.com/v2",
+		}, resp.ProtectedResources)
+
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("normalized protected_resource conflict returns 409 on create", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+
+		conflictingServiceID := id.NewServiceID()
+		reqBody := ServiceRequest{
+			DisplayName:  "API Service",
+			ClientID:     "api-client-id",
+			ClientSecret: "api-client-secret",
+			IssuerURI:    "https://api.example.com",
+			Discovery:    DiscoveryConfigRequest{EnableDiscovery: false},
+			Endpoints: &OAuth2EndpointsRequest{
+				TokenEndpoint:     "https://api.example.com/token",
+				AuthorizeEndpoint: "https://api.example.com/authorize",
+			},
+			Scopes:             []OAuthScopeRequest{{ScopeValue: "read", Description: "Read access"}},
+			ProtectedResources: []string{"https://api.example.com/"},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		mockRepo.On("FindByProtectedResource", mock.Anything, "https://api.example.com").
+			Return(&model.ThirdpartyOAuth2ProviderEntity{ID: conflictingServiceID}, nil).Once()
+
+		req := httptest.NewRequest(http.MethodPost, "/api/third-party/oauth2/clients", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateService(w, req)
+
+		assert.Equal(t, http.StatusConflict, w.Code)
+
+		var resp ErrorResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "conflict", resp.Error)
+		assert.Contains(t, resp.Message, "protected resource URI already configured for another service")
+
+		mockRepo.AssertNotCalled(t, "Create")
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("ambiguous protected_resource lookup returns conflict on create", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+
+		reqBody := ServiceRequest{
+			DisplayName:  "API Service",
+			ClientID:     "api-client-id",
+			ClientSecret: "api-client-secret",
+			IssuerURI:    "https://api.example.com",
+			Discovery:    DiscoveryConfigRequest{EnableDiscovery: false},
+			Endpoints: &OAuth2EndpointsRequest{
+				TokenEndpoint:     "https://api.example.com/token",
+				AuthorizeEndpoint: "https://api.example.com/authorize",
+			},
+			Scopes:             []OAuthScopeRequest{{ScopeValue: "read", Description: "Read access"}},
+			ProtectedResources: []string{"https://api.example.com/"},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		mockRepo.On("FindByProtectedResource", mock.Anything, "https://api.example.com").
+			Return(nil, tokenexchange.NewInvalidTargetErrorWithDetails("multiple services configured for the same resource", "resource_ambiguous")).Once()
+
+		req := httptest.NewRequest(http.MethodPost, "/api/third-party/oauth2/clients", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateService(w, req)
+
+		assert.Equal(t, http.StatusConflict, w.Code)
+
+		var resp ErrorResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "conflict", resp.Error)
+		assert.Contains(t, resp.Message, "protected resource URI already configured for another service")
+
+		mockRepo.AssertNotCalled(t, "Create")
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("protected_resource lookup storage error aborts create", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+
+		reqBody := ServiceRequest{
+			DisplayName:  "API Service",
+			ClientID:     "api-client-id",
+			ClientSecret: "api-client-secret",
+			IssuerURI:    "https://api.example.com",
+			Discovery:    DiscoveryConfigRequest{EnableDiscovery: false},
+			Endpoints: &OAuth2EndpointsRequest{
+				TokenEndpoint:     "https://api.example.com/token",
+				AuthorizeEndpoint: "https://api.example.com/authorize",
+			},
+			Scopes:             []OAuthScopeRequest{{ScopeValue: "read", Description: "Read access"}},
+			ProtectedResources: []string{"https://api.example.com/"},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		mockRepo.On("FindByProtectedResource", mock.Anything, "https://api.example.com").
+			Return(nil, storage.NewStorageError("FindByProtectedResource", storage.ErrorKindConnection, nil, "database unavailable")).Once()
+
+		req := httptest.NewRequest(http.MethodPost, "/api/third-party/oauth2/clients", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateService(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+		var resp ErrorResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "internal server error", resp.Error)
+
+		mockRepo.AssertNotCalled(t, "Create")
+		mockRepo.AssertExpectations(t)
 	})
 }
 
@@ -454,6 +627,155 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 
 		// Validation must fire before any storage or encryption call.
 		mockRepo.AssertNotCalled(t, "Update")
+	})
+
+	t.Run("protected_resources are normalized before update", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+
+		serviceID := id.NewServiceID()
+		reqBody := ServiceRequest{
+			DisplayName:  "API Service",
+			ClientID:     "api-client-id",
+			ClientSecret: "api-client-secret",
+			IssuerURI:    "https://api.example.com",
+			Discovery:    DiscoveryConfigRequest{EnableDiscovery: false},
+			Endpoints: &OAuth2EndpointsRequest{
+				TokenEndpoint:     "https://api.example.com/token",
+				AuthorizeEndpoint: "https://api.example.com/authorize",
+			},
+			Scopes: []OAuthScopeRequest{{ScopeValue: "read", Description: "Read access"}},
+			ProtectedResources: []string{
+				"https://api.example.com/",
+				"https://api.example.com/v2",
+			},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		mockRepo.On("FindByProtectedResource", mock.Anything, "https://api.example.com").
+			Return(nil, tokenexchange.NewInvalidTargetErrorWithDetails("no service configured for the requested resource", "resource_not_found")).Once()
+		mockRepo.On("FindByProtectedResource", mock.Anything, "https://api.example.com/v2").
+			Return(nil, tokenexchange.NewInvalidTargetErrorWithDetails("no service configured for the requested resource", "resource_not_found")).Once()
+
+		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
+			return e.ID == serviceID &&
+				len(e.ProtectedResources) == 2 &&
+				e.ProtectedResources[0] == "https://api.example.com" &&
+				e.ProtectedResources[1] == "https://api.example.com/v2" &&
+				e.Secret.IsEncrypted()
+		})).Return(nil)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/"+serviceID.String(), bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("service-id", serviceID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		handler.UpdateService(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var resp ServiceResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, []string{
+			"https://api.example.com",
+			"https://api.example.com/v2",
+		}, resp.ProtectedResources)
+
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("normalized protected_resource conflict returns 409 on update", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+
+		serviceID := id.NewServiceID()
+		conflictingServiceID := id.NewServiceID()
+		reqBody := ServiceRequest{
+			DisplayName:  "API Service",
+			ClientID:     "api-client-id",
+			ClientSecret: "api-client-secret",
+			IssuerURI:    "https://api.example.com",
+			Discovery:    DiscoveryConfigRequest{EnableDiscovery: false},
+			Endpoints: &OAuth2EndpointsRequest{
+				TokenEndpoint:     "https://api.example.com/token",
+				AuthorizeEndpoint: "https://api.example.com/authorize",
+			},
+			Scopes:             []OAuthScopeRequest{{ScopeValue: "read", Description: "Read access"}},
+			ProtectedResources: []string{"https://api.example.com/"},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		mockRepo.On("FindByProtectedResource", mock.Anything, "https://api.example.com").
+			Return(&model.ThirdpartyOAuth2ProviderEntity{ID: conflictingServiceID}, nil).Once()
+
+		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/"+serviceID.String(), bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("service-id", serviceID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		handler.UpdateService(w, req)
+
+		assert.Equal(t, http.StatusConflict, w.Code)
+
+		var resp ErrorResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "conflict", resp.Error)
+		assert.Contains(t, resp.Message, "protected resource URI already configured for another service")
+
+		mockRepo.AssertNotCalled(t, "Update")
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("protected_resource lookup storage error aborts update", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+
+		serviceID := id.NewServiceID()
+		reqBody := ServiceRequest{
+			DisplayName:  "API Service",
+			ClientID:     "api-client-id",
+			ClientSecret: "api-client-secret",
+			IssuerURI:    "https://api.example.com",
+			Discovery:    DiscoveryConfigRequest{EnableDiscovery: false},
+			Endpoints: &OAuth2EndpointsRequest{
+				TokenEndpoint:     "https://api.example.com/token",
+				AuthorizeEndpoint: "https://api.example.com/authorize",
+			},
+			Scopes:             []OAuthScopeRequest{{ScopeValue: "read", Description: "Read access"}},
+			ProtectedResources: []string{"https://api.example.com/"},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		mockRepo.On("FindByProtectedResource", mock.Anything, "https://api.example.com").
+			Return(nil, storage.NewStorageError("FindByProtectedResource", storage.ErrorKindConnection, nil, "database unavailable")).Once()
+
+		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/"+serviceID.String(), bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("service-id", serviceID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		handler.UpdateService(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+		var resp ErrorResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "internal server error", resp.Error)
+
+		mockRepo.AssertNotCalled(t, "Update")
+		mockRepo.AssertExpectations(t)
 	})
 }
 

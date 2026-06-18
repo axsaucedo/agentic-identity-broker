@@ -350,7 +350,41 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 		// Spec Reference: US2-S2 from specs/013-token-exchange/spec.md
 		It("[US2-S2] should normalize resource URI removing trailing slashes", func() {
-			// Given: Service with protected_resource has trailing slash
+			// Given: Service is updated through the admin API with a protected_resource that has a trailing slash
+			githubServiceID := fixtures.GitHubService().ID.String()
+			updateBody := map[string]interface{}{
+				"display_name":  "GitHub",
+				"client_id":     "github-client-id",
+				"client_secret": "github-client-secret",
+				"issuer_uri":    "https://github.com",
+				"discovery": map[string]interface{}{
+					"enable_discovery": false,
+				},
+				"endpoints": map[string]interface{}{
+					"token_endpoint":     mockUpstream.URL() + "/oauth/token",
+					"authorize_endpoint": mockUpstream.URL() + "/oauth/authorize",
+				},
+				"scopes": []map[string]interface{}{
+					{"scope_value": "repo", "description": "Access repository"},
+					{"scope_value": "user", "description": "Access user information"},
+					{"scope_value": "read:org", "description": "Read organization information"},
+				},
+				"protected_resources": []string{"https://api.github.com/v4/"},
+			}
+			updateBodyJSON, err := json.Marshal(updateBody)
+			Expect(err).NotTo(HaveOccurred())
+
+			updateResp, err := adminServer.DirectRequest(
+				http.MethodPut,
+				"/api/services/"+githubServiceID,
+				principal,
+				map[string]string{"Content-Type": "application/json"},
+				strings.NewReader(string(updateBodyJSON)),
+			)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = updateResp.Body.Close() }()
+			Expect(updateResp).To(matchers.HaveStatusCode(http.StatusOK))
+
 			mockUpstream.WithSuccessfulTokenResponse().
 				WithAccessToken("token-123")
 
@@ -360,15 +394,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
 				"client_assertion":      {tokenFixtures.ClientAssertion},
-				"resource":              {"https://api.github.com/"}, // Trailing slash
+				"resource":              {"https://api.github.com/v4"},
 			}
 
-			// When: Token exchange request uses resource URI with trailing slash
+			// When: Token exchange request uses the canonical URI without the trailing slash
 			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			// Then: Service is resolved (normalization handles trailing slash)
+			// Then: Service is resolved because protected_resources were normalized before storage
 			Expect(resp).To(matchers.HaveStatusCode(http.StatusOK))
 		})
 
@@ -949,7 +983,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 					{"scope_value": "read", "description": "Read access"},
 				},
 				"protected_resources": []string{
-					"https://api.newservice.com",
+					"https://api.newservice.com/",
 					"https://newservice.com",
 				},
 			}
@@ -961,7 +995,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			// Then: Service is created with 201 status and protected_resources stored
+			// Then: Service is created with 201 status and protected_resources normalized in the response
 			Expect(resp).To(matchers.HaveStatusCode(http.StatusCreated))
 
 			var createdService map[string]interface{}
@@ -969,6 +1003,17 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(createdService).To(HaveKey("protected_resources"))
 			Expect(createdService["protected_resources"]).To(Equal([]interface{}{"https://api.newservice.com", "https://newservice.com"}))
+
+			serviceID := createdService["id"].(string)
+			getResp, err := adminServer.AuthenticatedGET("/api/services/"+serviceID, principal)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = getResp.Body.Close() }()
+			Expect(getResp).To(matchers.HaveStatusCode(http.StatusOK))
+
+			var fetchedService map[string]interface{}
+			err = json.NewDecoder(getResp.Body).Decode(&fetchedService)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fetchedService["protected_resources"]).To(Equal([]interface{}{"https://api.newservice.com", "https://newservice.com"}))
 		})
 
 		// Spec Reference: US6-S2 from specs/013-token-exchange/spec.md
@@ -991,7 +1036,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 					{"scope_value": "repo", "description": "Repository access"},
 				},
 				"protected_resources": []string{
-					"https://api.example.com",
+					"https://api.example.com/",
 				},
 			}
 			body, err := json.Marshal(updateData)
@@ -1002,7 +1047,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			// Then: Service is updated with 200 status and new protected_resources
+			// Then: Service is updated with 200 status and normalized protected_resources in the response
 			Expect(resp).To(matchers.HaveStatusCode(http.StatusOK))
 
 			var updatedService map[string]interface{}
@@ -1010,6 +1055,16 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedService).To(HaveKey("protected_resources"))
 			Expect(updatedService["protected_resources"]).To(Equal([]interface{}{"https://api.example.com"}))
+
+			getResp, err := adminServer.AuthenticatedGET("/api/services/"+fixtures.GitHubService().ID.String(), principal)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = getResp.Body.Close() }()
+			Expect(getResp).To(matchers.HaveStatusCode(http.StatusOK))
+
+			var fetchedService map[string]interface{}
+			err = json.NewDecoder(getResp.Body).Decode(&fetchedService)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fetchedService["protected_resources"]).To(Equal([]interface{}{"https://api.example.com"}))
 		})
 
 		// Spec Reference: US6-S3 from specs/013-token-exchange/spec.md

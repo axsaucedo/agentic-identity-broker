@@ -110,7 +110,7 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.Request, formData url.Values) {
 	if h.TokenExchange == nil {
 		if h.Logger != nil {
-			h.Logger.Info("token exchange not wired, returning unsupported_grant_type")
+			h.Logger.Warn("token exchange not wired, returning unsupported_grant_type")
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -169,6 +169,7 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 			logAttrs := []any{
 				"error", err.Error(),
 				"error_type", fmt.Sprintf("%T", err),
+				"resource", req.Resource,
 			}
 			var tokenErrForLog *tokenexchange.TokenExchangeError
 			if errors.As(err, &tokenErrForLog) {

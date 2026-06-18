@@ -169,7 +169,6 @@ func newAdapterWithKMSARNAndKeyStore(kmsARN, dynamoDBTableName string, branchKey
 	return adapter, keyStore, nil
 }
 
-// newAdapterWithEnvVarKEK creates an adapter using environment variable for key material.
 // newAdapterWithBase64KEK creates an adapter with a base64-encoded AES-256 key.
 // The keyMaterial should be a base64-encoded 32-byte key (already interpolated from environment variables by config loader).
 func newAdapterWithBase64KEK(keyMaterial string) (*AWSAdapter, error) {

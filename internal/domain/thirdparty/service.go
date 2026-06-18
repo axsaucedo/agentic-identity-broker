@@ -84,6 +84,10 @@ func (s *ThirdpartyOAuth2ProviderService) Create(
 	if err := entity.ValidateForCreate(s.skipHTTPSValidation); err != nil {
 		return fmt.Errorf("provider validation failed: %w", err)
 	}
+	entity.NormalizeProtectedResources()
+	if err := entity.ValidateProtectedResources(); err != nil {
+		return fmt.Errorf("provider validation failed: %w", err)
+	}
 
 	// Generate ID before encryption so context binding matches persisted ID
 	if entity.ID.IsZero() {
@@ -191,6 +195,10 @@ func (s *ThirdpartyOAuth2ProviderService) Update(
 ) error {
 	// Validate before any side effects to prevent wasted KMS calls on invalid input.
 	if err := entity.ValidateForUpdate(s.skipHTTPSValidation); err != nil {
+		return fmt.Errorf("provider validation failed: %w", err)
+	}
+	entity.NormalizeProtectedResources()
+	if err := entity.ValidateProtectedResources(); err != nil {
 		return fmt.Errorf("provider validation failed: %w", err)
 	}
 
