@@ -65,8 +65,8 @@ type AWSAdapter struct {
 //
 // Environment variable interpolation is handled by the config loader before this function is called.
 // Configuration example with environment variable:
-//   - YAML: encryption.key: "${ENCRYPTION_KEK}"
-//   - Config loader expands ${ENCRYPTION_KEK} → reads ENCRYPTION_KEK environment variable
+//   - YAML: encryption.memory.raw_key: "${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}"
+//   - Config loader expands ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
 //   - This function receives: the actual base64 key value (not the ${...} reference)
 //
 // Parameters:
@@ -86,7 +86,8 @@ func NewAWSEncryption(keyMaterial, dynamoDBTableName string, branchKeyTTL time.D
 	// Scenario B: AWS KMS ARN for production (hierarchical keyring with DynamoDB caching)
 	// Note: this path synthesises an AWSKMSConfig with only KeyARN set, so dynamoDBTimeout
 	// is always 0 (disabled). Use NewEncryptionAdapter with a fully populated AWSKMSConfig
-	// to enable the per-operation DynamoDB timeout.
+	// to enable the named dynamodb_timeout field.
+	// It applies to the full top-level encryption operation.
 	if strings.HasPrefix(keyMaterial, "arn:aws:kms:") {
 		awsConfig := &ports.AWSKMSConfig{
 			KeyARN: keyMaterial,
@@ -174,7 +175,7 @@ func newAdapterWithKMSARNAndKeyStore(kmsARN, dynamoDBTableName string, branchKey
 func newAdapterWithBase64KEK(keyMaterial string) (*AWSAdapter, error) {
 	if keyMaterial == "" {
 		return nil, encryption.NewKEKUnavailableError(
-			"key_encryption_key is empty; must be AWS KMS ARN or base64-encoded 32-byte key",
+			"encryption key material is empty; must be AWS KMS ARN or base64-encoded 32-byte key",
 			nil,
 		)
 	}
@@ -183,7 +184,7 @@ func newAdapterWithBase64KEK(keyMaterial string) (*AWSAdapter, error) {
 	kekBytes, err := base64.StdEncoding.DecodeString(keyMaterial)
 	if err != nil {
 		return nil, encryption.NewKEKUnavailableError(
-			fmt.Sprintf("failed to decode key_encryption_key: key must be base64-encoded 32-byte AES-256 key, got: %v", err),
+			fmt.Sprintf("failed to decode encryption key material: key must be base64-encoded 32-byte AES-256 key, got: %v", err),
 			err,
 		)
 	}

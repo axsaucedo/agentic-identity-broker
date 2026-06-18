@@ -8,6 +8,14 @@
 
 **Implementation Status**: ⏳ Ready for Phase 1 (Design Preconditions)
 
+> **Implementation note (superseded configuration):**
+> This document records the original single-field encryption proposal
+> (`encryption.key` / `key_encryption_key` with `${ENCRYPTION_KEK}`).
+> The shipped implementation uses a backend-explicit contract:
+> `encryption.aws_kms` or `encryption.memory`.
+> See `internal/ports/config.go` and `docs/configuration.md`
+> for the live schema.
+
 ---
 
 ## Executive Summary
@@ -102,6 +110,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 🔒 [MANDATORY] **Tests written first, verified to fail, guide implementation**
 
 - [x] T015 Create [tests/e2e/encryption_vault_raw_test.go](../../tests/e2e/encryption_vault_raw_test.go) with skeleton:
+
   ```go
   var _ = Describe("Encryption Vault for OAuth Tokens", func() {
       var app *app.App
@@ -143,16 +152,19 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 ### Ports & Domain Errors
 
 - [x] T018 [P] Create [internal/ports/encryption.go](../../internal/ports/encryption.go):
+
   ```go
   type EncryptionPort interface {
       Encrypt(ctx context.Context, plaintext []byte, encryptionContext map[string]string) ([]byte, error)
       Decrypt(ctx context.Context, ciphertext []byte, encryptionContext map[string]string) ([]byte, error)
   }
   ```
+
   - Document: performs envelope encryption (DEK + KEK wrapping with context binding)
   - No implementation yet (interface only)
 
 - [x] T019 [P] Create [internal/domain/encryption/errors.go](../../internal/domain/encryption/errors.go):
+
   ```go
   type ErrorKind string
   const (
@@ -169,6 +181,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
       Wrapped error
   }
   ```
+
   - Implement Error(), Unwrap(), Is() methods for proper error handling
 
 ### Domain Events
@@ -263,6 +276,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
   - Update factory function signature
 
 - [x] T029 [P] Update CreateSession method to encrypt tokens:
+
   ```go
   func (s *OAuth2SessionService) CreateSession(
       ctx context.Context,
@@ -303,10 +317,12 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
       return session, nil
   }
   ```
+
   - Ensure fail-closed: no plaintext fallback on encryption error
   - Publish domain events
 
 - [x] T030 [P] Update GetSession method to decrypt tokens:
+
   ```go
   func (s *OAuth2SessionService) GetSession(
       ctx context.Context,
@@ -343,6 +359,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
       return result, nil
   }
   ```
+
   - Handle error cases: context mismatch, integrity violations, KEK unavailable
   - Publish domain events on success and failure
 
@@ -987,11 +1004,13 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 ### Parallelization Opportunities
 
 **Team Coordination**: This feature can be implemented by 1-2 engineers in parallel:
+
 - **Engineer 1**: AWS adapter ([internal/adapters/encryption/aws/](../../internal/adapters/encryption/aws/)) + unit tests (Tasks T022-T026)
 - **Engineer 2**: Service integration + E2E tests (Tasks T027-T035, T040-T043, etc.)
 - **Both**: Shared work on configuration, builder wiring, compliance verification
 
 **Parallelizable Tasks** (18 total marked with [P]):
+
 - T009-T010: Configuration and error contract verification (parallel)
 - T022-T026: AWS adapter implementation (parallel units)
 - T027-T031: Service wiring and builder updates (parallel)
@@ -1001,6 +1020,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 ### MVP Scope (Phase 3-4)
 
 **Minimum Viable Product focuses on User Story 1 only**:
+
 - Envelope encryption with DEK + KEK wrapping
 - Context binding at DEK layer
 - Environment variable KEK injection (for dev)
@@ -1008,6 +1028,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 - 4 E2E tests for US1 scenarios
 
 **Follow-up Work** (future increments):
+
 - AWS KMS integration (Phase 5: US2)
 - Additional user stories (Phase 6-10)
 - Performance optimization and production hardening
@@ -1039,6 +1060,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 ## Validation Checklist
 
 **Before submitting PR, verify**:
+
 - [x] E2E tests exist and compile (tasks T012-T013)
 - [ ] All 54 tasks completed (Phase 1-11, Phase N)
 - [ ] All 24 E2E tests pass (green phase)
@@ -1066,6 +1088,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 **Polish & Cross-Cutting Concerns**: ✅ 9 of 9 tasks completed
 
 ### Completed (9/9)
+
 - ✅ **T079** - Structured JSON logging for encryption operations (error logs with error_kind, service_id)
 - ✅ **T080** - Metrics instrumentation deferred to future spec (Phase 12: Observability & Monitoring) with OpenTelemetry
 - ✅ **T081** - ARCHITECTURE.md updated with Encryption Vault section (3.1.5 with full architecture details)
@@ -1077,6 +1100,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 - ✅ **T088** - Examples updated (encryption-aws-kms.yaml and encryption-env-var.yaml, fixed to eu-central-1)
 
 ### Implementation Notes
+
 - Logging implemented using slog global functions (consistent with project patterns)
 - No success logs added (per guidelines - only errors/warnings logged)
 - ARCHITECTURE.md section 3.1.5 documents: encryption model, KEK storage mechanisms, service integration, security properties, performance targets, testing approach

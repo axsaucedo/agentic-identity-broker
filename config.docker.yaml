@@ -13,9 +13,9 @@ server:
   enduser:
     port: 8000
     bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
-    # use port 3000 which points to the Vite dev server for local development
+    # Use port 3000, which points to the Vite dev server locally.
     public_url: http://localhost:3000
-    # Authentication - preauth mode (trust principals from reverse proxy headers)
+    # Pre-auth mode trusts principals from reverse proxy headers.
     authentication:
       preauth:
         principal_header_name: X-Remote-User
@@ -28,8 +28,9 @@ server:
   admin:
     port: 14000
     bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
-    public_url: http://localhost:14000 # Optional, may not be needed for admin server
-    # Authentication - preauth mode (trust principals from reverse proxy headers)
+    # Optional for the admin server in local development.
+    public_url: http://localhost:14000
+    # Pre-auth mode trusts principals from reverse proxy headers.
     authentication:
       preauth:
         principal_header_name: X-Remote-User
@@ -48,8 +49,8 @@ third_party_oauth2:
 oauth2_authorization_server:
   mode: hybrid
 
-  # Proxy path: agents with a ClientID are forwarded to the upstream OAuth2 server.
-  # Uses internal container DNS names for server-to-server communication.
+  # Proxy path: agents with a ClientID are forwarded upstream.
+  # Uses internal container DNS names for server-to-server traffic.
   proxy:
     upstream_issuer_uri: http://upstream-oauth2:9001
     upstream_authorize_endpoint: http://localhost:9001/oauth/authorize
@@ -95,22 +96,23 @@ encryption:
     # Base64-encoded 32-byte AES-256 key (REQUIRED)
     # Must be exactly 32 bytes (256 bits) when base64-decoded
     # Generate with: openssl rand -base64 32
-    # SECURITY: This field contains sensitive key material and will be redacted in logs
-    raw_key: ${IDENTITY_BROKER_ENCRYPTION_KEY}
+    # SECURITY: Sensitive key material is redacted in logs.
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
 
 # RFC 8693 Token Exchange configuration
-# Enables the ExtProc gateway to exchange user Bearer tokens for third-party service tokens
+# Enables the ExtProc gateway to exchange user Bearer tokens for
+# third-party service tokens.
 token_exchange:
   claim_extraction:
     # Extract user principal from the subject_token's sub claim
     principal_expression: "subject_token.sub"
-    # Extract agent identifier from the subject_token's azp (authorized party) claim.
-    # When multi_agent_client is disabled (default), use resolveAgentIdByClientId to map
-    # the upstream client_id claim to the broker's internal agent.id UUID.
+    # Extract the agent identifier from the subject_token azp claim.
+    # When multi_agent_client is disabled, use resolveAgentIdByClientId
+    # to map the upstream client_id claim to the broker agent.id UUID.
     agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
   authorization:
     type: "cel"
     cel:
-      # Allow all agents with a valid client_assertion from the upstream OAuth2 server
+      # Allow all agents with a valid client_assertion.
       expression: "true"
       evaluation_timeout: "5s"

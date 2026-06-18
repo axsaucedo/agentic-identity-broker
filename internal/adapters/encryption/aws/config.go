@@ -197,7 +197,8 @@ func validateRoleARN(roleARN string) error {
 	return nil
 }
 
-// parseDynamoDBTimeout parses the DynamoDB context timeout duration from config.
+// parseDynamoDBTimeout parses the named dynamodb_timeout value from config.
+// Despite the field name, it applies to full top-level AWS encryption operations.
 // Returns (0, nil) when awsCfg is nil or DynamoDBTimeout is not set.
 func parseDynamoDBTimeout(awsCfg *ports.AWSKMSConfig) (time.Duration, error) {
 	if awsCfg == nil || awsCfg.DynamoDBTimeout == "" {

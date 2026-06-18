@@ -3,6 +3,14 @@
 **Branch**: `012-aws-encryption-vault` | **Date**: 2026-01-16 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/012-aws-encryption-vault/spec.md`
 
+> **Implementation note (superseded configuration):**
+> This document records the original single-field encryption proposal
+> (`encryption.key` / `key_encryption_key` with `${ENCRYPTION_KEK}`).
+> The shipped implementation uses a backend-explicit contract:
+> `encryption.aws_kms` or `encryption.memory`.
+> See `internal/ports/config.go` and `docs/configuration.md`
+> for the live schema.
+
 ## Summary
 
 Implement application-layer envelope encryption for OAuth tokens stored in the sessions table using AWS Encryption SDK with AESGCMSIV authenticated encryption. Two-layer encryption: Data Encryption Keys (DEK) encrypt tokens with service_id context binding, Key Encryption Keys (KEK) wrap DEKs with same context. Support AWS KMS (production) and environment variable KEK injection (development). Implement transparent encryption/decryption in storage adapters via EncryptionPort interface. Memory protection deferred to future memory hardening feature. Enforce fail-closed behavior with no plaintext fallback.
@@ -11,6 +19,7 @@ Implement application-layer envelope encryption for OAuth tokens stored in the s
 
 **Language/Version**: Go 1.24.0+ (post-quantum cryptography support)
 **Primary Dependencies**:
+
 - `github.com/aws/aws-encryption-sdk/releases/go` - Official AWS Encryption SDK with AESGCMSIV authenticated encryption
 - `github.com/aws/aws-cryptographic-material-providers/releases/go` - Keyring management for KMS
 - `github.com/aws/aws-sdk-go-v2/service/kms` - AWS KMS client
@@ -21,6 +30,7 @@ Implement application-layer envelope encryption for OAuth tokens stored in the s
 **Project Type**: Single Go backend (extending agentic-identity-broker)
 **Performance Goals**: Encrypt/decrypt typical session <100ms (excluding AWS KMS latency)
 **Constraints**:
+
 - DEK per service_id with branch key caching optimization (reduces KMS calls per service)
 - service_id-only context binding (optimized from 4-field)
 - Backward compatibility on KEK rotation required
@@ -117,6 +127,7 @@ adrs/
 **Framework**: Ginkgo/Gomega BDD framework following patterns in [tests/e2e/README.md](../../tests/e2e/README.md)
 
 **Test Organization**:
+
 - **Top-level Describe**: Feature name (e.g., "OAuth2 Authorization Endpoint")
 - **Nested Describe/Context**: Preconditions and scenarios (e.g., "when a valid request arrives" → "and no grant exists")
 - **It blocks**: Individual acceptance scenarios (one It() per scenario from spec.md)
@@ -134,11 +145,13 @@ adrs/
 | US7: Post-Quantum Ready | 4 | PQC available, encrypt/decrypt with PQC, disable PQC gracefully |
 
 **Test Data Strategy**:
+
 - Fixtures: test sessions with known principals, service_ids, token content for reproducibility
 - KEK test data: AWS KMS key IDs for integration tests, environment variable KEK for unit tests
 - Memory protection testing: helper functions to detect if memory was zeroed post-operation (via OS syscalls or heap inspection)
 
 **Test Execution Flow** (TDD approach):
+
 1. **Phase 2f (Design)**: Write all 24 E2E tests FIRST (red phase)
 2. **Verify Red Phase**: Run `ginkgo -v ./tests/e2e/encryption_vault_test.go` - all tests FAIL (no implementation yet)
 3. **Implementation**: Implement AWS Encryption SDK adapter, storage adapter integration incrementally
@@ -146,11 +159,13 @@ adrs/
 5. **Minimal Changes**: Only fixture/test data adjustments during implementation (no test logic changes)
 
 **Bootstrap Strategy**:
+
 - Tests use production `app.Builder` via `tests/e2e/bootstrap/`
 - Fresh app.Builder, fresh storage (memory/postgres), fresh encryption adapter per test (BeforeEach/AfterEach)
 - KEK configuration injected via environment variables for tests (${ENCRYPTION_KEK} for unit; AWS KMS for integration)
 
 **Helper Utilities**:
+
 - Custom matchers: `HaveEncryptedToken()`, `HaveMatchingEncryptionContext()`, `FailWithContextMismatch()`
 - Crypto helpers: Helpers to inspect encrypted payloads (ciphertext, wrapped DEK, AAD) for assertions
 - Memory testing: Inspect memory after DEK operations to verify buffers were zeroed
@@ -158,16 +173,19 @@ adrs/
 ### Unit & Integration Tests
 
 **Unit Tests**:
+
 - Location: `internal/adapters/encryption/aws/adapter_test.go`, `internal/adapters/encryption/context_test.go`
 - Coverage: EncryptionContext validation, DEK generation randomness, AWS SDK wrapper behavior, error handling (encryption/decryption failures, context mismatches)
 - Strategy: TDD - write tests FIRST, verify they FAIL, then implement
 
 **Integration Tests**:
+
 - Location: `internal/adapters/storage/memory/adapter_test.go`, `internal/adapters/storage/postgres/adapter_test.go`
 - Coverage: Storage adapter encryption integration (session Create/Get with automatic encryption/decryption), memory protection behavior (DEK zeroization), AWS KMS integration (testcontainers for LocalStack or real AWS KMS in CI)
 - Strategy: Real PostgreSQL via testcontainers, memory handling verification, AWS KMS mock/stub via LocalStack
 
 **Test Coverage Goals**:
+
 - Unit test coverage: Critical paths (happy path + error paths for encryption/decryption, context verification)
 - Integration test coverage: Memory adapter (encrypt/decrypt/retrieval), PostgreSQL adapter (encrypt/decrypt/persistence, context JSONB handling)
 - E2E test coverage: 100% of acceptance scenarios (24 scenarios, mandatory per Constitution Principle XIII)

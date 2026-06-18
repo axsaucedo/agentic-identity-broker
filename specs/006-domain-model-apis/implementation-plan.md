@@ -1289,6 +1289,10 @@ func TestPostgres_AgentRepository(t *testing.T) {
 - Key stored in secure configuration (not committed to git)
 - Automatic encryption on write, decryption on read
 
+**Implementation note (superseded configuration)**:
+This snippet predates the backend-explicit encryption contract.
+Use `encryption.aws_kms` or `encryption.memory` for live configuration.
+
 **Configuration**:
 ```yaml
 storage:

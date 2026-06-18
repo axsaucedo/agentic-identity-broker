@@ -1,37 +1,35 @@
 # AWS KMS Encryption Configuration with Hierarchical Keyring (Production)
 #
-# This configuration demonstrates envelope encryption using AWS KMS as the Key Encryption Key (KEK) provider
-# with hierarchical keyring and DynamoDB branch key caching for performance optimization.
-# Recommended for production environments where enterprise-grade key management is required.
+# Demonstrates envelope encryption using AWS KMS as the Key Encryption Key
+# (KEK) provider, with hierarchical keyring and DynamoDB branch-key caching.
+# Recommended for production environments that need enterprise key management.
 
-# Encryption configuration for production environments using AWS KMS hierarchical keyring
 encryption:
-  # AWS KMS backend configuration
   aws_kms:
     # AWS KMS Customer-Managed Key (CMK) ARN (REQUIRED)
-    # Replace with your actual KMS key ARN from the AWS Console or CLI
+    # Replace with your actual KMS key ARN from the AWS Console or CLI.
     # Format: arn:aws:kms:<region>:<account-id>:key/<key-id>
     #
     # Benefits of AWS KMS:
     # - Hardware Security Module (HSM) protection
     # - Automatic key rotation (configurable)
-    # - CloudTrail audit logging of all key operations
+    # - CloudTrail audit logging of key operations
     # - Fine-grained IAM access control
     # - Multi-region replication for high availability
     # - Compliance certifications (FIPS 140-2, Common Criteria)
     key_arn: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN}
 
     # DynamoDB table name for caching branch keys (optional)
-    # The hierarchical keyring caches branch keys in DynamoDB to reduce KMS API calls and improve performance
+    # The hierarchical keyring caches branch keys in DynamoDB to reduce KMS
+    # API calls and improve performance.
     # Default: "IdentityBrokerEncryptionBranchKeys"
     # Required schema:
     #   - Partition key: "BranchKeyId" (String)
-    #   - Sort key: "TimeToLive" (Number, for TTL-based auto-deletion)
-    # AWS will automatically delete expired items when TTL expires
+    #   - Sort key: "TimeToLive" (Number, TTL-based auto-deletion)
     dynamodb_table_name: "IdentityBrokerEncryptionBranchKeys"
 
     # Branch key Time-To-Live (TTL) in DynamoDB (optional)
-    # Cached branch keys expire after this duration, forcing new generation from KMS
+    # Cached branch keys expire after this duration, forcing new generation.
     # Valid range: 1 minute to 24 hours
     # Default: "1h"
     # Shorter TTL = better key rotation but more KMS calls
@@ -40,16 +38,18 @@ encryption:
     branch_key_ttl: "1h"
 
     # AWS region for DynamoDB operations (optional)
-    # If not specified, uses the default AWS region from AWS SDK configuration
+    # If unset, the default AWS SDK region is used.
     # Examples: "us-east-1", "eu-west-1", "ap-southeast-1"
     # dynamodb_region: "eu-central-1"
 
-    # Context timeout applied to each DynamoDB operation (optional)
-    # Applied via context.WithTimeout, respecting the standard Go context cancellation chain.
+    # Context timeout for all AWS service calls triggered by an
+    # encryption operation.
+    # Applied via context.WithTimeout, respecting the standard Go context
+    # cancellation chain.
     # Default: no timeout (relies on caller context or AWS SDK defaults)
     # dynamodb_timeout: "5s"
 
-  # Memory backend is NOT configured (exactly one backend must be specified)
+  # Memory backend is NOT configured (exactly one backend must be specified).
   # memory: null
 
 # Required AWS IAM permissions for the identity broker service:
@@ -62,7 +62,7 @@ encryption:
 #         "kms:GenerateDataKey",
 #         "kms:Decrypt"
 #       ],
-#       "Resource": "arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+#       "Resource": "arn:aws:kms:...:key/your-key-id"
 #     }
 #   ]
 # }
@@ -70,36 +70,34 @@ encryption:
 # AWS credentials configuration (choose one method):
 #
 # Method 1: IAM Instance Profile (recommended for EC2/ECS)
-# - Attach IAM role with KMS permissions to EC2 instance or ECS task
-# - No explicit credential configuration required
+# - Attach an IAM role with KMS permissions to the EC2 instance or ECS task.
+# - No explicit credential configuration required.
 #
 # Method 2: Environment variables
-# - AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
-# - AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+# - AWS_ACCESS_KEY_ID=EXAMPLEACCESSKEYID
+# - AWS_SECRET_ACCESS_KEY=example-secret-access-key
 # - AWS_REGION=us-east-1
 #
 # Method 3: AWS credentials file (~/.aws/credentials)
 # [default]
-# aws_access_key_id = AKIAIOSFODNN7EXAMPLE
-# aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+# aws_access_key_id = EXAMPLEACCESSKEYID
+# aws_secret_access_key = example-secret-access-key
 # region = us-east-1
 
-# Logging configuration to monitor encryption operations
 log:
   level: info
-  format: json  # Structured JSON logging for CloudWatch integration
+  format: json # Structured JSON logging for CloudWatch integration.
 
-# Storage configuration
 storage:
   backend: postgres
   postgres:
-    # Use AWS RDS with encryption at rest enabled
-    connection_url: "postgres://username:password@your-rds-instance.region.rds.amazonaws.com:5432/identity_broker?sslmode=require"
+    # Use AWS RDS with encryption at rest enabled.
+    connection_url: >-
+      postgres://username:password@your-rds-instance.region.rds.amazonaws.com:5432/identity_broker?sslmode=require
   timeouts:
     read: 5s
     write: 10s
 
-# Server configuration
 server:
   enduser:
     port: 8000
@@ -107,10 +105,10 @@ server:
     public_url: "https://identity.your-domain.com"
   admin:
     port: 14000
-    bind: "127.0.0.1"  # Admin server only accessible locally
+    bind: "127.0.0.1" # Admin server only accessible locally.
   shutdown:
     timeout: 30s
 
-# Security configuration for production
 security:
-  skip_thirdparty_https_validation: false  # Always validate HTTPS certificates in production
+  # Always validate HTTPS certificates in production.
+  skip_thirdparty_https_validation: false

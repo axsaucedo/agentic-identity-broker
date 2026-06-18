@@ -1,46 +1,40 @@
+---
 # Memory Encryption Configuration (Development)
 #
-# This configuration demonstrates envelope encryption using an in-memory backend
-# with a base64-encoded AES-256 key. Recommended for development, testing, and
-# CI/CD environments where AWS KMS is not available or desired.
+# Demonstrates the in-memory encryption backend with a base64-encoded AES-256
+# key. Recommended for development, testing, and CI/CD environments where AWS
+# KMS is not available or desired.
 
-# Encryption configuration using memory backend
 encryption:
-  # Memory backend configuration
   memory:
-    # Base64-encoded 32-byte AES-256 key (REQUIRED)
-    # Must be exactly 32 bytes (256 bits) when base64-decoded
+    # Base64-encoded 32-byte AES-256 key.
     # Generate with: openssl rand -base64 32
-    # SECURITY: This field contains sensitive key material and will be redacted in logs
+    # SECURITY: Sensitive key material is redacted in logs.
     raw_key: "aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890AB=="
 
-  # AWS KMS backend is NOT configured (exactly one backend must be specified)
+  # AWS KMS backend is NOT configured (exactly one backend must be specified).
   # aws_kms: null
 
-# Environment variable usage (recommended for production secrets):
+# Environment variable usage (recommended for secrets):
 #
 # Instead of hardcoding the key in YAML, use environment variable injection:
 # encryption:
 #   memory:
-#     raw_key: "${ENCRYPTION_KEK}"
+#     raw_key: "${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}"
 #
 # Set via environment variable:
-# export ENCRYPTION_KEK="$(openssl rand -base64 32)"
-# export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY="${ENCRYPTION_KEK}"
+# export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY="$(openssl rand -base64 32)"
 
-# Development-friendly logging configuration
 log:
-  level: debug      # Verbose logging for development
-  format: text      # Human-readable text format for local development
+  level: debug
+  format: text
 
-# In-memory storage for development (no database required)
 storage:
-  backend: memory   # No PostgreSQL dependency for local development
+  backend: memory
   timeouts:
     read: 1s
     write: 2s
 
-# Server configuration for local development
 server:
   enduser:
     port: 8000
@@ -53,11 +47,10 @@ server:
   shutdown:
     timeout: 5s
 
-# Relaxed security for development (DO NOT use in production)
 security:
-  skip_thirdparty_https_validation: true  # Allow HTTP OAuth2 services for testing
+  # Allow HTTP OAuth2 services for development only.
+  skip_thirdparty_https_validation: true
 
-# Example third-party OAuth2 configuration for development
 third_party_oauth2:
   # Generate with: openssl rand -base64 32
   jwe_signing_key: "your-base64-encoded-32-byte-jwe-key"
@@ -66,16 +59,19 @@ third_party_oauth2:
 
 # Generate secure keys for development:
 #
-# Using OpenSSL (outputs base64-encoded 32 bytes):
+# Using OpenSSL:
 # openssl rand -base64 32
 #
 # Using Go:
-# go run -c 'package main; import ("crypto/rand"; "encoding/base64"; "fmt"); func main() { key := make([]byte, 32); rand.Read(key); fmt.Println(base64.StdEncoding.EncodeToString(key)) }'
+# go run -c 'package main; import ("crypto/rand"; "encoding/base64"; "fmt");
+# func main() { key := make([]byte, 32); rand.Read(key);
+# fmt.Println(base64.StdEncoding.EncodeToString(key)) }'
 #
 # Using Python:
-# python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
+# python3 -c "import os, base64;
+# print(base64.b64encode(os.urandom(32)).decode())"
 
-# Security considerations for memory backend:
+# Security considerations for the memory backend:
 #
 # Pros:
 # - No cloud provider dependencies
@@ -92,4 +88,4 @@ third_party_oauth2:
 # - Risk of accidental exposure in logs or error dumps
 #
 # Recommendation: Use this backend only for development/testing.
-# For production, prefer AWS KMS backend (see encryption-aws-kms.yaml)
+# For production, prefer AWS KMS backend (see encryption-aws-kms.yaml).

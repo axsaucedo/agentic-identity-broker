@@ -2,6 +2,14 @@
 
 **Date**: 2026-01-15 | **Feature**: `012-aws-encryption-vault` | **Spec**: [spec.md](./spec.md)
 
+> **Implementation note (superseded configuration):**
+> This document records the original single-field encryption proposal
+> (`encryption.key` / `key_encryption_key` with `${ENCRYPTION_KEK}`).
+> The shipped implementation uses a backend-explicit contract:
+> `encryption.aws_kms` or `encryption.memory`.
+> See `internal/ports/config.go` and `docs/configuration.md`
+> for the live schema.
+
 ## Overview
 
 This quickstart shows developers how to integrate token encryption into the oauth2session service. Encryption happens transparently at the service layer; storage adapters and callers see only the high-level API.
@@ -13,6 +21,7 @@ This quickstart shows developers how to integrate token encryption into the oaut
 ### Step 1: Set KEK (Key Encryption Key)
 
 **Production (AWS KMS)**:
+
 ```yaml
 # .env
 encryption:
@@ -20,6 +29,7 @@ encryption:
 ```
 
 **Development (Environment Variable)**:
+
 ```bash
 # .env
 encryption:
@@ -32,6 +42,7 @@ export ENCRYPTION_KEK="your-base64-encoded-key-material"
 ### Step 2: Validate Configuration at Startup
 
 The AWS Encryption SDK adapter validates KEK accessibility when the application starts:
+
 - If KEK is unavailable, application fails with clear error (no silent fallback)
 - Check startup logs for "Encryption vault initialized successfully"
 
@@ -42,6 +53,7 @@ The AWS Encryption SDK adapter validates KEK accessibility when the application 
 ### Inject EncryptionPort into OAuth2Session Service
 
 **Constructor**:
+
 ```go
 type OAuth2SessionService struct {
     repository        UserSessionRepository
@@ -440,16 +452,19 @@ logger.Error("error details: %+v", err)                    // May leak values
 ### Target: <100ms per Operation (excl. KMS latency)
 
 **Local Encryption (env var KEK)**: ~1-5ms
+
 - DEK generation: <1ms
 - Token encryption: <1ms
 - Total: <5ms
 
 **AWS KMS Encryption (network latency)**: 50-200ms
+
 - Network roundtrip to KMS: 50-200ms (dominant cost)
 - Wrapping operation: <1ms
 - Total: 50-200ms (depends on network and KMS availability)
 
 **Optimization Tips**:
+
 - Use AWS SDK's built-in connection pooling
 - Consider KMS request batching for high-throughput scenarios
 - Use regional KMS endpoints (lower latency)

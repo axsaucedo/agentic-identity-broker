@@ -4,6 +4,14 @@
 
 **Purpose**: Defines the contract for encrypting and decrypting OAuth tokens with authenticated encryption context binding. This port allows the domain to remain independent of specific encryption implementations.
 
+> **Implementation note (superseded configuration):**
+> This document records the original single-field encryption proposal
+> (`encryption.key` / `key_encryption_key` with `${ENCRYPTION_KEK}`).
+> The shipped implementation uses a backend-explicit contract:
+> `encryption.aws_kms` or `encryption.memory`.
+> See `internal/ports/config.go` and `docs/configuration.md`
+> for the live schema.
+
 ---
 
 ## Interface Definition
@@ -22,6 +30,7 @@ type EncryptionPort interface {
 ### Encrypt
 
 **Signature**:
+
 ```go
 Encrypt(ctx context.Context, plaintext []byte, encryptionContext map[string]string) ([]byte, error)
 ```
@@ -29,15 +38,18 @@ Encrypt(ctx context.Context, plaintext []byte, encryptionContext map[string]stri
 **Purpose**: Encrypts plaintext data with authenticated encryption context binding.
 
 **Parameters**:
+
 - `ctx context.Context` - Cancellation and timeout context
 - `plaintext []byte` - Token data to encrypt (e.g., OAuth access token)
 - `encryptionContext map[string]string` - AAD (Authenticated Additional Data) binding encryption to service context
 
 **Returns**:
+
 - `[]byte` - Encrypted ciphertext (opaque format containing wrapped DEK + ciphertext + auth tag)
 - `error` - Error if encryption fails (see Error Contract)
 
 **Encryption Context Format**:
+
 ```go
 encryptionContext := map[string]string{
     "service_id": "oauth2",  // OAuth service identifier
@@ -45,6 +57,7 @@ encryptionContext := map[string]string{
 ```
 
 **Behavior**:
+
 1. Generate fresh DEK (Data Encryption Key) using cryptographically secure randomness
 2. Encrypt plaintext using DEK with AESGCMSIV (AES-256 in GCM-SIV mode)
 3. Include `encryptionContext` as AAD (authenticated but not encrypted)
@@ -53,6 +66,7 @@ encryptionContext := map[string]string{
 6. Zero DEK and plaintext buffers in memory after encryption
 
 **Error Cases**:
+
 - `ErrorKindEncryptionFailed`: DEK generation or encryption operation failed
 - `ErrorKindKEKUnavailable`: KEK (AWS KMS or env var) is not accessible
 - `context.Canceled` or `context.DeadlineExceeded`: Context cancelled or timed out
@@ -64,6 +78,7 @@ encryptionContext := map[string]string{
 ### Decrypt
 
 **Signature**:
+
 ```go
 Decrypt(ctx context.Context, ciphertext []byte, encryptionContext map[string]string) ([]byte, error)
 ```
@@ -71,15 +86,18 @@ Decrypt(ctx context.Context, ciphertext []byte, encryptionContext map[string]str
 **Purpose**: Decrypts ciphertext using authenticated encryption context verification.
 
 **Parameters**:
+
 - `ctx context.Context` - Cancellation and timeout context
 - `ciphertext []byte` - Encrypted token (opaque format from Encrypt)
 - `encryptionContext map[string]string` - AAD must match context used during encryption
 
 **Returns**:
+
 - `[]byte` - Decrypted plaintext token
 - `error` - Error if decryption fails (see Error Contract)
 
 **Encryption Context Format** (must match Encrypt):
+
 ```go
 encryptionContext := map[string]string{
     "service_id": "oauth2",  // Must match service_id from encryption
@@ -87,6 +105,7 @@ encryptionContext := map[string]string{
 ```
 
 **Behavior**:
+
 1. Extract wrapped DEK from ciphertext
 2. Unwrap DEK using KEK with provided `encryptionContext` for authentication
 3. Verify `encryptionContext` matches AAD bound during encryption (fails if context mismatch)
@@ -96,6 +115,7 @@ encryptionContext := map[string]string{
 7. Return plaintext token
 
 **Error Cases**:
+
 - `ErrorKindDecryptionFailed`: Decryption operation failed or auth tag verification failed
 - `ErrorKindContextMismatch`: Provided `encryptionContext` doesn't match AAD bound during encryption
 - `ErrorKindIntegrityViolation`: Ciphertext authentication tag verification failed (possible tampering)
@@ -162,6 +182,7 @@ encryptionContext := map[string]string{
 ### KEK (Key Encryption Key) Support
 
 **AWS KMS with Hierarchical Keyring (Recommended)**:
+
 - KEK provided as ARN: `arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012`
 - Adapter uses AWS Encryption SDK's Hierarchical Keyring with **Branch Key caching**
 - **Three-layer architecture**:
@@ -180,6 +201,7 @@ encryptionContext := map[string]string{
 - **Automatic key rotation**: Backward compatibility (version byte in wrapped DEK)
 
 **Alternative: Direct KMS Calls (No Caching)**:
+
 - KEK provided as ARN (same format)
 - No Branch Key caching; each operation calls AWS KMS
 - **Performance**: 50-200ms per operation (consistent latency)
@@ -188,6 +210,7 @@ encryptionContext := map[string]string{
 - **Cost**: Higher AWS KMS charges (~10x vs. caching)
 
 **Environment Variable (Development)**:
+
 - KEK provided as base64-encoded key material via `${ENCRYPTION_KEK}` in config
 - Adapter decodes and uses locally (no network calls)
 - Latency: <5ms per operation
@@ -212,12 +235,14 @@ encryptionContext := map[string]string{
 ## Adapter Implementation
 
 **Production Adapter**: `internal/adapters/encryption/aws/adapter.go`
+
 - Implements EncryptionPort using AWS Encryption SDK
 - Supports both AWS KMS and environment variable KEK
 - Memory protection deferred to future memory hardening feature
 - Validates KEK accessibility at startup (fail-fast)
 
 **Testing Support**:
+
 - Mock adapter for unit tests (in-memory encryption, deterministic)
 - Real AWS KMS integration tests (testcontainers with a LocalStack-compatible AWS emulator)
 

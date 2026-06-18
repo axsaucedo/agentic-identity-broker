@@ -31,34 +31,42 @@ Encryption/decryption happens transparently in the OAuth2SessionService layer - 
 ```yaml
 # config.yaml
 encryption:
-  key_encryption_key: "arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+  aws_kms:
+    key_arn: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN}
 ```
 
-**For Development (Environment Variable):**
+**For Development (Memory backend):**
+
+`.env.local` files do not evaluate shell command substitution. Paste a generated base64 key when editing the file directly.
+
+```dotenv
+# .env.local
+IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=base64-encoded-32-byte-key
+```
 
 ```bash
-# .env.local
-ENCRYPTION_KEK=$(openssl rand -base64 32)
-export ENCRYPTION_KEK
+# shell
+export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY="$(openssl rand -base64 32)"
 ```
 
 ```yaml
 # config.yaml
 encryption:
-  key_encryption_key: "${ENCRYPTION_KEK}"
+  memory:
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
 ```
 
 ### 2. Initialize Application
 
-The application builder automatically initializes encryption based on configuration:
+The application builder automatically initializes encryption from the configured
+backend:
 
 ```go
 // From internal/app/builder.go - automatic initialization
-adapter, manager, err := aws.NewAWSEncryption(
-    config.EncryptionKeyEncryptionKey,
-    config.EncryptionDynamoDBTableName,
-    config.EncryptionBranchKeyTTL,
-)
+encryptor, branchKeyManager, err := awsencryption.NewEncryptionAdapter(&config.Encryption)
+if err != nil {
+    return nil, fmt.Errorf("failed to initialize encryption adapter: %w", err)
+}
 ```
 
 ### 3. Use OAuth2SessionService
@@ -99,6 +107,7 @@ aws kms create-key \
 ```
 
 Output example:
+
 ```
 KeyId: arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012
 ```
@@ -125,9 +134,10 @@ aws kms create-grant \
 ```yaml
 # config.yaml
 encryption:
-  key_encryption_key: "arn:aws:kms:eu-central-1:123456789012:alias/identity-broker-encryption"
-  dynamodb_table_name: "IdentityBrokerEncryptionBranchKeys"
-  branch_key_ttl: "1h"
+  aws_kms:
+    key_arn: "arn:aws:kms:eu-central-1:123456789012:alias/identity-broker-encryption"
+    dynamodb_table_name: "IdentityBrokerEncryptionBranchKeys"
+    branch_key_ttl: "1h"
 ```
 
 ### Environment Variable Setup (Development)
@@ -136,27 +146,32 @@ encryption:
 
 ```bash
 # Using OpenSSL
-ENCRYPTION_KEK=$(openssl rand -base64 32)
+IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=$(openssl rand -base64 32)
 
 # Using Python
-ENCRYPTION_KEK=$(python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())")
+IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=$(python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())")
 
 # Using Go
-ENCRYPTION_KEK=$(go run -c 'package main; import ("crypto/rand"; "encoding/base64"; "fmt"; "os"); func main() { key := make([]byte, 32); rand.Read(key); fmt.Println(base64.StdEncoding.EncodeToString(key)) }')
+IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=$(go run -c 'package main; import ("crypto/rand"; "encoding/base64"; "fmt"; "os"); func main() { key := make([]byte, 32); rand.Read(key); fmt.Println(base64.StdEncoding.EncodeToString(key)) }')
 ```
 
 #### Step 2: Configure Identity Broker
 
-```bash
+```dotenv
 # .env.local
-export ENCRYPTION_KEK="base64-encoded-32-byte-key"
-IDENTITY_BROKER_ENCRYPTION_KEY='${ENCRYPTION_KEK}'
+IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=base64-encoded-32-byte-key
+```
+
+```bash
+# shell
+export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY="$(openssl rand -base64 32)"
 ```
 
 ```yaml
 # config.yaml
 encryption:
-  key_encryption_key: "${ENCRYPTION_KEK}"
+  memory:
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
 ```
 
 ## Service Integration
@@ -287,21 +302,23 @@ if err != nil {
 **Error**: `kek_unavailable: KMS key not accessible`
 
 **Solution**:
+
 1. Verify KMS key ARN is correct in configuration
 2. Verify IAM role has `kms:DescribeKey` permission
 3. Check KMS key exists in the specified region
 
 #### Environment Variable Not Set
 
-**Error**: `kek_unavailable: ENCRYPTION_KEK environment variable not set`
+**Error**: `kek_unavailable: encryption key material is empty`
 
 **Solution**:
+
 ```bash
 # Generate and export the key
-export ENCRYPTION_KEK=$(openssl rand -base64 32)
+export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=$(openssl rand -base64 32)
 
 # Verify it's set
-echo $ENCRYPTION_KEK
+echo $IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY
 ```
 
 #### Context Mismatch on Decryption
@@ -309,6 +326,7 @@ echo $ENCRYPTION_KEK
 **Error**: `context_mismatch: context verification failed during decryption`
 
 **Solution**:
+
 - Ensure decryption context matches encryption context
 - Tokens encrypted for service A cannot be decrypted with service B context
 - Check service_id in encryption context
@@ -374,6 +392,7 @@ func TestEncryptionWithRealAdapter(t *testing.T) {
 ### E2E Tests
 
 See `tests/e2e/encryption_vault_raw_test.go` for comprehensive E2E test scenarios covering:
+
 - Envelope encryption with context binding
 - AWS KMS storage
 - Environment variable KEK injection
@@ -388,6 +407,7 @@ See `tests/e2e/encryption_vault_raw_test.go` for comprehensive E2E test scenario
 **Cause**: Encryption adapter failed to initialize at startup
 
 **Solution**:
+
 1. Check KEK configuration is valid (AWS KMS ARN or environment variable)
 2. Verify AWS credentials are available
 3. Verify environment variable is set if using env var mode
@@ -398,6 +418,7 @@ See `tests/e2e/encryption_vault_raw_test.go` for comprehensive E2E test scenario
 **Cause**: AWS KMS key cannot be accessed
 
 **Solution**:
+
 1. Verify KMS key exists in the specified region
 2. Verify IAM role has required permissions
 3. Check AWS region configuration
@@ -408,6 +429,7 @@ See `tests/e2e/encryption_vault_raw_test.go` for comprehensive E2E test scenario
 **Cause**: Token was encrypted with different context
 
 **Solution**:
+
 1. Ensure encryption and decryption use the same service_id
 2. Check if token is being used for a different service
 3. Verify encryption context is built correctly
@@ -417,6 +439,7 @@ See `tests/e2e/encryption_vault_raw_test.go` for comprehensive E2E test scenario
 **Cause**: AWS KMS latency or DynamoDB caching issues
 
 **Solution**:
+
 1. Check AWS KMS CloudTrail logs for throttling
 2. Increase branch key TTL if cache eviction is frequent
 3. Consider DynamoDB provisioned capacity
@@ -427,6 +450,7 @@ See `tests/e2e/encryption_vault_raw_test.go` for comprehensive E2E test scenario
 **Cause**: Different KEK being used after restart
 
 **Solution**:
+
 1. Verify KEK configuration is identical
 2. Verify environment variable hasn't changed
 3. Check AWS KMS key hasn't been rotated to incompatible version

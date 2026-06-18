@@ -77,6 +77,237 @@ func TestCurrentEncryptionDocsUseUnifiedAWSemulatorNarrative(t *testing.T) {
 	}
 }
 
+func TestEncryptionConfigDocsUseBackendExplicitContract(t *testing.T) {
+	cases := []struct {
+		path           string
+		mustContain    []string
+		mustNotContain []string
+	}{
+		{
+			path:           "config.yaml",
+			mustContain:    []string{"IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY"},
+			mustNotContain: []string{"IDENTITY_BROKER_ENCRYPTION_KEY"},
+		},
+		{
+			path:           "config.docker.yaml",
+			mustContain:    []string{"IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY"},
+			mustNotContain: []string{"IDENTITY_BROKER_ENCRYPTION_KEY"},
+		},
+		{
+			path:           "docker-compose.yml",
+			mustContain:    []string{"IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}"},
+			mustNotContain: []string{"IDENTITY_BROKER_ENCRYPTION_KEY=${IDENTITY_BROKER_ENCRYPTION_KEY}"},
+		},
+		{
+			path:           "justfile",
+			mustContain:    []string{"IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=`./scripts/generate-jwe-key.sh`"},
+			mustNotContain: []string{"IDENTITY_BROKER_ENCRYPTION_KEY=`./scripts/generate-jwe-key.sh`"},
+		},
+		{
+			path: "docs/configuration.md",
+			mustContain: []string{
+				"encryption.aws_kms.key_arn",
+				"encryption.memory.raw_key",
+				"IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN",
+				"IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY",
+				"exactly one of `encryption.aws_kms` or `encryption.memory`",
+			},
+			mustNotContain: []string{"| `encryption.key`", "key_encryption_key:", "IDENTITY_BROKER_ENCRYPTION_KEY"},
+		},
+		{
+			path: "docs/ENCRYPTION_INTEGRATION_GUIDE.md",
+			mustContain: []string{
+				"aws_kms:",
+				"memory:",
+				"IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY",
+				"NewEncryptionAdapter",
+			},
+			mustNotContain: []string{"key_encryption_key:", "IDENTITY_BROKER_ENCRYPTION_KEY", "EncryptionKeyEncryptionKey"},
+		},
+		{
+			path:           "ARCHITECTURE.md",
+			mustContain:    []string{"encryption.aws_kms.key_arn", "encryption.memory.raw_key"},
+			mustNotContain: []string{"Configuration: `encryption.key:"},
+		},
+		{
+			path:           "examples/config/encryption-env-var.yaml",
+			mustContain:    []string{"raw_key: \"${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}\"", "IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY"},
+			mustNotContain: []string{"raw_key: \"${ENCRYPTION_KEK}\"", "export ENCRYPTION_KEK", "set ENCRYPTION_KEK"},
+		},
+		{
+			path:           "examples/config/encryption-memory.yaml",
+			mustContain:    []string{"raw_key: \"${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}\"", "export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=\"$(openssl rand -base64 32)\""},
+			mustNotContain: []string{"raw_key: \"${ENCRYPTION_KEK}\"", "export ENCRYPTION_KEK"},
+		},
+		{
+			path:           "internal/adapters/encryption/aws/adapter.go",
+			mustContain:    []string{"encryption.memory.raw_key", "encryption key material is empty", "failed to decode encryption key material"},
+			mustNotContain: []string{"YAML: encryption.key:", "key_encryption_key is empty", "failed to decode key_encryption_key"},
+		},
+		{
+			path: "examples/config/config.aws-production-advanced.yaml",
+			mustContain: []string{
+				"IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_REGION",
+				"IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ASSUME_ROLE_ARN",
+				"IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KMS_ENDPOINT",
+				"IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_ENDPOINT",
+			},
+			mustNotContain: []string{
+				"IDENTITY_BROKER_ENCRYPTION_DYNAMODB_REGION",
+				"IDENTITY_BROKER_ENCRYPTION_IAM_ROLE_ARN",
+				"IDENTITY_BROKER_KMS_ENDPOINT",
+				"IDENTITY_BROKER_DYNAMODB_ENDPOINT",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			content, err := os.ReadFile(repoPath(t, tc.path))
+			require.NoError(t, err)
+
+			text := string(content)
+			for _, want := range tc.mustContain {
+				assert.Contains(t, text, want)
+			}
+			for _, forbidden := range tc.mustNotContain {
+				assert.NotContains(t, text, forbidden)
+			}
+		})
+	}
+}
+
+func TestEncryptionTimeoutDocsDescribeOperationScope(t *testing.T) {
+	cases := []struct {
+		path           string
+		mustContain    []string
+		mustNotContain []string
+	}{
+		{
+			path:           "docs/operations/deployment-checklist.md",
+			mustContain:    []string{"IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TIMEOUT", "encrypt/decrypt and branch-key operations"},
+			mustNotContain: []string{"IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_READ_TIMEOUT", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_WRITE_TIMEOUT"},
+		},
+		{
+			path:           "examples/config/config.aws-production-advanced.yaml",
+			mustContain:    []string{"all AWS service calls within an encryption operation"},
+			mustNotContain: []string{"Timeout configuration for DynamoDB operations."},
+		},
+		{
+			path:           "examples/config/encryption-aws-kms.yaml",
+			mustContain:    []string{"all AWS service calls", "encryption operation"},
+			mustNotContain: []string{"Context timeout applied to each DynamoDB operation"},
+		},
+		{
+			path:           "internal/adapters/encryption/aws/adapter.go",
+			mustContain:    []string{"full top-level encryption operation"},
+			mustNotContain: []string{"per-operation DynamoDB timeout"},
+		},
+		{
+			path:           "internal/adapters/encryption/aws/keystore.go",
+			mustContain:    []string{"timeout applied to the full branch-key operation"},
+			mustNotContain: []string{"timeout applied to each DynamoDB operation"},
+		},
+		{
+			path:           "internal/adapters/encryption/aws/config.go",
+			mustContain:    []string{"named dynamodb_timeout value from config", "full top-level AWS encryption operations"},
+			mustNotContain: []string{"parses the DynamoDB context timeout duration"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			content, err := os.ReadFile(repoPath(t, tc.path))
+			require.NoError(t, err)
+
+			text := string(content)
+			for _, want := range tc.mustContain {
+				assert.Contains(t, text, want)
+			}
+			for _, forbidden := range tc.mustNotContain {
+				assert.NotContains(t, text, forbidden)
+			}
+		})
+	}
+}
+
+func TestHistoricalEncryptionDocsCarrySupersessionNotice(t *testing.T) {
+	paths := []string{
+		"adrs/009-envelope-encryption-design.md",
+		"specs/012-aws-encryption-vault/spec.md",
+		"specs/012-aws-encryption-vault/contracts/configuration.md",
+		"specs/012-aws-encryption-vault/contracts/aws-kms-architecture.md",
+		"specs/012-aws-encryption-vault/contracts/encryption-port.md",
+		"specs/012-aws-encryption-vault/contracts/error-contract.md",
+		"specs/012-aws-encryption-vault/quickstart.md",
+		"specs/012-aws-encryption-vault/plan.md",
+		"specs/012-aws-encryption-vault/research.md",
+		"specs/012-aws-encryption-vault/data-model.md",
+		"specs/012-aws-encryption-vault/tasks.md",
+		"specs/006-domain-model-apis/implementation-plan.md",
+	}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			content, err := os.ReadFile(repoPath(t, path))
+			require.NoError(t, err)
+
+			text := string(content)
+			assert.Contains(t, text, "superseded configuration")
+			assert.Contains(t, text, "encryption.aws_kms")
+			assert.Contains(t, text, "encryption.memory")
+		})
+	}
+}
+
+func TestEnvLocalExamplesUseLiteralValues(t *testing.T) {
+	cases := []struct {
+		path           string
+		mustContain    []string
+		mustNotContain []string
+	}{
+		{
+			path: "docs/configuration.md",
+			mustContain: []string{
+				"values are literal strings; paste a generated base64 key",
+				"# .env.local\nIDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=base64-encoded-32-byte-key",
+				"# shell\nexport IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=\"$(openssl rand -base64 32)\"",
+			},
+			mustNotContain: []string{
+				"# .env.local\nIDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=$(openssl rand -base64 32)",
+				"# .env.local\nexport IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=",
+			},
+		},
+		{
+			path: "docs/ENCRYPTION_INTEGRATION_GUIDE.md",
+			mustContain: []string{
+				"do not evaluate shell command substitution",
+				"# .env.local\nIDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=base64-encoded-32-byte-key",
+				"# shell\nexport IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=\"$(openssl rand -base64 32)\"",
+			},
+			mustNotContain: []string{
+				"# .env.local\nIDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=$(openssl rand -base64 32)",
+				"# .env.local\nexport IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			content, err := os.ReadFile(repoPath(t, tc.path))
+			require.NoError(t, err)
+
+			text := string(content)
+			for _, want := range tc.mustContain {
+				assert.Contains(t, text, want)
+			}
+			for _, forbidden := range tc.mustNotContain {
+				assert.NotContains(t, text, forbidden)
+			}
+		})
+	}
+}
+
 func repoPath(t *testing.T, relativePath string) string {
 	t.Helper()
 

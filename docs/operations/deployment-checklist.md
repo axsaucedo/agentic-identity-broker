@@ -14,7 +14,6 @@
 - [ ] CloudFormation template reviewed (cdk diff)
 - [ ] Backup/rollback plan documented
 
-
 ## Deployment Steps
 
 ### Kubernetes IRSA Deployment (Recommended)
@@ -53,16 +52,17 @@ npx cdk deploy \
   -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 ```
 
-
 ## Post-Deployment Verification
 
 - [ ] **Verify KMS key created**:
+
   ```bash
   aws kms describe-key --key-id alias/agentic-identity-broker/prod/token-vault-kek
   # Expected: KeyState=Enabled, KeyRotationEnabled=true
   ```
 
 - [ ] **Verify DynamoDB table created**:
+
   ```bash
   aws dynamodb describe-table --table-name AgenticIdentityBrokerBranchKeys-prod
   # Expected: TableStatus=ACTIVE
@@ -71,6 +71,7 @@ npx cdk deploy \
   ```
 
 - [ ] **Verify IAM role created**:
+
   ```bash
   # IAM role name is created by CDK with the format: AgenticIdentityBrokerEncryptionRole-{env}
   # NOTE: Role name includes "-Role" suffix (different from stack name AgenticIdentityBrokerEncryptionVault-{env})
@@ -80,6 +81,7 @@ npx cdk deploy \
   ```
 
 - [ ] **Extract stack outputs**:
+
   ```bash
   STACK_NAME="AgenticIdentityBrokerEncryptionVault-prod"
 
@@ -92,6 +94,7 @@ npx cdk deploy \
 ### For Kubernetes IRSA Deployments
 
 - [ ] **Verify IAM role trust policy includes federated principal**:
+
   ```bash
   IAM_ROLE_NAME=$(aws cloudformation describe-stacks \
     --stack-name AgenticIdentityBrokerEncryptionVault-prod \
@@ -107,6 +110,7 @@ npx cdk deploy \
   ```
 
 - [ ] **Extract stack outputs for Helm configuration**:
+
   ```bash
   # Extract outputs needed for Helm values
   export KMS_KEY_ARN=$(aws cloudformation describe-stacks \
@@ -144,11 +148,13 @@ npx cdk deploy \
   ```
 
 - [ ] **Create Kubernetes namespace**:
+
   ```bash
   kubectl create namespace ${K8S_NAMESPACE}
   ```
 
 - [ ] **Deploy with Helm (IRSA configured)**:
+
   ```bash
   helm install broker ./charts/agentic-identity-broker \
     -n ${K8S_NAMESPACE} \
@@ -163,6 +169,7 @@ npx cdk deploy \
   ```
 
 - [ ] **Verify ServiceAccount has IRSA annotation**:
+
   ```bash
   kubectl get serviceaccount ${K8S_SERVICE_ACCOUNT} \
     -n ${K8S_NAMESPACE} \
@@ -172,6 +179,7 @@ npx cdk deploy \
   ```
 
 - [ ] **Verify pod can assume IAM role**:
+
   ```bash
   POD_NAME=$(kubectl get pods -n ${K8S_NAMESPACE} \
     -l app.kubernetes.io/name=agentic-identity-broker \
@@ -185,6 +193,7 @@ npx cdk deploy \
   ```
 
 - [ ] **Test encryption functionality**:
+
   ```bash
   # Port-forward to test
   kubectl port-forward -n ${K8S_NAMESPACE} svc/broker-agentic-identity-broker 8000:8000 &
@@ -197,8 +206,8 @@ npx cdk deploy \
     -H "X-Remote-User: testuser@example.com"
   ```
 
-
 - [ ] **Run smoke test** (OAuth2 session management):
+
   ```bash
   # List OAuth2 sessions (verify encryption is working)
   curl -X GET http://localhost:8000/api/third-party/sessions \
@@ -212,6 +221,7 @@ npx cdk deploy \
   **Alternative**: Create a full OAuth2 session flow via `/api/third-party/{serviceId}/oauth2/authorize` and `/api/third-party/{serviceId}/oauth2/callback` endpoints.
 
 - [ ] **Verify CloudWatch alarms created**:
+
   ```bash
   aws cloudwatch describe-alarms \
     --alarm-name-prefix AgenticIdentityBroker-Encryption-prod
@@ -226,6 +236,7 @@ npx cdk deploy \
   The CDK stack creates CloudWatch alarms but does NOT automatically create SNS topics. To receive notifications, either:
 
   **Option A: Create SNS topics and link manually**
+
   ```bash
   # Create SNS topics
   aws sns create-topic --name AgenticIdentityBroker-Encryption-prod-KMS-Alerts
@@ -260,6 +271,7 @@ npx cdk deploy \
 If deployment fails or issues are discovered:
 
 ### Option 1: Automatic Rollback (Default)
+
 ```bash
 # CloudFormation automatically rolls back failed stacks
 # No manual action required - monitors stack events
@@ -268,6 +280,7 @@ aws cloudformation describe-stack-events \
 ```
 
 ### Option 2: Manual Rollback
+
 ```bash
 # Cancel in-progress deployment
 aws cloudformation cancel-update-stack \
@@ -280,6 +293,7 @@ aws cloudformation describe-stacks \
 ```
 
 ### Option 3: Delete Stack (Emergency Only)
+
 ```bash
 # WARNING: This deletes all encryption infrastructure
 # Only use if stack is unrecoverable or in non-production
@@ -300,10 +314,12 @@ The CDK stack configures KMS key deletion windows based on environment:
 - **Non-production (dev/staging)**: 7-day pending deletion window
 
 This means if you delete the KMS key:
+
 - In production: You have 30 days to recover it before permanent deletion
 - In non-production: You have 7 days to recover it before permanent deletion
 
 To recover a key during the deletion window:
+
 ```bash
 aws kms cancel-key-deletion --key-id alias/agentic-identity-broker/prod/token-vault-kek
 ```
@@ -316,6 +332,7 @@ aws kms cancel-key-deletion --key-id alias/agentic-identity-broker/prod/token-va
 - **Deletion Protection**: **Enabled for production only**
 
 To enable PITR or deletion protection for non-production:
+
 ```bash
 # Enable PITR
 aws dynamodb update-continuous-backups \
@@ -343,17 +360,19 @@ aws dynamodb update-table \
 All AWS KMS configuration can be set via environment variables:
 
 ### Key Encryption Setup
+
 - `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN` - **Required**. KMS CMK ARN for envelope encryption (from CDK stack output)
 - `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME` - DynamoDB table name for branch key caching (from CDK stack output)
 - `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL` - TTL for cached branch keys (default: "1h")
 
 ### DynamoDB Configuration
+
 - `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_REGION` - AWS region for DynamoDB operations
-- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_READ_TIMEOUT` - DynamoDB read timeout (default: "5s")
-- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_WRITE_TIMEOUT` - DynamoDB write timeout (default: "5s")
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TIMEOUT` - Per-operation timeout covering encrypt/decrypt and branch-key operations (optional)
 - `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_ENDPOINT` - Custom DynamoDB endpoint (for AWS emulator testing)
 
 ### AWS SDK Configuration
+
 - `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_REGION` - AWS region for KMS operations
 - `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ENDPOINT` - Custom KMS endpoint URL (for AWS emulator testing)
 - `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_PROFILE` - AWS profile for credentials (~/.aws/credentials)

@@ -12,9 +12,9 @@ server:
   enduser:
     port: 8000
     bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
-    # use port 3000 which points to the Vite dev server for local development
-    public_url: http://localhost:3000 
-    # Authentication - preauth mode (trust principals from reverse proxy headers)
+    # Use port 3000, which points to the Vite dev server locally.
+    public_url: http://localhost:3000
+    # Pre-auth mode trusts principals from reverse proxy headers.
     authentication:
       preauth:
         principal_header_name: X-Remote-User
@@ -27,8 +27,9 @@ server:
   admin:
     port: 14000
     bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
-    public_url: http://localhost:14000 # Optional, may not be needed for admin server
-    # Authentication - preauth mode (trust principals from reverse proxy headers)
+    # Optional for the admin server in local development.
+    public_url: http://localhost:14000
+    # Pre-auth mode trusts principals from reverse proxy headers.
     authentication:
       preauth:
         principal_header_name: X-Remote-User
@@ -49,8 +50,8 @@ encryption:
     # Base64-encoded 32-byte AES-256 key (REQUIRED)
     # Must be exactly 32 bytes (256 bits) when base64-decoded
     # Generate with: openssl rand -base64 32
-    # SECURITY: This field contains sensitive key material and will be redacted in logs
-    raw_key: ${IDENTITY_BROKER_ENCRYPTION_KEY}
+    # SECURITY: Sensitive key material is redacted in logs.
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
 
 # OAuth2 Authorization Server (upstream provider)
 oauth2_authorization_server:

@@ -4,6 +4,14 @@
 
 **Purpose**: Defines error types, categorization, and handling patterns for encryption operations. Enables fail-closed security with clear error diagnostics.
 
+> **Implementation note (superseded configuration):**
+> This document records the original single-field encryption proposal
+> (`encryption.key` / `key_encryption_key` with `${ENCRYPTION_KEK}`).
+> The shipped implementation uses a backend-explicit contract:
+> `encryption.aws_kms` or `encryption.memory`.
+> See `internal/ports/config.go` and `docs/configuration.md`
+> for the live schema.
+
 ---
 
 ## Error Type Definitions
@@ -63,6 +71,7 @@ func (e *EncryptionError) Is(target error) bool {
 **When**: Encryption operation fails during token encryption
 
 **Causes**:
+
 - DEK generation failure (insufficient entropy)
 - AESGCMSIV encryption failure
 - AWS SDK internal error
@@ -70,6 +79,7 @@ func (e *EncryptionError) Is(target error) bool {
 - Context timeout
 
 **Example**:
+
 ```go
 EncryptionError{
     Kind:    ErrorKindEncryptionFailed,
@@ -79,6 +89,7 @@ EncryptionError{
 ```
 
 **Service Layer Handling**:
+
 ```go
 _, err := s.encryptionPort.Encrypt(ctx, token, context)
 if err != nil {
@@ -95,6 +106,7 @@ if err != nil {
 ```
 
 **Logging**:
+
 ```
 [ERROR] Session encryption failed
         session_id=<id>
@@ -111,6 +123,7 @@ if err != nil {
 **When**: Decryption operation fails during token retrieval
 
 **Causes**:
+
 - DEK unwrapping failure (corrupted wrapped DEK)
 - AESGCMSIV decryption failure
 - AWS KMS operation failure
@@ -119,6 +132,7 @@ if err != nil {
 - Context timeout
 
 **Example**:
+
 ```go
 EncryptionError{
     Kind:    ErrorKindDecryptionFailed,
@@ -128,6 +142,7 @@ EncryptionError{
 ```
 
 **Service Layer Handling**:
+
 ```go
 plaintext, err := s.encryptionPort.Decrypt(ctx, ciphertext, context)
 if err != nil {
@@ -144,6 +159,7 @@ if err != nil {
 ```
 
 **Logging**:
+
 ```
 [ERROR] Session decryption failed
         session_id=<id>
@@ -160,11 +176,13 @@ if err != nil {
 **When**: Decryption context doesn't match encryption context (AAD verification failure)
 
 **Causes**:
+
 - Wrong `service_id` provided to Decrypt
 - Ciphertext encrypted with different service, now attempting cross-service decryption
 - Context binding enforces service isolation
 
 **Example**:
+
 ```go
 // Encrypted with service_id="oauth2"
 ciphertext, _ := port.Encrypt(ctx, token, map[string]string{"service_id": "oauth2"})
@@ -175,6 +193,7 @@ plaintext, err := port.Decrypt(ctx, ciphertext, map[string]string{"service_id": 
 ```
 
 **Service Layer Handling**:
+
 ```go
 plaintext, err := s.encryptionPort.Decrypt(ctx, ciphertext, wrongContext)
 if err != nil {
@@ -196,6 +215,7 @@ if err != nil {
 ```
 
 **Logging**:
+
 ```
 [WARN] Context mismatch detected (security event)
        session_id=<id>
@@ -212,12 +232,14 @@ if err != nil {
 **When**: AESGCMSIV authentication tag verification fails (ciphertext tampered)
 
 **Causes**:
+
 - Ciphertext corrupted in storage or transit
 - Bit flip in BYTEA column
 - Intentional tampering attempt
 - Memory corruption during transmission
 
 **Example**:
+
 ```go
 // Original ciphertext
 ciphertext, _ := port.Encrypt(ctx, token, context)
@@ -231,6 +253,7 @@ plaintext, err := port.Decrypt(ctx, tampered, context)
 ```
 
 **Service Layer Handling**:
+
 ```go
 plaintext, err := s.encryptionPort.Decrypt(ctx, ciphertext, context)
 if err != nil {
@@ -253,6 +276,7 @@ if err != nil {
 ```
 
 **Logging**:
+
 ```
 [ALERT] Token integrity violation detected (SECURITY EVENT)
         session_id=<id>
@@ -269,6 +293,7 @@ if err != nil {
 **When**: Key Encryption Key is not accessible
 
 **Causes** (AWS KMS):
+
 - AWS KMS service unavailable
 - Network connectivity failure
 - IAM permissions missing (`kms:Decrypt`, `kms:GenerateDataKey`)
@@ -276,10 +301,12 @@ if err != nil {
 - AWS credentials expired
 
 **Causes** (Environment Variable):
+
 - ENCRYPTION_KEK environment variable not set at initialization
 - Key material corrupted or invalid
 
 **Example**:
+
 ```go
 // AWS KMS unreachable
 adapter := NewAWSEncryptionAdapter("arn:aws:kms:us-east-1:123456789012:key/...")
@@ -288,6 +315,7 @@ plaintext, err := adapter.Decrypt(ctx, ciphertext, context)
 ```
 
 **Service Layer Handling**:
+
 ```go
 plaintext, err := s.encryptionPort.Decrypt(ctx, ciphertext, context)
 if err != nil {
@@ -312,6 +340,7 @@ if err != nil {
 ```
 
 **Logging**:
+
 ```
 [ERROR] KEK unavailable
         error_source=aws_kms

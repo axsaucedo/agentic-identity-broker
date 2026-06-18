@@ -35,6 +35,7 @@ The Identity Broker loads configuration from four sources (in order of precedenc
 ### 1. Built-in Defaults
 
 Default values applied if no other source provides a value:
+
 - `log.level`: `info`
 - `log.format`: `text`
 
@@ -48,6 +49,7 @@ Environment-specific files loaded automatically based on the `GO_ENV` environmen
 4. `.env.{GO_ENV}.local` - Environment-specific local overrides (gitignored)
 
 **Example** `.env`:
+
 ```bash
 # Base configuration
 IDENTITY_BROKER_LOG_LEVEL=info
@@ -55,6 +57,7 @@ IDENTITY_BROKER_LOG_FORMAT=text
 ```
 
 **Example** `.env.production`:
+
 ```bash
 # Production overrides
 IDENTITY_BROKER_LOG_LEVEL=warn
@@ -66,11 +69,13 @@ IDENTITY_BROKER_LOG_FORMAT=json
 Optional YAML file for structured configuration. Supports environment variable substitution using `${VAR_NAME}` syntax.
 
 **File Location** (in order of precedence):
+
 1. Path from `--config` CLI flag
 2. Path from `IDENTITY_BROKER_CONFIG_PATH` environment variable
 3. `config.yaml` in current directory
 
 **Example** `config.yaml`:
+
 ```yaml
 log:
   level: ${IDENTITY_BROKER_LOG_LEVEL}
@@ -95,6 +100,7 @@ CLI Flags > YAML > .env Files > Defaults
 ```
 
 **Example**:
+
 - Defaults set `log.level=info`
 - `.env` sets `IDENTITY_BROKER_LOG_LEVEL=warn`
 - `config.yaml` sets `log.level=${IDENTITY_BROKER_LOG_LEVEL}` (expands to `warn`)
@@ -107,6 +113,7 @@ CLI Flags > YAML > .env Files > Defaults
 Use the `GO_ENV` environment variable to control which .env files are loaded:
 
 ### Development (default)
+
 ```bash
 # GO_ENV defaults to "development" if not set
 agentic-identity-broker
@@ -115,6 +122,7 @@ agentic-identity-broker
 ```
 
 ### Production
+
 ```bash
 GO_ENV=production agentic-identity-broker
 
@@ -122,6 +130,7 @@ GO_ENV=production agentic-identity-broker
 ```
 
 ### Staging
+
 ```bash
 GO_ENV=staging agentic-identity-broker
 
@@ -169,6 +178,7 @@ log:
 ### Security Validation
 
 The following patterns are **rejected** for security:
+
 - Command substitution: `$(command)` or backticks
 - Shell metacharacters: `;`, `|`, `&`, `>`, `<`
 - These protections prevent command injection attacks
@@ -218,20 +228,30 @@ This section provides a comprehensive quick-reference table for all configuratio
 
 #### Encryption Configuration
 
+The broker uses a backend-explicit encryption contract.
+Configure exactly one of `encryption.aws_kms` or `encryption.memory`.
+
 | Option | Type | Default Value | Valid Values | Required? | Environment Variable | CLI Flag | Description |
-|--------|------|---------------|--------------|-----------|----------------------|----------|-------------|
-| `encryption.key` | string | - | AWS KMS ARN or `${ENV_VAR}` | Yes | `IDENTITY_BROKER_ENCRYPTION_KEY` | N/A | Key Encryption Key (KEK) for OAuth token envelope encryption. Use AWS KMS ARN for production or `${ENCRYPTION_KEK}` for development. Sensitive - redacted in logs. |
+| -------- | ------ | --------------- | -------------- | ----------- | ---------------------- | ---------- | ------------- |
+| `encryption.aws_kms.key_arn` | string | - | AWS KMS key ARN or alias ARN | Yes when `encryption.aws_kms` is set | `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN` | N/A | Customer-managed KMS key for the AWS KMS backend. |
+| `encryption.aws_kms.dynamodb_table_name` | string | `IdentityBrokerEncryptionBranchKeys` | DynamoDB table name | No | `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME` | N/A | DynamoDB table used to cache hierarchical branch keys. |
+| `encryption.aws_kms.branch_key_ttl` | duration string | `1h` | Go duration string | No | `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL` | N/A | Lifetime of cached branch keys in DynamoDB. |
+| `encryption.aws_kms.dynamodb_region` | string | AWS SDK default region | AWS region | No | `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_REGION` | N/A | Optional region override for DynamoDB branch-key storage. |
+| `encryption.aws_kms.dynamodb_timeout` | duration string | - | Positive Go duration string | No | `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TIMEOUT` | N/A | Optional timeout applied to AWS-backed encryption operations. |
+| `encryption.memory.raw_key` | string | - | Base64-encoded 32-byte AES-256 key | Yes when `encryption.memory` is set | `IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY` | N/A | Raw AES key for the in-memory backend. Sensitive - redacted in logs. |
 
 **Encryption Configuration Notes:**
-- AWS KMS ARN format: `arn:aws:kms:eu-central-1:123456789012:key/key-id` or `arn:aws:kms:eu-central-1:123456789012:alias/alias-name`
-- Environment variable reference: `${ENCRYPTION_KEK}` must resolve to a base64-encoded 256-bit AES key
-- Application validates KMS key accessibility on startup (AWS KMS mode) or environment variable presence (env var mode)
-- Startup fails with clear error if KEK is unavailable or inaccessible
-- Tokens encrypted with old KEK remain decryptable after KEK rotation
+
+- Exactly one of `encryption.aws_kms` or `encryption.memory` must be configured.
+- `encryption.aws_kms.key_arn` accepts KMS key ARNs and alias ARNs.
+- `encryption.memory.raw_key` must decode to exactly 32 bytes.
+- Startup fails closed if encryption configuration is missing or invalid.
+- Tokens encrypted with old KEK material remain decryptable as long as the corresponding backend material remains available.
 
 #### Server Configuration
 
 The Identity Broker runs two independent HTTP servers on separate ports:
+
 - **End-User Server**: Public-facing API for authentication and identity operations (default port 8000)
 - **Admin Server**: Internal management API for monitoring and administration (default port 14000)
 
@@ -244,6 +264,7 @@ The Identity Broker runs two independent HTTP servers on separate ports:
 | `server.shutdown.timeout` | duration | `30s` | 1s-5m | No | `IDENTITY_BROKER_SERVER_SHUTDOWN_TIMEOUT` | `--server.shutdown.timeout` | Maximum time to wait for in-flight requests to complete during graceful shutdown. Use longer timeouts (60s) in production. |
 
 **Server Configuration Notes:**
+
 - Both servers start atomically - if one fails to bind, both are stopped
 - Servers run independently after startup - failure of one doesn't affect the other
 - Health endpoints are available on both servers at `/health`
@@ -261,10 +282,12 @@ Storage configuration controls the persistence backend and steady-state timeout 
 | `storage.timeouts.write` | duration | `10s` | Positive duration | No | N/A | N/A | Timeout for steady-state storage write operations. |
 
 **Storage Configuration Notes:**
+
 - `storage.timeouts.read` and `storage.timeouts.write` cover steady-state repository operations.
 - The signing-key startup budget now lives at `oauth2_authorization_server.local.signing_keys.bootstrap_timeout` because it applies to local/hybrid token issuance rather than generic storage behavior.
 
 **Example YAML:**
+
 ```yaml
 storage:
   backend: postgres
@@ -285,6 +308,7 @@ The Identity Broker supports flexible network binding:
 - **Automatic Fallback**: If IPv6 binding fails, automatically falls back to IPv4 with a warning log
 
 **Example YAML configurations** are provided in `examples/config/`:
+
 - `config.ipv6-only.yaml` - Dual-stack with IPv6 preference
 - `config.ipv4-only.yaml` - IPv4-only configuration
 
@@ -299,6 +323,7 @@ The broker implements graceful shutdown to ensure requests complete cleanly:
 5. Process exits cleanly
 
 **Example:**
+
 ```bash
 # Start broker
 agentic-identity-broker &
@@ -320,6 +345,7 @@ Pre-authentication mode allows the Identity Broker to trust authenticated princi
 | `server.admin.authentication.preauth.principal_header_name` | string | `X-Remote-User` | Any HTTP header name | No | `IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME` | HTTP header containing the authenticated user principal for admin server |
 
 **Pre-Authentication Configuration Notes:**
+
 - The principal header must be set by a **trusted reverse proxy only** (nginx, Traefik, HAProxy, etc.)
 - Never expose the Identity Broker to untrusted networks - always use a reverse proxy for authentication
 - The principal value is trimmed of leading/trailing whitespace
@@ -330,6 +356,7 @@ Pre-authentication mode allows the Identity Broker to trust authenticated princi
 **Example YAML configurations:**
 
 Development (custom header):
+
 ```yaml
 server:
   enduser:
@@ -347,6 +374,7 @@ server:
 ```
 
 Production (environment variable):
+
 ```yaml
 server:
   enduser:
@@ -364,11 +392,13 @@ server:
 ```
 
 Then set the environment variable:
+
 ```bash
 export IDENTITY_BROKER_PRINCIPAL_HEADER="X-Authenticated-User"
 ```
 
 **Nginx Reverse Proxy Example:**
+
 ```nginx
 upstream identity_broker {
     server localhost:8000;
@@ -394,6 +424,7 @@ server {
 ```
 
 **Notes:**
+
 - All configuration options have built-in defaults and are optional unless marked "Required"
 - Environment variables follow the pattern: `IDENTITY_BROKER_{SECTION}_{KEY}` (uppercased)
 - CLI flags follow the pattern: `--{section}-{key}` (lowercase with hyphens)
@@ -425,6 +456,7 @@ The following configuration sections are planned for future releases. This table
 | `auth.providers` | list | `[]` | Array of provider configs | Yes | N/A | N/A | List of configured identity providers (OAuth, SAML, etc.). |
 
 **Future Options Notes:**
+
 - Options in this table are for planning and design purposes
 - Not yet implemented in the current release
 - Structure may change based on requirements and feedback
@@ -443,6 +475,7 @@ The configuration system follows consistent naming patterns across all sources:
 ### Configuration by Use Case
 
 **Development Environment:**
+
 ```yaml
 log:
   level: debug
@@ -450,6 +483,7 @@ log:
 ```
 
 **Production Environment:**
+
 ```yaml
 log:
   level: warn
@@ -457,6 +491,7 @@ log:
 ```
 
 **Troubleshooting:**
+
 ```bash
 # Temporarily override to debug level
 agentic-identity-broker --log-level debug
@@ -481,6 +516,7 @@ For complete configuration examples and detailed explanations, continue to the [
 **CLI Flag**: `--log-level`
 
 **Examples**:
+
 ```bash
 # .env file
 IDENTITY_BROKER_LOG_LEVEL=debug
@@ -506,6 +542,7 @@ log:
 **CLI Flag**: `--log-format`
 
 **Examples**:
+
 ```bash
 # .env file
 IDENTITY_BROKER_LOG_FORMAT=json
@@ -520,66 +557,99 @@ log:
 
 **Recommendation**: Use `json` format in production for structured logging and log aggregation.
 
-### Encryption Configuration
+### Encryption Backend Configuration
 
-#### encryption.key
+The broker requires encryption in every environment.
+Configure exactly one of `encryption.aws_kms` or `encryption.memory`.
 
-**Description**: Specifies the Key Encryption Key (KEK) for envelope encryption of OAuth2 tokens at rest. Supports two modes: AWS KMS for production deployments, or environment variable injection for development.
+- `encryption.aws_kms` for AWS KMS with hierarchical branch-key caching
+- `encryption.memory` for development/testing with a base64 AES-256 key
 
-**Valid Formats**:
-- AWS KMS ARN: `arn:aws:kms:region:account:key/key-id` or `arn:aws:kms:region:account:alias/alias-name`
-- Base64-encoded AES key: Raw base64-encoded 256-bit (32-byte) key (can be populated from environment variable)
+There are no CLI flags for encryption configuration.
 
-**Default**: None (required for token encryption; startup fails if not provided and encryption is enabled)
+#### encryption.aws_kms
 
-**Environment Variable**: `IDENTITY_BROKER_ENCRYPTION_KEY`
+**Description**: Configures the AWS KMS backend for envelope encryption.
 
-**CLI Flag**: None (only configurable via YAML or environment)
+**Required field**: `encryption.aws_kms.key_arn`
 
-**Examples**:
+**Core environment variables**:
 
-**Production (AWS KMS)**:
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN`
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME`
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL`
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_REGION`
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TIMEOUT`
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_REGION`
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ASSUME_ROLE_ARN`
+
+**Example**:
+
 ```yaml
 # config.yaml - Production deployment
 encryption:
-  key: "arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+  aws_kms:
+    key_arn: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN}
+    dynamodb_table_name: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME:IdentityBrokerEncryptionBranchKeys}
+    branch_key_ttl: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL:1h}
 ```
 
 ```bash
 # .env.production
-IDENTITY_BROKER_ENCRYPTION_KEY=arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012
+IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN=arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012
+IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME=IdentityBrokerEncryptionBranchKeys
+IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL=1h
 ```
 
-**Development (Base64-Encoded Key from Environment Variable)**:
+`key_arn` accepts both KMS key ARNs and alias ARNs.
+
+#### encryption.memory.raw_key
+
+**Description**: Configures the in-memory backend with a base64-encoded 32-byte AES-256 key.
+
+**Environment Variable**: `IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY`
+
+**Example**:
+
+`.env.local` values are literal strings; paste a generated base64 key instead of shell command substitution.
+
+```dotenv
+# .env.local
+IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=base64-encoded-32-byte-key
+```
+
 ```bash
-# .env.local - Development with base64-encoded key in environment variable
-ENCRYPTION_KEK=$(openssl rand -base64 32)
-IDENTITY_BROKER_ENCRYPTION_KEY="${ENCRYPTION_KEK}"
+# shell
+export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY="$(openssl rand -base64 32)"
 ```
 
 ```yaml
-# config.yaml - Development deployment (interpolates ENCRYPTION_KEK from environment)
+# config.yaml - Development deployment
 encryption:
-  key_encryption_key: "${ENCRYPTION_KEK}"
+  memory:
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
 ```
 
 **AWS KMS Setup Instructions**:
 
 1. Create a customer-managed key in AWS KMS:
+
 ```bash
 aws kms create-key \
   --description "Identity Broker OAuth Token Encryption Key" \
   --region eu-central-1
 ```
 
-2. Create an alias for easier reference:
+1. Create an alias for easier reference:
+
 ```bash
 aws kms create-alias \
   --alias-name "alias/identity-broker-encryption" \
   --target-key-id "arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012"
 ```
 
-3. Grant IAM permissions to the Identity Broker service role:
+1. Grant IAM permissions to the Identity Broker service role:
+
 ```bash
 aws kms create-grant \
   --key-id "arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012" \
@@ -587,39 +657,42 @@ aws kms create-grant \
   --operations "Encrypt" "Decrypt" "GenerateDataKey" "DescribeKey"
 ```
 
-4. Reference the key in configuration:
+1. Reference the key in configuration:
+
 ```yaml
 encryption:
-  key_encryption_key: "arn:aws:kms:eu-central-1:123456789012:alias/identity-broker-encryption"
+  aws_kms:
+    key_arn: "arn:aws:kms:eu-central-1:123456789012:alias/identity-broker-encryption"
 ```
 
 **Startup Validation**:
 
-- **AWS KMS mode**: On startup, the application validates that the KMS key is accessible and the service has required permissions. Startup fails with clear error message if validation fails.
-- **Environment variable mode**: On startup, the application validates that the environment variable is set and contains valid base64-encoded key material. Startup fails if not.
+- **AWS KMS backend**: On startup, the application validates that the KMS key is accessible and the service has required permissions. Startup fails with a clear error message if validation fails.
+- **Memory backend**: On startup, the application validates that `IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY` (or the configured YAML value) is present and decodes to a 32-byte key. Startup fails if not.
 
 **Security Considerations**:
 
 - **AWS KMS**: KEK never leaves AWS KMS boundaries. The application only sees encrypted Data Encryption Keys (DEKs). All cryptographic operations happen server-side in KMS.
-- **Environment Variable**: KEK is loaded into application memory at startup.
+- **Memory backend**: KEK material is loaded into application memory at startup.
 - **Rotation**: KMS keys can be rotated without application restart. Old tokens remain decryptable with rotated keys.
-- **Permissions**: Ensure service role has `kms:Decrypt` and `kms:GenerateDataKey` permissions. Overly broad permissions should be avoided.
+- **Permissions**: Ensure the service role has `kms:Decrypt` and `kms:GenerateDataKey` permissions. Overly broad permissions should be avoided.
 
 **Recommendations**:
 
 | Environment | Approach | Configuration |
-|---|---|---|
-| Production | AWS KMS | Use customer-managed key ARN or alias |
-| Staging | AWS KMS | Separate key or AWS KMS key per environment |
-| Development | Environment Variable | `${ENCRYPTION_KEK}` from .env.local |
-| CI/CD | Environment Variable | `${ENCRYPTION_KEK}` from CI/CD secrets |
-| Testing | Environment Variable | Random generated key per test |
+| --- | --- | --- |
+| Production | AWS KMS | `encryption.aws_kms.key_arn` with a customer-managed KMS key |
+| Staging | AWS KMS | Separate AWS KMS key per environment |
+| Development | Memory backend | `encryption.memory.raw_key` from `IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY` |
+| CI/CD | Memory backend | `encryption.memory.raw_key` from CI/CD secrets |
+| Testing | Memory backend | Random generated key per test |
 
 ## Security Best Practices
 
 ### Sensitive Values
 
 Any configuration key starting with `IDENTITY_BROKER_` or containing these keywords is considered sensitive and will be redacted in logs:
+
 - `PASSWORD`
 - `SECRET`
 - `TOKEN`
@@ -628,6 +701,7 @@ Any configuration key starting with `IDENTITY_BROKER_` or containing these keywo
 - `AUTH`
 
 **Example**:
+
 ```bash
 IDENTITY_BROKER_API_KEY=secret123
 DB_PASSWORD=mypassword
@@ -672,6 +746,7 @@ database:
 **Symptom**: Application uses default values instead of your configuration.
 
 **Solutions**:
+
 1. Check file locations - .env files must be in the current directory or use absolute paths
 2. Verify environment variable names start with `IDENTITY_BROKER_`
 3. Check YAML syntax is valid (use `yamllint` or online validator)
@@ -684,6 +759,7 @@ database:
 **Cause**: YAML file references `${VAR_NAME}` but variable doesn't exist in environment.
 
 **Solutions**:
+
 1. Set the environment variable: `export VAR_NAME=value`
 2. Add to .env file: `VAR_NAME=value`
 3. Remove the ${} reference from YAML and use a literal value
@@ -695,6 +771,7 @@ database:
 **Cause**: Configuration value doesn't match expected format or enum values.
 
 **Solutions**:
+
 1. Check error message for expected values (e.g., "expected: debug, info, warn, or error")
 2. Verify spelling and case (values are case-sensitive)
 3. Check for extra whitespace or quotes in values
@@ -767,6 +844,7 @@ For compliance and troubleshooting, check the JSON audit log (first output on st
 **Startup validation**: If `enabled = true` and either `agent_id_param_name` or `agent_id_claim_name` is empty, the broker fails to start with a clear error message.
 
 **Feature disabled (default)**:
+
 ```yaml
 oauth2_authorization_server:
   upstream_issuer_uri: "https://auth.example.com"
@@ -778,6 +856,7 @@ oauth2_authorization_server:
 ```
 
 **Feature enabled**:
+
 ```yaml
 oauth2_authorization_server:
   upstream_issuer_uri: "https://auth.example.com"
@@ -832,6 +911,7 @@ See `examples/config/oauth2-authorization-server.yaml` for a complete configurat
 **Startup validation**: The broker validates configuration at startup and rejects incompatible combinations — proxy-only fields in local mode, local-only fields in proxy mode, or missing sections in hybrid mode.
 
 **Proxy mode**:
+
 ```yaml
 oauth2_authorization_server:
   mode: "proxy"
@@ -844,6 +924,7 @@ oauth2_authorization_server:
 ```
 
 **Local mode**:
+
 ```yaml
 oauth2_authorization_server:
   mode: "local"
@@ -855,6 +936,7 @@ oauth2_authorization_server:
 ```
 
 **Hybrid mode** (proxy and local agents coexist):
+
 ```yaml
 oauth2_authorization_server:
   mode: "hybrid"
@@ -871,6 +953,7 @@ oauth2_authorization_server:
 ```
 
 **Security notes**:
+
 - PKCE is always enforced (S256 only) for authorization code grants. No plaintext challenge method.
 - Client secrets are hashed with Argon2id and never stored in plaintext.
 - Signing key private material is encrypted at rest via `EncryptionPort`.

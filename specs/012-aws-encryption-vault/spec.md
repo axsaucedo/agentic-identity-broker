@@ -5,6 +5,14 @@
 **Status**: Draft
 **Input**: User description: "Standard AWS Encryption Vault (PQC-Enabled by Go 1.24+)"
 
+> **Implementation note (superseded configuration):**
+> This document records the original single-field encryption proposal
+> (`encryption.key` / `key_encryption_key` with `${ENCRYPTION_KEK}`).
+> The shipped implementation uses a backend-explicit contract:
+> `encryption.aws_kms` or `encryption.memory`.
+> See `internal/ports/config.go` and `docs/configuration.md`
+> for the live schema.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Encrypt OAuth Tokens Using Envelope Encryption (Priority: P1)

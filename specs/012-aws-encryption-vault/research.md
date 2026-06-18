@@ -2,11 +2,20 @@
 
 **Date**: 2026-01-16 | **Feature**: 012-aws-encryption-vault | **Status**: Complete
 
+> **Implementation note (superseded configuration):**
+> This document records the original single-field encryption proposal
+> (`encryption.key` / `key_encryption_key` with `${ENCRYPTION_KEK}`).
+> The shipped implementation uses a backend-explicit contract:
+> `encryption.aws_kms` or `encryption.memory`.
+> See `internal/ports/config.go` and `docs/configuration.md`
+> for the live schema.
+
 ## Critical Finding: Official AWS Encryption SDK for Go Available
 
 ### Decision: Use Official AWS Encryption SDK for Go
 
 **Rationale**:
+
 - AWS maintains official AWS Encryption SDK for Go at: `github.com/aws/aws-encryption-sdk/releases/go`
 - Provides battle-tested, production-grade envelope encryption implementation
 - Supports AESGCMSIV (Encrypt-then-MAC with counter mode) authenticated encryption
@@ -15,6 +24,7 @@
 - Eliminates custom cryptography implementation risk
 
 **Implementation Approach**:
+
 1. AWS Encryption SDK handles DEK generation, encryption, and wrapping lifecycle
 2. AWS KMS keyring for KEK management (wrapping/unwrapping DEK with context)
 3. SDK enforces context verification at both DEK and KEK layers
@@ -22,6 +32,7 @@
 5. Structured logging via project's existing slog with SecureLogger wrapper
 
 **Advantages**:
+
 - Official AWS implementation—no maintenance risk
 - Context binding is native and auditable
 - Fail-closed behavior built in
@@ -29,6 +40,7 @@
 - Aligns with AWS best practices and recommendations
 
 **Risks Mitigated**:
+
 - No custom cryptography
 - No reliance on unmaintained community ports
 - Context binding is explicit and verified by SDK
@@ -38,11 +50,13 @@
 ## Area 1: AWS Encryption SDK for Go - Envelope Encryption
 
 ### Research Question
+
 How to implement production-grade envelope encryption using official AWS Encryption SDK for Go?
 
 ### Findings
 
 **AWS Encryption SDK Architecture**:
+
 - Uses keyring abstraction for key management
 - AWS KMS keyring implements Key Encryption Key (KEK) operations
 - Supports custom keyrings for environment variable KEK injection (development)
@@ -50,6 +64,7 @@ How to implement production-grade envelope encryption using official AWS Encrypt
 - Context binding via `EncryptionContext` map (service_id only per spec)
 
 **Core API Pattern**:
+
 ```go
 import "github.com/aws/aws-encryption-sdk-go/v3/sdk"
 
@@ -67,16 +82,19 @@ plaintext := result.Result()
 ```
 
 **Envelope Structure**:
+
 - SDK handles envelope serialization internally
 - Serialized format: message format identifier + algorithm suite + encrypted data material (wrapped DEK + encrypted token)
 - All handled by SDK—application doesn't construct envelope manually
 
 **DEK Generation**:
+
 - AWS SDK generates unique DEK per Encrypt() call
 - 256 bits (32 bytes) of cryptographically secure randomness
 - Per spec: DEKs per service_id context (all tokens for a service use DEKs wrapped with service-specific branch key)
 
 **Context Binding**:
+
 - `EncryptionContext` parameter is map[string]string: `{"service_id": "oauth2"}`
 - Context is verified at both:
   1. DEK encryption layer (AESGCMSIV authenticated encryption)
@@ -84,6 +102,7 @@ plaintext := result.Result()
 - Mismatch at either layer causes decryption to fail immediately (fail-closed)
 
 **AWS KMS Keyring Integration**:
+
 ```go
 // AWS KMS keyring uses KMS for DEK wrapping
 keyring := aws.NewKeyring(kmsClient, keyARN, encryptionContext)
@@ -95,12 +114,14 @@ keyring := aws.NewKeyring(kmsClient, keyARN, encryptionContext)
 ```
 
 **Key Rotation Support**:
+
 - AWS KMS handles key rotation automatically via key versioning
 - Specify key by ARN or alias; KMS uses current version for encryption
 - Old tokens encrypted with previous KEK version remain decryptable
 - No custom rotation logic needed
 
 ### Best Practices
+
 - ✅ Use AWS KMS ARN or alias for key specification
 - ✅ Always bind context (service_id) via EncryptionContext parameter
 - ✅ Let SDK handle fail-closed behavior on context mismatch
@@ -113,6 +134,7 @@ keyring := aws.NewKeyring(kmsClient, keyARN, encryptionContext)
 ## Area 2: Memory Protection
 
 ### Research Question
+
 How to handle sensitive data (plaintext tokens, DEKs) in memory securely?
 
 ### Findings
@@ -127,12 +149,14 @@ Memory protection for sensitive data (plaintext tokens, DEKs, KEK material) is d
 - Platform-specific memory protection mechanisms
 
 **Current Approach**:
+
 - AWS Encryption SDK provides baseline memory protection during operations
 - Explicit zeroing of sensitive buffers where possible
 - Secure handling patterns for key material
 - Graceful operation without advanced memory protection features
 
 **Future Memory Hardening Feature Will Address**:
+
 - Protected memory enclaves for sensitive data
 - Memory locking and core dump exclusion
 - Platform-specific memory protection (Linux, macOS, Windows)
@@ -141,6 +165,7 @@ Memory protection for sensitive data (plaintext tokens, DEKs, KEK material) is d
 - Testing and validation of memory protection behavior
 
 ### Best Practices
+
 - ✅ Zero plaintext and key material after use where possible
 - ✅ Rely on AWS SDK baseline memory protection during operations
 - ✅ Plan for future memory hardening feature integration
@@ -151,11 +176,13 @@ Memory protection for sensitive data (plaintext tokens, DEKs, KEK material) is d
 ## Area 3: Structured Logging for Encryption Operations
 
 ### Research Question
+
 What structured logging patterns enable audit compliance while preventing sensitive data leakage?
 
 ### Findings
 
 **Canonical Log Schema** (aligns with project's slog):
+
 ```json
 {
   "operation": "encrypt|decrypt",
@@ -172,18 +199,21 @@ What structured logging patterns enable audit compliance while preventing sensit
 ```
 
 **Error Classification**:
+
 - `context_mismatch`: Context doesn't match at DEK or KMS layer
 - `kek_unavailable`: KMS unreachable, retry exhausted
 - `decrypt_failed`: Authentication tag verification failed (tampered data)
 - `invalid_ciphertext`: Envelope parsing error
 
 **What NOT to Log**:
+
 - ❌ Plaintext OAuth tokens or fragments
 - ❌ Encryption keys (DEK, KEK, nonces)
 - ❌ Decrypted token content
 - ❌ Raw SDK error messages (classify to error_kind)
 
 **What to Log**:
+
 - ✅ Operation type (encrypt/decrypt)
 - ✅ Service context (service_id, request_id)
 - ✅ Success/failure + error classification
@@ -191,6 +221,7 @@ What structured logging patterns enable audit compliance while preventing sensit
 - ✅ Metadata (algorithm, key_version, ciphertext_size_bytes)
 
 **Integration with Project**:
+
 - Project uses Go's `log/slog` for structured JSON
 - Extend existing audit patterns (OAuth2 middleware)
 - SecureLogger wrapper for encryption operations
@@ -198,6 +229,7 @@ What structured logging patterns enable audit compliance while preventing sensit
 - Sample of successes for performance monitoring (e.g., 1% sampling)
 
 ### Best Practices
+
 - ✅ Use project's existing slog with SecureLogger wrapper
 - ✅ Classify errors into safe categories
 - ✅ Never expose raw crypto errors
@@ -209,17 +241,20 @@ What structured logging patterns enable audit compliance while preventing sensit
 ## Area 4: Environment Variable KEK Injection for Development
 
 ### Research Question
+
 How to support `${ENCRYPTION_KEK}` environment variable injection for dev while maintaining AWS KMS for production?
 
 ### Findings
 
 **Configuration System** (leverages feature 002-flexible-configuration):
+
 - Single field: `encryption.key`
 - Supports AWS KMS ARN format for production
 - Supports `${ENCRYPTION_KEK}` env var reference for development
 - Configuration loader resolves at startup
 
 **Custom Keyring for Env Var KEK**:
+
 - AWS Encryption SDK keyring abstraction allows custom implementations
 - Create local keyring that uses environment variable KEK
 - Use same EncryptionContext binding as AWS KMS keyring
@@ -235,6 +270,7 @@ How to support `${ENCRYPTION_KEK}` environment variable injection for dev while 
 | Performance | 50-200ms per operation | <5ms per operation |
 
 **Configuration Examples**:
+
 ```yaml
 # Production
 encryption:
@@ -246,6 +282,7 @@ encryption:
 ```
 
 ### Best Practices
+
 - ✅ Fail fast at startup if KEK missing or invalid
 - ✅ No fallback to plaintext KEK—always fail closed
 - ✅ Document that production MUST use AWS KMS

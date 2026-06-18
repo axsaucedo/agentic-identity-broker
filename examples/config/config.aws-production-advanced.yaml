@@ -1,7 +1,11 @@
+---
 # Agentic Identity Broker - Advanced AWS Production Configuration
-# Demonstrates advanced AWS SDK configuration capabilities for production scenarios
-# This configuration shows IAM role assumption, multi-region deployment, and security best practices
-# To run: agentic-identity-broker --config ./examples/config/config.aws-production-advanced.yaml
+# Demonstrates advanced AWS SDK capabilities for production scenarios.
+# Shows IAM role assumption, multi-region deployment, and security
+# best practices.
+# Run with:
+#   agentic-identity-broker \
+#     --config ./examples/config/config.aws-production-advanced.yaml
 
 log:
   level: ${IDENTITY_BROKER_LOG_LEVEL:info}
@@ -11,7 +15,8 @@ server:
   enduser:
     port: 8000
     bind: "::"
-    public_url: ${IDENTITY_BROKER_SERVER_ENDUSER_PUBLIC_URL:https://broker.example.com}
+    public_url: >-
+      ${IDENTITY_BROKER_SERVER_ENDUSER_PUBLIC_URL:https://broker.example.com}
     authentication:
       preauth:
         principal_header_name: ${IDENTITY_BROKER_PRINCIPAL_HEADER:X-Remote-User}
@@ -19,7 +24,8 @@ server:
   admin:
     port: 14000
     bind: "::"
-    public_url: ${IDENTITY_BROKER_SERVER_ADMIN_PUBLIC_URL:https://broker-admin.example.com}
+    public_url: >-
+      ${IDENTITY_BROKER_SERVER_ADMIN_PUBLIC_URL:https://broker-admin.example.com}
     authentication:
       preauth:
         principal_header_name: ${IDENTITY_BROKER_PRINCIPAL_HEADER:X-Remote-User}
@@ -42,16 +48,17 @@ encryption:
     key_arn: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN}
 
     # Branch key caching configuration
-    dynamodb_table_name: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME:IdentityBrokerEncryptionBranchKeys}
+    dynamodb_table_name: >-
+      ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME:IdentityBrokerEncryptionBranchKeys}
     branch_key_ttl: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL:2h}
-
     # AWS SDK Configuration - NEW CAPABILITIES FOR PRODUCTION
 
     # Regional Configuration
     # Primary region for KMS operations
-    region: ${AWS_REGION:eu-central-1}
+    region: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_REGION:eu-central-1}
     # Separate region for DynamoDB (for latency optimization or compliance)
-    dynamodb_region: ${IDENTITY_BROKER_ENCRYPTION_DYNAMODB_REGION:eu-central-1}
+    dynamodb_region: >-
+      ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_REGION:eu-central-1}
 
     # IAM Role Assumption (Recommended Production Pattern)
     # Assume a dedicated role for encryption operations
@@ -59,30 +66,31 @@ encryption:
     # - Principle of least privilege
     # - Separate audit trail for encryption operations
     # - Cross-account KMS key access if needed
-    assume_role_arn: ${IDENTITY_BROKER_ENCRYPTION_IAM_ROLE_ARN}
+    assume_role_arn: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ASSUME_ROLE_ARN}
 
     # Alternative credential configurations (choose one):
 
     # Option 1: AWS Profile (for EC2 instances with multiple profiles)
-    # profile: ${AWS_PROFILE:production}
+    # profile: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_PROFILE:production}
 
     # Option 2: Static credentials (NOT recommended for production)
     # Only use for testing or legacy environments
-    # access_key_id: ${AWS_ACCESS_KEY_ID}
-    # secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+    # access_key_id: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ACCESS_KEY_ID}
+    # secret_access_key: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_SECRET_ACCESS_KEY}
 
     # Network Configuration (for VPC endpoints or custom AWS implementations)
     # Custom KMS endpoint (typically not needed in production)
-    # kms_endpoint: ${IDENTITY_BROKER_KMS_ENDPOINT}
+    # kms_endpoint: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KMS_ENDPOINT}
     # Custom DynamoDB endpoint (for VPC endpoints)
-    # dynamodb_endpoint: ${IDENTITY_BROKER_DYNAMODB_ENDPOINT}
+    # dynamodb_endpoint: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_ENDPOINT}
 
     # Security Configuration
     # SSL should always be enabled in production (disable_ssl: false is default)
     # Only set to true for development/AWS emulator scenarios
     # disable_ssl: false
 
-    # Timeout Configuration for DynamoDB operations (applied as context timeout per call)
+    # Applies to all AWS service calls within an encryption operation.
+    # Covers branch-key lookups/provisioning and downstream KMS work.
     dynamodb_timeout: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TIMEOUT:5s}
 
 # Production Deployment Patterns:
@@ -110,18 +118,21 @@ encryption:
 # Environment Variables Reference:
 # Core settings:
 # - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN (required)
-# - IDENTITY_BROKER_ENCRYPTION_IAM_ROLE_ARN (recommended)
-# - AWS_REGION (required)
+# - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_REGION (recommended)
+# - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ASSUME_ROLE_ARN (recommended)
 #
 # Optional settings:
-# - IDENTITY_BROKER_ENCRYPTION_DYNAMODB_REGION
+# - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_REGION
 # - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME
 # - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL
 # - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TIMEOUT
+# - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_PROFILE
+# - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ACCESS_KEY_ID
+# - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_SECRET_ACCESS_KEY
 #
 # Network/VPC settings (rare):
-# - IDENTITY_BROKER_KMS_ENDPOINT
-# - IDENTITY_BROKER_DYNAMODB_ENDPOINT
+# - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KMS_ENDPOINT
+# - IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_ENDPOINT
 
 # Security Best Practices:
 # 1. Always use IAM roles instead of static credentials

@@ -9,9 +9,11 @@ networks:
 # Shared volumes
 volumes:
   broker-tmp:
-  aib-frontend-node-modules: # Preserves containerized npm dependencies to avoid host/container conflicts
+  # Preserves containerized npm dependencies and avoids host conflicts.
+  aib-frontend-node-modules:
   sample-agent-tmp:
-  cimd-certs: # Shared volume for CIMD mock's self-signed CA cert
+  # Shared volume for the CIMD mock self-signed CA certificate.
+  cimd-certs:
 
 services:
   # Primary application: Identity broker with hot-reload
@@ -35,14 +37,15 @@ services:
       - broker-tmp:/app/tmp
       # Mount .air.docker.toml for Docker-optimized hot reload configuration
       - ./.air.docker.toml:/app/.air.docker.toml:ro
-      # Mount go.mod and go.sum to keep them in sync with host (fixes "updates to go.mod needed" error)
+      # Mount go.mod and go.sum to keep them in sync with the host.
+      # This avoids the "updates to go.mod needed" error in the container.
       - ./go.mod:/app/go.mod
       - ./go.sum:/app/go.sum
     environment:
       - IDENTITY_BROKER_CONFIG_PATH=config.docker.yaml
       - IDENTITY_BROKER_LOG_LEVEL=debug
       - IDENTITY_BROKER_JWE_SIGNING_KEY=${IDENTITY_BROKER_JWE_SIGNING_KEY}
-      - IDENTITY_BROKER_ENCRYPTION_KEY=${IDENTITY_BROKER_ENCRYPTION_KEY}
+      - IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
       - IDENTITY_BROKER_STATE_TOKEN_TTL=10m
       - IDENTITY_BROKER_PKCE_VERIFIER_LENGTH=32
       - IDENTITY_BROKER_STORAGE_BACKEND=memory
@@ -94,7 +97,8 @@ services:
       context: .
       dockerfile: Dockerfile.mock
       args:
-        SERVICE_PATH: mocks/upstream-oauth2-server/cmd/mock-upstream-oauth2-server
+        SERVICE_PATH: >-
+          mocks/upstream-oauth2-server/cmd/mock-upstream-oauth2-server
     container_name: aib-upstream-oauth2
     ports:
       - "9001:9001"
@@ -193,7 +197,7 @@ services:
       timeout: 2s
       retries: 3
 
-  # Agentgateway: routes MCP calls through ExtProc for transparent token exchange
+  # Agentgateway routes MCP calls through ExtProc for token exchange.
   agentgateway:
     image: cr.agentgateway.dev/agentgateway:v1.1.0
     container_name: aib-agentgateway
@@ -220,7 +224,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # Mount entire web directory for full hot reload of all files (src, config, tools, etc.)
+      # Mount the entire web directory for full hot reload.
       - ./web:/app
       # Preserve containerized node_modules (won't be overwritten by host mount)
       - aib-frontend-node-modules:/app/node_modules

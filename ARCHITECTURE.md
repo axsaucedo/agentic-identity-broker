@@ -1,15 +1,16 @@
 # Architecture Overview
+
 This document serves as a critical, living template designed to equip agents with a rapid and comprehensive understanding of the codebase's architecture, enabling efficient navigation and effective contribution from day one. Update this document as the codebase evolves.
 
 ## 1. Project Structure
-This section provides a high-level overview of the project's directory and file structure, categorised by architectural layer or major functional area. It is essential for quickly navigating the codebase, locating relevant files, and understanding the overall organization and separation of concerns.
 
+This section provides a high-level overview of the project's directory and file structure, categorised by architectural layer or major functional area. It is essential for quickly navigating the codebase, locating relevant files, and understanding the overall organization and separation of concerns.
 
 [Project Root]/
 
 ├── cmd/                  # Main source code for backend services
 ├── internal/             # Code that is internal
-├── pkg/                  # Code that is ok to be used when this is 
+├── pkg/                  # Code that is ok to be used when this is
 ├── config/               # Backend configuration files
 ├── test/                 # Backend unit and integration tests
 ├── build/Dockerfile      # Dockerfile for backend deployment
@@ -47,16 +48,16 @@ This section provides a high-level overview of the project's directory and file 
 ├── README.md             # Project overview and quick start guide
 └── ARCHITECTURE.md       # This document
 
-
-
 ## 2. High-Level System Diagram
+
 Provide a simple block diagram (e.g., a C4 Model Level 1: System Context diagram, or a basic component diagram) or a clear text-based description of the major components and their interactions. Focus on how data flows, services communicate, and key architectural boundaries.
- 
+
 [User] <--> [Frontend Application] <--> [Backend Service 1] <--> [Database 1]
                                     |
-                                    +--> [Backend Service 2] <--> [External API]                           
+                                    +--> [Backend Service 2] <--> [External API]
 
 ## 3. Core Components
+
 (List and briefly describe the main components of the system. For each, include its primary responsibility and key technologies used.)
 
 ### 3.1. Identity Broker Service
@@ -76,18 +77,21 @@ Deployment: Containerized service (Docker), deployable to Kubernetes, AWS ECS, o
 **Architecture**: Hexagonal (ports and adapters pattern)
 
 **Components**:
+
 - **Port** (internal/ports/config.go): ConfigPort interface defining domain boundary
 - **Adapter** (internal/config/loader.go): Viper-based implementation loading from multiple sources
 - **Domain Types** (internal/domain/config/): LogLevel, LogFormat enums with validation
 - **Domain Errors** (internal/domain/config/errors.go): ConfigError with error wrapping support
 
 **Configuration Sources** (in precedence order, lowest to highest):
+
 1. **Defaults**: Built-in default values (log.level=info, log.format=text)
 2. **.env Files**: Environment-specific files (.env → .env.local → .env.{GO_ENV} → .env.{GO_ENV}.local)
 3. **YAML File**: config.yaml with ${VAR} environment variable substitution
 4. **CLI Flags**: Command-line flags (--log-level, --log-format, --config)
 
 **Security Features**:
+
 - Sensitive value redaction (IDENTITY_BROKER_* prefix and keywords: password, secret, token, key)
 - Command injection prevention (rejects $(cmd), backticks, shell metacharacters)
 - Circular reference detection (max depth: 10)
@@ -96,6 +100,7 @@ Deployment: Containerized service (Docker), deployable to Kubernetes, AWS ECS, o
 - Structured audit logging (JSON to stdout)
 
 **Flow**:
+
 ```
 Application Startup
   → Load Defaults
@@ -113,6 +118,7 @@ Application Startup
 **Performance**: Configuration loading completes in <250ms (within 5s startup budget)
 
 **Technologies**:
+
 - Viper v1.19.0+ (unified configuration management)
 - Cobra v1.8.1+ (CLI framework)
 - godotenv v1.5.1+ (.env file support)
@@ -127,6 +133,7 @@ Application Startup
 **Architecture**: React 18 Single Page Application with TypeScript, served from Go backend
 
 **Technology Stack**:
+
 - **Frontend Framework**: React 18.2+ with TypeScript 5.3+
 - **Build Tool**: Vite 5.0+ (fast ESM-based bundler)
 - **Styling**: Tailwind CSS v4.0 (utility-first CSS framework)
@@ -137,6 +144,7 @@ Application Startup
 - **State Management**: React hooks + Context API (no external state library)
 
 **Directory Structure**:
+
 ```
 web/
 ├── src/
@@ -194,12 +202,14 @@ web/
 ```
 
 **Build Pipeline**:
-1. **Development**: `npm run dev` runs Vite dev server (http://localhost:3000)
+
+1. **Development**: `npm run dev` runs Vite dev server (<http://localhost:3000>)
 2. **Build**: `npm run build` compiles TypeScript and bundles with Vite
 3. **Output**: Static files written to `dist/consent/` directory
 4. **Deployment**: Go backend serves files from `dist/consent/` at `/consent` path
 
 **SPA Serving Pattern**:
+
 ```
 User Request: /consent/agents
   ↓
@@ -219,6 +229,7 @@ Go API Handler returns JSON
 ```
 
 **Key Features**:
+
 - **Client-Side Routing**: React Router handles all `/consent/*` routes without page reloads
 - **History API Fallback**: Go backend serves `index.html` for all `/consent/*` paths (SPA fallback)
 - **API Integration**: Frontend makes requests to `/api/consent/*` endpoints on same domain
@@ -230,6 +241,7 @@ Go API Handler returns JSON
 - **Error Handling**: Error boundaries and retry logic for resilient UX
 
 **Component Hierarchy**:
+
 ```
 App
 ├── ErrorBoundary
@@ -248,12 +260,14 @@ App
 ```
 
 **State Management**:
+
 - **Local State**: React `useState` for component-level state
 - **Server State**: Custom hooks with axios for API data fetching
 - **Context**: React Context API for global UI state (theme, error messages)
 - **No Redux/MobX**: Hooks + Context sufficient for current requirements
 
 **API Communication**:
+
 - **Base URL**: `/api` (relative, same origin)
 - **Authentication**: Session-based (X-Principal header from proxy)
 - **CSRF**: X-CSRF-Token header required for POST/PUT/DELETE
@@ -261,12 +275,14 @@ App
 - **Retry Logic**: Exponential backoff for transient failures
 
 **Testing Strategy**:
+
 - **Unit Tests**: Vitest for component and hook testing
 - **Integration Tests**: Test component + API interactions with mocked backend
 - **E2E Tests**: (Future) Playwright for full user flows
 - **Coverage Target**: >80% for critical paths
 
 **Performance Optimizations**:
+
 - **Code Splitting**: Lazy loading of routes with React.lazy()
 - **Tree Shaking**: Vite removes unused code automatically
 - **Minification**: Terser minification in production builds
@@ -274,6 +290,7 @@ App
 - **Bundle Size**: Target <200KB gzipped for initial load
 
 **Security Considerations**:
+
 - **XSS Prevention**: React escapes all user input by default
 - **CSRF Protection**: Go 1.25 `http.CrossOriginProtection` rejects cross-origin mutating requests via `Sec-Fetch-Site` / `Origin` header validation (zero config, no cookies or tokens)
 - **Content Security Policy**: (Future) CSP headers from Go backend
@@ -330,6 +347,7 @@ The composite shutdown function is stored as `App.ShutdownTelemetry func(context
 5. **BDD Organization**: `Describe`/`Context`/`It` blocks map to acceptance scenarios (Given/When/Then)
 
 **Test Structure**:
+
 ```
 tests/e2e/
 ├── e2e_suite_test.go              # Ginkgo test suite entry point
@@ -352,6 +370,7 @@ tests/e2e/
 ```
 
 **Running E2E Tests**:
+
 ```bash
 # Run the backend E2E suite
 just test-e2e-backend
@@ -370,6 +389,7 @@ ginkgo -v --focus="Authorization Endpoint" ./tests/e2e/
 ```
 
 **Key Benefits**:
+
 - **Refactoring-Resistant**: Tests survive routing/DI changes because they use production bootstrap
 - **Fast Execution**: In-memory storage, no database containers (< 60 seconds for full suite)
 - **Clear Mapping**: Each `It()` block maps to one acceptance scenario in spec.md
@@ -379,6 +399,7 @@ ginkgo -v --focus="Authorization Endpoint" ./tests/e2e/
 **Documentation**: Comprehensive E2E testing guide with examples, patterns, and anti-patterns in [tests/e2e/README.md](tests/e2e/README.md)
 
 **Technologies**:
+
 - Ginkgo v2 (BDD test framework)
 - Gomega (assertion library)
 - `net/http/httptest` (HTTP test server)
@@ -408,13 +429,15 @@ ginkgo -v --focus="Authorization Endpoint" ./tests/e2e/
   - OAuth2 support: Service metadata for OIDC discovery
 
 **Key Features**:
+
 - **OpenAPI 3.0.3 Compliant**: Specifications follow OpenAPI 3.0.3 standard for interoperability
-- **Zalando Guidelines Compliant**: APIs follow Zalando RESTful API and Event Guidelines (https://opensource.zalando.com/restful-api-guidelines/)
+- **Zalando Guidelines Compliant**: APIs follow Zalando RESTful API and Event Guidelines (<https://opensource.zalando.com/restful-api-guidelines/>)
 - **Pre-Implementation Design**: All APIs designed and documented before implementation (Constitution Principle X)
 - **Examples Included**: Realistic examples for all endpoints covering success and error cases
 - **User-Confirmed**: API specifications confirmed with users/stakeholders before implementation (Constitution Principle IV & X)
 
 **Dual-Port Architecture**:
+
 ```
 End-User Server (Port 8000):
   ├── GET /health
@@ -441,6 +464,7 @@ Admin Server (Port 14000):
 ```
 
 **Usage**:
+
 - Import specifications into Swagger UI, Redoc, or other OpenAPI tooling
 - Generate API client libraries for multiple languages via OpenAPI generators
 - Validate API implementation compliance against documented spec
@@ -465,11 +489,13 @@ Admin Server (Port 14000):
 **Type Containment**: All [fosite](https://github.com/ory/fosite) OAuth2 server types are contained in `internal/domain/oauth2server/`. This package encapsulates the OAuth2 authorization server domain logic (authorization code storage, client authentication, token signing) and **never leaks fosite types** into ports, adapters/http, or app packages.
 
 **Import Rules**:
+
 - `internal/domain/oauth2server/` may import `internal/ports/` and `internal/domain/` packages.
 - `internal/domain/oauth2server/` must **never** import adapter packages or `internal/app/`.
 - No other package in the codebase may import fosite types directly — all interaction flows through `oauth2server` domain interfaces.
 
 **Public OAuth2 endpoints** (served in all three modes; strategy behavior differs by mode):
+
 ```
 End-User Server (Port 8000):
   ├── GET  /.well-known/oauth-authorization-server   (RFC 8414 discovery)
@@ -481,6 +507,7 @@ End-User Server (Port 8000):
 **Upstream JWKS bootstrap policy**: In `proxy` and `hybrid` modes the upstream JWKS can be consumed by three different surfaces: the public `/oauth2/jwks.json` publisher, RFC 8693 token-exchange JWT validation, and multi-agent upstream-token verification. The builder resolves upstream OAuth2 metadata at startup for all upstream-backed verification surfaces, so proxy/hybrid mode does not start with an unknown upstream verifier configuration. If metadata discovery fails, startup fails. After successful startup, later upstream JWKS refresh failures still fail closed at request time: `/oauth2/jwks.json` returns HTTP 503 and verification-dependent flows reject requests until the upstream recovers.
 
 **Local issuance admin endpoints** (served only when local issuance is active: `local` or `hybrid`):
+
 ```
 Admin Server (Port 14000):
   ├── /api/agents/{id}/client-credentials/*
@@ -532,18 +559,20 @@ Token Decryption Flow:
 
 **KEK Storage Mechanisms**:
 
-1. **Production (AWS KMS ARN)**:
+1. **Production (AWS KMS backend)**:
    - KEK reference via AWS KMS customer-managed key ARN
    - Hierarchical keyring uses DynamoDB for branch key caching
    - Reduces KMS API calls while maintaining security
-   - Configuration: `encryption.key: "arn:aws:kms:region:account:key/key-id"`
+   - Configuration: `encryption.aws_kms.key_arn: "arn:aws:kms:region:account:key/key-id"`
    - No plaintext KEK in application memory (AWS SDK handles)
 
-2. **Development (Base64-Encoded Key)**:
+2. **Development (Memory backend)**:
    - KEK provided as base64-encoded AES-256 key (typically from environment variable)
    - Raw AES keyring (no AWS KMS dependency)
-   - Configuration: `encryption.key: "${ENCRYPTION_KEK}"` (resolves to base64 key)
+   - Configuration: `encryption.memory.raw_key: "${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}"`
    - Environment variable interpolation allows flexible key injection
+
+Exactly one backend must be configured: `encryption.aws_kms` or `encryption.memory`.
 
 **Service Integration**:
 
@@ -601,12 +630,14 @@ Retrieval flow:
 The project follows **Domain Service Encryption** for all sensitive data encryption. This pattern maintains hexagonal architecture purity by placing encryption logic in the domain service layer rather than the storage adapter layer.
 
 **Standard Pattern**:
+
 - Encryption logic resides in domain service layer (business concern)
 - Repository stores opaque encrypted bytes (infrastructure concern)
 - Clean hexagonal architecture boundaries
 - No encryption dependencies in storage adapters
 
 **Data Flow**:
+
 ```
 Service Layer (OAuth2SessionService):
   ↓ Encrypts tokens with EncryptionPort
@@ -622,6 +653,7 @@ Service Layer (OAuth2SessionService):
 **Example Implementations**: UserSessionRepository + OAuth2SessionService (tokens); ThirdpartyOAuth2ProviderRepository + ThirdpartyOAuth2ProviderService (provider client_secret via `Secret` VO)
 
 **See Also**:
+
 - ADR 009: Envelope Encryption Design (cryptographic approach)
 - ADR 012: Encryption Layer Separation (architectural pattern)
 
@@ -675,12 +707,14 @@ OAuth2 /authorize request
 **Exchanger** (Port): Interface defining token exchange logic as a port. Implementations perform RFC 8693 token exchange and manage token caching independently of the gRPC protocol.
 
 **TokenExchanger** (Adapter): Concrete implementation of Exchanger. Manages:
+
 - In-memory token cache keyed by `(subjectToken, resourceURI)` struct
 - Background client assertion refresh goroutine (startup + 80% TTL/30s threshold)
 - Singleflight deduplication for concurrent exchange requests
 - HTTP client for RFC 8693 token exchange requests
 
 **CachedToken**: Value object representing a cached token with:
+
 - `accessToken`: The exchanged token value
 - `expiresAt`: Absolute expiration timestamp
 - Computed from `expires_in` response field (capped at `cache.max_ttl`, defaulting to `cache.default_ttl`)
@@ -690,6 +724,7 @@ OAuth2 /authorize request
 #### 3.2.2. gRPC Server
 
 **Server**: Implements Envoy's `ExternalProcessorServer` interface with:
+
 - **Process RPC**: Streaming bidirectional RPC handling all Envoy ExtProc phases (RequestHeaders, RequestBody, ResponseHeaders, ResponseBody, RequestTrailers, ResponseTrailers)
 - **RequestHeaders Phase**: Primary processing phase where Bearer token extraction and exchange occurs
 - **Other Phases**: Pass-through responses with phase-specific response types
@@ -698,6 +733,7 @@ OAuth2 /authorize request
 #### 3.2.3. Request Processing
 
 **RequestHeaders Processing**:
+
 1. Extract Bearer token from Authorization header (pass through if absent or non-Bearer)
 2. Extract resource URI from `:path` pseudo-header
 3. Validate URI (absolute, http/https scheme, non-empty host) — SSRF mitigation
@@ -706,6 +742,7 @@ OAuth2 /authorize request
 6. On failure: return 500 ImmediateResponse, reject request, log failure
 
 **Helper Functions**:
+
 - `extractBearerToken()`: Parse "Bearer <token>" format
 - `extractHeader()`: Case-insensitive header lookup
 - `validateResourceURI()`: URI parsing and scheme validation
@@ -717,6 +754,7 @@ OAuth2 /authorize request
 **Configuration Subsystem**: Separate from broker config, uses `EXTPROC_` environment prefix.
 
 **Config Structure**:
+
 - **GRPCConfig**: `bind`, `port`, `max_concurrent_streams`
 - **OAuth2Config**: `issuer`, `token_endpoint`, `client_id`, `client_secret`, `client_credentials_endpoint`, `client_credentials_scopes`, `client_assertion_type`, `exchange_timeout`, `tls`
 - **TLSConfig**: `allow_http` (fail-closed unless true), `insecure_skip_verify`, `ca_bundle_path`
@@ -728,6 +766,7 @@ OAuth2 /authorize request
 - **TelemetryConfig**: `enabled`, `service_name`, `resource_attributes`, `traces` (enabled, sampling_rate, propagators), `metrics` (enabled, export_interval), `logs` (enabled), `exporter` (protocol, endpoint, insecure, headers, timeout, compression)
 
 **Validation Rules** (19 rules, fail-fast at startup):
+
 1. grpc.port must be 1–65535
 2. grpc.bind must not be empty
 3. oauth2.token_endpoint must be a valid URL with http/https scheme
@@ -749,6 +788,7 @@ OAuth2 /authorize request
 19. telemetry.exporter.timeout must be a positive duration when telemetry enabled
 
 **Configuration Loading**:
+
 - Viper-based loader with EXTPROC_ prefix
 - YAML file with `${VAR}` expansion for secret injection
 - Example config: `examples/config/extproc-token-exchange.yaml`
@@ -787,6 +827,7 @@ OAuth2 /authorize request
 **Containerization**: `Dockerfile` for Docker Compose integration
 
 **Lifecycle**:
+
 - Load configuration (fail-fast on invalid)
 - Initialize logger
 - Initialize telemetry provider (if enabled; bounded by exporter timeout, interruptible by signal)
@@ -800,12 +841,14 @@ OAuth2 /authorize request
 #### 3.2.8. Testing
 
 **E2E Test Suite** (separate from main broker tests): `tests/e2e/extproc/`
+
 - 12 acceptance tests (1:1 mapping to spec scenarios)
 - Ginkgo/Gomega BDD framework
 - In-process bootstrap (gRPC server + mock OAuth2 servers)
 - Comprehensive coverage: token exchange, caching, singleflight, URI validation, startup validation
 
 **Unit Tests**: `internal/extproc/server/*_test.go`, `internal/extproc/config/*_test.go`
+
 - 50+ tests covering all paths
 - RFC 8693 request/response format validation
 - Client assertion acquisition and refresh
@@ -816,6 +859,7 @@ OAuth2 /authorize request
 **Coverage**: 79.9% (server + config packages)
 
 **Technologies**:
+
 - Ginkgo v2 (BDD test framework)
 - Gomega (assertion library)
 - `google.golang.org/grpc` (gRPC framework)
@@ -944,31 +988,38 @@ Code Quality Tools: [e.g., ESLint, Black, SonarQube]
 This section lists all architectural decisions made for this project. ADRs document important technical choices, their rationale, alternatives considered, and consequences.
 
 ### Core Infrastructure
+
 - [ADR 002: Configuration Libraries](adrs/002-configuration-libraries.md) - Multi-source configuration with Viper, Cobra, and godotenv
 - [ADR 003: Chi Framework Selection](adrs/003-chi-framework.md) - HTTP routing framework choice
 - [ADR 004: Dual-Server Isolation](adrs/004-dual-server-isolation.md) - Separate end-user and admin servers
 - [ADR 004: Storage Layer Architecture](adrs/004-storage-layer-architecture.md) - Hexagonal architecture for persistence
 
 ### Frontend & User Interface
+
 - [ADR 005: SPA Serving Pattern](adrs/005-spa-serving-pattern.md) - Serving React SPA from Go backend
 - [ADR 006: Frontend Stack](adrs/006-frontend-stack.md) - React 18 + Vite + Tailwind CSS v4
 
 ### Testing & Quality
+
 - [ADR 007: E2E Testing with Ginkgo](adrs/007-e2e-testing-with-ginkgo.md) - BDD-style E2E tests using production bootstrap
 
 ### RFC 8693 Token Exchange
+
 - [ADR 008: Token Exchange JWKS Adapter Pattern](adrs/008-token-exchange-jwks-adapter-pattern.md) - HTTP abstraction for JWKS fetching and caching
 
 ### Security & Encryption
+
 - [ADR 008: Encryption Context Optimization](adrs/008-encryption-context-optimization.md) - Service-ID-only context binding performance optimization
 - [ADR 009: Envelope Encryption Design](adrs/009-envelope-encryption-design.md) - DEK-per-session with AWS KMS and context binding
 - [ADR 010: CDK Encryption Infrastructure](adrs/010-cdk-encryption-infrastructure.md) - AWS CDK (Go) for KMS, DynamoDB, and IAM provisioning
 - [ADR 012: Encryption Layer Separation](adrs/012-encryption-layer-separation.md) - Domain service encryption pattern for hexagonal architecture
 
 ### Observability
+
 - [ADR 011: OpenTelemetry Provider Pattern](adrs/011-opentelemetry-provider-pattern.md) - App-layer OTel provider, otelchi middleware choice, context-based span propagation
 
 ### Client ID Metadata Document (CIMD)
+
 - [ADR 015: CIMD Fetcher Architecture](adrs/015-cimd-fetcher-architecture.md) - SSRF-hardened HTTP client, in-process caching, hexagonal port, strategy pattern for opaque vs URL-based client IDs
 
 ## 11. Project Identification
@@ -1025,7 +1076,7 @@ Define any project-specific terms or acronyms.)
 
 ### Session Management Domain
 
-**Principal**: The authenticated user identifier extracted from an HTTP header set by a reverse proxy after user authentication. Typically an email address, username, or unique ID. Examples: "alice@example.com", "user-123". Maximum length: 200 characters. Retrieved from context using principal.FromContext(ctx).
+**Principal**: The authenticated user identifier extracted from an HTTP header set by a reverse proxy after user authentication. Typically an email address, username, or unique ID. Examples: "<alice@example.com>", "user-123". Maximum length: 200 characters. Retrieved from context using principal.FromContext(ctx).
 
 **Principal Extraction**: The process of reading a principal value from a configured HTTP header, validating it, and making it available throughout request processing. Implemented by RequirePrincipalMiddleware (rejects invalid) and OptionalPrincipalMiddleware (non-rejecting).
 
@@ -1135,7 +1186,7 @@ Define any project-specific terms or acronyms.)
 
 **SubjectToken**: JWT containing both user principal and agent identifier from the upstream OAuth2 server. Principal extracted via configurable CEL expression (default: sub claim). Agent identifier extracted via configurable CEL expression (default: azp claim). Identifies the end-user and agent on whose behalf token exchange is requested.
 
-**ResourceURI**: URI identifying the target resource or third-party service for token exchange. Normalized (trailing slashes removed) before storage and lookup. Matched against service protected_resources to determine which third-party service to exchange tokens for. Example: "https://api.github.com" or "https://github.com/api/v3".
+**ResourceURI**: URI identifying the target resource or third-party service for token exchange. Normalized (trailing slashes removed) before storage and lookup. Matched against service protected_resources to determine which third-party service to exchange tokens for. Example: "<https://api.github.com>" or "<https://github.com/api/v3>".
 
 **Privileged Client**: API gateway or reverse proxy that initiates token exchange on behalf of agents. Authenticates using client_assertion JWT. Acts as intermediary between agent and identity broker, passing through user's subject_token for exchange.
 

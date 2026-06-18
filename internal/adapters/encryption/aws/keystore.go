@@ -31,7 +31,7 @@ type KeyStoreConfig struct {
 type KeyStore struct {
 	client          *keystore.Client
 	config          KeyStoreConfig
-	dynamoDBTimeout time.Duration // context timeout applied to each DynamoDB operation
+	dynamoDBTimeout time.Duration // timeout applied to the full branch-key operation
 	// getActiveBranchKeyFn overrides client.GetActiveBranchKey when set. Used only in tests
 	// to inject a mock without requiring real DynamoDB infrastructure.
 	getActiveBranchKeyFn func(ctx context.Context, params keystoretypes.GetActiveBranchKeyInput) (*keystoretypes.GetActiveBranchKeyOutput, error)
@@ -111,9 +111,9 @@ func createKeyStore(ctx context.Context, ksCfg KeyStoreConfig, awsCfg *ports.AWS
 	}
 	dynamoDBClient := dynamodb.NewFromConfig(dynamoDBConfig, dynamoDBOpts...)
 
-	// Parse the per-operation context timeout for DynamoDB calls.
+	// Parse the named dynamodb_timeout value for branch-key work.
 	// The timeout is stored on the KeyStore and applied via context.WithTimeout
-	// at each call site, keeping timeout enforcement in the standard Go context chain.
+	// to the full branch-key operation and any KMS work it triggers.
 	dynamoDBTimeout, err := parseDynamoDBTimeout(awsCfg)
 	if err != nil {
 		return nil, err

@@ -2,6 +2,14 @@
 
 **Date**: 2026-01-15 | **Spec**: [spec.md](./spec.md) | **Plan**: [plan.md](./plan.md)
 
+> **Implementation note (superseded configuration):**
+> This document records the original single-field encryption proposal
+> (`encryption.key` / `key_encryption_key` with `${ENCRYPTION_KEK}`).
+> The shipped implementation uses a backend-explicit contract:
+> `encryption.aws_kms` or `encryption.memory`.
+> See `internal/ports/config.go` and `docs/configuration.md`
+> for the live schema.
+
 ## Overview
 
 This feature integrates envelope encryption into the oauth2session service layer. The service encrypts tokens before passing UserSession to the repository, which stores already-encrypted tokens transparently. Decryption happens in the service layer when retrieving sessions.
@@ -13,9 +21,11 @@ This feature integrates envelope encryption into the oauth2session service layer
 ## Existing Entities (Reused as-is)
 
 ### UserSession Aggregate
+
 **Location**: `internal/domain/storage/user_session.go`
 
 **Fields** (already present):
+
 - `encrypted_access_token: []byte (BYTEA)` - Stores ciphertext + wrapped DEK (opaque to storage adapters)
 - `encrypted_refresh_token: []byte (BYTEA)` - Stores ciphertext + wrapped DEK (opaque to storage adapters)
 - `encryption_context: map[string]string (JSONB)` - Contains `{"service_id": "oauth2"}`
@@ -23,17 +33,21 @@ This feature integrates envelope encryption into the oauth2session service layer
 **Storage Adapter Role**: Accept UserSession as-is; store/retrieve encrypted_access_token and encrypted_refresh_token BYTEA fields unchanged (no encryption/decryption logic).
 
 ### EncryptionContext Value Object
+
 **Location**: `internal/domain/storage/user_session.go`
 
 **Existing** `map[string]string` with single key:
+
 - `service_id` - OAuth service identifier
 
 **Oauth2session Service Role**: Constructs EncryptionContext and passes to EncryptionPort methods as AAD (Authenticated Additional Data).
 
 ### EncryptionPort Interface
+
 **Location**: `internal/ports/encryption.go`
 
 **Existing interface**:
+
 ```go
 type EncryptionPort interface {
     Encrypt(ctx context.Context, plaintext []byte, encryptionContext map[string]string) ([]byte, error)
@@ -48,9 +62,11 @@ type EncryptionPort interface {
 ## Service Layer Integration
 
 ### OAuth2Session Service
+
 **Location**: `internal/services/oauth2session/service.go` (or similar)
 
 **Create Flow**:
+
 ```
 1. Service receives request to create session with plaintext tokens
 2. Construct encryption context: {"service_id": "<service>"}
@@ -66,6 +82,7 @@ type EncryptionPort interface {
 ```
 
 **Get Flow**:
+
 ```
 1. Service receives request to retrieve session by ID
 2. Call repository.Get(sessionID) → returns UserSession with encrypted fields
@@ -77,6 +94,7 @@ type EncryptionPort interface {
 ```
 
 **Key Invariants**:
+
 - Plaintext tokens never reach storage adapters
 - Storage adapters see only encrypted UserSession objects
 - Service layer owns all encryption/decryption logic
@@ -87,6 +105,7 @@ type EncryptionPort interface {
 ## Minimal New Elements (Feature 012)
 
 ### Error Types
+
 **New file**: `internal/domain/encryption/errors.go`
 
 ```go
@@ -113,6 +132,7 @@ type EncryptionError struct {
 ---
 
 ### Domain Events (Session-Level)
+
 **Extend file**: `internal/domain/storage/events.go` (add to existing events)
 
 ```go
@@ -152,11 +172,14 @@ type SessionDecryptionFailed struct {
 ## Storage Adapter Behavior (Unchanged)
 
 ### Memory and PostgreSQL Adapters
+
 **No Changes to Core Logic**:
+
 - `Create(session)`: Receive UserSession with encrypted tokens; store as-is (BYTEA + JSONB)
 - `Get(id)`: Retrieve UserSession with encrypted tokens; return as-is
 
 **Adapter Responsibilities**:
+
 - Store/retrieve encrypted_access_token BYTEA unchanged
 - Store/retrieve encrypted_refresh_token BYTEA unchanged
 - Store/retrieve encryption_context JSONB unchanged
@@ -171,6 +194,7 @@ type SessionDecryptionFailed struct {
 **Parameter**: `encryption.key`
 
 **Resolution** (in AWS adapter initialization):
+
 1. Read value from config
 2. If matches `arn:aws:kms:...`: Create AWS KMS keyring
 3. If matches `${...}`: Resolve environment variable, use raw key material
@@ -181,6 +205,7 @@ type SessionDecryptionFailed struct {
 ## Memory Protection
 
 **Implementation**: Memory protection deferred to future memory hardening feature
+
 - DEK: Generated securely, zeroed after use
 - KEK: Loaded securely, zeroed after use
 - Plaintext tokens: Handled securely, zeroed after encryption
@@ -191,6 +216,7 @@ type SessionDecryptionFailed struct {
 ## Backward Compatibility
 
 **KEK Rotation**: AWS KMS/Encryption SDK handles transparently
+
 - Old tokens (wrapped with v1 KEK) remain decryptable with new KEK version
 - Version byte in wrapped DEK enables future algorithm migration
 
@@ -199,17 +225,20 @@ type SessionDecryptionFailed struct {
 ## Testing Strategy
 
 **E2E Acceptance Tests** (24 scenarios from spec):
+
 - Service layer tests: Encrypt → store → retrieve → decrypt roundtrips
 - Error paths: Context mismatch, tampered ciphertext, KEK unavailable
 - Memory protection: DEK/token buffers verified zeroed
 - Storage adapter tests: Unchanged (still just store/retrieve encrypted bytes)
 
 **Unit Tests**:
+
 - EncryptionContext validation
 - AWS adapter error paths
 - Domain event emissions (service layer)
 
 **Integration Tests**:
+
 - Service → port → storage roundtrip with encryption
 - KEK startup validation
 - Multiple services with different service_ids

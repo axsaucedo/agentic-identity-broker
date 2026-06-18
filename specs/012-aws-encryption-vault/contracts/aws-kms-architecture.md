@@ -2,6 +2,14 @@
 
 **Date**: 2026-01-16 | **Status**: Design Decision | **Scope**: Encryption Vault for OAuth Tokens
 
+> **Implementation note (superseded configuration):**
+> This document records the original single-field encryption proposal
+> (`encryption.key` / `key_encryption_key` with `${ENCRYPTION_KEK}`).
+> The shipped implementation uses a backend-explicit contract:
+> `encryption.aws_kms` or `encryption.memory`.
+> See `internal/ports/config.go` and `docs/configuration.md`
+> for the live schema.
+
 ---
 
 ## Context
@@ -98,6 +106,7 @@ This document clarifies the tradeoffs and recommends an approach for the encrypt
 ### Security Characteristics
 
 **Strengths**:
+
 - KEK never in plaintext in application
 - KMS provides audit logging (CloudTrail)
 - Branch Key TTL limits breach window
@@ -105,6 +114,7 @@ This document clarifies the tradeoffs and recommends an approach for the encrypt
 - Context binding prevents cross-service key reuse
 
 **Attack Surface**:
+
 - If attacker gains memory dump during TTL window, can extract Branch Key
 - Branch Key compromise allows decryption of all data encrypted under that branch during TTL window
 - Does NOT compromise KEK (which remains in AWS KMS)
@@ -112,6 +122,7 @@ This document clarifies the tradeoffs and recommends an approach for the encrypt
 - Does NOT compromise historical data encrypted with previous Branch Key versions
 
 **Mitigation Strategies**:
+
 1. **Shorter TTL** (15 minutes vs. 1 hour default) limits breach window
 2. **Memory protection** deferred to future memory hardening feature
 3. **Regular key rotation** in AWS KMS invalidates old Branch Keys
@@ -120,6 +131,7 @@ This document clarifies the tradeoffs and recommends an approach for the encrypt
 ### Memory Protection
 
 Branch key memory protection is deferred to a future memory hardening feature specification that will address:
+
 - Memory locking to prevent swapping to disk
 - Core dump exclusion to prevent post-mortem forensics
 - Secure buffer zeroing after use
@@ -202,16 +214,19 @@ encryption:
 ### Implementation Guidance
 
 **Phase 1 (MVP)**:
+
 - Use default Hierarchical Keyring configuration (1-hour TTL)
 - Memory protection deferred to future memory hardening feature
 - Establish baseline performance metrics
 
 **Phase 2 (Hardening)**:
+
 - Reduce TTL to 15 minutes based on security requirements
 - Add monitoring/alerting for cache hit rates
 - Implement Branch Key rotation policy
 
 **Phase 3 (Optimization)**:
+
 - Fine-tune TTL based on production traffic patterns
 - Consider hybrid approach: Hierarchical for normal load, direct KMS for high-security ops
 - Implement cost tracking and optimization
@@ -234,6 +249,7 @@ encryption:
 ### Q: If attacker gets memory dump during TTL, can they decrypt all encrypted data?
 
 **A**: No. They can only decrypt data encrypted with the compromised Branch Key during that TTL window:
+
 - Data encrypted with previous Branch Key versions remains protected
 - Data encrypted with future Branch Key versions (after TTL) remains protected
 - Other service_ids' data remains protected (separate Branch Keys)
@@ -242,6 +258,7 @@ encryption:
 ### Q: Isn't this worse than direct KMS calls?
 
 **A**: For pure memory security, yes. But it's better overall:
+
 - 50-200ms latency for every operation is unacceptable for OAuth
 - 10x KMS cost increase is prohibitive at scale
 - 15-minute TTL provides acceptable risk profile
@@ -250,6 +267,7 @@ encryption:
 ### Q: How is memory protection handled?
 
 **A**: Memory protection is deferred to a future memory hardening feature that will address:
+
 1. **Branch Key storage**: Protected memory for cached keys
 2. **Token processing**: Secure handling of plaintext tokens during encrypt/decrypt
 3. **Core dump exclusion**: Prevent keys from appearing in core dumps
@@ -258,6 +276,7 @@ encryption:
 ### Q: What if I need highest-possible security?
 
 **A**: Consider hybrid approach:
+
 ```yaml
 encryption:
   kms:
