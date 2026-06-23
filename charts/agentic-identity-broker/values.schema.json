@@ -636,13 +636,9 @@
                   "type": "string",
                   "description": "AWS region of the DynamoDB table"
                 },
-                "dynamodbReadTimeout": {
+                "dynamodbTimeout": {
                   "type": "string",
-                  "description": "Read timeout for DynamoDB operations"
-                },
-                "dynamodbWriteTimeout": {
-                  "type": "string",
-                  "description": "Write timeout for DynamoDB operations"
+                  "description": "Per-operation timeout for DynamoDB-backed encryption work (e.g. 1s, 5s)"
                 }
               }
             }
