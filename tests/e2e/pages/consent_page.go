@@ -1103,7 +1103,7 @@ func (cp *ConsentPage) ClickRevokeButton(ctx context.Context) error {
 // NOTE: In Headless UI v2 with portal rendering, prefer WaitForRevokeDialog
 // (heading-based) over calling WaitFor() on this locator directly.
 func (cp *ConsentPage) GetRevokeDialog(ctx context.Context) playwright.Locator {
-	return cp.page().GetByRole("dialog")
+	return cp.revokeDialogHeading().Locator("xpath=ancestor::*[@role='dialog'][1]")
 }
 
 // ConfirmRevoke clicks the primary confirmation button inside the RevokeGrantDialog.
@@ -1203,6 +1203,23 @@ func (cp *ConsentPage) WaitForRevokeDialog(ctx context.Context) error {
 		return fmt.Errorf("revoke grant dialog did not appear: %w", err)
 	}
 	return nil
+}
+
+func (cp *ConsentPage) revokeDialogPanel() playwright.Locator {
+	return cp.page().Locator(`[role="dialog"] .bg-white.rounded-2xl`).First()
+}
+
+// TakeRevokeDialogScreenshot captures only the revoke dialog panel.
+// This avoids false-positive diffs from dynamic page content behind the modal.
+func (cp *ConsentPage) TakeRevokeDialogScreenshot(ctx context.Context, name string) error {
+	if err := cp.WaitForRevokeDialog(ctx); err != nil {
+		return err
+	}
+	panel := cp.revokeDialogPanel()
+	if err := panel.WaitFor(); err != nil {
+		return fmt.Errorf("revoke dialog panel not ready for screenshot: %w", err)
+	}
+	return cp.TakeLocatorScreenshot(ctx, name, panel)
 }
 
 // IsRevokeDialogVisible reports whether the RevokeGrantDialog is currently visible.

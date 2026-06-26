@@ -126,7 +126,7 @@ var _ = Describe("Revoke Grant Flow", func() {
 		Expect(servicesNotePresent).To(BeTrue(),
 			"Dialog must inform user that connected services are NOT terminated (FR-010)")
 
-		err = consentPage.TakeScreenshot(ctx, "revoke_dialog_content")
+		err = consentPage.TakeRevokeDialogScreenshot(ctx, "revoke_dialog_content")
 		Expect(err).NotTo(HaveOccurred(), "Failed to take screenshot")
 
 		GetLogger().Info("Test passed: Revoke dialog shows agent name and service note")
@@ -194,7 +194,7 @@ var _ = Describe("Revoke Grant Flow", func() {
 		Expect(agentNamePresent).To(BeTrue(),
 			"Overview dialog must mention the agent name")
 
-		err = consentPage.TakeScreenshot(ctx, "revoke_dialog_from_overview")
+		err = consentPage.TakeRevokeDialogScreenshot(ctx, "revoke_dialog_from_overview")
 		Expect(err).NotTo(HaveOccurred(), "Failed to take screenshot")
 
 		GetLogger().Info("Test passed: Overview revoke dialog content matches spec")

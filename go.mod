@@ -24,6 +24,7 @@ require (
 	github.com/lestrrat-go/jwx/v3 v3.1.1
 	github.com/lib/pq v1.12.3
 	github.com/mark3labs/mcp-go v0.54.1
+	github.com/moby/moby/api v1.54.1
 	github.com/onsi/ginkgo/v2 v2.29.0
 	github.com/onsi/gomega v1.40.0
 	github.com/ory/fosite v0.49.0
@@ -66,7 +67,6 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
 	github.com/mattn/goveralls v0.0.12 // indirect
-	github.com/moby/moby/api v1.54.1 // indirect
 	github.com/moby/moby/client v0.4.0 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/openzipkin/zipkin-go v0.4.2 // indirect
@@ -132,7 +132,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/pprof v0.0.0-20260402051712-545e8a4df936 // indirect

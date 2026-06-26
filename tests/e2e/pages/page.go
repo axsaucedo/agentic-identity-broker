@@ -340,6 +340,42 @@ func captureScreenshot(page screenshotPage, screenshotDir, name string) error {
 	return nil
 }
 
+// TakeLocatorScreenshot captures a screenshot of a specific locator.
+// Use this for overlays/dialogs where full-page captures include unstable background content.
+func (p *Page) TakeLocatorScreenshot(ctx context.Context, name string, locator playwright.Locator) error {
+	_ = ctx
+	if !captureScreenshotsEnabled() {
+		return nil
+	}
+
+	if name == "" {
+		return fmt.Errorf("screenshot name cannot be empty")
+	}
+
+	if err := os.MkdirAll(p.screenshotDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create screenshot directory %s: %w", p.screenshotDir, err)
+	}
+
+	filePath := filepath.Join(p.screenshotDir, name+".png")
+
+	if err := waitForScreenshotStability(p.page, name); err != nil {
+		return err
+	}
+
+	data, err := locator.Screenshot(playwright.LocatorScreenshotOptions{
+		Animations: playwright.ScreenshotAnimationsDisabled,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to take locator screenshot %s: %w", filePath, err)
+	}
+
+	if err := os.WriteFile(filePath, data, 0o644); err != nil {
+		return fmt.Errorf("failed to write screenshot to %s: %w", filePath, err)
+	}
+
+	return nil
+}
+
 func waitForScreenshotStability(page screenshotPage, name string) error {
 	// Wait for network to be idle before capturing to avoid intermediate loading states
 	// (spinners, skeleton screens) that cause screenshot flicker between runs.
@@ -351,22 +387,25 @@ func waitForScreenshotStability(page screenshotPage, name string) error {
 		if !isPlaywrightTimeout(err) {
 			return fmt.Errorf("failed waiting for network idle before screenshot %s: %w", name, err)
 		}
+	}
 
-		// Some SPA pages keep background requests alive long enough that Playwright never
-		// reports networkidle, even though the visible UI is already stable. In that case,
-		// fall back to waiting for fonts and a couple of animation frames instead of failing
-		// the test on screenshot bookkeeping alone.
-		if _, evalErr := page.Evaluate(`() => {
-			if (document.fonts && document.fonts.ready) {
-				return document.fonts.ready.catch(() => undefined)
-			}
-			return Promise.resolve()
-		}`); evalErr != nil {
-			return fmt.Errorf("failed waiting for font readiness before screenshot %s: %w", name, evalErr)
+	if err := waitForScreenshotRenderStability(page, name); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func waitForScreenshotRenderStability(page screenshotPage, name string) error {
+	if _, err := page.Evaluate(`async () => {
+		if (document.fonts && document.fonts.ready) {
+			try {
+				await document.fonts.ready
+			} catch (_) {}
 		}
-		if _, evalErr := page.Evaluate(`() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`); evalErr != nil {
-			return fmt.Errorf("failed waiting for render stability before screenshot %s: %w", name, evalErr)
-		}
+		await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+	}`); err != nil {
+		return fmt.Errorf("failed waiting for font/render stability before screenshot %s: %w", name, err)
 	}
 
 	return nil
