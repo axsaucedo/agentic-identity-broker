@@ -6,3 +6,8 @@
 
 ## Recent Changes
 - 032-aggregated-jwks: Added Go 1.25.6 + chi v5 (HTTP router), lestrrat-go/jwx/v3 (JWK caching + key sets), Viper/Cobra (config)
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->
