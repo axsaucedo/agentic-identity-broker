@@ -43,22 +43,56 @@ type tokenCacheKey struct {
 // infrastructure failure rather than a client error.
 var ErrAssertionExpired = errors.New("client assertion expired")
 
-// cachedToken holds an exchanged access token and its expiry time.
+// reAuthCooldownTTL is the minimum interval between broker calls for the same
+// token+resource key when the broker returns a re-auth error. It prevents tight
+// retry loops from hammering the broker during an active re-auth flow while
+// remaining short enough that a completed re-auth is observable on the next
+// attempt (re-auth flows take longer than 5 s in practice).
+const reAuthCooldownTTL = 5 * time.Second
+
+// cachedToken holds either an exchanged access token or a re-auth rate-limit
+// entry. reAuthErr and accessToken are mutually exclusive: when reAuthErr is
+// set the entry acts as a short-lived rate-limit, not a long-lived cache.
+//
+// Success entries are served from cache until expiresAt with no intermediate
+// broker probe. grantedPermissionSets is cached alongside the access token as the
+// same token-bound snapshot, so it inherits the same TTL and stale-window bounds.
+// staleUntil is an immutable upper bound set at population time
+// (min(expiresAt + reAuthCooldownTTL, issueTime + cache.max_ttl)) allowing the
+// stale token to be served for a brief outage window. When ttl == cache.max_ttl
+// (the common case where expires_in exceeds the cap), staleUntil == expiresAt
+// and the token is never served past the configured maximum. Because it is fixed
+// at token creation it cannot be extended by repeated transient failures.
 type cachedToken struct {
-	accessToken string
-	expiresAt   time.Time
+	accessToken           string
+	grantedPermissionSets map[string][]string
+	reAuthErr             *BrokerExchangeError // non-nil = rate-limit window for re-auth
+	expiresAt             time.Time
+	staleUntil            time.Time // immutable upper bound for stale-token fallback; set at population
 }
 
-// isExpired reports whether the cached token has expired.
+// isExpired reports whether the cached entry has expired.
 func (c *cachedToken) isExpired() bool {
 	return time.Now().After(c.expiresAt)
 }
 
 // tokenExchangeResponse is the JSON shape from the RFC 8693 token exchange endpoint.
 type tokenExchangeResponse struct {
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-	ExpiresIn   *int   `json:"expires_in"` // pointer: nil means absent
+	AccessToken           string              `json:"access_token"`
+	TokenType             string              `json:"token_type"`
+	ExpiresIn             *int                `json:"expires_in"` // pointer: nil means absent
+	GrantedPermissionSets map[string][]string `json:"granted_permission_sets,omitempty"`
+}
+
+func cloneGrantedPermissionSets(src map[string][]string) map[string][]string {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string][]string, len(src))
+	for permissionSetID, serviceIDs := range src {
+		dst[permissionSetID] = append([]string(nil), serviceIDs...)
+	}
+	return dst
 }
 
 // brokerErrorBody is the JSON shape returned by the broker on non-200 responses.
@@ -116,7 +150,7 @@ type TokenExchanger struct {
 
 	// cb protects outbound token exchange calls with a circuit breaker
 	// to prevent thundering herd when the identity broker recovers.
-	cb *gobreaker.CircuitBreaker[string]
+	cb *gobreaker.CircuitBreaker[ExchangeResult]
 
 	// stopCh signals the background goroutine to stop.
 	stopCh chan struct{}
@@ -161,17 +195,32 @@ func NewTokenExchanger(cfg *extprocconfig.Config, logger *slog.Logger) (*TokenEx
 	return te, nil
 }
 
+// isAssertionExpired reports whether the current client assertion is absent or past its expiry.
+// Used by Exchange fast paths to skip the cache when ErrAssertionExpired would be returned anyway.
+func (te *TokenExchanger) isAssertionExpired() bool {
+	s := te.assertion.Load()
+	if s == nil || s.value == "" {
+		return true
+	}
+	return !s.expiresAt.IsZero() && time.Now().After(s.expiresAt)
+}
+
 // Exchange exchanges subjectToken for a downstream token scoped to resourceURI.
 // ctx is used for trace propagation and deadline enforcement.
 // Results are cached; concurrent requests for the same key are deduplicated via singleflight.
-func (te *TokenExchanger) Exchange(ctx context.Context, subjectToken, resourceURI string) (string, error) {
+func (te *TokenExchanger) Exchange(ctx context.Context, subjectToken, resourceURI string) (ExchangeResult, error) {
 	key := tokenCacheKey{subjectToken: subjectToken, resourceURI: resourceURI}
 
-	// Fast path: cache hit.
+	// Fast path: cache hit before expiry.
+	// Skip entirely on assertion expiry so ErrAssertionExpired reaches callers immediately,
+	// even when a cached re-auth or success entry is present.
 	te.cacheMu.RLock()
-	if entry, ok := te.cache[key]; ok && !entry.isExpired() {
+	if entry, ok := te.cache[key]; ok && !entry.isExpired() && !te.isAssertionExpired() {
 		te.cacheMu.RUnlock()
-		return entry.accessToken, nil
+		if entry.reAuthErr != nil {
+			return ExchangeResult{}, entry.reAuthErr
+		}
+		return ExchangeResult{Token: entry.accessToken, GrantedPermissionSets: cloneGrantedPermissionSets(entry.grantedPermissionSets)}, nil
 	}
 	te.cacheMu.RUnlock()
 
@@ -182,9 +231,12 @@ func (te *TokenExchanger) Exchange(ctx context.Context, subjectToken, resourceUR
 	resChan := te.sfGroup.DoChan(sfKey, func() (any, error) {
 		// Re-check cache inside singleflight to handle races.
 		te.cacheMu.RLock()
-		if entry, ok := te.cache[key]; ok && !entry.isExpired() {
+		if entry, ok := te.cache[key]; ok && !entry.isExpired() && !te.isAssertionExpired() {
 			te.cacheMu.RUnlock()
-			return entry.accessToken, nil
+			if entry.reAuthErr != nil {
+				return ExchangeResult{}, entry.reAuthErr
+			}
+			return ExchangeResult{Token: entry.accessToken, GrantedPermissionSets: cloneGrantedPermissionSets(entry.grantedPermissionSets)}, nil
 		}
 		te.cacheMu.RUnlock()
 
@@ -193,45 +245,86 @@ func (te *TokenExchanger) Exchange(ctx context.Context, subjectToken, resourceUR
 		// handled by awaitResult's select. http.Client.Timeout provides a hard upper bound.
 		exchangeCtx := context.WithoutCancel(ctx)
 
-		// When the circuit breaker is disabled (cb == nil), call doExchange directly.
+		// doExchangeAndCache performs the exchange and caches re-auth or success results.
+		// All errors (including transient 5xx) are propagated so gobreaker tracks them
+		// correctly. The stale-token fallback for transient failures is applied by the
+		// caller AFTER Execute() returns, keeping failure accounting accurate.
+		doExchangeAndCache := func() (ExchangeResult, error) {
+			tok, permSets, ttl, err := te.doExchange(exchangeCtx, subjectToken, resourceURI)
+			if err != nil {
+				var brokerErr *BrokerExchangeError
+				if errors.As(err, &brokerErr) && brokerErr.ErrorURI != "" && !isTransientBrokerError(err) {
+					te.cacheMu.Lock()
+					te.cache[key] = &cachedToken{
+						reAuthErr: brokerErr,
+						expiresAt: time.Now().Add(reAuthCooldownTTL),
+					}
+					te.cacheMu.Unlock()
+				}
+				return ExchangeResult{}, err
+			}
+
+			cachedPermSets := cloneGrantedPermissionSets(permSets)
+
+			te.cacheMu.Lock()
+			now := time.Now()
+			staleUntil := now.Add(ttl + reAuthCooldownTTL)
+			if maxAbs := now.Add(te.cfg.Cache.MaxTTL); maxAbs.Before(staleUntil) {
+				staleUntil = maxAbs
+			}
+			te.cache[key] = &cachedToken{
+				accessToken:           tok,
+				grantedPermissionSets: cachedPermSets,
+				expiresAt:             now.Add(ttl),
+				staleUntil:            staleUntil,
+			}
+			te.cacheMu.Unlock()
+
+			return ExchangeResult{Token: tok, GrantedPermissionSets: cloneGrantedPermissionSets(cachedPermSets)}, nil
+		}
+
+		// serveStaleOrErr returns the cached token (even if expired) for transient errors
+		// (5xx, network errors, circuit open — anything isTransientBrokerError returns
+		// true for). Authoritative 4xx rejections are propagated unchanged.
+		// Stale tokens are never served after assertion expiry regardless of error type.
+		// staleUntil is set at token population time (expiresAt + reAuthCooldownTTL)
+		// and is never modified here, so the stale window is immutably bounded.
+		// Must be called with execErr != nil.
+		serveStaleOrErr := func(execErr error) (any, error) {
+			if isTransientBrokerError(execErr) && !te.isAssertionExpired() {
+				te.cacheMu.RLock()
+				entry, ok := te.cache[key]
+				if ok && entry.accessToken != "" && time.Now().Before(entry.staleUntil) {
+					staleResult := ExchangeResult{Token: entry.accessToken, GrantedPermissionSets: cloneGrantedPermissionSets(entry.grantedPermissionSets)}
+					te.cacheMu.RUnlock()
+					return staleResult, nil
+				}
+				te.cacheMu.RUnlock()
+			}
+			return ExchangeResult{}, execErr
+		}
+
+		// When the circuit breaker is disabled (cb == nil), call doExchangeAndCache
+		// directly, then apply the stale-token fallback for transient errors.
 		if te.cb == nil {
-			tok, ttl, err := te.doExchange(exchangeCtx, subjectToken, resourceURI)
-			if err != nil {
-				return "", err
+			result, execErr := doExchangeAndCache()
+			if execErr != nil {
+				return serveStaleOrErr(execErr)
 			}
-			te.cacheMu.Lock()
-			te.cache[key] = &cachedToken{
-				accessToken: tok,
-				expiresAt:   time.Now().Add(ttl),
-			}
-			te.cacheMu.Unlock()
-			return tok, nil
+			return result, nil
 		}
 
-		// Circuit breaker enabled: wrap in gobreaker.Execute so it tracks real backend
-		// failures, not caller cancellations.
-		token, err := te.cb.Execute(func() (string, error) {
-			tok, ttl, err := te.doExchange(exchangeCtx, subjectToken, resourceURI)
-			if err != nil {
-				return "", err
+		// Circuit breaker: wrap doExchangeAndCache so gobreaker tracks 5xx failures.
+		// After Execute returns, apply the stale-token fallback outside the breaker so
+		// transient probe failures are correctly counted as circuit-breaker failures.
+		result, execErr := te.cb.Execute(doExchangeAndCache)
+		if execErr != nil {
+			if errors.Is(execErr, gobreaker.ErrOpenState) || errors.Is(execErr, gobreaker.ErrTooManyRequests) {
+				execErr = ErrCircuitOpen
 			}
-
-			te.cacheMu.Lock()
-			te.cache[key] = &cachedToken{
-				accessToken: tok,
-				expiresAt:   time.Now().Add(ttl),
-			}
-			te.cacheMu.Unlock()
-
-			return tok, nil
-		})
-		if err != nil {
-			if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
-				return "", ErrCircuitOpen
-			}
-			return "", err
+			return serveStaleOrErr(execErr)
 		}
-		return token, nil
+		return result, nil
 	})
 
 	// Wait for result while respecting this caller's context cancellation.
@@ -239,16 +332,40 @@ func (te *TokenExchanger) Exchange(ctx context.Context, subjectToken, resourceUR
 	// if their own deadline is exceeded, even if other callers are still waiting.
 	res, err := awaitResult(ctx, resChan)
 	if err != nil {
-		return "", err
+		return ExchangeResult{}, err
 	}
 	if res.Shared {
 		te.logger.DebugContext(ctx, "singleflight: exchange result shared across concurrent callers",
 			"resource", resourceURI)
 	}
 	if res.Err != nil {
-		return "", res.Err
+		return ExchangeResult{}, res.Err
 	}
-	return res.Val.(string), nil
+	return res.Val.(ExchangeResult), nil
+}
+
+// isTransientBrokerError reports whether err represents a transient infrastructure
+// failure — a 5xx response, 429 throttling, or network error — rather than an
+// authoritative rejection from the broker.
+// Only transient errors should fall back to serving a stale cached token;
+// authoritative responses (invalid_token, access_denied, 429 with error_uri, etc.)
+// must be propagated so that revoked access is not silently extended.
+// A 429 with a non-empty ErrorURI carries an explicit re-auth signal and must be
+// treated as authoritative so the caller can surface the elicitation URL.
+// ErrAssertionExpired is NOT transient: the service cannot re-authenticate on its
+// own and the client must receive the 503 signal.
+func isTransientBrokerError(err error) bool {
+	if errors.Is(err, ErrAssertionExpired) {
+		return false
+	}
+	var brokerErr *BrokerExchangeError
+	if errors.As(err, &brokerErr) {
+		if brokerErr.StatusCode == 429 {
+			return brokerErr.ErrorURI == ""
+		}
+		return brokerErr.StatusCode >= 500
+	}
+	return true // network errors — transient
 }
 
 // awaitResult waits for the singleflight result while respecting ctx cancellation.
@@ -273,18 +390,18 @@ func (te *TokenExchanger) Shutdown() {
 
 // doExchange performs the RFC 8693 token exchange HTTP call.
 // ctx is used for trace propagation and deadline enforcement.
-// Returns the exchanged access token and the TTL to cache it for.
+// Returns the exchanged access token, any granted permission sets, and the TTL to cache it for.
 // Fails fast with ErrAssertionExpired if the stored assertion has expired.
-func (te *TokenExchanger) doExchange(ctx context.Context, subjectToken, resourceURI string) (string, time.Duration, error) {
+func (te *TokenExchanger) doExchange(ctx context.Context, subjectToken, resourceURI string) (string, map[string][]string, time.Duration, error) {
 	s := te.assertion.Load()
 	if s == nil || s.value == "" {
 		te.logger.ErrorContext(ctx, "client assertion unavailable: no assertion stored")
-		return "", 0, ErrAssertionExpired
+		return "", nil, 0, ErrAssertionExpired
 	}
 	if !s.expiresAt.IsZero() && time.Now().After(s.expiresAt) {
 		te.logger.ErrorContext(ctx, "client assertion expired: background refresh did not complete in time",
 			"expired_at", s.expiresAt.Format(time.RFC3339))
-		return "", 0, ErrAssertionExpired
+		return "", nil, 0, ErrAssertionExpired
 	}
 	assertion := s.value
 
@@ -312,19 +429,19 @@ func (te *TokenExchanger) doExchange(ctx context.Context, subjectToken, resource
 	req, err := http.NewRequestWithContext(exchangeCtx, http.MethodPost,
 		te.cfg.OAuth2.TokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", 0, fmt.Errorf("building token exchange request: %w", err)
+		return "", nil, 0, fmt.Errorf("building token exchange request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := te.client.Do(req)
 	if err != nil {
-		return "", 0, fmt.Errorf("token exchange request failed: %w", err)
+		return "", nil, 0, fmt.Errorf("token exchange request failed: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", 0, fmt.Errorf("reading token exchange response: %w", err)
+		return "", nil, 0, fmt.Errorf("reading token exchange response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -336,7 +453,7 @@ func (te *TokenExchanger) doExchange(ctx context.Context, subjectToken, resource
 				"code", errBody.Code,
 				"resource", resourceURI,
 				"has_error_uri", errBody.ErrorURI != "")
-			return "", 0, &BrokerExchangeError{
+			return "", nil, 0, &BrokerExchangeError{
 				StatusCode:  resp.StatusCode,
 				Code:        errBody.Code,
 				Description: errBody.Description,
@@ -352,7 +469,7 @@ func (te *TokenExchanger) doExchange(ctx context.Context, subjectToken, resource
 		te.logger.WarnContext(ctx, "token exchange returned non-200",
 			"status", resp.StatusCode,
 			"resource", resourceURI)
-		return "", 0, &BrokerExchangeError{
+		return "", nil, 0, &BrokerExchangeError{
 			StatusCode: resp.StatusCode,
 			Code:       fmt.Sprintf("http_%d", resp.StatusCode),
 		}
@@ -360,14 +477,14 @@ func (te *TokenExchanger) doExchange(ctx context.Context, subjectToken, resource
 
 	var exResp tokenExchangeResponse
 	if err := json.Unmarshal(body, &exResp); err != nil {
-		return "", 0, fmt.Errorf("parsing token exchange response: %w", err)
+		return "", nil, 0, fmt.Errorf("parsing token exchange response: %w", err)
 	}
 	if exResp.AccessToken == "" {
-		return "", 0, fmt.Errorf("token exchange response missing access_token")
+		return "", nil, 0, fmt.Errorf("token exchange response missing access_token")
 	}
 
 	ttl := te.computeTTL(exResp.ExpiresIn)
-	return exResp.AccessToken, ttl, nil
+	return exResp.AccessToken, cloneGrantedPermissionSets(exResp.GrantedPermissionSets), ttl, nil
 }
 
 // computeTTL returns the cache TTL for an exchanged token.
@@ -463,11 +580,14 @@ func (te *TokenExchanger) runEviction() {
 }
 
 // evictExpired removes expired entries from the cache.
+// Entries that are expired but still within their stale window are kept until the
+// stale window passes so serveStaleOrErr can continue serving them.
 func (te *TokenExchanger) evictExpired() {
 	te.cacheMu.Lock()
 	defer te.cacheMu.Unlock()
+	now := time.Now()
 	for key, entry := range te.cache {
-		if entry.isExpired() {
+		if entry.isExpired() && (entry.staleUntil.IsZero() || entry.staleUntil.Before(now)) {
 			delete(te.cache, key)
 		}
 	}

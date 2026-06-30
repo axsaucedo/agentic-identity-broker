@@ -76,3 +76,4 @@ imgdiff
 .githooks/
 .pi/
 .pi-lens/
+.omp/

@@ -398,6 +398,99 @@ func TestIsSignalCancellation_DeadlineExceeded_ReturnsFalse(t *testing.T) {
 		"DeadlineExceeded must not be treated as signal cancellation")
 }
 
+type mockGRPCServerStopper struct {
+	gracefulStarted chan struct{}
+	gracefulRelease chan struct{}
+	gracefulCalls   int
+	stopCalls       int
+}
+
+func (m *mockGRPCServerStopper) GracefulStop() {
+	m.gracefulCalls++
+	if m.gracefulStarted != nil {
+		select {
+		case <-m.gracefulStarted:
+		default:
+			close(m.gracefulStarted)
+		}
+	}
+	if m.gracefulRelease != nil {
+		<-m.gracefulRelease
+	}
+}
+
+func (m *mockGRPCServerStopper) Stop() {
+	m.stopCalls++
+	if m.gracefulRelease != nil {
+		select {
+		case <-m.gracefulRelease:
+		default:
+			close(m.gracefulRelease)
+		}
+	}
+}
+
+func TestStopGRPCServerWithTimeout_GracefulStopCompletes(t *testing.T) {
+	stopper := &mockGRPCServerStopper{}
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+
+	stopGRPCServerWithTimeout(stopper, 50*time.Millisecond, logger)
+
+	assert.Equal(t, 1, stopper.gracefulCalls)
+	assert.Equal(t, 0, stopper.stopCalls)
+}
+
+func TestStopGRPCServerWithTimeout_ForceStopsAfterTimeout(t *testing.T) {
+	stopper := &mockGRPCServerStopper{
+		gracefulStarted: make(chan struct{}),
+		gracefulRelease: make(chan struct{}),
+	}
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+
+	done := make(chan struct{})
+	go func() {
+		stopGRPCServerWithTimeout(stopper, 10*time.Millisecond, logger)
+		close(done)
+	}()
+
+	<-stopper.gracefulStarted
+	<-done
+
+	assert.Equal(t, 1, stopper.gracefulCalls)
+	assert.Equal(t, 1, stopper.stopCalls)
+	assert.Contains(t, logBuf.String(), "forcing stop")
+}
+
+func TestShutdownTelemetry_CallsShutdownWithTimeout(t *testing.T) {
+	called := false
+	var deadline time.Time
+	var hasDeadline bool
+
+	shutdownTelemetry(slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)), func(ctx context.Context) error {
+		called = true
+		deadline, hasDeadline = ctx.Deadline()
+		return nil
+	})
+
+	require.True(t, called, "shutdown helper must invoke the shutdown callback")
+	require.True(t, hasDeadline, "shutdown helper must bound the shutdown with a deadline")
+	assert.WithinDuration(t, time.Now().Add(5*time.Second), deadline, 500*time.Millisecond,
+		"shutdown helper must use the standard 5s shutdown timeout")
+}
+
+func TestShutdownTelemetry_LogsShutdownError(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+
+	shutdownTelemetry(logger, func(context.Context) error {
+		return fmt.Errorf("exporter close failed")
+	})
+
+	assert.Contains(t, logBuf.String(), "error during telemetry shutdown")
+	assert.Contains(t, logBuf.String(), "exporter close failed")
+}
+
 // TestInitLogger_WithTelemetryConfig verifies that the logger initialization
 // path succeeds under all telemetry config combinations (enabled/disabled,
 // logs enabled/disabled). The actual OTel bridge wiring (MultiHandler,

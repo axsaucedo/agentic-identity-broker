@@ -658,10 +658,12 @@ type ClaimExtractionConfig struct {
 	AgentIDExpression string `mapstructure:"agent_id_expression" validate:"required"`
 }
 
-// AuthorizationConfig defines authorization policies for token exchange.
-// Supports multiple authorization types (CEL now, OPA in future).
+// AuthorizationConfig defines broker-side authorization policies for RFC 8693 token exchange.
+// It does not control ExtProc request/tool authorization in internal/extproc, which is a
+// separate service boundary with its own configuration schema.
 type AuthorizationConfig struct {
-	// Type specifies the authorization method: "cel" (recommended) or "opa" (reserved for future).
+	// Type specifies the broker-side authorization method: "cel" (implemented) or "opa"
+	// (reserved for a future broker-side design).
 	// Default: "cel"
 	Type string `mapstructure:"type" validate:"required,oneof=cel opa"`
 
@@ -669,9 +671,9 @@ type AuthorizationConfig struct {
 	// This is used when Type is "cel".
 	CEL CELAuthorizationConfig `mapstructure:"cel"`
 
-	// OPA contains OPA-based authorization configuration.
-	// Reserved for future implementation. Currently ignored.
-	// When specified, must have Mode set to indicate OPA usage intention.
+	// OPA contains broker-side OPA authorization configuration.
+	// Reserved for future broker token-exchange authorization. Currently ignored.
+	// This is distinct from the ExtProc OPA authorizer used by cmd/extproc-token-exchange.
 	OPA OPAAuthorizationConfig `mapstructure:"opa"`
 }
 
@@ -702,15 +704,15 @@ type CELAuthorizationConfig struct {
 	EvaluationTimeout time.Duration `mapstructure:"evaluation_timeout" validate:"min=10ms,max=5s"`
 }
 
-// OPAAuthorizationConfig is reserved for future OPA (Open Policy Agent) support.
-// Currently unused. Included for forward compatibility and future extensibility.
+// OPAAuthorizationConfig is reserved for future broker-side OPA support.
+// It does not refer to ExtProc's standalone OPA request authorizer.
 type OPAAuthorizationConfig struct {
-	// PolicyURL is the OPA server endpoint (e.g., "http://opa:8181").
-	// Not implemented in current version.
+	// PolicyURL is the broker-side OPA server endpoint (e.g., "http://opa:8181").
+	// Not implemented in the current broker token-exchange flow.
 	PolicyURL string `mapstructure:"policy_url"`
 
-	// PolicyPath is the OPA policy path for token exchange evaluation.
-	// Not implemented in current version.
+	// PolicyPath is the broker-side OPA policy path for token exchange evaluation.
+	// Not implemented in the current broker token-exchange flow.
 	PolicyPath string `mapstructure:"policy_path"`
 }
 
@@ -876,6 +878,9 @@ type LogsConfig struct {
 // OTLPProtocol identifies the transport protocol for the OTLP exporter.
 type OTLPProtocol = string
 
+// OTLPCompression identifies the payload compression algorithm for the OTLP exporter.
+type OTLPCompression = string
+
 const (
 	// OTLPProtocolGRPC uses gRPC transport for OTLP export.
 	// Endpoint format: host:port (e.g. "collector:4317").
@@ -890,9 +895,6 @@ const (
 	// A full https:// URL is also accepted. Using http:// is rejected at validation time.
 	OTLPProtocolHTTPS OTLPProtocol = "https"
 )
-
-// OTLPCompression identifies the payload compression algorithm for the OTLP exporter.
-type OTLPCompression = string
 
 const (
 	// OTLPCompressionNone sends payloads uncompressed (default).
@@ -921,7 +923,7 @@ func DefaultTelemetryConfig() TelemetryConfig {
 		Traces: TracesConfig{
 			Enabled:      true,
 			SamplingRate: 1.0,
-			Propagators:  []string{"ottrace", "b3multi", "baggage"},
+			Propagators:  []string{"tracecontext", "ottrace", "b3multi", "baggage"},
 		},
 		Metrics: MetricsConfig{
 			Enabled:        true,

@@ -70,34 +70,42 @@ func NewTestEnvironment(cfg *extprocconfig.Config, logger *slog.Logger) *TestEnv
 // Must be called before making gRPC requests. Uses Gomega Expect so it can be
 // called directly in BeforeEach blocks — test fails immediately on setup errors.
 func (e *TestEnvironment) Start() {
-	// Start mock OAuth2 server (for client_credentials grant)
+	e.startMockServers()
+
+	exchanger, err := extprocserver.NewTokenExchanger(e.Config, e.logger)
+	Expect(err).NotTo(HaveOccurred(), "failed to create token exchanger")
+
+	var svc *extprocserver.Server
+	if e.Config.Authorization.Enabled {
+		authorizer, authErr := NewOPAAuthorizer(e.Config, e.logger)
+		Expect(authErr).NotTo(HaveOccurred(), "failed to create OPA authorizer")
+		svc = extprocserver.NewServerWithAuthorizer(e.Config, exchanger, authorizer, e.logger)
+	} else {
+		svc = extprocserver.NewServer(e.Config, exchanger, e.logger)
+	}
+
+	e.startGRPCServer(svc)
+}
+
+// startMockServers initializes and starts the mock OAuth2 and token exchange servers
+// and updates the config to point to them.
+func (e *TestEnvironment) startMockServers() {
 	e.MockOAuth2 = NewMockOAuth2Server()
 	e.MockOAuth2.Start()
-
-	// Start mock token exchange server (identity broker)
 	e.MockTokenExchange = NewMockTokenExchangeServer()
 	e.MockTokenExchange.Start()
-
-	// Update config to point to mock servers
 	e.Config.OAuth2.ClientCredentialsEndpoint = e.MockOAuth2.URL() + "/oauth/token"
 	e.Config.OAuth2.TokenEndpoint = e.MockTokenExchange.URL() + "/oauth2/token"
-
-	// Allow HTTP endpoints in test (mock servers use HTTP, not HTTPS)
 	e.Config.OAuth2.TLS.AllowHTTP = true
+}
 
-	// Create gRPC listener on a random available port
+// startGRPCServer creates and starts the gRPC server with the provided ExtProc service.
+func (e *TestEnvironment) startGRPCServer(svc *extprocserver.Server) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	Expect(err).NotTo(HaveOccurred(), "failed to create gRPC listener")
 	e.grpcListener = listener
 	e.grpcAddress = listener.Addr().String()
 
-	// Build the ExtProc service under test
-	exchanger, err := extprocserver.NewTokenExchanger(e.Config, e.logger)
-	Expect(err).NotTo(HaveOccurred(), "failed to create token exchanger")
-
-	svc := extprocserver.NewServer(e.Config, exchanger, e.logger)
-
-	// Create and start gRPC server
 	e.grpcServer = grpc.NewServer()
 	extprocv3.RegisterExternalProcessorServer(e.grpcServer, svc)
 

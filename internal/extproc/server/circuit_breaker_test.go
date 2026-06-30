@@ -169,7 +169,7 @@ func TestCircuitBreaker_HalfOpen_SuccessfulProbe_ClosesCircuit(t *testing.T) {
 				// Circuit may still be open; keep retrying until reset_timeout expires.
 				return false
 			}
-			token = tok
+			token = tok.Token
 			return token == "recovered-token"
 		},
 		resetTimeout+eventuallyTimeout,
@@ -178,9 +178,9 @@ func TestCircuitBreaker_HalfOpen_SuccessfulProbe_ClosesCircuit(t *testing.T) {
 	)
 
 	// Subsequent calls should work normally (circuit is closed)
-	token2, err := exchanger.Exchange(context.Background(), "token-normal", "http://resource.example.com/normal")
+	result2, err := exchanger.Exchange(context.Background(), "token-normal", "http://resource.example.com/normal")
 	require.NoError(t, err, "circuit should be closed after successful probe")
-	assert.Equal(t, "recovered-token", token2)
+	assert.Equal(t, "recovered-token", result2.Token)
 }
 
 // ---------------------------------------------------------------------------
@@ -261,7 +261,7 @@ func TestCircuitBreaker_CacheHit_BypassesCircuitBreaker(t *testing.T) {
 	// Circuit is now open — but cached entry should still work
 	token2, err := exchanger.Exchange(context.Background(), cachedKey, cachedResource)
 	require.NoError(t, err, "cache hit must succeed even when circuit is open")
-	assert.Equal(t, token1, token2, "cached token must be returned")
+	assert.Equal(t, token1.Token, token2.Token, "cached token must be returned")
 }
 
 // ---------------------------------------------------------------------------
@@ -391,8 +391,8 @@ func TestCircuitBreaker_ConcurrentAccess_RaceFree(t *testing.T) {
 // ErrCircuitOpen from exchanger → 503 ImmediateResponse with appropriate body.
 func TestServer_Process_CircuitOpen_Returns503(t *testing.T) {
 	exchanger := &mockExchanger{
-		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
-			return "", server.ErrCircuitOpen
+		exchangeFunc: func(_ context.Context, _, _ string) (server.ExchangeResult, error) {
+			return server.ExchangeResult{}, server.ErrCircuitOpen
 		},
 	}
 	client, cleanup := startTestServer(t, exchanger)
@@ -603,9 +603,9 @@ func TestCircuitBreaker_Disabled_SuccessfulExchangeWorks(t *testing.T) {
 	require.NoError(t, err)
 	defer exchanger.Shutdown()
 
-	token, err := exchanger.Exchange(context.Background(), "valid-token", "http://resource.example.com/api")
+	result, err := exchanger.Exchange(context.Background(), "valid-token", "http://resource.example.com/api")
 	require.NoError(t, err)
-	assert.Equal(t, "exchanged-access-token", token)
+	assert.Equal(t, "exchanged-access-token", result.Token)
 }
 
 // ---------------------------------------------------------------------------

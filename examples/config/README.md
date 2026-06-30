@@ -393,6 +393,33 @@ Key settings:
 ./agentic-identity-broker --config ./examples/config/oauth2-hybrid-mode.yaml
 ```
 
+### `extproc-opa-authorization.yaml`
+
+ExtProc OPA-based authorization configuration. Demonstrates:
+- OPA authorization enabled with a local Rego policy file
+- OPA policy package and decision document configuration
+- Default deny (fail-closed) security posture
+- Evaluation timeout and max body size limits
+- Alternative mode using OPA config file for bundle server integration
+
+**Usage:**
+```bash
+# Run ExtProc with OPA authorization via local Rego file
+EXTPROC_OAUTH2_CLIENT_ID="my-client" \
+EXTPROC_OAUTH2_CLIENT_SECRET="my-secret" \
+EXTPROC_CONFIG_PATH=./examples/config/extproc-opa-authorization.yaml \
+  ./extproc-token-exchange
+```
+
+**Key Features:**
+- Optional OPA authorization (disabled by default, zero overhead when off)
+- Local Rego file support for quick setup and development
+- OPA config file support for production bundle server integration
+- Protocol-aware MCP tool call evaluation (`input.mcp.tool_name`, `input.type`)
+- Set-based allow/deny policy pattern (deny always wins)
+- Configurable evaluation timeout and body size limits
+- Fail-closed security: denied by default when no rule matches
+
 ## Configuration Sources and Precedence
 
 The application loads configuration from multiple sources with this precedence (highest to lowest):

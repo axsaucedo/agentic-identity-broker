@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -127,6 +129,65 @@ func Validate(cfg *Config) error {
 		errs = append(errs, "circuit_breaker.reset_timeout must be a positive duration")
 	}
 
+	policyPath := strings.TrimSpace(cfg.Authorization.Policy.Path)
+	policyConfigFile := strings.TrimSpace(cfg.Authorization.Policy.ConfigFile)
+
+	if !cfg.Authorization.Enabled && (policyPath != "" || policyConfigFile != "") {
+		errs = append(errs, "authorization.policy.path or authorization.policy.config_file is set but authorization.enabled is false")
+	} else if cfg.Authorization.Enabled {
+		// Authorization rules — only enforced when authorization.enabled = true.
+		// Rule A1: at least one policy source must be specified
+		if policyPath == "" && policyConfigFile == "" {
+			errs = append(errs, "authorization.policy.path or authorization.policy.config_file must be set when authorization is enabled")
+		}
+
+		// Rule A2: policy.path and policy.config_file are mutually exclusive
+		if policyPath != "" && policyConfigFile != "" {
+			errs = append(errs, "authorization.policy.path and authorization.policy.config_file are mutually exclusive")
+		}
+
+		// Rule A3: path traversal in policy.path — files and directories are both valid.
+		if policyPath != "" {
+			if err := validatePolicyPath("authorization.policy.path", cfg.Authorization.Policy.Path, false); err != nil {
+				errs = append(errs, err.Error())
+			}
+		}
+
+		// Rule A4: path traversal in policy.config_file — must be a file (not a directory).
+		if policyConfigFile != "" {
+			if err := validatePolicyPath("authorization.policy.config_file", cfg.Authorization.Policy.ConfigFile, true); err != nil {
+				errs = append(errs, err.Error())
+			}
+		}
+
+		// Rule A5: default_decision must remain fail-closed.
+		if cfg.Authorization.DefaultDecision == "" {
+			errs = append(errs, "authorization.default_decision must be deny")
+		} else if cfg.Authorization.DefaultDecision != "deny" {
+			errs = append(errs, fmt.Sprintf("authorization.default_decision must be deny; got %q", cfg.Authorization.DefaultDecision))
+		}
+
+		// Rule A6: evaluation_timeout must be positive
+		if cfg.Authorization.EvaluationTimeout <= 0 {
+			errs = append(errs, "authorization.evaluation_timeout must be a positive duration")
+		}
+
+		// Rule A7: max_body_size must be positive
+		if cfg.Authorization.MaxBodySize <= 0 {
+			errs = append(errs, "authorization.max_body_size must be a positive value")
+		}
+
+		// Rule A8: policy.package must not be empty
+		if strings.TrimSpace(cfg.Authorization.Policy.Package) == "" {
+			errs = append(errs, "authorization.policy.package must not be empty when authorization is enabled")
+		}
+
+		// Rule A9: policy.decision must not be empty
+		if strings.TrimSpace(cfg.Authorization.Policy.Decision) == "" {
+			errs = append(errs, "authorization.policy.decision must not be empty when authorization is enabled")
+		}
+	}
+
 	// Telemetry validation only runs when telemetry.enabled is true
 	if cfg.Telemetry.Enabled {
 		// Rule 16: endpoint must not be empty
@@ -191,6 +252,33 @@ func validateURL(field, s string, requireHTTPScheme bool) error {
 	if u.Host == "" {
 		return fmt.Errorf("%s must be a valid URL with a host", field)
 	}
+	return nil
+}
+
+// validatePolicyPath checks that a policy path does not contain path traversal
+// segments and that the path exists. When fileOnly is true the path must be a
+// regular file, not a directory (used for config_file). When fileOnly is false
+// the path may be either a file or a directory (used for policy.path, which
+// supports a single Rego file or a directory of Rego files).
+func validatePolicyPath(field, path string, fileOnly bool) error {
+	// Detect path traversal by checking for ".." path segments in the original path.
+	// Using filepath.Clean and comparing avoids false positives on valid paths
+	// containing ".." as part of a filename (e.g. "policy..v2.rego").
+	for _, segment := range strings.Split(filepath.ToSlash(path), "/") {
+		if segment == ".." {
+			return fmt.Errorf("%s must not contain path traversal (\"..\")", field)
+		}
+	}
+
+	// Verify the path exists and is readable at startup time.
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("%s: path not found or not readable: %w", field, err)
+	}
+	if fileOnly && info.IsDir() {
+		return fmt.Errorf("%s: expected a file but got a directory", field)
+	}
+
 	return nil
 }
 

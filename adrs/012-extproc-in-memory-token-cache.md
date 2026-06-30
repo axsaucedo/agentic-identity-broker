@@ -42,7 +42,7 @@ Concurrent refresh deduplication is handled by `golang.org/x/sync/singleflight`.
 
 A background goroutine runs a periodic eviction sweep at an interval of `default_ttl / 2` (minimum 30 seconds). The sweep removes entries whose `expiresAt` is in the past. This bounds memory growth for long-running deployments with many distinct `(subject_token, resource_uri)` pairs.
 
-A configurable `cache.max_ttl` cap (defaulting to the value of `expires_in` from the token exchange response, subject to operator-defined ceiling) prevents very large `expires_in` values from defeating token revocation.
+A configurable `cache.max_ttl` cap (defaulting to the value of `expires_in` from the token exchange response, subject to operator-defined ceiling) prevents very large `expires_in` values from defeating token revocation. The same bound applies to any token-bound metadata cached alongside the exchanged access token.
 
 ---
 
@@ -72,7 +72,7 @@ Without active eviction, expired entries for tokens that are never re-requested 
 
 ### 6. `cache.max_ttl` cap prevents defeating token revocation
 
-If the identity broker issues tokens with very large `expires_in` values (hours or days), caching them at face value means a revoked token would remain valid in the cache until expiry. A configurable `cache.max_ttl` allows operators to cap the effective cache TTL below the token's stated lifetime, limiting the revocation window.
+If the identity broker issues tokens with very large `expires_in` values (hours or days), caching them at face value means a revoked token would remain valid in the cache until expiry. A configurable `cache.max_ttl` allows operators to cap the effective cache TTL below the token's stated lifetime, limiting the revocation window. Any token-bound metadata cached with that token inherits the same bound.
 
 ---
 
@@ -110,6 +110,7 @@ Rejected. A `sha256(subjectToken + "|" + resourceURI)` string key was considered
 
 - **Cold cache on restart**: The in-memory cache is not durable. After a restart, every `(subject_token, resource)` pair requires a fresh token exchange.
 - **Single-instance only**: Each binary instance maintains its own independent cache. In a horizontally scaled deployment, cache hits are not shared across instances. This is accepted for MVP.
+- **Bounded revocation lag for token-bound metadata**: Any metadata cached with the exchanged token (for example `granted_permission_sets`) remains a snapshot until token expiry or `cache.max_ttl`, not an independent live authority.
 
 ### Future extension
 

@@ -69,7 +69,7 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 	// Propagators are passed explicitly so the middleware always uses the globally
 	// registered propagator and correctly attaches to any configured inbound trace
 	// context instead of unconditionally creating new root traces.
-	if cfg.Telemetry.Enabled && cfg.Telemetry.Traces.Enabled {
+	if cfg.Telemetry.Enabled {
 		r.Use(otelchi.Middleware("enduser",
 			otelchi.WithChiRoutes(r),
 			otelchi.WithRequestMethodInSpanName(true),

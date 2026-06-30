@@ -928,6 +928,21 @@ extproc-test:
     @echo "Running extproc unit tests..."
     go test -v -race ./internal/extproc/... ./cmd/extproc-token-exchange/...
 
+# Auto-detect Docker socket: prefer colima when available, fall back to standard socket
+DOCKER_SOCKET := `if [ -S "${HOME}/.colima/default/docker.sock" ]; then echo "${HOME}/.colima/default/docker.sock"; else echo "/var/run/docker.sock"; fi`
+
+# Run extproc E2E tests (Ginkgo)
+extproc-test-e2e:
+    @echo "Running extproc E2E tests..."
+    @if command -v ginkgo > /dev/null; then \
+        DOCKER_HOST="unix://{{DOCKER_SOCKET}}" \
+        TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="{{DOCKER_SOCKET}}" \
+        TESTCONTAINERS_RYUK_DISABLED=true \
+        ginkgo -v --procs={{GINKGO_PROCS}} ./tests/e2e/extproc/; \
+    else \
+        echo "Error: ginkgo is not installed. Run: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
+        exit 1; \
+    fi
 
 # Build mock MCP server binary
 mock-mcp-server-build:

@@ -10,6 +10,8 @@
 2. **Spec traceability**: Every `It()` block MUST have a comment linking to the specific scenario: `// Scenario X.Y from specs/NNN-feature/spec.md`
 3. **Production bootstrap**: Tests use `app.Builder` and production DI — no custom test implementations.
 
+4. **Observe production behavior**: startup/readiness assertions MUST use production constructors/bootstrap and externally visible behavior (`Eventually`, HTTP/gRPC responses, logs when required).
+
 ## Directory Layout
 
 ```

@@ -59,8 +59,8 @@ func TestTokenExchanger_Cache_ExpiredEntry_TriggersNewExchange(t *testing.T) {
 	token2, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 
-	assert.Equal(t, "exchanged-access-token", token1, "first call must return original token")
-	assert.Equal(t, "refreshed-access-token", token2, "second call after expiry must return new token")
+	assert.Equal(t, "exchanged-access-token", token1.Token, "first call must return original token")
+	assert.Equal(t, "refreshed-access-token", token2.Token, "second call after expiry must return new token")
 	assert.Greater(t, mocks.exchangeCalls, callsAfterFirst,
 		"token exchange endpoint must be called again after TTL expiry")
 }
@@ -91,11 +91,45 @@ func TestTokenExchanger_Cache_HitBeforeExpiry_ReturnsCachedToken(t *testing.T) {
 	for range 5 {
 		token, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 		require.NoError(t, err)
-		assert.Equal(t, token1, token, "cache hit must return same token")
+		assert.Equal(t, token1.Token, token.Token, "cache hit must return same token")
 	}
 
 	assert.Equal(t, callsAfterFirst, mocks.exchangeCalls,
 		"exchange endpoint must not be called on cache hits")
+}
+
+// Spec: granted_permission_sets snapshots returned from cache must be isolated from caller mutation.
+func TestTokenExchanger_CacheHit_ReturnsClonedGrantedPermissionSets(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	longExpiry := 3600
+	mocks.exchangeExpiry = &longExpiry
+	mocks.exchangeGrantedPerms = map[string][]string{
+		"perm-set-1": {"svc-a", "svc-b"},
+	}
+
+	cfg := configForMocks(mocks)
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "permission-set-token"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	first, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err)
+	require.Equal(t, 1, mocks.exchangeCalls)
+
+	first.GrantedPermissionSets["perm-set-1"][0] = "mutated-service"
+	first.GrantedPermissionSets["new-perm-set"] = []string{"svc-z"}
+
+	second, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err)
+	assert.Equal(t, 1, mocks.exchangeCalls, "second call must come from cache")
+	assert.Equal(t, []string{"svc-a", "svc-b"}, second.GrantedPermissionSets["perm-set-1"])
+	_, found := second.GrantedPermissionSets["new-perm-set"]
+	assert.False(t, found, "caller mutation must not leak back into the cached snapshot")
 }
 
 // Spec: FR-018 — Cache TTL respects max_ttl cap even when expires_in is larger
@@ -124,7 +158,7 @@ func TestTokenExchanger_Cache_MaxTTLCap_AppliedCorrectly(t *testing.T) {
 	// The token is cached — another call should hit cache
 	token2, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
-	assert.Equal(t, token1, token2, "immediate second call must be a cache hit")
+	assert.Equal(t, token1.Token, token2.Token, "immediate second call must be a cache hit")
 	callsAfterSecond := mocks.exchangeCalls
 
 	// Wait for max_ttl to expire (500ms + buffer)
@@ -135,7 +169,7 @@ func TestTokenExchanger_Cache_MaxTTLCap_AppliedCorrectly(t *testing.T) {
 	token3, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 
-	assert.Equal(t, "post-maxttl-token", token3,
+	assert.Equal(t, "post-maxttl-token", token3.Token,
 		"token must be refreshed after max_ttl expires")
 	assert.Greater(t, mocks.exchangeCalls, callsAfterSecond,
 		"exchange endpoint must be called again after max_ttl cap expiry")
@@ -182,9 +216,9 @@ func TestTokenExchanger_Cache_UniqueKeyPerSubjectAndResource(t *testing.T) {
 
 	tokens := make([]string, len(combinations))
 	for i, c := range combinations {
-		tok, err := exchanger.Exchange(context.Background(), c.subject, c.resource)
+		result, err := exchanger.Exchange(context.Background(), c.subject, c.resource)
 		require.NoError(t, err)
-		tokens[i] = tok
+		tokens[i] = result.Token
 	}
 
 	// All tokens should be distinct
@@ -258,7 +292,9 @@ func TestTokenExchanger_Singleflight_ConcurrentRequests_CallExchangeOnce(t *test
 	// Launch concurrent goroutines requesting the same key
 	for i := range numGoroutines {
 		wg.Go(func() {
-			results[i], errors[i] = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+			var r server.ExchangeResult
+			r, errors[i] = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+			results[i] = r.Token
 		})
 	}
 
@@ -325,9 +361,9 @@ func TestTokenExchanger_Singleflight_DifferentKeys_ProceedConcurrently(t *testin
 		wg.Add(1)
 		go func(idx int, resource string) {
 			defer wg.Done()
-			tok, err := exchanger.Exchange(context.Background(), "user-token", resource)
+			result, err := exchanger.Exchange(context.Background(), "user-token", resource)
 			require.NoError(t, err)
-			results[idx] = tok
+			results[idx] = result.Token
 		}(i, res)
 	}
 	wg.Wait()
@@ -458,7 +494,7 @@ func TestTokenExchanger_Eviction_ValidEntries_NotEvicted(t *testing.T) {
 	token2, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 
-	assert.Equal(t, token1, token2,
+	assert.Equal(t, token1.Token, token2.Token,
 		"valid cache entry must survive eviction cycles")
 	assert.Equal(t, callsAfterFirst, mocks.exchangeCalls,
 		"exchange endpoint must not be called for a non-expired cache entry")
@@ -719,7 +755,9 @@ func TestTokenExchanger_CbDisabled_CanceledLeader_FollowerSucceeds(t *testing.T)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		followerTok, followerErr = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+		var followerResult server.ExchangeResult
+		followerResult, followerErr = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+		followerTok = followerResult.Token
 	}()
 
 	// Unblock the slow exchange server — both leader result and follower wait on it.
@@ -731,4 +769,547 @@ func TestTokenExchanger_CbDisabled_CanceledLeader_FollowerSucceeds(t *testing.T)
 	require.NoError(t, followerErr, "follower must not inherit the leader's cancellation")
 	assert.Equal(t, "shared-token", followerTok,
 		"follower must receive the shared exchange result")
+}
+
+// Spec: After a successful exchange is cached, if the cached entry expires and the
+// broker starts returning error_uri for the same key, the re-auth error is returned.
+// This verifies the stale-success window is bounded by the cache TTL (expires_in).
+func TestTokenExchanger_Cache_ExpiredSuccessRevealsSameTokenReAuth(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	shortExpiry := 1 // 1 second TTL — cache expires quickly
+	mocks.exchangeExpiry = &shortExpiry
+
+	cfg := configForMocks(mocks)
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "same-token-reauth-test"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	// First call: success, result is cached.
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err)
+
+	// Wait for the cache entry to expire.
+	time.Sleep(1100 * time.Millisecond)
+
+	// Broker now requires re-auth for the same key.
+	mocks.exchangeStatus = http.StatusUnauthorized
+	mocks.exchangeErrCode = "invalid_grant"
+	mocks.exchangeErrorURI = "https://idp.example.com/reauth"
+
+	// After expiry, the same token/resource pair must reach the broker and return re-auth.
+	callsBefore := mocks.exchangeCalls
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.Error(t, err, "expired cache must not serve stale success — broker re-auth must surface")
+
+	var brokerErr *server.BrokerExchangeError
+	require.ErrorAs(t, err, &brokerErr, "error must be a BrokerExchangeError")
+	assert.Equal(t, "https://idp.example.com/reauth", brokerErr.ErrorURI)
+	assert.Greater(t, mocks.exchangeCalls, callsBefore,
+		"broker must be called after cache expiry — not a cache hit")
+}
+
+// Spec: Re-auth errors are rate-limited per token+resource key (reAuthCooldownTTL)
+// to prevent tight retry loops from hammering the broker. Within the cooldown window,
+// repeated calls return the cached re-auth error without calling the broker.
+func TestTokenExchanger_ReAuthCooldown_PreventsRepeatedBrokerCalls(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	mocks.exchangeStatus = http.StatusUnauthorized
+	mocks.exchangeErrCode = "invalid_grant"
+	mocks.exchangeErrorURI = "https://idp.example.com/reauth"
+
+	cfg := configForMocks(mocks)
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "cooldown-test-token"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	// First call: broker is called, re-auth error is returned and rate-limit is set.
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.Error(t, err)
+	callsAfterFirst := mocks.exchangeCalls
+
+	// Subsequent calls within the cooldown window must NOT call the broker again.
+	for range 3 {
+		_, exchErr := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+		require.Error(t, exchErr, "re-auth error must still be returned from cooldown cache")
+		var brokerErr *server.BrokerExchangeError
+		require.ErrorAs(t, exchErr, &brokerErr)
+		assert.Equal(t, "https://idp.example.com/reauth", brokerErr.ErrorURI)
+	}
+
+	assert.Equal(t, callsAfterFirst, mocks.exchangeCalls,
+		"broker must not be called during the re-auth cooldown window")
+}
+
+// Spec: When the token cache expires and the broker returns a transient 5xx error,
+// Exchange must serve the stale cached token rather than propagating the error.
+// The stale window (staleUntil) is set once on the first transient failure and is
+// never extended, so the stale period is bounded to one reAuthCooldownTTL interval.
+func TestTokenExchanger_ExpiredCache_TransientError_ServesStaleToken(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	shortExpiry := 1 // 1 second — cache expires quickly
+	mocks.exchangeExpiry = &shortExpiry
+
+	cfg := configForMocks(mocks)
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "stale-fallback-token"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	// First call: success, token cached.
+	tok, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err)
+	require.Equal(t, "exchanged-access-token", tok.Token)
+
+	// Wait for cache entry to expire.
+	time.Sleep(1100 * time.Millisecond)
+
+	// Broker now returns a transient 5xx error.
+	mocks.exchangeStatus = http.StatusInternalServerError
+	mocks.exchangeErrCode = "server_error"
+
+	// After expiry, Exchange calls broker. Broker returns transient error — serve stale.
+	tok2, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err, "transient 5xx at expiry must serve stale token, not error")
+	assert.Equal(t, "exchanged-access-token", tok2.Token, "stale cached token must be returned")
+}
+
+// Spec: When the token cache expires and the broker returns 429 (throttling, no ErrorURI),
+// Exchange must serve the stale cached token. 429 without error_uri is transient.
+func TestTokenExchanger_ExpiredCache_429_ServesStaleToken(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	shortExpiry := 1
+	mocks.exchangeExpiry = &shortExpiry
+
+	cfg := configForMocks(mocks)
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "429-stale-token"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	tok, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err)
+	require.Equal(t, "exchanged-access-token", tok.Token)
+
+	time.Sleep(1100 * time.Millisecond)
+
+	mocks.exchangeStatus = http.StatusTooManyRequests
+	mocks.exchangeErrCode = "slow_down"
+
+	tok2, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err, "429 throttling at expiry must serve stale token")
+	assert.Equal(t, "exchanged-access-token", tok2.Token)
+}
+
+// Spec: When the token cache expires and the broker returns an authoritative 4xx rejection
+// without error_uri, Exchange must propagate the error — not serve the stale cached token.
+func TestTokenExchanger_ExpiredCache_AuthoritativeError_PropagatesError(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	shortExpiry := 1
+	mocks.exchangeExpiry = &shortExpiry
+
+	cfg := configForMocks(mocks)
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "4xx-at-expiry-token"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err)
+
+	time.Sleep(1100 * time.Millisecond)
+
+	mocks.exchangeStatus = http.StatusForbidden
+	mocks.exchangeErrCode = "access_denied"
+
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.Error(t, err, "authoritative 4xx at expiry must propagate — not serve stale")
+	var brokerErr *server.BrokerExchangeError
+	require.ErrorAs(t, err, &brokerErr)
+	assert.Equal(t, http.StatusForbidden, brokerErr.StatusCode)
+}
+
+// Spec: A 5xx response that carries error_uri must NOT overwrite the success cache with
+// a reAuthErr entry. 5xx is always transient; the stale cached token must be served
+// and the re-auth elicitation URL must not be surfaced for transient server errors.
+func TestTokenExchanger_5xxWithErrorURI_DoesNotOverwriteSuccessCache(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	shortExpiry := 1
+	mocks.exchangeExpiry = &shortExpiry
+
+	cfg := configForMocks(mocks)
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "5xx-error-uri-token"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	// First call: success, token cached.
+	tok, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err)
+	require.Equal(t, "exchanged-access-token", tok.Token)
+
+	time.Sleep(1100 * time.Millisecond)
+
+	// Broker returns 5xx with error_uri (transient — must not trigger re-auth).
+	mocks.exchangeStatus = http.StatusInternalServerError
+	mocks.exchangeErrCode = "server_error"
+	mocks.exchangeErrorURI = "https://idp.example.com/reauth"
+
+	// Must serve the stale cached token, not propagate re-auth.
+	tok2, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err, "5xx with error_uri is transient — must serve stale token, not re-auth error")
+	assert.Equal(t, "exchanged-access-token", tok2.Token)
+}
+
+// Spec: Repeated transient failures within the stale window must all serve the stale
+// cached token. The broker is probed on each call (fast-path cache check fails because
+// expiresAt is in the past), but staleUntil is not re-extended on subsequent failures —
+// verifying the stale window is bounded to one reAuthCooldownTTL period.
+func TestTokenExchanger_ExpiredCache_RepeatedTransientErrors_StaleWindowBounded(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	shortExpiry := 1 // 1 second — cache expires quickly
+	mocks.exchangeExpiry = &shortExpiry
+
+	cfg := configForMocks(mocks)
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "repeated-transient-token"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	// First call: success, token cached.
+	tok, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err)
+	require.Equal(t, "exchanged-access-token", tok.Token)
+
+	// Wait for cache entry to expire.
+	time.Sleep(1100 * time.Millisecond)
+
+	// Broker now returns a transient 5xx.
+	mocks.exchangeStatus = http.StatusInternalServerError
+	mocks.exchangeErrCode = "server_error"
+
+	// Three consecutive calls after expiry: broker is probed each time (fast-path fails)
+	// and stale token is returned on each. The broker call count increases each time,
+	// proving the fast-path is not being hit — only the stale fallback is active.
+	callsBefore := mocks.exchangeCalls
+	const numCalls = 3
+	for i := range numCalls {
+		tok2, exchErr := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+		require.NoError(t, exchErr, "call %d: transient 5xx must serve stale token", i)
+		assert.Equal(t, "exchanged-access-token", tok2.Token, "call %d: stale token must be returned", i)
+	}
+	assert.Equal(t, callsBefore+numCalls, mocks.exchangeCalls,
+		"broker must be probed on every post-expiry call — stale window must not re-warm the fast-path cache")
+}
+
+// Spec: When cache.max_ttl < reAuthCooldownTTL, the stale window must be capped by
+// max_ttl so an expired token is never served past max_ttl after its issue time.
+// This regression test uses max_ttl = 200ms (well below reAuthCooldownTTL = 5s) to
+// prove the cap is enforced: after max_ttl has elapsed past the token's expiry, a
+// transient broker error must propagate instead of serving the stale cached token.
+func TestTokenExchanger_StaleWindow_CappedByMaxTTL(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	shortTTL := 1 // 1 second expires_in
+	mocks.exchangeExpiry = &shortTTL
+
+	cfg := configForMocks(mocks)
+	// max_ttl << reAuthCooldownTTL (5s): staleUntil = expiresAt + min(5s, 200ms) = expiresAt + 200ms
+	cfg.Cache.MaxTTL = 200 * time.Millisecond
+
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "max-ttl-cap-test-token"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	// Warm the cache.
+	tok, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err)
+	require.Equal(t, "exchanged-access-token", tok.Token)
+
+	// Wait past expiresAt + max_ttl (1s + 200ms = 1.2s → wait 1.4s to be safe).
+	// At this point staleUntil has passed, so stale serving must be disabled.
+	time.Sleep(1400 * time.Millisecond)
+
+	mocks.exchangeStatus = http.StatusInternalServerError
+	mocks.exchangeErrCode = "server_error"
+
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.Error(t, err,
+		"transient 5xx after staleUntil cap (max_ttl) must propagate — stale serving must be disabled")
+	var brokerErr *server.BrokerExchangeError
+	require.ErrorAs(t, err, &brokerErr)
+	assert.Equal(t, http.StatusInternalServerError, brokerErr.StatusCode)
+}
+
+// Spec: When the token's expires_in exceeds cache.max_ttl (so ttl is capped to max_ttl),
+// staleUntil must equal expiresAt — no stale extension beyond max_ttl is permitted.
+// This is the common case in production where long-lived tokens are capped by config.
+func TestTokenExchanger_StaleWindow_TtlCappedAtMaxTTL_NoExtensionBeyondCap(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	// expires_in >> max_ttl so ttl = max_ttl after computeTTL cap.
+	largeExpiry := 3600 // 1 hour; far exceeds max_ttl = 500ms
+	mocks.exchangeExpiry = &largeExpiry
+
+	cfg := configForMocks(mocks)
+	cfg.Cache.MaxTTL = 500 * time.Millisecond // staleUntil = min(expiresAt+5s, now+500ms) = now+500ms
+
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "max-ttl-no-extension-token"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	// Warm cache.
+	tok, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err)
+	require.Equal(t, "exchanged-access-token", tok.Token)
+
+	// Wait past max_ttl (500ms + buffer = 700ms). Both expiresAt and staleUntil should
+	// now be in the past (staleUntil = now+500ms since ttl was capped to max_ttl).
+	time.Sleep(700 * time.Millisecond)
+
+	mocks.exchangeStatus = http.StatusInternalServerError
+	mocks.exchangeErrCode = "server_error"
+
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.Error(t, err,
+		"transient 5xx after max_ttl cap must propagate — staleUntil must not extend past max_ttl when ttl==max_ttl")
+	var brokerErr *server.BrokerExchangeError
+	require.ErrorAs(t, err, &brokerErr)
+	assert.Equal(t, http.StatusInternalServerError, brokerErr.StatusCode)
+}
+
+// Spec: isTransientBrokerError must treat 429 as transient only when ErrorURI is absent.
+// A 429 with error_uri carries an explicit re-auth signal and must be treated as
+// authoritative so the caller can surface the elicitation URL rather than masking
+// it with a stale cached token.
+func TestIsTransientBrokerError(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		transient bool
+	}{
+		{"429 no error_uri — transient", &server.BrokerExchangeError{StatusCode: 429, Code: "slow_down"}, true},
+		{"429 with error_uri — authoritative", &server.BrokerExchangeError{StatusCode: 429, Code: "slow_down", ErrorURI: "https://idp.example.com/reauth"}, false},
+		{"500 no error_uri — transient", &server.BrokerExchangeError{StatusCode: 500, Code: "server_error"}, true},
+		{"500 with error_uri — transient (5xx always transient)", &server.BrokerExchangeError{StatusCode: 500, Code: "server_error", ErrorURI: "https://idp.example.com/reauth"}, true},
+		{"401 with error_uri — authoritative", &server.BrokerExchangeError{StatusCode: 401, Code: "invalid_token", ErrorURI: "https://idp.example.com/reauth"}, false},
+		{"403 no error_uri — authoritative", &server.BrokerExchangeError{StatusCode: 403, Code: "access_denied"}, false},
+		{"ErrAssertionExpired — not transient (must not serve stale token)", server.ErrAssertionExpired, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := server.IsTransientBrokerError(tc.err)
+			assert.Equal(t, tc.transient, got)
+		})
+	}
+}
+
+// Spec: A valid cached success token is served until expiresAt without intermediate
+// broker calls. Revocation or re-auth from the broker is visible only after expiry.
+func TestTokenExchanger_Cache_SuccessServedUntilExpiry_ReAuthVisibleAfter(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	shortExpiry := 1 // 1 second — expire quickly so re-auth detection can be tested
+	mocks.exchangeExpiry = &shortExpiry
+
+	cfg := configForMocks(mocks)
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "live-cache-reauth-token"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	// Populate success cache.
+	tok, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err)
+	require.Equal(t, "exchanged-access-token", tok.Token)
+	callsAfterFirst := mocks.exchangeCalls
+
+	// Broker now requires re-auth for the same key.
+	mocks.exchangeStatus = http.StatusUnauthorized
+	mocks.exchangeErrCode = "invalid_grant"
+	mocks.exchangeErrorURI = "https://idp.example.com/reauth"
+
+	// Within the expiry window: cached success is returned, broker is NOT called.
+	tok2, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err, "within expiry window: cached success must be returned, re-auth not yet visible")
+	assert.Equal(t, "exchanged-access-token", tok2.Token)
+	assert.Equal(t, callsAfterFirst, mocks.exchangeCalls,
+		"broker must not be called within the cache TTL window")
+
+	// After expiry, the broker is called and the re-auth error becomes visible.
+	time.Sleep(1100 * time.Millisecond)
+
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.Error(t, err, "after expiry: re-auth must be visible")
+	var brokerErr *server.BrokerExchangeError
+	require.ErrorAs(t, err, &brokerErr)
+	assert.Equal(t, "https://idp.example.com/reauth", brokerErr.ErrorURI,
+		"re-auth error from broker must be returned after cache expiry")
+	assert.Greater(t, mocks.exchangeCalls, callsAfterFirst,
+		"broker must be called after cache expiry to detect re-auth")
+}
+
+// Spec: A cached re-auth error must not be returned after the client assertion expires.
+// ErrAssertionExpired takes precedence — the service is broken and cannot exchange tokens,
+// so surfacing a re-auth redirect would be misleading.
+func TestTokenExchanger_CachedReAuthErr_AssertionExpired_ReturnsErrAssertionExpired(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	longExpiry := 3600
+	mocks.exchangeExpiry = &longExpiry
+	mocks.exchangeStatus = http.StatusUnauthorized
+	mocks.exchangeErrorURI = "https://idp.example.com/reauth"
+	mocks.exchangeErrCode = "invalid_grant"
+
+	cfg := configForMocks(mocks)
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "reauth-assertion-test"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	// Populate the reAuthErr cache entry via a 401+error_uri response.
+	_, firstErr := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.Error(t, firstErr, "first call must fail with re-auth error")
+	var brokerErr *server.BrokerExchangeError
+	require.ErrorAs(t, firstErr, &brokerErr, "first error must be BrokerExchangeError")
+	require.Equal(t, "https://idp.example.com/reauth", brokerErr.ErrorURI)
+
+	// Expire the assertion — the service is now unable to exchange tokens.
+	exchanger.ExpireAssertion()
+
+	// The re-auth cache entry must NOT be served; ErrAssertionExpired takes precedence.
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.ErrorIs(t, err, server.ErrAssertionExpired,
+		"expired assertion must surface even when a cached re-auth entry exists")
+}
+
+// Spec: A warm cache hit must not bypass assertion expiry.
+// When the client assertion expires, Exchange must return ErrAssertionExpired
+// even when a valid cached success entry exists — serving a cached token after
+// the assertion lapses violates the fail-closed guarantee.
+func TestTokenExchanger_CachedToken_AssertionExpired_ReturnsErrAssertionExpired(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	longExpiry := 3600
+	mocks.exchangeExpiry = &longExpiry
+
+	cfg := configForMocks(mocks)
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "warm-cache-token"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	// Warm the cache with a valid success entry.
+	tok, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err)
+	require.NotEmpty(t, tok, "first call must return a token")
+
+	// Simulate assertion expiry by injecting an expired state.
+	exchanger.ExpireAssertion()
+
+	// Exchange must now return ErrAssertionExpired, not the cached token.
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.ErrorIs(t, err, server.ErrAssertionExpired,
+		"expired assertion must surface even when a cached success entry exists")
+}
+
+// Spec: stale-token fallback in serveStaleOrErr must not serve cached tokens when
+// the client assertion has expired. This matters especially for the circuit-open path:
+// when the circuit breaker is open, doExchange is never called, so the assertion
+// check inside doExchange cannot guard the stale fallback — only the guard in
+// serveStaleOrErr prevents serving a cached token after assertion expiry.
+func TestTokenExchanger_OpenCircuit_AssertionExpired_ReturnsErrCircuitOpen(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	longExpiry := 3600
+	mocks.exchangeExpiry = &longExpiry
+
+	cfg := &extprocconfig.Config{
+		GRPC: extprocconfig.GRPCConfig{Bind: "127.0.0.1", Port: 50051},
+		OAuth2: extprocconfig.OAuth2Config{
+			TokenEndpoint:             mocks.tokenExchServer.URL + "/oauth2/token",
+			Issuer:                    mocks.clientCredsServer.URL,
+			ClientID:                  "test-client",
+			ClientSecret:              "test-secret",
+			ClientCredentialsEndpoint: mocks.clientCredsServer.URL + "/oauth/token",
+			ClientAssertionType:       "id_token",
+			ExchangeTimeout:           5 * time.Second,
+			TLS:                       extprocconfig.TLSConfig{AllowHTTP: true},
+		},
+		Cache: extprocconfig.CacheConfig{DefaultTTL: 5 * time.Minute, MaxTTL: 1 * time.Hour},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
+			MaxFailures:  2,
+			ResetTimeout: 1 * time.Hour,
+		},
+	}
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "circuit-assertion-test"
+	const resourceURI = "http://mcp-server:9003/mcp"
+
+	// Warm the cache so a stale entry is available.
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.NoError(t, err)
+
+	// Trip the circuit breaker directly (bypasses cache to avoid waiting for nextReauthCheck).
+	exchanger.TripCircuitBreaker(2)
+
+	// Expire the assertion after the circuit is open.
+	exchanger.ExpireAssertion()
+
+	// With circuit open + expired assertion: serveStaleOrErr must NOT serve the cached
+	// token. ErrCircuitOpen must be returned to surface the unavailability.
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	require.ErrorIs(t, err, server.ErrCircuitOpen,
+		"stale-token fallback must not activate when assertion is expired and circuit is open")
 }

@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -401,6 +402,130 @@ func TestLoadFromViper_EnvVarExpansion_LogFields(t *testing.T) {
 	assert.Equal(t, "json", cfg.Log.Format, "${VAR} notation should be expanded for log.format")
 }
 
+func TestLoadFromViper_EnvVarExpansion_AuthorizationDefaultDecisionRejectsAllow(t *testing.T) {
+	t.Setenv("TEST_DEFAULT_DECISION", "allow")
+
+	v := viper.New()
+	v.Set("oauth2.token_endpoint", "https://idp.example.com/oauth2/token")
+	v.Set("oauth2.issuer", "https://idp.example.com")
+	v.Set("oauth2.client_id", "test-client")
+	v.Set("oauth2.client_secret", "test-secret")
+	v.Set("authorization.enabled", true)
+	v.Set("authorization.policy.package", "aib.extproc.authz")
+	v.Set("authorization.policy.decision", "result")
+	v.Set("authorization.policy.path", t.TempDir())
+	v.Set("authorization.evaluation_timeout", "100ms")
+	v.Set("authorization.max_body_size", 1048576)
+	v.Set("authorization.default_decision", "${TEST_DEFAULT_DECISION}")
+
+	_, err := config.LoadFromViper(v)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "authorization.default_decision must be deny")
+}
+
+func TestLoadFromViper_AuthorizationPolicyPathFromEnv(t *testing.T) {
+	policyDir := t.TempDir()
+
+	// EXTPROC_AUTHORIZATION_POLICY_PATH env var must populate Policy.Path when
+	// authorization is explicitly enabled and the path exists.
+	t.Setenv("EXTPROC_AUTHORIZATION_ENABLED", "true")
+	t.Setenv("EXTPROC_AUTHORIZATION_POLICY_PATH", policyDir)
+	t.Setenv("EXTPROC_OAUTH2_TOKEN_ENDPOINT", "https://idp.example.com/oauth2/token")
+	t.Setenv("EXTPROC_OAUTH2_ISSUER", "https://idp.example.com")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_ID", "client")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_SECRET", "secret")
+
+	v := viper.New()
+	v.SetEnvPrefix("EXTPROC")
+	v.SetEnvKeyReplacer(replaceDotsWithUnderscores())
+	v.AutomaticEnv()
+
+	cfg, err := config.LoadFromViper(v)
+	require.NoError(t, err)
+
+	assert.True(t, cfg.Authorization.Enabled)
+	assert.Equal(t, policyDir, cfg.Authorization.Policy.Path,
+		"EXTPROC_AUTHORIZATION_POLICY_PATH env var must populate Authorization.Policy.Path")
+}
+
+func TestLoadFromViper_AuthorizationPolicyConfigFileFromEnv(t *testing.T) {
+	cfgFile, err := os.CreateTemp(t.TempDir(), "opa-config-*.yaml")
+	require.NoError(t, err)
+	_, _ = cfgFile.WriteString("services: {}\n")
+	require.NoError(t, cfgFile.Close())
+
+	// EXTPROC_AUTHORIZATION_POLICY_CONFIG_FILE env var must populate Policy.ConfigFile when
+	// authorization is explicitly enabled and the file exists.
+	t.Setenv("EXTPROC_AUTHORIZATION_ENABLED", "true")
+	t.Setenv("EXTPROC_AUTHORIZATION_POLICY_CONFIG_FILE", cfgFile.Name())
+	t.Setenv("EXTPROC_OAUTH2_TOKEN_ENDPOINT", "https://idp.example.com/oauth2/token")
+	t.Setenv("EXTPROC_OAUTH2_ISSUER", "https://idp.example.com")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_ID", "client")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_SECRET", "secret")
+
+	v := viper.New()
+	v.SetEnvPrefix("EXTPROC")
+	v.SetEnvKeyReplacer(replaceDotsWithUnderscores())
+	v.AutomaticEnv()
+
+	cfg, loadErr := config.LoadFromViper(v)
+	require.NoError(t, loadErr)
+
+	assert.True(t, cfg.Authorization.Enabled)
+	assert.Equal(t, cfgFile.Name(), cfg.Authorization.Policy.ConfigFile,
+		"EXTPROC_AUTHORIZATION_POLICY_CONFIG_FILE env var must populate Authorization.Policy.ConfigFile")
+}
+
+func TestLoadFromViper_AuthorizationPolicySourceRequiresEnabled(t *testing.T) {
+	policyDir := t.TempDir()
+
+	t.Setenv("EXTPROC_AUTHORIZATION_POLICY_PATH", policyDir)
+	t.Setenv("EXTPROC_OAUTH2_TOKEN_ENDPOINT", "https://idp.example.com/oauth2/token")
+	t.Setenv("EXTPROC_OAUTH2_ISSUER", "https://idp.example.com")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_ID", "client")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_SECRET", "secret")
+
+	v := viper.New()
+	v.SetEnvPrefix("EXTPROC")
+	v.SetEnvKeyReplacer(replaceDotsWithUnderscores())
+	v.AutomaticEnv()
+
+	_, err := config.LoadFromViper(v)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(),
+		"authorization.policy.path or authorization.policy.config_file is set but authorization.enabled is false")
+}
+
+func TestLoadWithCommand_AuthorizationPolicyFlagsOverrideEnv(t *testing.T) {
+	envPath := t.TempDir()
+	cliPath := t.TempDir()
+
+	t.Setenv("EXTPROC_OAUTH2_TOKEN_ENDPOINT", "https://env.example.com/token")
+	t.Setenv("EXTPROC_OAUTH2_ISSUER", "https://env.example.com")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_ID", "env-client")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_SECRET", "env-secret")
+	t.Setenv("EXTPROC_AUTHORIZATION_ENABLED", "true")
+	// Set env vars for authorization policy fields — CLI flags must win over these.
+	t.Setenv("EXTPROC_AUTHORIZATION_POLICY_PATH", envPath)
+	t.Setenv("EXTPROC_AUTHORIZATION_POLICY_PACKAGE", "env.authz")
+	t.Setenv("EXTPROC_AUTHORIZATION_POLICY_DECISION", "env_result")
+
+	cmd := newTestCommand()
+	require.NoError(t, cmd.Flags().Set("authorization.policy.path", cliPath))
+	require.NoError(t, cmd.Flags().Set("authorization.policy.package", "my.authz"))
+	require.NoError(t, cmd.Flags().Set("authorization.policy.decision", "allow"))
+
+	cfg, err := config.LoadWithCommand(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, cliPath, cfg.Authorization.Policy.Path,
+		"--authorization.policy.path CLI flag must override EXTPROC_AUTHORIZATION_POLICY_PATH env var")
+	assert.Equal(t, "my.authz", cfg.Authorization.Policy.Package,
+		"--authorization.policy.package CLI flag must override EXTPROC_AUTHORIZATION_POLICY_PACKAGE env var")
+	assert.Equal(t, "allow", cfg.Authorization.Policy.Decision,
+		"--authorization.policy.decision CLI flag must override EXTPROC_AUTHORIZATION_POLICY_DECISION env var")
+}
+
 func TestLoadFromViper_EnvVarOverridesDefault(t *testing.T) {
 	// Set EXTPROC_GRPC_PORT env var — t.Setenv auto-restores after test
 	t.Setenv("EXTPROC_GRPC_PORT", "9090")
@@ -547,6 +672,115 @@ func TestLoadWithCommand_LogLevelAndFormatFromCLI(t *testing.T) {
 
 	assert.Equal(t, "debug", cfg.Log.Level, "CLI --log.level should take effect")
 	assert.Equal(t, "json", cfg.Log.Format, "CLI --log.format should take effect")
+}
+
+// TestLoadWithCommand_AuthorizationNumericAndBoolFlagsOverrideEnv verifies CLI-vs-env
+// precedence for authorization.enabled (bool), authorization.evaluation_timeout (duration),
+// and authorization.max_body_size (int). Authorization is kept disabled so that path
+// validation rules (A1-A4) do not run.
+func TestLoadWithCommand_AuthorizationNumericAndBoolFlagsOverrideEnv(t *testing.T) {
+	t.Setenv("EXTPROC_OAUTH2_TOKEN_ENDPOINT", "https://env.example.com/token")
+	t.Setenv("EXTPROC_OAUTH2_ISSUER", "https://env.example.com")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_ID", "env-client")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_SECRET", "env-secret")
+
+	// Set env vars for authorization bindings — CLI flags must win over these.
+	t.Setenv("EXTPROC_AUTHORIZATION_ENABLED", "false")
+	t.Setenv("EXTPROC_AUTHORIZATION_EVALUATION_TIMEOUT", "50ms")
+	t.Setenv("EXTPROC_AUTHORIZATION_MAX_BODY_SIZE", "512")
+
+	cmd := newTestCommand()
+	// Do not enable authorization so path validation is not triggered.
+	require.NoError(t, cmd.Flags().Set("authorization.evaluation_timeout", "250ms"))
+	require.NoError(t, cmd.Flags().Set("authorization.max_body_size", "8192"))
+
+	cfg, err := config.LoadWithCommand(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, 250*time.Millisecond, cfg.Authorization.EvaluationTimeout,
+		"--authorization.evaluation_timeout CLI flag must override EXTPROC_AUTHORIZATION_EVALUATION_TIMEOUT env var")
+	assert.Equal(t, 8192, cfg.Authorization.MaxBodySize,
+		"--authorization.max_body_size CLI flag must override EXTPROC_AUTHORIZATION_MAX_BODY_SIZE env var")
+}
+
+// TestLoadWithCommand_AuthorizationEnabledFlagOverridesEnv verifies that
+// --authorization.enabled CLI flag overrides the EXTPROC_AUTHORIZATION_ENABLED env var.
+// A policy.path pointing to an existing file is required because path validation runs
+// when authorization.enabled is true.
+func TestLoadWithCommand_AuthorizationEnabledFlagOverridesEnv(t *testing.T) {
+	// Create a temporary Rego policy file to satisfy path validation.
+	policyFile, err := os.CreateTemp(t.TempDir(), "policy-*.rego")
+	require.NoError(t, err)
+	_, _ = policyFile.WriteString(`package aib.extproc.authz
+default result = {"action": "deny"}`)
+	require.NoError(t, policyFile.Close())
+
+	t.Setenv("EXTPROC_OAUTH2_TOKEN_ENDPOINT", "https://env.example.com/token")
+	t.Setenv("EXTPROC_OAUTH2_ISSUER", "https://env.example.com")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_ID", "env-client")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_SECRET", "env-secret")
+	t.Setenv("EXTPROC_AUTHORIZATION_ENABLED", "false")
+
+	cmd := newTestCommand()
+	require.NoError(t, cmd.Flags().Set("authorization.enabled", "true"))
+	require.NoError(t, cmd.Flags().Set("authorization.policy.path", policyFile.Name()))
+
+	cfg, loadErr := config.LoadWithCommand(cmd)
+	require.NoError(t, loadErr)
+
+	assert.True(t, cfg.Authorization.Enabled,
+		"--authorization.enabled CLI flag must override EXTPROC_AUTHORIZATION_ENABLED env var")
+}
+
+// TestLoadWithCommand_AuthorizationConfigFileFlagOverridesEnv verifies that
+// --authorization.policy.config_file CLI flag overrides the env var.
+func TestLoadWithCommand_AuthorizationConfigFileFlagOverridesEnv(t *testing.T) {
+	// Create a minimal OPA config YAML file.
+	cfgFile, err := os.CreateTemp(t.TempDir(), "opa-config-*.yaml")
+	require.NoError(t, err)
+	_, _ = cfgFile.WriteString("services: {}\n")
+	require.NoError(t, cfgFile.Close())
+
+	envFile, err := os.CreateTemp(t.TempDir(), "env-opa-config-*.yaml")
+	require.NoError(t, err)
+	_, _ = envFile.WriteString("services: {}\n")
+	require.NoError(t, envFile.Close())
+
+	t.Setenv("EXTPROC_OAUTH2_TOKEN_ENDPOINT", "https://env.example.com/token")
+	t.Setenv("EXTPROC_OAUTH2_ISSUER", "https://env.example.com")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_ID", "env-client")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_SECRET", "env-secret")
+	t.Setenv("EXTPROC_AUTHORIZATION_ENABLED", "true")
+	t.Setenv("EXTPROC_AUTHORIZATION_POLICY_CONFIG_FILE", envFile.Name())
+
+	cmd := newTestCommand()
+	require.NoError(t, cmd.Flags().Set("authorization.policy.config_file", cfgFile.Name()))
+
+	cfg, loadErr := config.LoadWithCommand(cmd)
+	require.NoError(t, loadErr)
+
+	assert.Equal(t, cfgFile.Name(), cfg.Authorization.Policy.ConfigFile,
+		"--authorization.policy.config_file CLI flag must override EXTPROC_AUTHORIZATION_POLICY_CONFIG_FILE env var")
+}
+
+// TestLoadWithCommand_AuthorizationDefaultDecisionFlagOverridesEnv verifies that
+// --authorization.default_decision CLI flag can override an invalid env var with the only valid value.
+func TestLoadWithCommand_AuthorizationDefaultDecisionFlagOverridesEnv(t *testing.T) {
+	t.Setenv("EXTPROC_OAUTH2_TOKEN_ENDPOINT", "https://env.example.com/token")
+	t.Setenv("EXTPROC_OAUTH2_ISSUER", "https://env.example.com")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_ID", "env-client")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_SECRET", "env-secret")
+	// Env sets an invalid fail-open value; CLI sets the only supported fail-closed value.
+	t.Setenv("EXTPROC_AUTHORIZATION_DEFAULT_DECISION", "allow")
+
+	cmd := newTestCommand()
+	require.NoError(t, cmd.Flags().Set("authorization.default_decision", "deny"))
+
+	cfg, loadErr := config.LoadWithCommand(cmd)
+	require.NoError(t, loadErr)
+
+	assert.Equal(t, "deny", cfg.Authorization.DefaultDecision,
+		"--authorization.default_decision CLI flag must override EXTPROC_AUTHORIZATION_DEFAULT_DECISION env var")
 }
 
 // replaceDotsWithUnderscores returns a string replacer for Viper key mapping.

@@ -11,14 +11,22 @@ This subtree is a **standalone application** (`cmd/extproc-token-exchange/`). It
 ```
 internal/extproc/
   config/
-    config.go       Config struct tree (GRPCConfig, OAuth2Config, TLSConfig, CacheConfig, LogConfig)
+    config.go       Config struct tree (GRPCConfig, OAuth2Config, TLSConfig, CacheConfig, LogConfig, AuthorizationConfig)
     loader.go       Viper loader — Load(), LoadWithCommand(), LoadFromViper(), RegisterFlags()
-    validate.go     Validate() — 13 fail-fast rules, all errors collected and returned together
+    validate.go     Validate() — 13 base rules + 9 authorization rules, all errors collected
+
+  authorization/
+    authorizer.go   Authorizer interface + OPAAuthorizer (PreparedEvalQuery for path, sdk.OPA for config_file)
+    input.go        OPAInput map alias, MCPInput, ContextInput types
+    input_builder.go BuildOPAInput(protocol, body, headers, grantedPermissionSets) — builds the OPA input document
+    parser.go        ParseMCPMessage, ParseMCPBatch — JSON-RPC 2.0 parsing
+    decision.go      OPADecision struct + ParseDecision(any) — type-safe result extraction
+    doc.go           Package documentation
 
   server/
-    server.go       ExtProc gRPC server (Server struct), Process streaming RPC, request-header processing
+    server.go       ExtProc gRPC server (Server struct), Process streaming RPC, OPA integration
     exchanger.go    TokenExchanger implementation: RFC 8693 exchange, in-memory cache, singleflight, background refresh
-    server_test.go  Unit tests for the gRPC server (streaming, pass-through, error responses)
+    server_test.go  Unit tests for the gRPC server (streaming, pass-through, OPA flow, error responses)
     exchanger_test.go   Unit tests for TokenExchanger — cache, singleflight, client assertion, TTL
     exchanger_cache_test.go  Focused cache & eviction tests
     tls_test.go     Unit tests for buildHTTPClient — TLS config, CA bundle, InsecureSkipVerify
@@ -51,7 +59,9 @@ tests/e2e/extproc/
 
 | Type | Purpose |
 |---|---|
-| `Config` | Root config: `GRPC`, `OAuth2`, `Cache`, `Log` |
+| `Config` | Root config: `GRPC`, `OAuth2`, `Cache`, `Log`, `Authorization` |
+| `AuthorizationConfig` | `Enabled`, `Policy PolicyConfig`, `DefaultDecision` (deny-only), `EvaluationTimeout`, `MaxBodySize` |
+| `PolicyConfig` | `Path` (local .rego), `ConfigFile` (OPA YAML), `Package`, `Decision` — `Path` and `ConfigFile` are mutually exclusive |
 | `GRPCConfig` | `Bind`, `Port`, `MaxConcurrentStreams` |
 | `OAuth2Config` | `TokenEndpoint`, `Issuer`, `ClientID`, `ClientSecret`, `ClientCredentialsEndpoint`, `ClientAssertionType`, `ExchangeTimeout`, `TLS` |
 | `TLSConfig` | `InsecureSkipVerify`, `CaBundlePath`, `AllowHTTP` |
@@ -65,13 +75,30 @@ tests/e2e/extproc/
 4. `${VAR}` expansion via `expandEnvVars()` (all string fields)
 5. `Validate()` (fail-fast, all errors collected)
 
+### `internal/extproc/authorization`
+
+| Type/Symbol | Purpose |
+|---|---|
+| `Authorizer` interface | Port: `Evaluate(ctx, input OPAInput) (*OPADecision, error)` + `Stop(ctx)` |
+| `OPAAuthorizer` struct | Production `Authorizer` — dual-backend: PreparedEvalQuery (path) or sdk.OPA (config_file) |
+| `NewOPAAuthorizer(cfg, logger)` | Constructor — path mode compiles Rego at startup (fail-fast); config_file mode reads the OPA config, starts non-blocking, and denies until the bundle is ready |
+| `OPAInput` map alias | OPA document built from the opa-envoy-plugin-compatible base plus top-level `type`, `mcp`, and `context` keys |
+| `MCPInput` struct | MCP protocol fields: `JSONRPC`, `Method`, `ToolName`, `Arguments`, `SessionID` |
+| `ContextInput` struct | Authorization context fields, including `granted_permission_sets_available` and token-bound `granted_permission_sets` when present |
+| `OPADecision` struct | Policy output: `Action string` (`"allow"` or `"deny"`), `Reasons []string` |
+| `ParseDecision(any)` | Type-safe extraction of `action`/`reasons` from OPA result map |
+| `BuildOPAInput(protocol, body, headers, grantedPermissionSets)` | Constructs the OPA input document with protocol-specific parsing |
+| `ParseMCPMessage(body)` | Parses JSON-RPC 2.0 single message → `*MCPMessage` |
+| `ParseMCPBatch(body)` | Detects and parses JSON-RPC 2.0 batch messages (FR-023) |
+
 ### `internal/extproc/server`
 
 | Type/Symbol | Purpose |
 |---|---|
-| `Exchanger` interface | Port: `Exchange(subjectToken, resourceURI string) (string, error)` + `Shutdown()` |
-| `Server` struct | Implements `ExternalProcessorServer`. Fields: `cfg`, `exchanger`, `logger` |
-| `NewServer(cfg, exchanger, logger)` | Constructor |
+| `Exchanger` interface | Port: `Exchange(ctx, subjectToken, resourceURI string) (ExchangeResult, error)` + `Shutdown()` |
+| `Server` struct | Implements `ExternalProcessorServer`. Fields: `cfg`, `exchanger`, `authorizer`, `logger` |
+| `NewServer(cfg, exchanger, logger)` | Constructor — OPA disabled (authorizer=nil) |
+| `NewServerWithAuthorizer(cfg, exchanger, authorizer, logger)` | Constructor — OPA enabled |
 | `Server.Process(stream)` | Streaming gRPC RPC — dispatches on `req.Request` type |
 | `TokenExchanger` struct | Concrete `Exchanger` implementation |
 | `NewTokenExchanger(cfg, logger)` | Constructor — acquires client assertion at startup (fail-fast), starts background goroutine |
@@ -87,14 +114,48 @@ tests/e2e/extproc/
 ### 1. Standalone — no identity broker imports
 `internal/extproc/` must **never** import from `internal/domain/`, `internal/ports/`, or `internal/adapters/`. It is a separate binary, not a plugin.
 
-### 2. Exchanger is the only port interface
-`Exchanger` (defined in `server/server.go`) is the hexagonal boundary inside this service. `Server` depends on the interface; `TokenExchanger` is the production implementation. Tests use mock implementations of `Exchanger`.
+### 2. Two port interfaces: Exchanger and Authorizer
+`Exchanger` (defined in `server/server.go`) and `authorization.Authorizer` (defined in `authorization/authorizer.go`) are the two hexagonal boundaries inside this service.
+
+- `Server` depends on both interfaces. `TokenExchanger` is the production `Exchanger` implementation. `OPAAuthorizer` is the production `Authorizer` implementation.
+- When ExtProc tests need startup/readiness visibility, use `_test.go` helpers or `tests/e2e/extproc/bootstrap/` around `NewOPAAuthorizer`; do not split the production API with alternate exported constructors.
+- The `authorizer` field on `Server` is typed as `authorization.Authorizer` — no adapter layer or `map[string]any` indirection.
+- When `authorizer == nil` (OPA disabled): token exchange runs in the `RequestHeaders` phase — no body buffering, zero overhead.
+- When `authorizer != nil` (OPA enabled): body-bearing requests exchange in `RequestHeaders` and evaluate OPA in `RequestBody`; header-only requests evaluate OPA first with `granted_permission_sets_available=false` and exchange only after allow.
+- Tests use mock/stub implementations of both interfaces.
+
+### 2a. OPA Authorization Pipeline (when enabled)
+```
+Body-bearing requests:
+RequestHeaders → extract Bearer + resource URI + agentgateway.protocol metadata
+               → Exchanger.Exchange(bearer, resource)
+               → Authorization header mutation + BUFFERED body
+RequestBody    → BuildOPAInput(protocol, body, headers, grantedPermissionSets)
+               → OPAAuthorizer.Evaluate(ctx, opaInput) → allow: echo body
+                                                      → deny: 403 ImmediateResponse {"error":"access_denied","error_description":"...reasons..."}
+
+Header-only requests:
+RequestHeaders(end_of_stream=true)
+               → BuildOPAInputHeadersOnly(protocol, headers)
+               → OPAAuthorizer.Evaluate(ctx, opaInput) → allow: Exchanger.Exchange(...) + Authorization header mutation
+                                                      → deny: 403 ImmediateResponse {"error":"access_denied","error_description":"...reasons..."}
+```
+
+`BuildOPAInput` dispatches on `protocol`:
+- `"mcp"`: `ParseMCPMessage` → `type="mcp_tool_call"` (for `tools/call`) or `type="mcp_method"` (other methods)
+- any other: `type="unknown"` with raw body in `input.attributes.request.http.body`
+
+`OPAAuthorizer` has two backends:
+- `rego.PreparedEvalQuery` — when `authorization.policy.path` is set (local Rego file, compile-once)
+- `sdk.OPA` — when `authorization.policy.config_file` is set (OPA config YAML, bundle-aware)
+
+All error paths (evaluation error, timeout, undefined result) return `deny` (fail-closed per SR-001).
 
 ### 3. Config is loaded once at startup
 `LoadWithCommand()` is called in `cmd/extproc-token-exchange/root.go`. No ad-hoc config reading elsewhere. The loaded `*Config` is passed by pointer.
 
 ### 4. Fail-fast at startup
-- Config validation: 13 rules in `Validate()` — all errors are collected, not short-circuited.
+- Config validation: 13 base rules + 9 authorization rules in `Validate()` — all errors are collected, not short-circuited.
 - Client assertion: `NewTokenExchanger()` calls `refreshClientAssertion()` synchronously and returns an error if it fails.
 - CA bundle: `buildHTTPClient()` reads and parses the bundle at construction time.
 
@@ -102,6 +163,7 @@ tests/e2e/extproc/
 - Map key: `tokenCacheKey{subjectToken, resourceURI}` — Go struct map key (no hash, no separator injection risk).
 - Lock: `sync.RWMutex cacheMu` with double-checked locking pattern inside `singleflight.Group.Do`.
 - TTL: use `expires_in` from exchange response → fall back to `cache.default_ttl` → cap at `cache.max_ttl`.
+- Cached `granted_permission_sets`, when present, are part of the same token-bound snapshot as the exchanged access token and therefore inherit the same `cache.max_ttl` revocation window. Broker omission is cached as `granted_permission_sets_available=false` for the same token/resource key.
 - Eviction: background goroutine in `runEviction()`, fires every `DefaultTTL/2` (floor: 1s).
 
 ### 6. Client assertion refresh

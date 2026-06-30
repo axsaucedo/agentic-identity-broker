@@ -29,10 +29,11 @@ import (
 
 // tokenResponse is the shape of OAuth2 token endpoint responses.
 type tokenResponse struct {
-	AccessToken string `json:"access_token"`
-	IDToken     string `json:"id_token,omitempty"`
-	TokenType   string `json:"token_type"`
-	ExpiresIn   *int   `json:"expires_in,omitempty"`
+	AccessToken           string              `json:"access_token"`
+	IDToken               string              `json:"id_token,omitempty"`
+	TokenType             string              `json:"token_type"`
+	ExpiresIn             *int                `json:"expires_in,omitempty"`
+	GrantedPermissionSets map[string][]string `json:"granted_permission_sets,omitempty"`
 }
 
 // mockOAuth2Server returns a test server that handles both the client_credentials
@@ -47,11 +48,12 @@ type mockServers struct {
 	clientCredsStatus  int
 
 	// Configurable token exchange response
-	exchangedToken  string
-	exchangeExpiry  *int
-	exchangeStatus  int
-	exchangeErrCode string
-
+	exchangedToken       string
+	exchangeExpiry       *int
+	exchangeGrantedPerms map[string][]string
+	exchangeStatus       int
+	exchangeErrCode      string
+	exchangeErrorURI     string // when non-empty, 401 response includes this error_uri
 	// Call counters
 	clientCredsCalls int
 	exchangeCalls    int
@@ -95,14 +97,19 @@ func newMockServers() *mockServers {
 		w.Header().Set("Content-Type", "application/json")
 		if m.exchangeStatus != http.StatusOK {
 			w.WriteHeader(m.exchangeStatus)
-			_, _ = fmt.Fprintf(w, `{"error":%q}`, m.exchangeErrCode)
+			if m.exchangeErrorURI != "" {
+				_, _ = fmt.Fprintf(w, `{"error":%q,"error_uri":%q}`, m.exchangeErrCode, m.exchangeErrorURI)
+			} else {
+				_, _ = fmt.Fprintf(w, `{"error":%q}`, m.exchangeErrCode)
+			}
 			return
 		}
 		w.WriteHeader(http.StatusOK)
 		resp := tokenResponse{
-			AccessToken: m.exchangedToken,
-			TokenType:   "Bearer",
-			ExpiresIn:   m.exchangeExpiry,
+			AccessToken:           m.exchangedToken,
+			TokenType:             "Bearer",
+			ExpiresIn:             m.exchangeExpiry,
+			GrantedPermissionSets: m.exchangeGrantedPerms,
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
@@ -160,9 +167,9 @@ func TestTokenExchanger_Exchange_SendsCorrectRFC8693Request(t *testing.T) {
 	const subjectToken = "incoming-user-bearer-token"
 	const resourceURI = "http://mcp-server:9003/mcp"
 
-	token, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	result, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
-	assert.Equal(t, mocks.exchangedToken, token)
+	assert.Equal(t, mocks.exchangedToken, result.Token)
 
 	// Verify RFC 8693 request parameters
 	form := mocks.lastExchangeForm
@@ -223,9 +230,9 @@ func TestTokenExchanger_Exchange_Non200Response_ReturnsError(t *testing.T) {
 			require.NoError(t, err)
 			defer exchanger.Shutdown()
 
-			token, err := exchanger.Exchange(context.Background(), "subject-token", "http://resource.example.com")
+			result, err := exchanger.Exchange(context.Background(), "subject-token", "http://resource.example.com")
 			assert.Error(t, err, "non-200 exchange response must return error")
-			assert.Empty(t, token, "no token should be returned on failure")
+			assert.Empty(t, result.Token, "no token should be returned on failure")
 		})
 	}
 }
@@ -272,9 +279,9 @@ func TestTokenExchanger_Exchange_NoExpiresIn_SucceedsWithDefaultTTL(t *testing.T
 	require.NoError(t, err)
 	defer exchanger.Shutdown()
 
-	token, err := exchanger.Exchange(context.Background(), "token", "http://resource.example.com/api")
+	result, err := exchanger.Exchange(context.Background(), "token", "http://resource.example.com/api")
 	require.NoError(t, err, "missing expires_in should not cause error")
-	assert.Equal(t, mocks.exchangedToken, token)
+	assert.Equal(t, mocks.exchangedToken, result.Token)
 }
 
 // Spec: FR-011 — Second call with same key uses cache (exchange called only once)
@@ -291,15 +298,15 @@ func TestTokenExchanger_Exchange_CacheHit_DoesNotCallExchangeAgain(t *testing.T)
 	const resourceURI = "http://mcp-server:9003/mcp"
 
 	// First call — populates cache
-	token1, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	result1, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 	firstCallCount := mocks.exchangeCalls
 
 	// Second call with same key — must use cache
-	token2, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	result2, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 
-	assert.Equal(t, token1, token2, "cached token must equal first exchanged token")
+	assert.Equal(t, result1.Token, result2.Token, "cached token must equal first exchanged token")
 	assert.Equal(t, firstCallCount, mocks.exchangeCalls,
 		"token exchange endpoint must not be called again on cache hit")
 }
@@ -330,13 +337,13 @@ func TestTokenExchanger_Exchange_DifferentKeys_IndependentCacheEntries(t *testin
 	require.NoError(t, err)
 	defer exchanger.Shutdown()
 
-	token1, err := exchanger.Exchange(context.Background(), "user-token", "http://service-a:9000/api")
+	result1, err := exchanger.Exchange(context.Background(), "user-token", "http://service-a:9000/api")
 	require.NoError(t, err)
 
-	token2, err := exchanger.Exchange(context.Background(), "user-token", "http://service-b:9001/api")
+	result2, err := exchanger.Exchange(context.Background(), "user-token", "http://service-b:9001/api")
 	require.NoError(t, err)
 
-	assert.NotEqual(t, token1, token2, "different resources must produce different cached tokens")
+	assert.NotEqual(t, result1.Token, result2.Token, "different resources must produce different cached tokens")
 }
 
 // Spec: FR-018 — cache TTL is capped at max_ttl
@@ -356,9 +363,9 @@ func TestTokenExchanger_Exchange_ExpiresIn_CappedAtMaxTTL(t *testing.T) {
 	defer exchanger.Shutdown()
 
 	// This test verifies the TTL cap is applied — the exchange still succeeds
-	token, err := exchanger.Exchange(context.Background(), "token", "http://resource.example.com")
+	result, err := exchanger.Exchange(context.Background(), "token", "http://resource.example.com")
 	require.NoError(t, err)
-	assert.NotEmpty(t, token)
+	assert.NotEmpty(t, result.Token)
 	// The actual TTL cap behavior is verified via cache expiry tests
 }
 
@@ -800,10 +807,10 @@ func TestTokenExchanger_Exchange_PropagatesTraceContext(t *testing.T) {
 	capturedTraceparent = ""
 	mu.Unlock()
 
-	token, err := te.Exchange(ctx, "test-subject-token", "https://example.com/api")
+	result, err := te.Exchange(ctx, "test-subject-token", "https://example.com/api")
 	parentSpan.End()
 	require.NoError(t, err)
-	assert.NotEmpty(t, token, "exchange should return a token")
+	assert.NotEmpty(t, result.Token, "exchange should return a token")
 
 	// The outbound request must carry a traceparent with the same trace ID.
 	mu.Lock()
@@ -892,10 +899,10 @@ func TestTokenExchanger_Exchange_PropagatesWithoutLocalSpans(t *testing.T) {
 	ctx, parentSpan := tp.Tracer("test").Start(context.Background(), "test-parent")
 	expectedTraceID := parentSpan.SpanContext().TraceID().String()
 
-	token, err := te.Exchange(ctx, "propagation-test-token", "https://example.com/resource")
+	result, err := te.Exchange(ctx, "propagation-test-token", "https://example.com/resource")
 	parentSpan.End()
 	require.NoError(t, err)
-	assert.Equal(t, "token-data", token, "exchange should return the access token regardless of trace collection state")
+	assert.Equal(t, "token-data", result.Token, "exchange should return the access token regardless of trace collection state")
 
 	// Verify propagation occurred (traceparent forwarded) but no local spans were recorded.
 	tp.ForceFlush(context.Background()) //nolint:errcheck

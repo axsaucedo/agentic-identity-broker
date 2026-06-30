@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
 )
 
@@ -80,6 +81,41 @@ func (m *passThroughMatcher) NegatedFailureMessage(actual interface{}) string {
 	return "Expected ProcessingResponse NOT to be a pass-through but it was"
 }
 
+// BeForwardedRequestBody asserts that the ProcessingResponse forwards the request body
+// in the RequestBody phase. This is the allow-path response shape for body-bearing OPA
+// requests after the headers-phase token exchange has already succeeded.
+func BeForwardedRequestBody() types.GomegaMatcher {
+	return &forwardedRequestBodyMatcher{}
+}
+
+type forwardedRequestBodyMatcher struct {
+	actual string
+}
+
+func (m *forwardedRequestBodyMatcher) Match(actual interface{}) (success bool, err error) {
+	resp, ok := actual.(*extprocv3.ProcessingResponse)
+	if !ok {
+		return false, fmt.Errorf("BeForwardedRequestBody expects *extprocv3.ProcessingResponse, got %T", actual)
+	}
+
+	if resp.Response == nil {
+		m.actual = "<nil>"
+		return false, nil
+	}
+
+	m.actual = fmt.Sprintf("%T", resp.Response)
+	_, ok = resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	return ok, nil
+}
+
+func (m *forwardedRequestBodyMatcher) FailureMessage(actual interface{}) string {
+	return fmt.Sprintf("Expected ProcessingResponse to forward the request body in the RequestBody phase but got %s", m.actual)
+}
+
+func (m *forwardedRequestBodyMatcher) NegatedFailureMessage(actual interface{}) string {
+	return "Expected ProcessingResponse NOT to forward the request body in the RequestBody phase"
+}
+
 // HaveImmediateResponseWithStatus asserts that the ProcessingResponse is an
 // ImmediateResponse with the specified HTTP status code.
 //
@@ -151,4 +187,14 @@ func (m *immediateResponseBodyMatcher) FailureMessage(actual interface{}) string
 
 func (m *immediateResponseBodyMatcher) NegatedFailureMessage(actual interface{}) string {
 	return "Expected ImmediateResponse body NOT to match"
+}
+
+// HaveImmediateResponseWithBody asserts that the ProcessingResponse is an ImmediateResponse
+// whose body contains the given substring. Convenience wrapper over HaveImmediateResponseBody.
+//
+// Example:
+//
+//	Expect(resp).To(helpers.HaveImmediateResponseWithBody("tool is destructive"))
+func HaveImmediateResponseWithBody(containing string) types.GomegaMatcher {
+	return HaveImmediateResponseBody(gomega.ContainSubstring(containing))
 }

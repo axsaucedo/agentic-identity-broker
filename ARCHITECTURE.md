@@ -721,6 +721,16 @@ OAuth2 /authorize request
 
 **TokenCacheKey**: Struct used as Go map key: `{subjectToken, resourceURI}`. Using struct keys prevents separator-injection attacks compared to string concatenation.
 
+**Two policy gates on one request chain**:
+
+| Gate | Service / Boundary | Question Answered | Inputs | Config Surface | Default |
+|------|--------------------|-------------------|--------|----------------|---------|
+| ExtProc OPA | `extproc-token-exchange` request path | May this proxied request or MCP tool call proceed? | `OPAInput` built from ExtProc metadata, headers, and optional request body | `authorization.*` in ExtProc config | Disabled |
+| Broker CEL | Broker `POST /oauth2/token` token-exchange boundary | May this gateway perform token exchange for this resource? | `CELAuthorizationContext` built from client assertion claims and RFC 8693 request fields | `token_exchange.authorization.cel.*` in broker config | CEL expression defaults to `true` |
+
+The gates compose as fail-closed AND: ExtProc OPA can only further restrict a request after broker CEL authorizes token exchange, and broker CEL can still deny token exchange even when ExtProc OPA would allow the proxied request.
+
+
 #### 3.2.2. gRPC Server
 
 **Server**: Implements Envoy's `ExternalProcessorServer` interface with:
@@ -1271,6 +1281,14 @@ Define any project-specific terms or acronyms.)
 **CIMDFetcher**: Hexagonal port interface (outbound, infrastructure-side) for fetching Client ID Metadata Documents from remote HTTPS endpoints with SSRF protection, configurable timeout, and response size limits. Analogous to `JWKSPort`. Implemented by the SSRF-hardened HTTP fetcher adapter in `internal/adapters/cimd/fetcher.go` which uses a custom `net.Dialer.Control` callback for TOCTOU-safe IP address validation before TCP connect.
 
 **ClientResolution**: DTO returned by `ClientResolver.ResolveClient()`. Contains the resolved `*storage.Agent` and an optional `*cimd.ClientIDMetadataDocument` (nil for opaque UUID client IDs). Used by `OAuth2AuthorizationService` to carry CIMD metadata into the consent session.
+
+**OPAInput**: Map-based OPA document constructed by ExtProc for policy evaluation. Starts with the opa-envoy-plugin-compatible base document and adds top-level `type`, `mcp`, `request`, and `context` keys so policies can use both Envoy-compatible fields and protocol-specific ExtProc fields.
+
+**OPADecision**: Result of OPA policy evaluation — a structured object with an action (`allow` or `deny`) and an optional `reasons` array of strings. ExtProc parses the configured decision document and includes deny reasons in the 403 response body.
+
+**Authorizer**: Interface for evaluating authorization policies in ExtProc. Accepts an `OPAInput` document and returns an `OPADecision`. The production implementation wraps `rego.PreparedEvalQuery` or the OPA SDK depending on policy source. Authorization is disabled by constructing the server with `authorizer == nil`.
+
+**ProtocolParser**: Conceptual parsing stage implemented by `BuildOPAInput`, `BuildOPAInputHeadersOnly`, `ParseMCPMessage`, and `ParseMCPBatch`; not a standalone Go interface or struct in the current code.
 
 ### General Acronyms
 

@@ -72,6 +72,15 @@ func RegisterFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("circuit_breaker.enabled", true, "enable circuit breaker for token exchange calls (default: true)")
 	cmd.Flags().Int("circuit_breaker.max_failures", 0, "consecutive failures before opening circuit (default: 5)")
 	cmd.Flags().Duration("circuit_breaker.reset_timeout", 0, "duration in open state before probing recovery (default: 30s)")
+	// Authorization flags
+	cmd.Flags().Bool("authorization.enabled", false, "enable OPA-based request authorization (default: false)")
+	cmd.Flags().String("authorization.policy.path", "", "filesystem path to local Rego policy file or directory")
+	cmd.Flags().String("authorization.policy.config_file", "", "filesystem path to OPA configuration file (mutually exclusive with policy.path)")
+	cmd.Flags().String("authorization.policy.package", "", "OPA package name (default: aib.extproc.authz)")
+	cmd.Flags().String("authorization.policy.decision", "", "OPA decision document name (default: result)")
+	cmd.Flags().String("authorization.default_decision", "", "decision when the policy result is undefined; must remain deny (default: deny)")
+	cmd.Flags().Duration("authorization.evaluation_timeout", 0, "OPA evaluation timeout (default: 100ms)")
+	cmd.Flags().Int("authorization.max_body_size", 0, "maximum request body size in bytes for OPA evaluation (default: 1048576)")
 	// Telemetry flags
 	cmd.Flags().Bool("telemetry.enabled", false, "enable OpenTelemetry (default: false)")
 	cmd.Flags().String("telemetry.service_name", "", "service name in telemetry data (default: extproc-token-exchange)")
@@ -218,6 +227,38 @@ func bindFlags(v *viper.Viper, cmd *cobra.Command) {
 			func() interface{} { d, _ := cmd.Flags().GetDuration("circuit_breaker.reset_timeout"); return d },
 		},
 		{
+			"authorization.enabled", "authorization.enabled",
+			func() interface{} { b, _ := cmd.Flags().GetBool("authorization.enabled"); return b },
+		},
+		{
+			"authorization.policy.path", "authorization.policy.path",
+			func() interface{} { s, _ := cmd.Flags().GetString("authorization.policy.path"); return s },
+		},
+		{
+			"authorization.policy.config_file", "authorization.policy.config_file",
+			func() interface{} { s, _ := cmd.Flags().GetString("authorization.policy.config_file"); return s },
+		},
+		{
+			"authorization.policy.package", "authorization.policy.package",
+			func() interface{} { s, _ := cmd.Flags().GetString("authorization.policy.package"); return s },
+		},
+		{
+			"authorization.policy.decision", "authorization.policy.decision",
+			func() interface{} { s, _ := cmd.Flags().GetString("authorization.policy.decision"); return s },
+		},
+		{
+			"authorization.default_decision", "authorization.default_decision",
+			func() interface{} { s, _ := cmd.Flags().GetString("authorization.default_decision"); return s },
+		},
+		{
+			"authorization.evaluation_timeout", "authorization.evaluation_timeout",
+			func() interface{} { d, _ := cmd.Flags().GetDuration("authorization.evaluation_timeout"); return d },
+		},
+		{
+			"authorization.max_body_size", "authorization.max_body_size",
+			func() interface{} { i, _ := cmd.Flags().GetInt("authorization.max_body_size"); return i },
+		},
+		{
 			"telemetry.enabled", "telemetry.enabled",
 			func() interface{} { b, _ := cmd.Flags().GetBool("telemetry.enabled"); return b },
 		},
@@ -278,6 +319,17 @@ func applyDefaults(v *viper.Viper) {
 	v.SetDefault("circuit_breaker.enabled", true)
 	v.SetDefault("circuit_breaker.max_failures", 5)
 	v.SetDefault("circuit_breaker.reset_timeout", "30s")
+	// Authorization defaults — disabled by default (fail-closed).
+	v.SetDefault("authorization.enabled", false)
+	// Empty defaults for policy source fields register the Viper keys so that
+	// AutomaticEnv (e.g. EXTPROC_AUTHORIZATION_POLICY_PATH) can supply values.
+	v.SetDefault("authorization.policy.path", "")
+	v.SetDefault("authorization.policy.config_file", "")
+	v.SetDefault("authorization.policy.package", "aib.extproc.authz")
+	v.SetDefault("authorization.policy.decision", "result")
+	v.SetDefault("authorization.default_decision", "deny")
+	v.SetDefault("authorization.evaluation_timeout", "100ms")
+	v.SetDefault("authorization.max_body_size", 1048576)
 	applyTelemetryDefaults(v)
 }
 
@@ -313,6 +365,11 @@ func expandEnvVars(cfg *Config) {
 	cfg.GRPC.Bind = os.ExpandEnv(cfg.GRPC.Bind)
 	cfg.Log.Level = os.ExpandEnv(cfg.Log.Level)
 	cfg.Log.Format = os.ExpandEnv(cfg.Log.Format)
+	cfg.Authorization.Policy.Path = os.ExpandEnv(cfg.Authorization.Policy.Path)
+	cfg.Authorization.Policy.ConfigFile = os.ExpandEnv(cfg.Authorization.Policy.ConfigFile)
+	cfg.Authorization.Policy.Package = os.ExpandEnv(cfg.Authorization.Policy.Package)
+	cfg.Authorization.Policy.Decision = os.ExpandEnv(cfg.Authorization.Policy.Decision)
+	cfg.Authorization.DefaultDecision = os.ExpandEnv(cfg.Authorization.DefaultDecision)
 	// Expand telemetry fields
 	cfg.Telemetry.ServiceName = os.ExpandEnv(cfg.Telemetry.ServiceName)
 	cfg.Telemetry.Exporter.Endpoint = os.ExpandEnv(cfg.Telemetry.Exporter.Endpoint)

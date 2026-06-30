@@ -279,7 +279,7 @@ Per Constitution Principle I (Security-First):
 This ADR aligns with project constitution principles:
 
 - **Principle I (Security-First)**: CEL expressions fail-closed, validated at startup, sandboxed from system resources
-- **Principle II (Architecture Documentation & ADRs)**: This ADR documents binding CEL authorization architecture; code MUST follow CEL patterns established here
+- **Principle II (Architecture Documentation & ADRs)**: This ADR documents the binding CEL architecture for broker-side RFC 8693 token-exchange authorization and claim extraction. ExtProc request/tool authorization is a separate service boundary and must be documented separately.
 - **Principle III (Library-First Security)**: Uses google/cel-go (vetted library), NOT custom expression language or custom policy engine
 - **Principle VII (Configuration-Driven Design)**: Authorization expressions and claim extraction are purely configuration (YAML), not code changes
 - **Principle VIII (Test-Driven Development)**: E2E tests written first for all CEL scenarios (User Story 4, Scenarios 1-6)

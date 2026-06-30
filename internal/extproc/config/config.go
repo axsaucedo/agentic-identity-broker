@@ -12,6 +12,7 @@ type Config struct {
 	Cache          CacheConfig          `mapstructure:"cache"`
 	Log            LogConfig            `mapstructure:"log"`
 	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
+	Authorization  AuthorizationConfig  `mapstructure:"authorization"`
 	Telemetry      TelemetryConfig      `mapstructure:"telemetry"`
 }
 
@@ -61,6 +62,25 @@ type CircuitBreakerConfig struct {
 	Enabled      bool          `mapstructure:"enabled"`
 	MaxFailures  int           `mapstructure:"max_failures"`
 	ResetTimeout time.Duration `mapstructure:"reset_timeout"`
+}
+
+// AuthorizationConfig holds ExtProc-side OPA request authorization settings.
+// This is distinct from the broker token-exchange authorization config in internal/ports/config.go.
+type AuthorizationConfig struct {
+	Enabled           bool          `mapstructure:"enabled"`
+	Policy            PolicyConfig  `mapstructure:"policy"`
+	DefaultDecision   string        `mapstructure:"default_decision"`
+	EvaluationTimeout time.Duration `mapstructure:"evaluation_timeout"`
+	MaxBodySize       int           `mapstructure:"max_body_size"`
+}
+
+// PolicyConfig holds OPA policy source settings.
+// Exactly one of Path or ConfigFile must be set when authorization is enabled.
+type PolicyConfig struct {
+	Path       string `mapstructure:"path"`        // Filesystem path to local Rego file or directory
+	ConfigFile string `mapstructure:"config_file"` // Filesystem path to OPA configuration file
+	Package    string `mapstructure:"package"`     // OPA package name (default: aib.extproc.authz)
+	Decision   string `mapstructure:"decision"`    // Decision document name (default: result)
 }
 
 // TelemetryConfig contains OpenTelemetry observability configuration.

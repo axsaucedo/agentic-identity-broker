@@ -127,9 +127,9 @@ func TestTokenExchanger_TLS_InsecureSkipVerify_ConnectsToSelfSignedServer(t *tes
 	require.NoError(t, err, "InsecureSkipVerify must allow connecting to self-signed TLS server")
 	defer exchanger.Shutdown()
 
-	token, err := exchanger.Exchange(context.Background(), "user-token", "https://resource.example.com/api")
+	result, err := exchanger.Exchange(context.Background(), "user-token", "https://resource.example.com/api")
 	require.NoError(t, err, "exchange must succeed with InsecureSkipVerify=true")
-	assert.Equal(t, "tls-exchanged-token", token)
+	assert.Equal(t, "tls-exchanged-token", result.Token)
 }
 
 // Spec: FR-019 — Without InsecureSkipVerify, self-signed cert causes connection failure
@@ -246,9 +246,9 @@ func TestTokenExchanger_TLS_CaBundlePath_AllowsCustomCA(t *testing.T) {
 	require.NoError(t, err, "CaBundlePath with matching CA must allow connection")
 	defer exchanger.Shutdown()
 
-	token, err := exchanger.Exchange(context.Background(), "user-token", "https://resource.example.com/api")
+	result, err := exchanger.Exchange(context.Background(), "user-token", "https://resource.example.com/api")
 	require.NoError(t, err, "exchange must succeed when CA bundle matches server cert")
-	assert.Equal(t, "ca-bundle-exchanged-token", token)
+	assert.Equal(t, "ca-bundle-exchanged-token", result.Token)
 }
 
 // Spec: FR-019 — CaBundlePath with wrong CA rejects connection

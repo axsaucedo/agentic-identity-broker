@@ -1,0 +1,68 @@
+# ExtProc configuration with OPA authorization
+#
+# This example shows how to enable OPA-based authorization in the ExtProc service.
+# When enabled, body-bearing requests exchange tokens in the headers phase and
+# evaluate buffered request bodies against a configurable Rego policy. Header-only
+# requests are evaluated first and exchange only after allow. MCP tool calls are
+# presented as structured input to OPA (input.mcp.tool_name, input.type, etc.).
+#
+# For the full authorization configuration reference, see:
+#   specs/020-extproc-opa-authorization/contracts/configuration.md
+#
+# For the recommended Rego policy pattern (set-based allow/deny), see:
+#   specs/020-extproc-opa-authorization/contracts/rego-policy-pattern.md
+
+grpc:
+  bind: "0.0.0.0"
+  port: 50051
+  max_concurrent_streams: 100
+
+oauth2:
+  token_endpoint: "https://identity-broker.example.com/oauth2/token"
+  issuer: "https://upstream-oauth2.example.com"
+  client_id: "${EXTPROC_OAUTH2_CLIENT_ID}"
+  client_secret: "${EXTPROC_OAUTH2_CLIENT_SECRET}"
+  client_assertion_type: "id_token"
+  exchange_timeout: 5s
+
+cache:
+  default_ttl: 5m
+  max_ttl: 1h
+
+log:
+  level: info
+  format: json
+
+# --- OPA Authorization (optional) ---
+authorization:
+  # Enable OPA authorization for request evaluation
+  enabled: true
+
+  policy:
+    # Option A: Local Rego file (for quick setup / development)
+    # Provide the path to a Rego policy file or directory.
+    # Mutually exclusive with config_file.
+    path: "/etc/extproc/policy.rego"
+
+    # Option B: OPA configuration file (for production / bundle server)
+    # Provide the path to a standard OPA configuration file.
+    # Supports bundles, discovery, decision logs, etc.
+    # Mutually exclusive with path.
+    # config_file: "/etc/extproc/opa-config.yaml"
+
+    # OPA policy package name (dotted notation)
+    package: "aib.extproc.authz"
+
+    # OPA decision document name within the package
+    decision: "result"
+
+  # Decision when the policy result is undefined.
+  # Must remain "deny" for fail-closed behavior.
+  default_decision: "deny"
+
+  # Maximum time for a single OPA evaluation
+  evaluation_timeout: 100ms
+
+  # Maximum request body size to buffer for OPA evaluation (bytes)
+  # Default: 1048576 (1 MiB)
+  max_body_size: 1048576

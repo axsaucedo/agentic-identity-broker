@@ -42,7 +42,7 @@ func SetupAdminRoutes(r chi.Router, h *app.AdminHandlers, cfg AdminRouteConfig) 
 	// registered propagator and continues any inbound trace context (for example,
 	// b3, ot-tracer-*, or W3C Trace Context when enabled) instead of creating new
 	// root traces.
-	if cfg.Telemetry.Enabled && cfg.Telemetry.Traces.Enabled {
+	if cfg.Telemetry.Enabled {
 		r.Use(otelchi.Middleware("admin",
 			otelchi.WithChiRoutes(r),
 			otelchi.WithRequestMethodInSpanName(true),

@@ -45,7 +45,7 @@ func isServerError(err error) bool {
 // 4xx BrokerExchangeErrors are excluded from failure counting via IsSuccessful
 // because they represent client errors (e.g., invalid subject tokens), not
 // infrastructure failures.
-func newGobreakerCB(cfg *extprocconfig.Config, logger *slog.Logger) *gobreaker.CircuitBreaker[string] {
+func newGobreakerCB(cfg *extprocconfig.Config, logger *slog.Logger) *gobreaker.CircuitBreaker[ExchangeResult] {
 	maxFail := uint32(cfg.CircuitBreaker.MaxFailures) //nolint:gosec // validated positive by config.Validate
 	timeout := cfg.CircuitBreaker.ResetTimeout
 
@@ -78,5 +78,5 @@ func newGobreakerCB(cfg *extprocconfig.Config, logger *slog.Logger) *gobreaker.C
 		},
 	}
 
-	return gobreaker.NewCircuitBreaker[string](st)
+	return gobreaker.NewCircuitBreaker[ExchangeResult](st)
 }

@@ -14,12 +14,15 @@ import (
 	. "github.com/onsi/gomega" //nolint:staticcheck
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // ProcessingRequestBuilder builds Envoy ProcessingRequest messages for testing.
 // Implements the builder pattern for fluent test construction.
 type ProcessingRequestBuilder struct {
-	headers map[string]string
+	headers     map[string]string
+	protocol    string // agentgateway protocol metadata (e.g., "mcp", "a2a")
+	endOfStream bool   // set EndOfStream=true on HttpHeaders (simulates header-only GET)
 }
 
 // NewRequestHeaders creates a builder initialized with common pseudo-headers for ExtProc testing.
@@ -56,6 +59,20 @@ func (b *ProcessingRequestBuilder) WithHeader(key, value string) *ProcessingRequ
 func (b *ProcessingRequestBuilder) WithoutAuthorizationHeader() *ProcessingRequestBuilder {
 	delete(b.headers, "authorization")
 	return b
+}
+
+// BuildRequestBody constructs a ProcessingRequest for the RequestBody phase
+// containing the provided body bytes. Used in OPA authorization tests to send
+// MCP request bodies through ExtProc after the RequestHeaders phase.
+func BuildRequestBody(body []byte) *extprocv3.ProcessingRequest {
+	return &extprocv3.ProcessingRequest{
+		Request: &extprocv3.ProcessingRequest_RequestBody{
+			RequestBody: &extprocv3.HttpBody{
+				Body:        body,
+				EndOfStream: true,
+			},
+		},
+	}
 }
 
 // Build constructs the ProcessingRequest with request headers phase.
@@ -152,25 +169,30 @@ func ConnectToExtProc(addr string) (extprocv3.ExternalProcessorClient, *grpc.Cli
 }
 
 // ExtractMutatedAuthorizationHeader extracts the Authorization header value from a
-// HeadersResponse that mutates headers. Returns empty string if not found.
+// ProcessingResponse that mutates headers. The Authorization mutation is always in the
+// RequestHeaders phase response — both non-OPA (direct exchange) and OPA (eager exchange
+// in headers phase with requestBodyBufferingResponseWithAuth) set it there.
+// Returns empty string if not found.
 func ExtractMutatedAuthorizationHeader(resp *extprocv3.ProcessingResponse) string {
 	headersResp, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
 	if !ok {
 		return ""
 	}
-
 	if headersResp.RequestHeaders == nil ||
 		headersResp.RequestHeaders.Response == nil ||
 		headersResp.RequestHeaders.Response.HeaderMutation == nil {
 		return ""
 	}
+	return findAuthorizationHeader(headersResp.RequestHeaders.Response.HeaderMutation.SetHeaders)
+}
 
-	for _, hvo := range headersResp.RequestHeaders.Response.HeaderMutation.SetHeaders {
+// findAuthorizationHeader returns the RawValue of the "authorization" header from a slice.
+func findAuthorizationHeader(headers []*corev3.HeaderValueOption) string {
+	for _, hvo := range headers {
 		if hvo.Header != nil && hvo.Header.Key == "authorization" {
 			return string(hvo.Header.RawValue)
 		}
 	}
-
 	return ""
 }
 
@@ -202,6 +224,104 @@ func ExtractImmediateResponseBody(resp *extprocv3.ProcessingResponse) string {
 	}
 
 	return string(immResp.ImmediateResponse.Body)
+}
+
+// WithEndOfStream sets the EndOfStream flag on the HttpHeaders message.
+// Use this to simulate a header-only request (e.g. GET /mcp for SSE stream setup)
+// where no body phase follows. ExtProc uses EndOfStream=true to trigger the
+// mcp_headers_only evaluation path.
+func (b *ProcessingRequestBuilder) WithEndOfStream(v bool) *ProcessingRequestBuilder {
+	b.endOfStream = v
+	return b
+}
+
+// WithMetadata adds agentgateway ExtProc filter metadata to the request.
+// The metadata sets the protocol field (e.g., "mcp", "a2a") in the agentgateway namespace.
+// This simulates the metadata agentgateway sends when routing protocol-aware traffic through ExtProc.
+func (b *ProcessingRequestBuilder) WithAgentgatewayProtocol(protocol string) *ProcessingRequestBuilder {
+	b.protocol = protocol
+	return b
+}
+
+// BuildWithMetadata constructs the ProcessingRequest with request headers phase and
+// includes agentgateway filter metadata for the protocol type.
+func (b *ProcessingRequestBuilder) BuildWithMetadata() *extprocv3.ProcessingRequest {
+	headers := make([]*corev3.HeaderValue, 0, len(b.headers))
+	for k, v := range b.headers {
+		headers = append(headers, &corev3.HeaderValue{
+			Key:      k,
+			RawValue: []byte(v),
+		})
+	}
+
+	req := &extprocv3.ProcessingRequest{
+		Request: &extprocv3.ProcessingRequest_RequestHeaders{
+			RequestHeaders: &extprocv3.HttpHeaders{
+				Headers: &corev3.HeaderMap{
+					Headers: headers,
+				},
+				EndOfStream: b.endOfStream,
+			},
+		},
+	}
+
+	if b.protocol != "" {
+		req.MetadataContext = &corev3.Metadata{
+			FilterMetadata: map[string]*structpb.Struct{
+				"agentgateway": {
+					Fields: map[string]*structpb.Value{
+						"protocol": structpb.NewStringValue(b.protocol),
+					},
+				},
+			},
+		}
+	}
+
+	return req
+}
+
+// SendHeadersAndBody sends a two-phase stream: RequestHeaders then RequestBody.
+// Returns (headersResp, bodyResp). The Authorization header mutation is always in
+// headersResp — OPA mode sets it in the headers phase (requestBodyBufferingResponseWithAuth)
+// and non-OPA mode also sets it in the headers phase.
+// If the headers phase returns an ImmediateResponse (e.g. exchange error in headers phase),
+// (headersResp, nil) is returned and no body phase is sent.
+func SendHeadersAndBody(
+	ctx context.Context,
+	client extprocv3.ExternalProcessorClient,
+	headersReq *extprocv3.ProcessingRequest,
+	bodyBytes []byte,
+) (headersResp, bodyResp *extprocv3.ProcessingResponse) {
+	streamCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	stream, err := client.Process(streamCtx)
+	Expect(err).NotTo(HaveOccurred(), "failed to open gRPC stream")
+
+	// Phase 1: send request headers
+	err = stream.Send(headersReq)
+	Expect(err).NotTo(HaveOccurred(), "failed to send RequestHeaders")
+
+	headersResp, err = stream.Recv()
+	Expect(err).NotTo(HaveOccurred(), "failed to receive response to RequestHeaders")
+
+	// If headers phase returned ImmediateResponse, stream is complete — no body phase.
+	if _, isImmediate := headersResp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse); isImmediate {
+		return headersResp, nil
+	}
+
+	// Phase 2: send request body
+	bodyReq := BuildRequestBody(bodyBytes)
+	err = stream.Send(bodyReq)
+	Expect(err).NotTo(HaveOccurred(), "failed to send RequestBody")
+
+	err = stream.CloseSend()
+	Expect(err).NotTo(HaveOccurred(), "failed to close send")
+
+	bodyResp, err = stream.Recv()
+	Expect(err).NotTo(HaveOccurred(), "failed to receive response to RequestBody")
+
+	return headersResp, bodyResp
 }
 
 // IsPassThroughResponse returns true if the response is a pass-through (empty HeadersResponse

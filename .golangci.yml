@@ -1,5 +1,6 @@
 version: "2"
 
-issues:
-  exclude-dirs:
-    - web/node_modules
+linters:
+  exclusions:
+    paths:
+      - web/node_modules

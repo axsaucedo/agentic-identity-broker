@@ -119,6 +119,7 @@ Read full ADRs in `adrs/` before implementing. Pre-existing ADRs are authoritati
 | 016 | `adrs/016-authorization-session-anti-spoofing.md` | Authorization session anti-spoofing |
 | 017 | `adrs/017-optional-agent-client-id.md` | Optional/nullable Agent client_id |
 | 027 | `adrs/027-extproc-telemetry-shared-dependency.md` | ExtProc telemetry shared dependency |
+| 028 | `adrs/028-opa-extproc-authorization.md` | OPA authorization in ExtProc via embedded SDK |
 
 ## Domain Glossary
 
@@ -168,6 +169,8 @@ All code in the monorepo (Go, TypeScript, CDK):
 - **Match surrounding style** — naming, error handling, file structure consistent with adjacent code
 - **Explicit over clever** — intent must be immediately clear without tracing abstractions
 - **Extend, don't duplicate** — if a mechanism exists (e.g., JWE for ephemeral state), don't introduce a competing one
+
+- **No test-only production APIs** — production packages MUST NOT expose exported constructors, readiness hooks, flags, or code paths whose only consumer is tests; put test observability in `_test.go` helpers or `tests/` bootstrap code and assert behavior through the real production API
 
 ## Database Migrations
 

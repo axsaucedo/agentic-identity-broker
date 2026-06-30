@@ -21,6 +21,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/telemetry"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/authorization"
 	extprocconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/config"
 	extprocserver "github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -39,6 +40,34 @@ header before the request reaches the upstream service.`,
 // Execute runs the root command.
 func Execute() error {
 	return rootCmd.Execute()
+}
+
+const grpcShutdownTimeout = 5 * time.Second
+
+type grpcServerStopper interface {
+	GracefulStop()
+	Stop()
+}
+
+func stopGRPCServerWithTimeout(grpcSrv grpcServerStopper, timeout time.Duration, logger *slog.Logger) {
+	done := make(chan struct{})
+	go func() {
+		grpcSrv.GracefulStop()
+		close(done)
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case <-done:
+		return
+	case <-timer.C:
+		if logger != nil {
+			logger.Warn("gRPC graceful shutdown timed out, forcing stop", "timeout", timeout)
+		}
+		grpcSrv.Stop()
+	}
 }
 
 // run is the main execution function for the ExtProc Token Exchange service.
@@ -88,6 +117,9 @@ func run(cmd *cobra.Command, _ []string) error {
 			return fmt.Errorf("failed to initialize telemetry: %w", err)
 		}
 		telemetryShutdown = shutdown
+		defer func() {
+			shutdownTelemetry(logger, telemetryShutdown)
+		}()
 		logger.Info("Telemetry initialized", "endpoint", cfg.Telemetry.Exporter.Endpoint)
 
 		// T047: Wire slog-to-OTel bridge when telemetry AND logs are both enabled.
@@ -111,8 +143,24 @@ func run(cmd *cobra.Command, _ []string) error {
 	}
 	defer exchanger.Shutdown()
 
+	// 5. Optionally initialise OPA authorizer when authorization is enabled.
+	var authorizer authorization.Authorizer
+	if cfg.Authorization.Enabled {
+		logger.Info("OPA authorization enabled", "policy_path", cfg.Authorization.Policy.Path)
+		authorizer, err = authorization.NewOPAAuthorizer(&cfg.Authorization, logger)
+		if err != nil {
+			return fmt.Errorf("failed to initialize OPA authorizer: %w", err)
+		}
+		defer authorizer.Stop(sigCtx)
+	}
+
 	// 6. Create ExtProc server.
-	svc := extprocserver.NewServer(cfg, exchanger, logger)
+	var svc *extprocserver.Server
+	if authorizer != nil {
+		svc = extprocserver.NewServerWithAuthorizer(cfg, exchanger, authorizer, logger)
+	} else {
+		svc = extprocserver.NewServer(cfg, exchanger, logger)
+	}
 
 	// 7. Create gRPC server with max_concurrent_streams.
 	grpcOpts := []grpc.ServerOption{
@@ -146,18 +194,9 @@ func run(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("gRPC server error: %w", err)
 	}
 
-	// 11. Graceful shutdown.
-	grpcSrv.GracefulStop()
+	// 11. Graceful shutdown with a bounded fallback for long-lived streams.
+	stopGRPCServerWithTimeout(grpcSrv, grpcShutdownTimeout, logger)
 	logger.Info("gRPC server stopped")
-
-	// 12. Shutdown telemetry if it was initialized.
-	if telemetryShutdown != nil {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := telemetryShutdown(shutdownCtx); err != nil {
-			logger.Warn("error during telemetry shutdown", "error", err)
-		}
-	}
 
 	logger.Info("ExtProc Token Exchange Service stopped")
 	return nil
@@ -194,6 +233,18 @@ func initLogger(cfg *extprocconfig.Config) *slog.Logger {
 // signal arrives in the narrow window between the timeout firing and this check.
 func isSignalCancellation(sigCtx context.Context, err error) bool {
 	return sigCtx.Err() != nil && errors.Is(err, context.Canceled)
+}
+
+func shutdownTelemetry(logger *slog.Logger, shutdown func(context.Context) error) {
+	if shutdown == nil {
+		return
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := shutdown(shutdownCtx); err != nil && logger != nil {
+		logger.Warn("error during telemetry shutdown", "error", err)
+	}
 }
 
 // mapTelemetryConfig converts ExtProc's local TelemetryConfig to the ports.TelemetryConfig

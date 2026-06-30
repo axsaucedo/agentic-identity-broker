@@ -548,6 +548,7 @@ broker:
       # b3 (B3 single header), tracecontext (W3C), baggage (W3C).
       # Propagators are registered unconditionally when telemetry is enabled.
       propagators:
+        - tracecontext
         - ottrace
         - b3multi
         - baggage
