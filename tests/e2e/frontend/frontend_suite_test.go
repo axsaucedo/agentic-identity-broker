@@ -19,9 +19,9 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
+	"github.com/mxschmitt/playwright-go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/playwright-community/playwright-go"
 )
 
 // SuiteContext holds resources shared across all tests in the suite.

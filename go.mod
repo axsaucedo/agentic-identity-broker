@@ -25,12 +25,12 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/mark3labs/mcp-go v0.54.1
 	github.com/moby/moby/api v1.54.1
+	github.com/mxschmitt/playwright-go v0.6100.0
 	github.com/onsi/ginkgo/v2 v2.29.0
 	github.com/onsi/gomega v1.40.0
 	github.com/open-policy-agent/opa v1.15.0
 	github.com/open-policy-agent/opa-envoy-plugin v1.15.0-envoy
 	github.com/ory/fosite v0.49.0
-	github.com/playwright-community/playwright-go v0.5700.1
 	github.com/sony/gobreaker/v2 v2.4.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0

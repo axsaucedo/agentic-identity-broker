@@ -1,46 +1,94 @@
 // @ts-check
 // `@type` JSDoc annotations allow editor autocompletion and type checking
 // (when paired with `@ts-check`).
-// There are various equivalent ways to declare your Docusaurus config.
 // See: https://docusaurus.io/docs/api/docusaurus-config
 
 import {themes as prismThemes} from 'prism-react-renderer';
+
+const siteUrl = process.env.DOCS_SITE_URL ?? 'https://agenticidentitybroker.dev';
+const baseUrl = process.env.DOCS_BASE_URL ?? '/';
+const githubOrg = process.env.DOCS_GITHUB_ORG ?? 'zalando-incubator';
+const githubRepo = process.env.DOCS_GITHUB_REPO ?? 'agentic-identity-broker';
+const githubBranch = process.env.DOCS_GITHUB_BRANCH ?? 'main';
+const githubRepoUrl = `https://github.com/${githubOrg}/${githubRepo}`;
+const githubIssuesUrl = `${githubRepoUrl}/issues`;
+const githubDiscussionsUrl = `${githubRepoUrl}/discussions`;
+const editUrl = `${githubRepoUrl}/edit/${githubBranch}/`;
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Agentic Identity Broker',
-  tagline: 'Identity brokering for agentic systems',
-  favicon: 'img/favicon.ico',
+  tagline: 'OAuth2 delegation and consent for AI agents',
+  favicon: 'img/favicon.svg',
 
-  // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
+  // Pin the v4 future flags that were enabled before 3.10 added new defaults.
   future: {
-    v4: true, // Improve compatibility with the upcoming Docusaurus v4
+    v4: {
+      removeLegacyPostBuildHeadAttribute: true,
+      useCssCascadeLayers: true,
+    },
   },
 
-  // Set the production url of your site here
-  url: 'https://github.io',
-  // Set the /<baseUrl>/ pathname under which your site is served
-  // For GitHub pages deployment, it is often '/<projectName>/'
-  baseUrl: '/',
+  // GitHub Pages + custom-domain metadata, overridable via environment variables
+  // so org moves or fork deployments need no code changes.
+  url: siteUrl,
+  baseUrl,
+  organizationName: githubOrg,
+  projectName: githubRepo,
+  trailingSlash: false,
 
-  // GitHub pages deployment config.
-  // If you aren't using GitHub pages, you don't need these.
-  organizationName: 'anthropics', // Usually your GitHub org/user name.
-  projectName: 'agentic-identity-broker', // Usually your repo name.
+  onBrokenLinks: 'throw',
 
-  onBrokenLinks: 'warn',
-
-  // Even if you don't use internationalization, you can use this field to set
-  // useful metadata like html lang. For example, if your site is Chinese, you
-  // may want to replace "en" with "zh-Hans".
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
   },
 
+  markdown: {
+    mermaid: true,
+    hooks: {
+      onBrokenMarkdownLinks: 'warn',
+    },
+  },
+
+  themes: ['@docusaurus/theme-mermaid'],
+
+  plugins: [
+    // Client-side full-text search (no external service required).
+    [
+      'docusaurus-lunr-search',
+      {
+        indexBaseUrl: true,
+      },
+    ],
+  ],
+
   presets: [
+    // Render the canonical OpenAPI contracts directly with Redoc so the API
+    // reference is generated from the specs and can never drift from the code.
+    [
+      'redocusaurus',
+      /** @type {import('redocusaurus').PresetEntry} */
+      {
+        specs: [
+          {
+            id: 'enduser',
+            spec: '../../api/enduser/openapi.yaml',
+            route: '/api/enduser/',
+          },
+          {
+            id: 'admin',
+            spec: '../../api/admin/openapi.yaml',
+            route: '/api/admin/',
+          },
+        ],
+        theme: {
+          primaryColor: '#2563eb',
+        },
+      },
+    ],
     [
       'classic',
       /** @type {import('@docusaurus/preset-classic').Options} */
@@ -49,7 +97,21 @@ const config = {
           path: '../../docs',
           sidebarPath: './sidebars.js',
           routeBasePath: 'docs',
-          editUrl: 'https://github.com/anthropics/agentic-identity-broker/edit/main/',
+          editUrl,
+          // Repository-internal maintainer references live under docs/ but are
+          // not part of the public site. Keep the classic defaults and add them.
+          exclude: [
+            '**/_*.{js,jsx,ts,tsx,md,mdx}',
+            '**/_*/**',
+            '**/*.test.{js,jsx,ts,tsx}',
+            '**/__tests__/**',
+            'ENCRYPTION_INTEGRATION_GUIDE.md',
+            'STORAGE_EXTENSION_GUIDE.md',
+            'STORAGE_TROUBLESHOOTING.md',
+            'docker-compose-setup.md',
+            'deployment/kubernetes.md',
+            'configuration/consent-spa.md',
+          ],
         },
         blog: false,
         theme: {
@@ -62,15 +124,20 @@ const config = {
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
-      // Replace with your project's social card
       image: 'img/docusaurus-social-card.jpg',
       colorMode: {
         respectPrefersColorScheme: true,
       },
+      docs: {
+        sidebar: {
+          hideable: true,
+          autoCollapseCategories: true,
+        },
+      },
       navbar: {
         title: 'Agentic Identity Broker',
         logo: {
-          alt: 'Agentic Identity Broker Logo',
+          alt: 'Agentic Identity Broker logo',
           src: 'img/logo.svg',
         },
         items: [
@@ -81,7 +148,16 @@ const config = {
             label: 'Documentation',
           },
           {
-            href: 'https://github.com/anthropics/agentic-identity-broker',
+            type: 'dropdown',
+            label: 'API',
+            position: 'left',
+            items: [
+              {label: 'End-user API', to: '/api/enduser'},
+              {label: 'Admin API', to: '/api/admin'},
+            ],
+          },
+          {
+            href: githubRepoUrl,
             label: 'GitHub',
             position: 'right',
           },
@@ -91,45 +167,36 @@ const config = {
         style: 'dark',
         links: [
           {
-            title: 'Documentation',
+            title: 'Learn',
             items: [
-              {
-                label: 'Introduction',
-                to: '/docs/introduction',
-              },
-              {
-                label: 'Quick Start',
-                to: '/docs/quick-start',
-              },
-              {
-                label: 'API Reference',
-                to: '/docs/api',
-              },
+              {label: 'Introduction', to: '/docs/introduction'},
+              {label: 'Concepts', to: '/docs/concepts'},
+              {label: 'Get started', to: '/docs/get-started'},
+            ],
+          },
+          {
+            title: 'Operate',
+            items: [
+              {label: 'Guides', to: '/docs/guides/deploy-on-kubernetes'},
+              {label: 'Configuration', to: '/docs/configuration'},
+              {label: 'API reference', to: '/api/enduser'},
             ],
           },
           {
             title: 'Community',
             items: [
-              {
-                label: 'GitHub',
-                href: 'https://github.com/anthropics/agentic-identity-broker',
-              },
-              {
-                label: 'Issues',
-                href: 'https://github.com/anthropics/agentic-identity-broker/issues',
-              },
-              {
-                label: 'Discussions',
-                href: 'https://github.com/anthropics/agentic-identity-broker/discussions',
-              },
+              {label: 'GitHub', href: githubRepoUrl},
+              {label: 'Issues', href: githubIssuesUrl},
+              {label: 'Discussions', href: githubDiscussionsUrl},
             ],
           },
         ],
-        copyright: `Copyright © ${new Date().getFullYear()} Agentic Identity Broker. Built with Docusaurus.`,
+        copyright: `Copyright © ${new Date().getFullYear()} Agentic Identity Broker contributors. Built with Docusaurus.`,
       },
       prism: {
         theme: prismThemes.github,
         darkTheme: prismThemes.dracula,
+        additionalLanguages: ['bash', 'json', 'yaml', 'go', 'hcl'],
       },
     }),
 };

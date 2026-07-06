@@ -1,3 +1,8 @@
+---
+title: Production deployment checklist
+description: A pre-deployment, deployment, and post-deployment checklist for running the Agentic Identity Broker with AWS-backed encryption infrastructure.
+---
+
 # CDK Encryption Infrastructure Deployment Checklist
 
 ## Pre-Deployment
@@ -469,6 +474,4 @@ All outputs from the CDK stack `AgenticIdentityBrokerEncryptionVault-{env}`:
 - [AWS CDK Deployment Guide](https://docs.aws.amazon.com/cdk/latest/guide/home.html)
 - [CloudFormation Stack Operations](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-view-stack-data-resources.html)
 - [EKS IAM Roles for Service Accounts](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
-- [KMS Key Management](./kms-key-management.md)
-- [DynamoDB Recovery Procedures](./dynamodb-recovery.md)
 - [AWS Encryption SDK Hierarchical Keyring](https://docs.aws.amazon.com/encryption-sdk/latest/developer-guide/use-hierarchical-keyring.html)

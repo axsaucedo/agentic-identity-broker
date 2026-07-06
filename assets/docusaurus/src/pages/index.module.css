@@ -1,23 +1,100 @@
-/**
- * CSS files with the .module.css suffix will be treated as CSS modules
- * and scoped locally.
- */
-
 .heroBanner {
-  padding: 4rem 0;
-  text-align: center;
-  position: relative;
   overflow: hidden;
+  padding: 5rem 0 4rem;
+  position: relative;
+  text-align: center;
+}
+
+.heroBanner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top left, rgba(14, 165, 233, 0.18), transparent 28%),
+    radial-gradient(circle at top right, rgba(225, 29, 72, 0.18), transparent 24%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.06), rgba(15, 23, 42, 0));
+  pointer-events: none;
+}
+
+.heroContent {
+  margin: 0 auto;
+  max-width: 56rem;
+  position: relative;
+}
+
+.eyebrow {
+  display: inline-block;
+  border-radius: 999px;
+  background: var(--ifm-color-emphasis-200);
+  color: var(--ifm-color-emphasis-800);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0.35rem 0.8rem;
+  text-transform: uppercase;
+}
+
+.heroTitle {
+  margin: 1rem auto 0;
+  font-size: clamp(3rem, 7vw, 4.8rem);
+  line-height: 1.02;
+  max-width: 14ch;
+}
+
+.heroTagline {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 1.25rem auto 0;
+  max-width: 48rem;
+}
+
+.heroDescription {
+  color: var(--ifm-color-emphasis-700);
+  font-size: 1.05rem;
+  margin: 1rem auto 0;
+  max-width: 46rem;
+}
+
+.buttons {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-top: 2rem;
+}
+
+.heroHighlights {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 2rem;
+}
+
+.heroHighlight {
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 1rem;
+  background: var(--ifm-background-surface-color);
+  box-shadow: var(--ifm-global-shadow-lw);
+  padding: 1rem;
+  text-align: left;
+}
+
+.heroHighlight strong {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.heroHighlight span {
+  color: var(--ifm-color-emphasis-700);
 }
 
 @media screen and (max-width: 996px) {
   .heroBanner {
-    padding: 2rem;
+    padding: 4rem 0 3rem;
   }
-}
 
-.buttons {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  .heroHighlights {
+    grid-template-columns: 1fr;
+  }
 }

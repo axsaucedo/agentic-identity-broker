@@ -5,6 +5,10 @@
 # optional profile attributes from a signed or unsigned JWT provided by an
 # upstream reverse proxy, API gateway, or service mesh.
 #
+# When `authentication.jwt` is configured, requests missing the JWT header
+# fail closed with 401. The plain pre-auth header is not used as a runtime
+# fallback.
+#
 # For full documentation see: docs/configuration.md
 
 # =============================================================================
@@ -18,7 +22,7 @@
 #     port: 8000
 #     authentication:
 #       preauth:
-#         principal_header_name: X-Remote-User   # Fallback when JWT header absent
+#         principal_header_name: X-Remote-User
 #       jwt:
 #         header_name: Authorization              # Default; strips "Bearer " prefix
 #         # verification: jwks                    # Default when omitted

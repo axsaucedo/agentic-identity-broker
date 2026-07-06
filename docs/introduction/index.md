@@ -1,123 +1,89 @@
 ---
-title: Introduction
-description: Learn what the Agentic Identity Broker is, why it exists, and how it enables secure identity brokering for agentic systems and autonomous agents.
+title: What is the Agentic Identity Broker?
+description: An open-source OAuth2 delegation and consent broker that lets users grant AI agents scoped, revocable access to third-party services without sharing credentials.
 ---
 
-# Introduction to Agentic Identity Broker
+# What is the Agentic Identity Broker?
 
-The **Agentic Identity Broker** is an open-source identity brokering system purpose-built for agentic systems—AI agents, autonomous services, and multi-agent architectures. Unlike traditional identity providers designed for human users and web applications, this broker focuses exclusively on agent-to-agent authentication, identity verification, and secure token exchange in distributed agentic environments.
+The Agentic Identity Broker is an open-source **OAuth2 delegation and consent broker** for
+AI agents. It gives a human user a governed way to let an AI agent act on their behalf
+against third-party services — GitHub, Google, Databricks, an internal API — scoped to
+specific permissions, optionally time-limited, and revocable at any time.
 
-## What is the Agentic Identity Broker?
+The broker sits between three parties:
 
-The Agentic Identity Broker serves as a trusted intermediary for identity management in systems where multiple autonomous agents need to securely identify, authenticate, and authorize each other. It acts as a central authority that issues, verifies, and manages identities specifically designed for agents—not humans.
-
-Think of it as an identity layer for your agentic infrastructure: when Agent A needs to verify Agent B's identity, or when an autonomous service must authenticate to another system, the broker provides the cryptographic proof and verification mechanisms to enable secure, verifiable interactions.
-
-### Core Capabilities
-
-The broker provides three fundamental capabilities for agentic systems:
-
-1. **Identity Issuance**: Generate and manage unique identities for agents, services, and autonomous systems with cryptographic keys and verifiable credentials.
-
-2. **Identity Verification**: Validate agent identities through signature verification, token validation, and cryptographic proofs without requiring centralized databases or user directories.
-
-3. **Identity Brokering**: Act as a trusted intermediary between agents that don't directly trust each other, enabling secure communication across organizational or trust boundaries.
-
-## Why Does This Exist?
-
-As organizations build increasingly complex multi-agent systems, they face a fundamental challenge: **how do autonomous agents securely identify and trust each other?** Traditional identity providers like Keycloak, Auth0, and Okta were designed for human users logging into web applications—they assume interactive authentication flows, session management, and human-in-the-loop workflows.
-
-Agentic systems have different requirements:
-
-- **No human interaction**: Agents authenticate autonomously without user input
-- **Machine-to-machine trust**: Verification happens through cryptographic proofs, not passwords
-- **Distributed architectures**: Agents may span multiple clouds, edge devices, or air-gapped environments
-- **High-frequency verification**: Authentication happens thousands of times per second, not once per session
-- **Fail-closed security**: Identity failures must block operations entirely, not degrade gracefully
-
-The Agentic Identity Broker addresses these needs with a security-first, agent-native architecture that treats identity as a foundational infrastructure concern for agentic systems.
-
-## Key Concepts
-
-Understanding the broker requires familiarity with a few core concepts specific to agentic identity:
-
-### Agentic Identity
-
-An **agentic identity** represents a cryptographically verifiable identifier for an autonomous agent or service. Unlike human identities (tied to email addresses, usernames, or social profiles), agentic identities are typically public-private key pairs, service accounts, or machine identities with no human attributes.
-
-Example:
-```text
-Agent ID: agent://aib/service-discovery/instance-42
-Public Key: ed25519:AAAC3NzaC1lZDI1NTE5AAAAIDfJK...
+```mermaid
+flowchart LR
+    User([User / principal]) -- "consents once, per agent" --> Broker
+    Agent([AI agent]) -- "requests delegated access" --> Broker
+    Broker[(Agentic Identity Broker)] -- "holds encrypted tokens<br/>issues scoped, exchangeable access" --> Services
+    Services([Third-party services<br/>GitHub · Google · internal APIs])
 ```
 
-### Identity Brokering vs Identity Providing
+The user consents once, per agent and per service. The broker holds the third-party tokens
+**encrypted at rest** and hands the agent only narrowly-scoped, exchangeable, auditable
+access. The agent never sees the user's long-lived credentials.
 
-An **identity broker** acts as an intermediary between multiple identity sources and relying parties, translating and verifying identities across trust boundaries. An **identity provider** (IdP) issues and manages identities directly.
+## The problem
 
-The Agentic Identity Broker can operate in both modes:
-- As a **broker**: Translating identities between different agent systems
-- As a **provider**: Directly issuing identities to agents it manages
+AI agents increasingly need to call real services for the people they work for: read a
+repository, file a ticket, query a warehouse, send a calendar invite. Every naive way to
+give an agent that access has a failure mode an IAM team will recognize:
 
-This distinction matters for federated agent networks where agents from different organizations need to interact securely.
+| Approach | Why it breaks down |
+|---|---|
+| Hand the agent the user's OAuth token | Over-broad, can't be revoked per agent, no record of which agent did what, tokens sprawl across every agent. |
+| Give each agent its own third-party client | Unmanageable at scale, no shared consent surface, provider secrets copied everywhere. |
+| Static API keys or shared service accounts | No per-user delegation, no expiry, no consent, weak audit. |
 
-### Agent-to-Agent Authentication
+Each option trades away either **least privilege**, **user consent**, **revocability**, or
+**auditability** — usually several at once. As soon as more than a handful of agents act for
+more than a handful of users, the token sprawl becomes an operational and security problem.
 
-Unlike user-to-application authentication (OAuth, SAML), **agent-to-agent authentication** assumes both parties are autonomous systems with cryptographic capabilities. Authentication flows use:
+## The approach
 
-- Public key cryptography for mutual authentication
-- Token exchange protocols for delegation
-- Signature verification for non-repudiation
-- Certificate chains for hierarchical trust
+The broker inserts a single, governed trust boundary:
 
-No cookies, sessions, or redirect flows—just direct cryptographic proof exchange.
+- **The user consents** to a specific bundle of permissions (a *permission set*) for a
+  specific agent and service, with an optional expiry.
+- **The broker holds the third-party tokens**, encrypted with per-service envelope
+  encryption, and refreshes them as needed.
+- **Agents receive scoped access** — and at request time a gateway can exchange an agent's
+  token for exactly the right third-party token using [RFC 8693 token exchange](/docs/concepts/token-exchange),
+  so the agent never holds the provider credential at all.
+- **Every delegation is recorded** and revocable: the user can withdraw a grant or terminate
+  a third-party session, and dependent agents lose access.
 
-## Who Should Use This?
+The broker speaks standard OAuth2. It exposes an [authorization-server surface](/docs/concepts/oauth2-server-modes)
+(RFC 6749 authorization code + PKCE, RFC 8414 metadata, a JWKS endpoint) and can either
+**proxy** an existing corporate authorization server or **issue** its own tokens.
 
-The Agentic Identity Broker is designed for developers and platform engineers building:
+## Who it is for
 
-- **Multi-agent orchestration platforms** where multiple AI agents collaborate on complex tasks
-- **Autonomous microservices** requiring service-to-service authentication beyond API keys
-- **Agent marketplaces** where agents from different vendors must securely interact
-- **Federated agent networks** spanning multiple organizations or security domains
-- **Edge computing environments** with intermittent connectivity requiring local identity verification
+- **IAM and security teams** who need to bring AI agents under the same consent, least-
+  privilege, and audit disciplines they already apply to human access.
+- **Platform and infrastructure operators** building or running an agent platform who need
+  a credential broker their agents can integrate against — instead of every agent
+  re-implementing token storage and refresh.
+- **Teams adopting an agent gateway** (for example an Envoy-based gateway) that want
+  transparent, policy-checked token exchange at the edge.
 
-### When to Use This Tool
+## What it is not
 
-Consider the Agentic Identity Broker when you need:
+- It is **not a user identity provider**. The broker does not authenticate humans. A trusted
+  reverse proxy in front of it authenticates the user and passes the identity in a header.
+  Keep using Keycloak, Auth0, Okta, or your corporate IdP for human login — see
+  [Why not a traditional IdP?](/docs/introduction/why-not-idp).
+- It is **not a general secrets manager**. It manages OAuth2 delegations and the third-party
+  tokens that result from them, not arbitrary application secrets.
 
-- Identity verification for systems with **no human users** or where humans are not in the authentication loop
-- **Cryptographic proof** of agent identity rather than password-based authentication
-- **High-throughput identity verification** (thousands of authentications per second)
-- **Federated trust** across organizational boundaries for agent interactions
-- **Fail-closed security posture** where identity failures must completely block operations
+## Where to go next
 
-### When NOT to Use This Tool
-
-This tool may not be appropriate if:
-
-- Your primary use case is **human user authentication** (use Keycloak, Auth0, or Okta instead)
-- You need **social login integration** (Google, Facebook, GitHub)
-- Your system requires **user directories, roles, and RBAC** for human users
-- You're building a traditional web application with login pages and user sessions
-
-For those scenarios, traditional identity providers are better suited. See [Why Not Traditional IdP?](./why-not-idp.md) for a detailed comparison.
-
-## What's Next?
-
-Now that you understand what the Agentic Identity Broker is and why it exists, explore the following resources:
-
-- **[Why Not Traditional IdP?](./why-not-idp.md)**: Detailed comparison with Keycloak, Auth0, Okta, and traditional identity providers
-- **[Use Cases](./use-cases.md)**: Concrete scenarios where agentic identity brokering solves real problems
-- **[Quick Start](/docs/quick-start)**: Get the broker running locally in 15 minutes
-- **[Architecture & Concepts](/docs/architecture)**: Deep dive into architectural decisions and design principles
-
-## Project Status
-
-The Agentic Identity Broker is an **open-source project** in active development. We're building the foundational identity infrastructure for the agentic systems ecosystem. Contributions, feedback, and real-world use cases are welcome.
-
-- **License**: [To be determined - typically Apache 2.0 or MIT for OSS identity projects]
-- **Repository**: [GitHub link to be added]
-- **Community**: [Discussions link to be added]
-
-Ready to get started? Head to the [Quick Start guide](/docs/quick-start) to install and run the broker locally.
+- **[Use cases](/docs/introduction/use-cases)** — concrete scenarios where delegated agent
+  access is the hard part.
+- **[Why not a traditional IdP?](/docs/introduction/why-not-idp)** — how the broker
+  complements, rather than replaces, your identity provider.
+- **[Concepts](/docs/concepts)** — the delegation model, architecture, server modes, token
+  exchange, and encryption.
+- **[Get started](/docs/get-started)** — run the full stack locally and walk a delegation
+  end to end.

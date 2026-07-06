@@ -1,11 +1,111 @@
-.features {
-  display: flex;
-  align-items: center;
-  padding: 2rem 0;
-  width: 100%;
+.overviewSection {
+  padding: 1rem 0 5rem;
 }
 
-.featureSvg {
-  height: 200px;
-  width: 200px;
+.sectionHeader {
+  margin: 0 auto 2rem;
+  max-width: 48rem;
+  text-align: center;
+}
+
+.sectionEyebrow {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+  border-radius: 999px;
+  background: var(--ifm-color-emphasis-200);
+  color: var(--ifm-color-emphasis-800);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0.35rem 0.8rem;
+  text-transform: uppercase;
+}
+
+.sectionTitle {
+  margin-bottom: 0.75rem;
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.sectionDescription {
+  color: var(--ifm-color-emphasis-700);
+  font-size: 1.05rem;
+}
+
+.capabilityGrid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.card {
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 1rem;
+  background: var(--ifm-background-surface-color);
+  box-shadow: var(--ifm-global-shadow-lw);
+  height: 100%;
+  padding: 1.5rem;
+}
+
+.cardTitle {
+  margin-bottom: 0.75rem;
+  font-size: 1.2rem;
+}
+
+.cardDescription {
+  margin: 0;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.pathSection {
+  margin-top: 4rem;
+}
+
+.pathGrid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pathCard {
+  display: block;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 1rem;
+  background: var(--ifm-background-surface-color);
+  box-shadow: var(--ifm-global-shadow-lw);
+  color: inherit;
+  padding: 1.5rem;
+  text-decoration: none;
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.pathCard:hover {
+  border-color: var(--ifm-color-primary);
+  box-shadow: var(--ifm-global-shadow-md);
+  text-decoration: none;
+  transform: translateY(-2px);
+}
+
+.pathTitle {
+  display: inline-block;
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.pathDescription {
+  color: var(--ifm-color-emphasis-700);
+  margin: 0 0 1rem;
+}
+
+.pathAction {
+  color: var(--ifm-color-primary);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+@media screen and (max-width: 996px) {
+  .capabilityGrid,
+  .pathGrid {
+    grid-template-columns: 1fr;
+  }
 }

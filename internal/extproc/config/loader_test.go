@@ -3,6 +3,8 @@ package config_test
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -46,6 +48,87 @@ func validConfig() *config.Config {
 				Timeout: 10 * time.Second,
 			},
 		},
+	}
+}
+
+func extprocRepoPath(t *testing.T, relativePath string) string {
+	t.Helper()
+
+	_, thisFile, _, ok := runtime.Caller(0)
+	require.True(t, ok, "resolve caller path")
+
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", ".."))
+	return filepath.Join(repoRoot, relativePath)
+}
+
+func loadStandaloneExtProcExampleConfig(t *testing.T, relativePath string, envVars map[string]string) *config.Config {
+	t.Helper()
+
+	t.Setenv("EXTPROC_CONFIG_PATH", extprocRepoPath(t, relativePath))
+	for key, value := range envVars {
+		t.Setenv(key, value)
+	}
+
+	cfg, err := config.Load()
+	require.NoError(t, err, "expected standalone ExtProc example %s to load via internal/extproc/config.Load", relativePath)
+
+	return cfg
+}
+
+// TestStandaloneExtProcExamplesLoadWithExtProcLoader keeps the standalone
+// ExtProc examples explicit. Do not glob examples/config here: the directory
+// also contains extproc-telemetry.yaml, which is an overlay rather than a
+// standalone ExtProc config.
+func TestStandaloneExtProcExamplesLoadWithExtProcLoader(t *testing.T) {
+	policyPath := filepath.Join(t.TempDir(), "policy.rego")
+	require.NoError(t, os.WriteFile(policyPath, []byte("package aib.extproc.authz\nresult := {\"action\": \"deny\"}\n"), 0o600))
+
+	tests := []struct {
+		name         string
+		relativePath string
+		envVars      map[string]string
+		assertConfig func(*testing.T, *config.Config)
+	}{
+		{
+			name:         "extproc-token-exchange.yaml",
+			relativePath: "examples/config/extproc-token-exchange.yaml",
+			envVars: map[string]string{
+				"EXTPROC_OAUTH2_CLIENT_SECRET": "extproc-example-secret",
+			},
+			assertConfig: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
+				assert.Equal(t, "extproc-gateway", cfg.OAuth2.ClientID)
+				assert.Equal(t, "extproc-example-secret", cfg.OAuth2.ClientSecret)
+				assert.Equal(t, "https://identity-broker.example.com/oauth2/token", cfg.OAuth2.TokenEndpoint)
+				assert.Equal(t, "text", cfg.Log.Format)
+			},
+		},
+		{
+			name:         "extproc-opa-authorization.yaml",
+			relativePath: "examples/config/extproc-opa-authorization.yaml",
+			envVars: map[string]string{
+				"EXTPROC_OAUTH2_CLIENT_ID":          "opa-extproc-client",
+				"EXTPROC_OAUTH2_CLIENT_SECRET":      "opa-extproc-secret",
+				"EXTPROC_AUTHORIZATION_POLICY_PATH": policyPath,
+			},
+			assertConfig: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
+				assert.Equal(t, "opa-extproc-client", cfg.OAuth2.ClientID)
+				assert.Equal(t, "opa-extproc-secret", cfg.OAuth2.ClientSecret)
+				assert.True(t, cfg.Authorization.Enabled)
+				assert.Equal(t, policyPath, cfg.Authorization.Policy.Path)
+				assert.Empty(t, cfg.Authorization.Policy.ConfigFile)
+				assert.Equal(t, "aib.extproc.authz", cfg.Authorization.Policy.Package)
+				assert.Equal(t, "deny", cfg.Authorization.DefaultDecision)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := loadStandaloneExtProcExampleConfig(t, tt.relativePath, tt.envVars)
+			tt.assertConfig(t, cfg)
+		})
 	}
 }
 

@@ -560,7 +560,7 @@ kubectl delete pvc -l application=spilo
 
 ## Next Steps
 
-- [Configure OAuth2 settings](../configuration/oauth2.md)
-- [Set up monitoring and alerts](../observability/monitoring.md)
-- [Production deployment checklist](../deployment/checklist.md)
-- [Backup and restore procedures](../operations/backup.md)
+- Configure OAuth2 settings
+- Set up monitoring and alerts
+- Prepare a production deployment checklist
+- Define backup and restore procedures

@@ -484,7 +484,6 @@ func BuildErrorRedirectURL(redirectURI, errorCode, errorDescription, state strin
 - [Go crypto/tls documentation](https://pkg.go.dev/crypto/tls)
 - [Chi router documentation](https://github.com/go-chi/chi)
 - [Go slog documentation](https://pkg.go.dev/log/slog)
-- [Detailed Go Implementation Examples](../../docs/research-oauth2-proxy-best-practices.md)
 
 ---
 

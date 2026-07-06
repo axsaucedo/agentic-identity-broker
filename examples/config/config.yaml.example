@@ -14,9 +14,3 @@ log:
 # server:
 #   host: ${IDENTITY_BROKER_SERVER_HOST}
 #   port: ${IDENTITY_BROKER_SERVER_PORT}
-#
-# database:
-#   connection_string: ${IDENTITY_BROKER_DB_CONNECTION}
-#
-# auth:
-#   jwt_secret: ${IDENTITY_BROKER_JWT_SECRET}

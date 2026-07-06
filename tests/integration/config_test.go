@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // testJWESigningKey is a valid test JWE key (32 bytes base64 encoded)
@@ -19,6 +22,40 @@ var testJWESigningKey = base64.StdEncoding.EncodeToString([]byte("0123456789abcd
 
 // testEncryptionKey is a valid test encryption key (32 bytes base64 encoded)
 var testEncryptionKey = base64.StdEncoding.EncodeToString([]byte("abcdef0123456789abcdef0123456789"))
+
+func loadBrokerExampleConfig(t *testing.T, relativePath string, envVars map[string]string) (*ports.Config, []ports.ConfigSource) {
+	t.Helper()
+
+	t.Setenv("IDENTITY_BROKER_CONFIG_PATH", repoPath(t, relativePath))
+	for key, value := range envVars {
+		t.Setenv(key, value)
+	}
+
+	loader := config.NewLoader()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cfg, err := loader.GetConfig(ctx)
+	require.NoError(t, err, "expected standalone broker example %s to load via internal/config.NewLoader", relativePath)
+
+	return cfg, loader.GetSources()
+}
+
+func requireYAMLSource(t *testing.T, relativePath string, sources []ports.ConfigSource) {
+	t.Helper()
+
+	require.NotEmpty(t, sources, "expected %s to record configuration sources", relativePath)
+
+	hasYAML := false
+	for _, src := range sources {
+		if src.Type == ports.SourceTypeYAML {
+			hasYAML = true
+			break
+		}
+	}
+
+	assert.True(t, hasYAML, "expected %s to record a YAML source", relativePath)
+}
 
 // TestConfigurationPrecedence tests that configuration sources are applied in correct precedence order.
 // Order: CLI flags > Environment variables > YAML > Defaults
@@ -245,101 +282,254 @@ encryption:
 	}
 }
 
-// TestConfigurationFromExamples tests that example configuration files load correctly.
-func TestConfigurationFromExamples(t *testing.T) {
+// TestStandaloneBrokerExamplesLoadWithBrokerLoader keeps the standalone broker
+// examples explicit. Do not replace this with a glob over examples/config:
+// that directory also contains partial fragments and overlays that are not
+// valid top-level broker configs.
+func TestStandaloneBrokerExamplesLoadWithBrokerLoader(t *testing.T) {
 	tests := []struct {
 		name         string
-		configFile   string
-		expectedPort int
-		expectedBind string
+		relativePath string
+		envVars      map[string]string
+		assertConfig func(*testing.T, *ports.Config)
 	}{
 		{
-			name:         "development config",
-			configFile:   "../../examples/config/config.development.yaml",
-			expectedPort: 3000,
-			expectedBind: "127.0.0.1",
+			name:         "config.development.yaml",
+			relativePath: "examples/config/config.development.yaml",
+			envVars: map[string]string{
+				"IDENTITY_BROKER_JWE_SIGNING_KEY": testJWESigningKey,
+			},
+			assertConfig: func(t *testing.T, cfg *ports.Config) {
+				t.Helper()
+				assert.Equal(t, 3000, cfg.Server.EndUser.Port)
+				assert.Equal(t, "127.0.0.1", cfg.Server.EndUser.Bind)
+				require.NotNil(t, cfg.Encryption.Memory)
+				assert.Equal(t, "local", string(cfg.OAuth2AuthServer.Mode))
+			},
 		},
 		{
-			name:         "staging config",
-			configFile:   "../../examples/config/config.staging.yaml",
-			expectedPort: 8000,
-			expectedBind: "::",
+			name:         "config.staging.yaml",
+			relativePath: "examples/config/config.staging.yaml",
+			envVars: map[string]string{
+				"IDENTITY_BROKER_JWE_SIGNING_KEY":           testJWESigningKey,
+				"IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY": testEncryptionKey,
+			},
+			assertConfig: func(t *testing.T, cfg *ports.Config) {
+				t.Helper()
+				assert.Equal(t, "::", cfg.Server.EndUser.Bind)
+				assert.Equal(t, ports.LogFormatJSON, cfg.Log.Format)
+				require.NotNil(t, cfg.Encryption.Memory)
+			},
 		},
 		{
-			name:         "production config",
-			configFile:   "../../examples/config/config.production.yaml",
-			expectedPort: 8000,
-			expectedBind: "::",
+			name:         "config.production.yaml",
+			relativePath: "examples/config/config.production.yaml",
+			envVars: map[string]string{
+				"IDENTITY_BROKER_JWE_SIGNING_KEY":                                      testJWESigningKey,
+				"IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN":                           "arn:aws:kms:us-east-1:123456789012:key/test-key-id",
+				"IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI":         "https://idp.example.com",
+				"IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT": "https://idp.example.com/oauth2/authorize",
+				"IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT":     "https://idp.example.com/oauth2/token",
+			},
+			assertConfig: func(t *testing.T, cfg *ports.Config) {
+				t.Helper()
+				assert.Equal(t, "postgres", cfg.Storage.Backend)
+				require.NotNil(t, cfg.Encryption.AWSKMS)
+				assert.Equal(t, 30*time.Second, cfg.OAuth2AuthServer.Proxy.UpstreamTimeout)
+				assert.Equal(t, "proxy", string(cfg.OAuth2AuthServer.Mode))
+			},
+		},
+		{
+			name:         "config.minimal.yaml",
+			relativePath: "examples/config/config.minimal.yaml",
+			envVars: map[string]string{
+				"IDENTITY_BROKER_JWE_SIGNING_KEY":                                             testJWESigningKey,
+				"IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY":                                   testEncryptionKey,
+				"IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE":                                     "local",
+				"IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME": "X-Remote-User",
+				"IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME":   "X-Admin-User",
+			},
+			assertConfig: func(t *testing.T, cfg *ports.Config) {
+				t.Helper()
+				assert.Equal(t, "X-Remote-User", cfg.Server.EndUser.Authentication.Preauth.PrincipalHeaderName)
+				assert.Equal(t, "X-Admin-User", cfg.Server.Admin.Authentication.Preauth.PrincipalHeaderName)
+				assert.Equal(t, "local", string(cfg.OAuth2AuthServer.Mode))
+				require.NotNil(t, cfg.Encryption.Memory)
+			},
+		},
+		{
+			name:         "config.ipv4-only.yaml",
+			relativePath: "examples/config/config.ipv4-only.yaml",
+			envVars: map[string]string{
+				"IDENTITY_BROKER_JWE_SIGNING_KEY":           testJWESigningKey,
+				"IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY": testEncryptionKey,
+				"IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE":   "local",
+			},
+			assertConfig: func(t *testing.T, cfg *ports.Config) {
+				t.Helper()
+				assert.Equal(t, "0.0.0.0", cfg.Server.EndUser.Bind)
+				assert.Equal(t, "127.0.0.1", cfg.Server.Admin.Bind)
+			},
+		},
+		{
+			name:         "config.ipv6-only.yaml",
+			relativePath: "examples/config/config.ipv6-only.yaml",
+			envVars: map[string]string{
+				"IDENTITY_BROKER_JWE_SIGNING_KEY":           testJWESigningKey,
+				"IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY": testEncryptionKey,
+				"IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE":   "local",
+			},
+			assertConfig: func(t *testing.T, cfg *ports.Config) {
+				t.Helper()
+				assert.Equal(t, "::", cfg.Server.EndUser.Bind)
+				assert.Equal(t, "::1", cfg.Server.Admin.Bind)
+			},
+		},
+		{
+			name:         "config.aws-emulator.yaml",
+			relativePath: "examples/config/config.aws-emulator.yaml",
+			envVars: map[string]string{
+				"IDENTITY_BROKER_JWE_SIGNING_KEY":         testJWESigningKey,
+				"IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE": "local",
+				"AWS_ACCESS_KEY_ID":                       "test-access-key",
+				"AWS_SECRET_ACCESS_KEY":                   "test-secret-key",
+			},
+			assertConfig: func(t *testing.T, cfg *ports.Config) {
+				t.Helper()
+				require.NotNil(t, cfg.Encryption.AWSKMS)
+				assert.Equal(t, "http://localhost:4566", cfg.Encryption.AWSKMS.KMSEndpoint)
+				assert.Equal(t, "test-access-key", cfg.Encryption.AWSKMS.AccessKeyID)
+				assert.Equal(t, "test-secret-key", cfg.Encryption.AWSKMS.SecretAccessKey)
+				assert.Equal(t, "local", string(cfg.OAuth2AuthServer.Mode))
+			},
+		},
+		{
+			name:         "config.aws-production-advanced.yaml",
+			relativePath: "examples/config/config.aws-production-advanced.yaml",
+			envVars: map[string]string{
+				"IDENTITY_BROKER_JWE_SIGNING_KEY":                    testJWESigningKey,
+				"IDENTITY_BROKER_STORAGE_POSTGRES_URL":               "postgresql://broker:secret@db.example.com:5432/identity_broker",
+				"IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN":         "arn:aws:kms:eu-central-1:123456789012:key/advanced-test-key",
+				"IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ASSUME_ROLE_ARN": "arn:aws:iam::123456789012:role/EncryptionRole",
+				"IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE":            "local",
+			},
+			assertConfig: func(t *testing.T, cfg *ports.Config) {
+				t.Helper()
+				assert.Equal(t, "postgres", cfg.Storage.Backend)
+				assert.Equal(t, "postgresql://broker:secret@db.example.com:5432/identity_broker", cfg.Storage.Postgres.ConnectionURL)
+				require.NotNil(t, cfg.Encryption.AWSKMS)
+				assert.Equal(t, "arn:aws:iam::123456789012:role/EncryptionRole", cfg.Encryption.AWSKMS.AssumeRoleARN)
+				assert.Equal(t, "5s", cfg.Encryption.AWSKMS.DynamoDBTimeout)
+			},
+		},
+		{
+			name:         "config.cimd-local.yaml",
+			relativePath: "examples/config/config.cimd-local.yaml",
+			envVars:      map[string]string{},
+			assertConfig: func(t *testing.T, cfg *ports.Config) {
+				t.Helper()
+				assert.Equal(t, "local", string(cfg.OAuth2AuthServer.Mode))
+				assert.True(t, cfg.OAuth2AuthServer.CIMD.Enabled)
+				assert.True(t, cfg.Security.SkipThirdpartyHTTPSValidation)
+			},
+		},
+		{
+			name:         "oauth2-server-mode.yaml",
+			relativePath: "examples/config/oauth2-server-mode.yaml",
+			envVars: map[string]string{
+				"IDENTITY_BROKER_JWE_SIGNING_KEY":                                           testJWESigningKey,
+				"IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY":                                 testEncryptionKey,
+				"IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME": "X-Admin-User",
+			},
+			assertConfig: func(t *testing.T, cfg *ports.Config) {
+				t.Helper()
+				assert.Equal(t, "local", string(cfg.OAuth2AuthServer.Mode))
+				assert.Equal(t, "X-Admin-User", cfg.Server.Admin.Authentication.Preauth.PrincipalHeaderName)
+				assert.Equal(t, 90*time.Second, cfg.OAuth2AuthServer.Local.SigningKeys.BootstrapTimeout)
+				require.NotNil(t, cfg.Encryption.Memory)
+			},
+		},
+		{
+			name:         "oauth2-hybrid-mode.yaml",
+			relativePath: "examples/config/oauth2-hybrid-mode.yaml",
+			envVars: map[string]string{
+				"IDENTITY_BROKER_JWE_SIGNING_KEY":           testJWESigningKey,
+				"IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY": testEncryptionKey,
+			},
+			assertConfig: func(t *testing.T, cfg *ports.Config) {
+				t.Helper()
+				assert.Equal(t, "hybrid", string(cfg.OAuth2AuthServer.Mode))
+				assert.Equal(t, []string{"authorization_code", "client_credentials"}, cfg.OAuth2AuthServer.SupportedGrantTypes)
+				assert.Equal(t, 90*time.Second, cfg.OAuth2AuthServer.Local.SigningKeys.BootstrapTimeout)
+				require.NotNil(t, cfg.Encryption.Memory)
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Get absolute path to config file
-			configPath, err := filepath.Abs(tt.configFile)
-			if err != nil {
-				t.Fatalf("Failed to get absolute path: %v", err)
+			cfg, sources := loadBrokerExampleConfig(t, tt.relativePath, tt.envVars)
+			tt.assertConfig(t, cfg)
+			requireYAMLSource(t, tt.relativePath, sources)
+		})
+	}
+}
+
+func TestJWTPreauthDocsStateFailClosedNoFallback(t *testing.T) {
+	// Keep this list explicit. It pins the three human-facing files that must
+	// describe JWT pre-auth as fail-closed rather than a fallback to plain-header
+	// preauth when authentication.jwt is configured.
+	tests := []struct {
+		path           string
+		mustContain    []string
+		mustNotContain []string
+	}{
+		{
+			path: "examples/config/README.md",
+			mustContain: []string{
+				"fail-closed behavior when `authentication.jwt` is configured",
+				"plain-header-only configurations",
+			},
+			mustNotContain: []string{
+				"backward-compatible configuration with plain-header fallback",
+				"signed, unsigned, and fallback configurations",
+			},
+		},
+		{
+			path: "examples/config/jwt-preauth.yaml",
+			mustContain: []string{
+				"fail closed with 401",
+				"not used as a runtime",
+			},
+			mustNotContain: []string{
+				"fallback when jwt header absent",
+			},
+		},
+		{
+			path: "docs/guides/configure-authentication.md",
+			mustContain: []string{
+				"401 unauthorized",
+				"instead of falling back to the plain header",
+				"not used as a runtime fallback",
+			},
+			mustNotContain: []string{
+				"used as a fallback when the jwt header is absent",
+				"fallback when the jwt header is absent",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			content, err := os.ReadFile(repoPath(t, tt.path))
+			require.NoError(t, err)
+
+			text := strings.ToLower(string(content))
+			for _, want := range tt.mustContain {
+				assert.Contains(t, text, want)
 			}
-
-			// Set config path in environment
-			t.Setenv("IDENTITY_BROKER_CONFIG_PATH", configPath)
-
-			// Set mandatory JWESigningKey only — example configs now carry their own mode
-			t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", testJWESigningKey)
-
-			// Set encryption backend environment variables based on config type
-			if tt.name == "production config" {
-				// Production config expects AWS KMS backend and proxy-mode upstream config
-				t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN", "arn:aws:kms:us-east-1:123456789012:key/test-key-id")
-				t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI", "https://idp.example.com")
-				t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT", "https://idp.example.com/oauth2/authorize")
-				t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT", "https://idp.example.com/oauth2/token")
-			} else {
-				// Development and staging configs use Memory backend and local mode
-				t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", testEncryptionKey)
-			}
-
-			// Create loader
-			loader := config.NewLoader()
-
-			// Load configuration
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-
-			cfg, err := loader.GetConfig(ctx)
-			if err != nil {
-				t.Fatalf("Failed to load config: %v", err)
-			}
-
-			// Verify configuration
-			if cfg.Server.EndUser.Port != tt.expectedPort {
-				t.Errorf("Expected port %d, got %d", tt.expectedPort, cfg.Server.EndUser.Port)
-			}
-
-			if cfg.Server.EndUser.Bind != tt.expectedBind {
-				t.Errorf("Expected bind %q, got %q", tt.expectedBind, cfg.Server.EndUser.Bind)
-			}
-
-			if tt.name == "production config" && cfg.OAuth2AuthServer.Proxy.UpstreamTimeout != 30*time.Second {
-				t.Errorf("Expected proxy upstream timeout %v, got %v", 30*time.Second, cfg.OAuth2AuthServer.Proxy.UpstreamTimeout)
-			}
-
-			// Verify sources are tracked
-			sources := loader.GetSources()
-			if len(sources) == 0 {
-				t.Error("Expected configuration sources to be tracked")
-			}
-
-			// Verify YAML source is present
-			hasYAML := false
-			for _, src := range sources {
-				if src.Type == ports.SourceTypeYAML {
-					hasYAML = true
-					break
-				}
-			}
-			if !hasYAML {
-				t.Error("Expected YAML source to be tracked")
+			for _, forbidden := range tt.mustNotContain {
+				assert.NotContains(t, text, forbidden)
 			}
 		})
 	}

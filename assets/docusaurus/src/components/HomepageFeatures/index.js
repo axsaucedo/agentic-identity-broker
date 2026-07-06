@@ -1,62 +1,95 @@
-import clsx from 'clsx';
 import Heading from '@theme/Heading';
+import Link from '@docusaurus/Link';
 import styles from './styles.module.css';
 
-const FeatureList = [
+const capabilityCards = [
   {
-    title: 'Easy to Use',
-    Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
-    description: (
-      <>
-        Docusaurus was designed from the ground up to be easily installed and
-        used to get your website up and running quickly.
-      </>
-    ),
+    title: 'Delegated access, governed',
+    description:
+      'A user grants an agent access to specific third-party services at a chosen permission set, with optional expiry. One grant per user and agent, revocable at any time.',
   },
   {
-    title: 'Focus on What Matters',
-    Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
-    description: (
-      <>
-        Docusaurus lets you focus on your docs, and we&apos;ll do the chores. Go
-        ahead and move your docs into the <code>docs</code> directory.
-      </>
-    ),
+    title: 'An encrypted token vault',
+    description:
+      'The broker stores third-party access and refresh tokens encrypted at rest with envelope encryption bound to each service, so agents never hold long-lived provider credentials.',
   },
   {
-    title: 'Powered by React',
-    Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
-    description: (
-      <>
-        Extend or customize your website layout by reusing React. Docusaurus can
-        be extended while reusing the same header and footer.
-      </>
-    ),
+    title: 'Token exchange at the edge',
+    description:
+      'A gateway swaps an agent token for the right third-party token per request using RFC 8693, enforced by policy — transparently, with an optional Envoy sidecar.',
   },
 ];
 
-function Feature({Svg, title, description}) {
-  return (
-    <div className={clsx('col col--4')}>
-      <div className="text--center">
-        <Svg className={styles.featureSvg} role="img" />
-      </div>
-      <div className="text--center padding-horiz--md">
-        <Heading as="h3">{title}</Heading>
-        <p>{description}</p>
-      </div>
-    </div>
-  );
-}
+const pathCards = [
+  {
+    title: 'Introduction',
+    href: '/docs/introduction',
+    description:
+      'What the broker is, the delegation problem it solves, and when to reach for it.',
+  },
+  {
+    title: 'Concepts',
+    href: '/docs/concepts',
+    description:
+      'The delegation model, architecture, server modes, token exchange, and encryption.',
+  },
+  {
+    title: 'Get started',
+    href: '/docs/get-started',
+    description:
+      'Run the full stack locally and walk a delegation from consent to token exchange.',
+  },
+  {
+    title: 'API reference',
+    href: '/api/enduser',
+    description:
+      'The end-user and admin OpenAPI contracts, rendered from the source specifications.',
+  },
+];
 
 export default function HomepageFeatures() {
   return (
-    <section className={styles.features}>
+    <section className={styles.overviewSection}>
       <div className="container">
-        <div className="row">
-          {FeatureList.map((props, idx) => (
-            <Feature key={idx} {...props} />
+        <div className={styles.sectionHeader}>
+          <span className={styles.sectionEyebrow}>What this is</span>
+          <Heading as="h2" className={styles.sectionTitle}>
+            Identity infrastructure for agents that act on a user&apos;s behalf
+          </Heading>
+          <p className={styles.sectionDescription}>
+            These docs focus on the concerns an IAM team or platform operator
+            cares about: the delegation model, security posture, deployment,
+            configuration, and the API contracts other systems integrate against.
+          </p>
+        </div>
+
+        <div className={styles.capabilityGrid}>
+          {capabilityCards.map((card) => (
+            <article key={card.title} className={styles.card}>
+              <Heading as="h3" className={styles.cardTitle}>
+                {card.title}
+              </Heading>
+              <p className={styles.cardDescription}>{card.description}</p>
+            </article>
           ))}
+        </div>
+
+        <div className={styles.pathSection}>
+          <div className={styles.sectionHeader}>
+            <span className={styles.sectionEyebrow}>Start in the right place</span>
+            <Heading as="h2" className={styles.sectionTitle}>
+              Read by task, not by internals
+            </Heading>
+          </div>
+          <div className={styles.pathGrid}>
+            {pathCards.map((card) => (
+              <Link key={card.href} className={styles.pathCard} to={card.href}>
+                <span className={styles.pathTitle}>{card.title}</span>
+                <p className={styles.pathDescription}>{card.description}</p>
+                <span className={styles.pathAction}>Open section</span>
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
     </section>

@@ -1,415 +1,154 @@
 ---
-title: Use Cases
-description: Real-world scenarios where Agentic Identity Broker solves critical identity challenges for multi-agent systems, autonomous services, and distributed agentic architectures.
+title: Use cases
+description: Concrete scenarios where an AI agent needs scoped, revocable access to a third-party service on a user's behalf, and how the broker governs each one.
 ---
 
-# Use Cases
+# Use cases
 
-The Agentic Identity Broker addresses identity challenges in systems where autonomous agents need to securely identify and authenticate each other. This page explores concrete scenarios where agent-native identity brokering is essential for building reliable, secure agentic architectures.
+The broker earns its place wherever an AI agent has to call a real third-party service —
+GitHub, Databricks, Google — for the person it works for, and doing that safely is the hard
+part. The pattern repeats: many agents act for many users, each agent needs a narrow slice
+of access, and someone has to consent, hold the tokens, and be able to revoke.
 
-## Use Case 1: Multi-Agent Orchestration Platform
+The scenarios below are the shapes that recur in practice. Each one names the identity
+problem an IAM team will recognize, then shows how the broker's
+[delegation model](/docs/concepts/delegation-and-consent) answers it.
 
-### Scenario
+## A coding agent acting for many developers
 
-You're building an enterprise AI orchestration platform where multiple specialized agents collaborate on complex business processes. For example, in a document processing pipeline:
+### The scenario
 
-- **Agent A (Document Parser)** extracts text from uploaded PDFs
-- **Agent B (Data Validator)** checks extracted data for completeness and accuracy
-- **Agent C (Enrichment Service)** augments data with external information
-- **Agent D (Storage Service)** commits validated data to databases
+You run a coding agent that reviews pull requests, opens issues, and reads repositories on
+GitHub. It works on behalf of hundreds of developers, and each developer expects it to see
+only what they can see. The agent runs as a shared service, but its access must be scoped to
+whichever developer's request it is currently handling.
 
-Each agent is a separate service, potentially developed by different teams, running in different containers, and operating autonomously.
+### The identity challenge
 
-### The Identity Challenge
+The naive fix — copy each developer's GitHub token into the agent — creates token sprawl:
+long-lived, over-broad credentials duplicated across a service, with no way to revoke one
+developer's access without disturbing the rest, and no record of which developer's authority
+the agent used for a given call. A single leaked process exposes every developer's token.
 
-How does Agent B verify that a document was actually parsed by Agent A (not a malicious actor)? How does Agent D ensure it only stores data validated by Agent B? Traditional approaches fail:
+### How the broker solves it
 
-- **API Keys**: Static, shared secrets that can't prove which specific agent made a request
-- **Mutual TLS**: Requires certificate management infrastructure and doesn't carry semantic identity
-- **OAuth2 Client Credentials**: Creates "fake user accounts" for services, not designed for agent-to-agent trust
+An administrator defines a permission set — say, **Read repositories** — that bundles the
+GitHub scopes it needs (`repo:status`, `read:org`). Each developer consents to that
+permission set for the agent, which creates a per-developer, per-agent grant. GitHub tokens
+never touch the agent: the broker holds them encrypted, one session per developer, and a
+gateway swaps the agent's own token for the right developer's GitHub token at request time
+using [token exchange](/docs/concepts/token-exchange).
 
-### How Agentic Identity Broker Solves This
-
-Each agent receives a cryptographic identity from the broker:
-
-```text
-Agent A Identity:
-  agent_id: agent://aib/orchestrator/document-parser-v2
-  public_key: ed25519:AAAC3NzaC1lZDI1NTE5AAAAIDfJK...
-  capabilities: [parse_documents, emit_events]
-  trust_level: verified
+```mermaid
+sequenceDiagram
+    participant Dev as Developer (principal)
+    participant Agent as Coding agent
+    participant GW as Agent gateway
+    participant Broker
+    participant GH as GitHub
+    Dev->>Broker: Consent: grant "Read repositories" to the agent
+    Agent->>GW: Call GitHub with the agent's own token
+    GW->>Broker: Token exchange (subject = developer + agent, resource = GitHub)
+    Broker->>Broker: Verify active grant, decrypt the developer's GitHub token
+    Broker-->>GW: Scoped GitHub access token
+    GW->>GH: Request with the GitHub token
 ```
 
-When Agent A sends parsed data to Agent B, it **signs the payload** with its private key. Agent B verifies the signature using Agent A's public key (retrieved from the broker), cryptographically proving the data came from the legitimate parser agent.
-
-**Benefits**:
-- **Non-repudiation**: Agent A can't deny sending the data (signed with private key)
-- **Auditability**: Every agent interaction is cryptographically traceable
-- **Zero-trust architecture**: No implicit trust—every agent proves identity on every interaction
-- **Dynamic capabilities**: Broker can grant/revoke agent capabilities without redeploying services
-
-### Example Flow
-
-```python
-# Agent A (Document Parser)
-def parse_and_send(document):
-    parsed_data = extract_text(document)
-
-    # Sign the payload with Agent A's private key
-    signature = sign_with_private_key(parsed_data, agent_a_private_key)
-
-    # Send to Agent B with identity proof
-    send_to_agent_b({
-        "data": parsed_data,
-        "agent_id": "agent://aib/orchestrator/document-parser-v2",
-        "signature": signature
-    })
-
-# Agent B (Data Validator)
-def receive_and_validate(payload):
-    # Verify the sender's identity with Agentic Identity Broker
-    sender_identity = broker.verify_signature(
-        payload["agent_id"],
-        payload["data"],
-        payload["signature"]
-    )
-
-    if sender_identity.verified and "parse_documents" in sender_identity.capabilities:
-        # Cryptographically proven to be from authorized parser
-        validate_data(payload["data"])
-    else:
-        # Reject: unauthorized or invalid identity
-        raise UnauthorizedError("Invalid agent identity")
-```
-
----
+Revoking one developer's access is a single grant revocation; it stops the exchange
+immediately and touches no one else. See
+[Token exchange at the gateway](/docs/guides/token-exchange-gateway) for the deployment.
 
-## Use Case 2: Agent-to-Service Authentication in Microservices
+## An internal copilot reading the warehouse per analyst
 
-### Scenario
+### The scenario
 
-You're building a microservices architecture where backend services need to authenticate to APIs and databases. For example:
-
-- **Recommendation Service** queries the User Preferences API
-- **Billing Service** writes to the Payments Database
-- **Notification Service** sends events to a message queue
-
-In traditional setups, these services use static API keys, environment variables, or service accounts. But in a dynamic environment (Kubernetes with auto-scaling), you need ephemeral, rotatable credentials that can't be compromised.
-
-### The Identity Challenge
-
-Static credentials have serious problems:
-- **Leaked secrets**: API keys in environment variables get committed to repos, logged, or exposed
-- **No rotation**: Changing an API key requires redeploying all services that use it
-- **Coarse-grained**: One API key = access to everything (no least-privilege principle)
-- **No auditability**: Can't trace which specific service instance made a request
-
-### How Agentic Identity Broker Solves This
-
-Each service instance receives a **short-lived identity token** on startup:
-
-```yaml
-Service: recommendation-service
-Pod: recommendation-service-7d4f5c8b-xk2jm
-Identity Token:
-  issued_at: 2025-12-14T10:30:00Z
-  expires_at: 2025-12-14T11:30:00Z (1 hour TTL)
-  agent_id: agent://aib/services/recommendation-v1/7d4f5c8b-xk2jm
-  capabilities: [read_user_preferences, read_product_catalog]
-```
-
-The service uses this token to authenticate to downstream APIs. The token is:
-- **Short-lived**: Expires in 1 hour, must be refreshed
-- **Pod-specific**: Identifies the exact Kubernetes pod (not just "recommendation service")
-- **Capability-bound**: Only grants specific permissions, not broad access
-- **Auditable**: Every API call is traceable to a specific pod at a specific time
-
-### Example Flow
-
-```go
-// Service startup: Request identity from broker
-func initializeService() {
-    // Authenticate to broker using pod service account
-    identityToken, err := agenticBroker.RequestIdentity(context.Background(), &IdentityRequest{
-        ServiceName: "recommendation-service",
-        PodName:     os.Getenv("POD_NAME"),
-        Namespace:   os.Getenv("POD_NAMESPACE"),
-    })
-
-    // Store token for API authentication
-    cache.Set("identity_token", identityToken, 1*time.Hour)
-}
-
-// Making API requests with identity
-func getRecommendations(userID string) ([]Product, error) {
-    token := cache.Get("identity_token")
+Your analytics team builds an internal copilot that answers questions by querying a
+Databricks warehouse. Each analyst is entitled to different data, and the copilot must
+inherit exactly the calling analyst's entitlements — never more.
 
-    // Include identity token in API request
-    resp, err := http.Get(fmt.Sprintf("https://api.example.com/users/%s/preferences", userID),
-        http.Header{"Authorization": fmt.Sprintf("Bearer %s", token)})
+### The identity challenge
 
-    // API server verifies token with Agentic Identity Broker
-    // and checks capabilities before serving response
-}
-```
+Wiring the copilot to a single shared service account collapses every analyst into one
+identity: the warehouse sees one caller, least privilege disappears, and there is no way to
+tell which analyst a query ran for or to cut off one analyst who leaves the team. It is
+per-user delegation and audit that the service-account approach cannot express.
 
-**Benefits**:
-- **No static secrets**: Tokens are ephemeral, issued on-demand
-- **Automatic rotation**: Expired tokens must be refreshed, forcing regular rotation
-- **Fine-grained permissions**: Each service only gets capabilities it needs
-- **Full audit trail**: Every API call tied to specific pod, service, and timestamp
+### How the broker solves it
 
----
+Databricks is registered as a third-party OAuth2 service, and a read-only permission set
+maps to the warehouse scopes analysts are allowed to use. Each analyst grants that
+permission set to the copilot, producing a distinct grant per analyst. When the copilot
+queries the warehouse, the gateway exchanges its token for the calling analyst's Databricks
+token — so the query runs under that analyst's real entitlements, and every exchange is tied
+to a specific analyst, agent, and resource. When an analyst leaves, revoking their grant
+severs the copilot's access to the warehouse on their behalf without redeploying anything.
 
-## Use Case 3: Federated Agent Networks Across Organizations
+## A personal assistant with time-boxed Google access
 
-### Scenario
+### The scenario
 
-You're building a supply chain platform where agents from multiple companies need to collaborate:
+A personal-assistant agent schedules meetings and drafts email for its user against Google
+Calendar and Gmail. Users want to grant it access for a defined window — a project, a
+quarter — and expect that access to lapse on its own.
 
-- **Company A (Manufacturer)**: Inventory management agent
-- **Company B (Logistics)**: Shipping coordination agent
-- **Company C (Retailer)**: Order fulfillment agent
+### The identity challenge
 
-These agents must securely exchange data (shipment status, inventory levels, order confirmations), but each company operates its own infrastructure with its own security policies. No single company wants to hand over credentials to another company's identity system.
+Handing the assistant a broad Google token gives it standing access to a user's whole
+mailbox and calendar with no expiry and no surface where the user can see or narrow what they
+allowed. There is no consent artifact and nothing that ends the access without the user
+remembering to intervene.
 
-### The Identity Challenge
+### How the broker solves it
 
-Cross-organizational trust is hard:
-- **No shared identity provider**: Each company has its own IdP (Okta, Azure AD, etc.)
-- **No mutual trust**: Company A doesn't want Company B's IdP to have authority over its agents
-- **Federation complexity**: Traditional SAML/OIDC federation is designed for human SSO, not agent-to-agent
+An administrator defines permission sets in business terms — for example **Read calendar**
+and **Send mail** — so users consent to meaningful bundles rather than raw provider scopes.
+Each user grants the assistant the sets they choose and sets an expiry (`valid_until`) on the
+grant; the broker stops honoring it automatically when the window closes. Google tokens are
+held encrypted in the broker, refreshed as needed, and never exposed to the assistant. A
+user can review the delegation and revoke it at any time from the consent surface.
 
-### How Agentic Identity Broker Solves This
+:::note
+An agent can mark some access as mandatory and some as optional. The assistant might require
+calendar access to function while treating mail access as optional, so a user who declines
+mail still gets a working assistant. See
+[mandatory vs optional requirements](/docs/concepts/delegation-and-consent#mandatory-vs-optional-requirements).
+:::
 
-Each company runs its own **Agentic Identity Broker instance** with **federation protocols** for cross-org trust:
+## An agent platform serving many agents and many users
 
-```text
-Company A Broker ←──────────┐
-  │ Issues identities for     │
-  │ Company A agents          │
-                              ├─── Federation Trust
-Company B Broker ←──────────┤    (Broker-to-Broker)
-  │ Issues identities for     │
-  │ Company B agents          │
-                              │
-Company C Broker ←──────────┘
-  │ Issues identities for
-  │ Company C agents
-```
-
-When Company A's agent sends data to Company B's agent:
-
-1. **Company A agent** gets identity token from **Company A broker**
-2. **Company A agent** sends data to **Company B agent** with token
-3. **Company B agent** validates token with **Company B broker**
-4. **Company B broker** verifies token signature with **Company A broker** (federation)
+### The scenario
 
-**Key insight**: Company B's broker doesn't issue identities for Company A's agents—it simply verifies that Company A's broker issued a valid token. This preserves organizational independence while enabling cross-org trust.
+You operate an agent platform or marketplace: many agents, published by different teams,
+each acting for many users against a range of third-party services. You need one place where
+users consent, one place where access is revoked, and one record of who delegated what.
 
-### Example Federation Configuration
+### The identity challenge
 
-```yaml
-# Company A Broker Configuration
-federation:
-  trusted_brokers:
-    - org_id: company-b
-      broker_url: https://broker.company-b.com
-      public_key: ed25519:BBBC3NzaC1lZDI1NTE5AAAAIDfJK...
-      trust_level: verified
-      allowed_capabilities: [receive_shipments, update_inventory]
+Left to each agent, delegation fragments: every agent ships its own token storage and
+consent prompt, users have no single view of what they have allowed, and there is no central
+lever to revoke an agent across all its users or to answer "which agents can act for this
+user?". Consent, revocation, and audit end up inconsistent and unaccountable.
 
-    - org_id: company-c
-      broker_url: https://broker.company-c.com
-      public_key: ed25519:CCCC3NzaC1lZDI1NTE5AAAAIDfJK...
-      trust_level: verified
-      allowed_capabilities: [place_orders]
-```
+### How the broker solves it
 
-**Benefits**:
-- **Organizational autonomy**: Each company controls its own broker and policies
-- **No shared secrets**: Federation uses public key cryptography, no passwords
-- **Revocable trust**: Any company can remove federation relationships instantly
-- **Auditable**: All cross-org interactions are logged with cryptographic proof
+The broker is the shared trust boundary for the whole platform. Permission sets are the unit
+every agent requests and every user approves, so consent reads the same across agents. Agents
+can identify themselves with a Client ID Metadata Document, letting the consent screen show
+trustworthy, validated metadata about who is asking. Every grant is recorded and independently
+revocable; terminating a user's session with a third-party service cascades to every agent
+that depended on it, and the broker names the affected agents before it proceeds. The result
+is one consent surface, one revocation model, and one delegation record for the platform.
 
----
-
-## Use Case 4: Edge Computing with Intermittent Connectivity
-
-### Scenario
-
-You're deploying AI agents to edge devices (IoT sensors, autonomous vehicles, field equipment) that have intermittent or no connectivity to the cloud. For example:
-
-- **Autonomous delivery drones** operating in remote areas
-- **Industrial robots** in factories with air-gapped networks
-- **Medical devices** that must operate during network outages
-
-These edge agents need to authenticate to each other and to local services even when disconnected from central infrastructure.
-
-### The Identity Challenge
-
-Traditional identity systems assume always-on connectivity:
-- **OAuth2/OIDC**: Requires network calls to token endpoints
-- **Certificate revocation**: Checking CRLs or OCSP requires connectivity
-- **Dynamic credentials**: Can't refresh tokens when offline
-
-### How Agentic Identity Broker Solves This
-
-Edge agents receive **offline-verifiable identities** that can be validated without network access:
-
-1. **Pre-provisioning**: Before deployment, each edge agent receives:
-   - Its own identity (public/private key pair)
-   - Public keys of other agents it will interact with
-   - Broker's public key for signature verification
-
-2. **Local verification**: When Agent A (drone) meets Agent B (ground station), they verify each other's identities using pre-provisioned public keys—no network call required.
-
-3. **Periodic sync**: When connectivity is restored, agents sync with the broker to:
-   - Refresh revocation lists
-   - Update trust policies
-   - Report audit logs
-
-### Example Architecture
-
-```text
-┌─────────────────────────────────────────┐
-│  Edge Environment (Air-Gapped)          │
-│                                          │
-│  Drone Agent A ←─┐                      │
-│  Ground Station  ├─ Local Verification  │
-│  Sensor Agent C ←─┘  (No network)       │
-│                                          │
-│  ┌──────────────────────────┐           │
-│  │  Local Broker Cache      │           │
-│  │  - Public keys           │           │
-│  │  - Revocation lists      │           │
-│  │  - Trust policies        │           │
-│  └──────────────────────────┘           │
-└─────────────────────────────────────────┘
-         │ Periodic sync when online
-         ▼
-  Agentic Identity Broker (Cloud)
-```
-
-**Benefits**:
-- **Offline operation**: Agents verify identities without network connectivity
-- **Eventually consistent**: Revocations sync when connectivity is restored
-- **Resilient**: System continues operating during outages
-- **Security**: Cryptographic verification doesn't require online checks
-
----
-
-## Use Case 5: Multi-Tenant Agent Marketplace
-
-### Scenario
-
-You're building an agent marketplace where third-party developers can deploy agents that users can rent and orchestrate. For example:
-
-- **Data analysis agents** from Vendor A
-- **Report generation agents** from Vendor B
-- **Forecasting agents** from Vendor C
-
-Users (tenants) want to compose workflows using agents from multiple vendors, but need guarantees that:
-- Agents can only access data they're authorized for
-- Vendors can't access other vendors' agents or user data
-- Users can revoke agent access at any time
-
-### The Identity Challenge
-
-Multi-tenancy with third-party agents is a security minefield:
-- **Tenant isolation**: How do you prevent Vendor A's agent from accessing Tenant 1's data when running for Tenant 2?
-- **Vendor trust**: Users don't trust vendor agents with full access to their systems
-- **Dynamic permissions**: Access policies must change as users add/remove agents from workflows
-
-### How Agentic Identity Broker Solves This
-
-The broker issues **tenant-scoped identities** with **context-bound capabilities**:
-
-```json
-{
-  "agent_id": "agent://marketplace/vendor-a/data-analyzer-v2",
-  "tenant_id": "tenant-123",
-  "capabilities": [
-    "read:tenant-123:datasets",
-    "write:tenant-123:analysis-results"
-  ],
-  "constraints": {
-    "max_data_volume": "100GB",
-    "allowed_endpoints": ["https://api.tenant-123.com/*"]
-  },
-  "expires_at": "2025-12-14T12:00:00Z"
-}
-```
-
-**Key properties**:
-- **Tenant-scoped**: Agent can only access Tenant 123's data, not other tenants
-- **Capability-bound**: Can read datasets and write results, but can't delete or modify datasets
-- **Constrained**: Can't read more than 100GB or call external endpoints
-- **Time-limited**: Identity expires after job completion
-
-### Example Marketplace Flow
-
-```python
-# User rents Data Analyzer agent for their workflow
-def rent_agent(user_id, vendor_agent_id):
-    # Request tenant-scoped identity from broker
-    agent_identity = broker.issue_identity({
-        "agent_id": vendor_agent_id,
-        "tenant_id": user_id,
-        "capabilities": ["read:datasets", "write:results"],
-        "ttl": "1h"  # Job expected to complete in 1 hour
-    })
-
-    # Deploy agent with identity
-    deploy_agent_instance(vendor_agent_id, agent_identity)
-
-# Vendor's agent uses identity to access user data
-def analyze_data(dataset_id):
-    # Agent identity is tenant-scoped—can only access this tenant's data
-    data = api.get_dataset(dataset_id, identity_token=my_identity)
-    results = perform_analysis(data)
-    api.write_results(results, identity_token=my_identity)
-
-    # Token expires after 1 hour—agent can't access data after job completes
-```
-
-**Benefits**:
-- **Tenant isolation**: Cryptographic guarantees prevent cross-tenant access
-- **Least privilege**: Agents only get capabilities needed for specific jobs
-- **Auditability**: All vendor agent actions logged and attributable
-- **Revocable**: User can instantly revoke agent access if needed
-
----
-
-## Common Patterns Across Use Cases
-
-All these use cases share common requirements that Agentic Identity Broker addresses:
-
-1. **Autonomous authentication**: No human in the loop—agents authenticate themselves
-2. **Cryptographic proof**: Identity is verifiable through signatures, not passwords
-3. **Fine-grained capabilities**: Least-privilege access control for agents
-4. **High throughput**: Thousands of identity verifications per second
-5. **Auditability**: Complete audit trail of agent interactions
-6. **Fail-closed security**: Invalid identities block operations entirely
-
-## When NOT to Use These Patterns
-
-These use cases are **not appropriate** for:
-
-- Human user authentication (use Auth0, Okta, or Keycloak)
-- Web application session management (use traditional session cookies)
-- Social login or SSO for end users (use OAuth2/OIDC providers)
-- Systems where agents don't need to verify each other's identity
-
-If your agents don't need to prove their identity to each other, simpler authentication mechanisms (API keys, mutual TLS) may be sufficient.
-
-## Next Steps
-
-Ready to implement these patterns in your system?
-
-- **[Quick Start](/docs/quick-start)**: Install the broker and try a simple agent authentication flow
-- **[Features](/docs/features)**: Explore capabilities like token issuance, signature verification, and federation
-- **[API Reference](/docs/api)**: Technical details on integrating agents with the broker
-- **[Architecture](/docs/architecture)**: Understand the design principles behind these patterns
-
-Have a use case not covered here? Join the [community discussions](#) to share your scenario and get guidance.
+## When this fits
+
+- An AI agent must call a third-party OAuth2 service on a user's behalf, and access has to
+  track the individual user.
+- You need per-agent, per-service consent that a user can review, time-box, and revoke.
+- You want third-party tokens held in one encrypted vault instead of copied into agents.
+- You run a gateway that can exchange an agent's token for the right third-party token at
+  request time.
+- You need every delegation recorded and every agent revocable without redeploys.
+
+If you are weighing this against your existing identity stack, read
+[Why not a traditional IdP?](/docs/introduction/why-not-idp) — the broker complements your
+IdP rather than replacing it.

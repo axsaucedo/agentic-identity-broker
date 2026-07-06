@@ -103,22 +103,6 @@ oauth2_authorization_server:
     upstream_jwks_max_refresh: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_JWKS_MAX_REFRESH:1h}
 
 # Future sections for expanded configuration:
-# database:
-#   # Connection string MUST come from environment variable in production
-#   connection_string: ${IDENTITY_BROKER_DB_CONNECTION}
-#   # Connection pool settings for high availability
-#   max_connections: 100
-#   connection_idle_timeout: 5m
-#   # Require SSL for database connections
-#   ssl_mode: require
-#
-# auth:
-#   # JWT secret MUST come from environment variable, never hardcoded
-#   jwt_secret: ${IDENTITY_BROKER_JWT_SECRET}
-#   # Token expiry should be kept short in production
-#   token_expiry: 1h
-#   # Refresh token expiry
-#   refresh_token_expiry: 7d
 #
 # monitoring:
 #   # Metrics endpoint for Prometheus

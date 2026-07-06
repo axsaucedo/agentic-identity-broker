@@ -6,7 +6,7 @@ GINKGO_BACKEND_PROCS := env_var_or_default("GINKGO_BACKEND_PROCS", GINKGO_PROCS)
 GINKGO_EXTPROC_PROCS := env_var_or_default("GINKGO_EXTPROC_PROCS", GINKGO_PROCS)
 NUM_CPUS := num_cpus()
 VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
-GO_FAST_TEST_PACKAGES := `go list ./... | grep -Ev '(/specs/|/web/node_modules/|/tests/e2e$|/tests/e2e/frontend$|/tests/e2e/extproc$|/tests/integration($|/))' | tr '\n' ' '`
+GO_FAST_TEST_PACKAGES := `go list -e ./... | grep -Ev '(/assets/docusaurus/build/|/specs/|/web/node_modules/|/tests/e2e$|/tests/e2e/frontend$|/tests/e2e/extproc$|/tests/integration($|/))' | tr '\n' ' '`
 INTEGRATION_INFRA_TEST_PACKAGES := "./tests/integration/infra/... ./tests/integration/migrations/... ./tests/integration/storage/infra/... ./internal/adapters/storage/postgres/..."
 INTEGRATION_INFRA_PACKAGE_PROCS := env_var_or_default("INTEGRATION_INFRA_PACKAGE_PROCS", "2")
 GINKGO_FRONTEND_PROCS := env_var_or_default("GINKGO_FRONTEND_PROCS", "2")
@@ -251,10 +251,10 @@ install-tools:
     @golangci-lint --version 2>/dev/null | grep -q "version 2.11" || bash scripts/golangci-lint-install.sh -b /usr/local/bin v2.11.4
     @command -v go-junit-report > /dev/null || go install github.com/jstemmer/go-junit-report/v2@v2.1.0
     @command -v ginkgo       > /dev/null || go install github.com/onsi/ginkgo/v2/ginkgo@v2.29.0
-    @if [ -d "$HOME/.cache/ms-playwright" ] && [ -n "$(ls -A "$HOME/.cache/ms-playwright" 2>/dev/null)" ] && [ -f "$HOME/.cache/ms-playwright-go/1.57.0/package/cli.js" ]; then \
+    @if [ -d "$HOME/.cache/ms-playwright" ] && [ -n "$(ls -A "$HOME/.cache/ms-playwright" 2>/dev/null)" ] && [ -f "$HOME/.cache/ms-playwright-go/1.61.1/package/cli.js" ]; then \
         echo "Playwright driver and browsers already installed, skipping download"; \
     else \
-        go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install --with-deps; \
+        go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6100.0 install --with-deps; \
     fi
     @echo "Tools installation complete"
 
@@ -904,7 +904,11 @@ docs: docs-install docs-build docs-preview
 
 # Deploy to GitHub Pages
 docs-deploy: docs-build
-    cd assets/docusaurus && npm run deploy
+    @test -n "${DOCS_SITE_URL:-}" || (echo "Set DOCS_SITE_URL to https://<custom-domain> before deploying" >&2; exit 1)
+    @test -n "${DOCS_GITHUB_ORG:-}" || (echo "Set DOCS_GITHUB_ORG before deploying" >&2; exit 1)
+    @test -n "${DOCS_GITHUB_REPO:-}" || (echo "Set DOCS_GITHUB_REPO before deploying" >&2; exit 1)
+    @printf '%s\n' "$DOCS_SITE_URL" | sed 's#^https\{0,1\}://##; s#/.*$##' > assets/docusaurus/build/CNAME
+    cd assets/docusaurus && npm run deploy -- --skip-build
 
 # =============================================================================
 # ExtProc Token Exchange Service Targets

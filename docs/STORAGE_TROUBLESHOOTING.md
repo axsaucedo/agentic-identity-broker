@@ -408,7 +408,7 @@ If you cannot resolve the issue:
 
 ## References
 
-- [Storage Architecture](../adrs/004-storage-layer-architecture.md)
-- [Security Checklist](../SECURITY.md)
-- [Extension Guide](../docs/STORAGE_EXTENSION_GUIDE.md)
+- Storage Architecture: `adrs/004-storage-layer-architecture.md`
+- Security Checklist: `SECURITY.md`
+- [Extension Guide](./STORAGE_EXTENSION_GUIDE.md)
 - PostgreSQL Documentation: https://www.postgresql.org/docs/

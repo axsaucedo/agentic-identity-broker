@@ -26,16 +26,20 @@ This command generates static content into the `build` directory and can be serv
 
 ## Deployment
 
-Using SSH:
+GitHub Pages deployment is wired for a custom domain and a configurable GitHub org/repo.
+
+Before deploying:
+
+- set `DOCS_SITE_URL=https://<custom-domain>`
+- set `DOCS_GITHUB_ORG=<github-org>`
+- set `DOCS_GITHUB_REPO=<github-repo>`
+- optionally set `DOCS_GITHUB_BRANCH=<default-branch>` (defaults to `main`)
+
+`docs-deploy` derives `build/CNAME` from `DOCS_SITE_URL`, so the custom-domain host only needs to be set in one place.
+
+Then run:
 
 ```bash
-USE_SSH=true yarn deploy
+npm run build
+npm run deploy
 ```
-
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.

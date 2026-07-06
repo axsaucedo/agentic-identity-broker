@@ -1,281 +1,91 @@
 ---
-title: Why Not Traditional IdP?
-description: Understanding when to use Agentic Identity Broker versus traditional identity providers like Keycloak, Auth0, Okta, and why agent-native identity systems differ fundamentally from human user authentication.
+title: Why not a traditional IdP?
+description: The broker complements your identity provider rather than replacing it. Your IdP authenticates people; the broker governs what agents may do on their behalf against third-party services.
 ---
 
-# Why Not Traditional IdP?
+# Why not a traditional IdP?
 
-If you're evaluating identity solutions for your agentic system, you've likely encountered established identity providers like Keycloak, Auth0, Okta, or Azure AD. These are proven, production-ready solutions used by thousands of organizations. So why would you need a specialized identity broker for agentic systems?
+If you already run Keycloak, Auth0, Okta, or a corporate identity provider, you might expect
+an "identity broker for agents" to compete with it. It does not. The broker **complements**
+your IdP and depends on it. Your IdP answers a question the broker never tries to: *who is
+this human?* The broker answers a different one: *what may this agent do on that human's
+behalf, against which third-party service?*
 
-This page explains the fundamental differences between traditional identity providers and the Agentic Identity Broker, helping you make an informed decision about which approach fits your architecture.
+Keep your IdP for human login. Add the broker to govern agent delegation. They sit in one
+request path and own different concerns.
 
-## The Core Difference: Human-Centric vs Agent-Centric
+## The IdP authenticates people; the broker governs agents
 
-Traditional identity providers (IdPs) were architected for a specific use case: **humans logging into applications**. Every design decision—from authentication flows to session management to user interfaces—assumes a human user sitting at a browser, clicking buttons, and interacting with forms.
+A traditional IdP is built to authenticate humans and federate their sessions across your
+applications: login, single sign-on, multi-factor challenges, the user directory. The broker
+does none of that. It **never authenticates a human** — it trusts an already-authenticated
+identity handed to it by a proxy, and from there decides which agents may act for that person
+and with which third-party permissions.
 
-The Agentic Identity Broker inverts this assumption: **no human is involved in the authentication flow**. Agents authenticate autonomously using cryptographic proofs, operating at machine timescales without user interaction.
+That split is deliberate. The broker's whole job begins after the person is authenticated:
+it manages consent, holds third-party tokens encrypted, and exchanges an agent's token for
+the correct third-party token at request time. It has no login page, no password store, and
+no user directory of its own.
 
-This isn't just a feature difference—it's a fundamental architectural distinction that affects every layer of the system.
+## Division of responsibilities
 
-## Comparison Table
+| Your identity provider owns | The broker owns |
+|---|---|
+| Human login and credential verification | Per-agent, per-service delegation |
+| Single sign-on across your applications | Consent expressed as permission sets |
+| Multi-factor and step-up authentication | An encrypted vault of third-party tokens |
+| The user directory and profile source of truth | RFC 8693 token exchange at the gateway |
+| Password reset, social login, account lifecycle | Per-agent revocation and grant expiry |
 
-| Feature | Keycloak / Auth0 / Okta | Agentic Identity Broker |
-|---------|-------------------------|-------------------------|
-| **Primary Use Case** | Human users logging into web/mobile apps | Autonomous agents authenticating to each other |
-| **Authentication Flow** | Interactive (OAuth2, SAML, OIDC redirects) | Direct cryptographic proof exchange |
-| **Identity Type** | User accounts (email, username, social login) | Machine identities (public keys, service accounts) |
-| **Session Management** | Cookies, session tokens, refresh flows | Stateless verification, short-lived tokens |
-| **User Interface** | Login pages, admin consoles, user portals | API-only, no UI required |
-| **Directory Services** | User databases, LDAP, Active Directory integration | No user directory—identity is cryptographic proof |
-| **Authentication Speed** | Seconds (human interaction time) | Milliseconds (thousands of auths/second) |
-| **Failure Mode** | Degrade gracefully, retry with user | Fail closed—block operation entirely |
-| **Trust Model** | Centralized authority with user credentials | Distributed trust with cryptographic verification |
-| **Federation** | SAML, OIDC federation for SSO | Agent-to-agent trust chains |
+The two columns do not overlap. The IdP establishes identity; the broker governs what that
+identity's agents are allowed to reach.
 
-## When to Use Traditional IdPs
+## They work together
 
-Traditional identity providers excel when you're building systems for **human users**:
+The broker sits **behind** your IdP-backed reverse proxy. The proxy authenticates the user —
+often against your IdP — and forwards the authenticated principal to the broker in a request
+header (`X-Remote-User` by default). The broker trusts that header only from a trusted proxy
+and uses it as the principal for every grant and every third-party session. Admin privilege
+is enforced at the proxy, before requests reach the broker's admin API.
 
-### Use Keycloak/Auth0/Okta If...
-
-1. **You have human end users** logging into web applications, mobile apps, or dashboards
-2. **You need social login** (Google, Facebook, GitHub, LinkedIn)
-3. **You require user management interfaces** for administrators to manage accounts, reset passwords, and assign roles
-4. **You're implementing Single Sign-On (SSO)** across multiple applications for human users
-5. **You need compliance features** like MFA, passwordless login, or user consent flows
-6. **You have existing identity infrastructure** (Active Directory, LDAP) that you need to integrate with
-7. **You want hosted/managed services** with guaranteed uptime and support
-
-### Example: E-commerce Platform
-
-```text
-Scenario: You're building an online store where customers create accounts,
-log in to view orders, and manage their profiles.
-
-Solution: Auth0 or Okta
-- Users log in with email/password or social login
-- Session cookies maintain logged-in state
-- Password reset flows via email
-- MFA for high-value accounts
-- Admin console for customer support
+```mermaid
+flowchart LR
+    User([User]) -->|login| IdP[(Your IdP<br/>Keycloak · Auth0 · Okta)]
+    IdP -->|authenticated session| Proxy[Reverse proxy<br/>authenticates the user]
+    Proxy -->|"X-Remote-User: alice"| Broker[(Agentic Identity Broker<br/>governs agent delegations)]
+    Broker -->|encrypted tokens<br/>scoped exchange| Services([GitHub · Google · Databricks])
 ```
 
-This is the perfect use case for traditional IdPs. Don't reinvent this wheel—use proven solutions.
+The broker optionally verifies a signed JWT the proxy forwards and reads a display profile
+(name, email, picture) from its claims. Even then it is verifying a token your IdP or proxy
+already issued — it still runs no login of its own. Human authentication stays entirely with
+your existing stack.
 
-## When to Use Agentic Identity Broker
+## Choose the broker when, and keep your IdP for
 
-The Agentic Identity Broker is designed for **agent-to-agent authentication** where humans are not involved:
+### Choose the broker when
 
-### Use Agentic Identity Broker If...
+- You need to let AI agents act on a user's behalf against third-party OAuth2 services.
+- You need per-agent, per-service consent that a user can review, time-box, and revoke.
+- You want third-party tokens held in one encrypted vault instead of scattered across agents.
+- You want a gateway to exchange an agent's token for the right third-party token at request
+  time — see [token exchange](/docs/concepts/token-exchange).
 
-1. **Your system consists of autonomous agents** or services that communicate without human interaction
-2. **Authentication happens machine-to-machine** using cryptographic keys, not passwords
-3. **You need high-frequency identity verification** (thousands of authentications per second)
-4. **Agents operate in distributed environments** across clouds, edge devices, or air-gapped networks
-5. **Identity must be verifiable without central databases** or network connectivity
-6. **You're building federated agent networks** where agents from different organizations interact
-7. **Security posture requires fail-closed behavior** where identity failures block all operations
+### You still need your IdP for
 
-### Example: Multi-Agent Trading System
+- Authenticating humans: login, passwordless, social, and enterprise credentials.
+- Single sign-on across your applications.
+- Multi-factor and step-up authentication.
+- Being the source of truth for who your users are — their directory and profile.
 
-```text
-Scenario: You're building a trading platform where multiple AI agents analyze
-markets, execute trades, and settle transactions autonomously.
+The broker assumes all of this is already handled. It has no ambition to replace it, and it
+is not a high-throughput machine-to-machine auth layer, a federation fabric, or an
+offline-verification system — those are not what it does.
 
-Problem with traditional IdP:
-- No human to redirect for OAuth flow
-- Agents need to authenticate thousands of times per second
-- Session cookies don't make sense for agent-to-agent communication
-- Password-based auth is inadequate for cryptographic non-repudiation
+## Related
 
-Solution: Agentic Identity Broker
-- Each agent has a cryptographic identity (public key)
-- Authentication via signature verification (no user interaction)
-- Stateless token verification at microsecond latency
-- Cryptographic proof for audit trails and non-repudiation
-```
-
-This scenario requires agent-native identity architecture that traditional IdPs weren't designed for.
-
-## Real-World Architecture Patterns
-
-### Pattern 1: Hybrid Architecture (Most Common)
-
-Many systems need **both** human users and agent-to-agent authentication:
-
-```text
-┌─────────────────────────────────────────────────────┐
-│                 Your Application                     │
-├─────────────────────────────────────────────────────┤
-│  Human Users               Agent Layer               │
-│  (Web, Mobile)             (Backend Services)        │
-│       │                         │                    │
-│       ├─Auth0/Okta             ├─Agentic Identity   │
-│       │ (User Login)           │  Broker             │
-│       │                        │  (Service Auth)     │
-│       ▼                        ▼                     │
-│   Dashboard UI           AI Agents/Services          │
-└─────────────────────────────────────────────────────┘
-```
-
-**Recommendation**: Use Auth0/Okta for human users AND Agentic Identity Broker for your agent layer. They solve different problems and can coexist.
-
-### Pattern 2: Pure Agentic System
-
-For systems with **no human users** (fully autonomous):
-
-```text
-┌─────────────────────────────────────────────────────┐
-│            Autonomous Agent Network                  │
-├─────────────────────────────────────────────────────┤
-│  Agent A  ←──┐                                       │
-│  Agent B  ←──┼──  Agentic Identity Broker           │
-│  Agent C  ←──┘      (Centralized Trust)             │
-│     ...                                              │
-└─────────────────────────────────────────────────────┘
-```
-
-**Recommendation**: Pure Agentic Identity Broker. No need for user-facing IdP.
-
-### Pattern 3: Federated Multi-Org Agents
-
-For agent networks spanning organizational boundaries:
-
-```text
-Org A Agents ←→ Agentic Broker A ←──┐
-                                     ├──  Federation
-Org B Agents ←→ Agentic Broker B ←──┘
-```
-
-**Recommendation**: Each organization runs their own broker with federation protocols for cross-org agent trust.
-
-## Key Technical Differences
-
-### 1. Authentication Flow
-
-**Traditional IdP (OAuth2 Authorization Code Flow)**:
-```text
-1. User clicks "Login"
-2. Redirect to IdP login page
-3. User enters credentials
-4. IdP redirects back with authorization code
-5. App exchanges code for token
-6. Token used for API access
-Total time: 2-5 seconds (human interaction)
-```
-
-**Agentic Identity Broker (Direct Proof Exchange)**:
-```text
-1. Agent creates signed request with private key
-2. Broker verifies signature with public key
-3. Broker issues short-lived token
-4. Agent uses token for API access
-Total time: <10ms (no human interaction)
-```
-
-### 2. Identity Representation
-
-**Traditional IdP Identity**:
-```json
-{
-  "sub": "user123",
-  "email": "alice@example.com",
-  "name": "Alice Smith",
-  "roles": ["admin", "user"],
-  "last_login": "2025-12-14T10:30:00Z"
-}
-```
-
-**Agentic Identity**:
-```json
-{
-  "agent_id": "agent://aib/trading-bot-42",
-  "public_key": "ed25519:AAAC3NzaC1lZDI1NTE5AAAAIDfJK...",
-  "capabilities": ["execute_trades", "read_market_data"],
-  "trust_level": "verified",
-  "issued_at": "2025-12-14T10:30:00Z"
-}
-```
-
-Notice: No human attributes, no email, no "last login"—just cryptographic proof and capabilities.
-
-### 3. Security Model
-
-**Traditional IdP**:
-- Secrets stored in database (password hashes)
-- Session tokens track logged-in state
-- Compromise of password = full account access
-- MFA adds second factor (SMS, TOTP)
-
-**Agentic Identity Broker**:
-- No secrets stored—identity IS the public key
-- Stateless verification (no session state)
-- Compromise of private key = revoke and reissue
-- Security is cryptographic, not knowledge-based
-
-## Migration and Integration
-
-### Migrating FROM Traditional IdP
-
-If you're currently using Keycloak/Auth0 for service-to-service authentication (not human users), you might benefit from migrating to Agentic Identity Broker:
-
-**Signs you've outgrown traditional IdP for services**:
-- You're creating "fake user accounts" for services
-- Client credentials flow feels clunky for your use case
-- You need higher authentication throughput than IdP can provide
-- You're implementing custom token verification logic
-- Your agents operate in air-gapped or offline environments
-
-### Integrating WITH Traditional IdP
-
-For hybrid architectures (human users + agents):
-
-1. **User Layer**: Keep Auth0/Okta for human authentication
-2. **Agent Layer**: Use Agentic Identity Broker for service-to-service
-3. **Bridge Layer**: Map human user actions to agent identity when needed
-
-Example: User "Alice" triggers an agent to execute a trade. Alice authenticates to your app via Auth0. Your app then uses Agentic Identity Broker to authenticate the trading agent that executes on Alice's behalf.
-
-## Cost Considerations
-
-### Traditional IdP Costs
-- **Per-user pricing**: Auth0 charges per monthly active user (MAU)
-- **Enterprise features**: SSO, custom domains, advanced security often require expensive tiers
-- **Scaling costs**: Costs increase linearly with user count
-
-### Agentic Identity Broker Costs
-- **Open source**: Self-hosted, no per-user licensing
-- **Infrastructure costs**: Pay only for compute/storage
-- **Scaling costs**: Horizontal scaling without per-agent fees
-- **Trade-off**: You manage infrastructure and updates
-
-For high-throughput agent systems with thousands of machine identities, self-hosted Agentic Identity Broker can be significantly more cost-effective than paying per-agent pricing to commercial IdPs.
-
-## Making the Decision
-
-### Choose Traditional IdP (Keycloak/Auth0/Okta) If:
-- Human users are your primary use case
-- You need user management interfaces and admin consoles
-- You want managed/hosted services with SLAs
-- Your authentication patterns match OAuth2/OIDC flows
-- You need social login or enterprise SSO
-
-### Choose Agentic Identity Broker If:
-- Autonomous agents are your primary use case
-- You need high-throughput machine-to-machine authentication
-- Your agents use cryptographic identities (keys, certificates)
-- You operate in distributed or offline environments
-- You need fail-closed security for agent interactions
-
-### Use BOTH If:
-- You have human users AND autonomous agents
-- Users interact with a frontend (use traditional IdP)
-- Backend agents handle processing (use Agentic Identity Broker)
-
-## Next Steps
-
-- **[Use Cases](./use-cases.md)**: See concrete examples of when Agentic Identity Broker solves real problems
-- **[Quick Start](/docs/quick-start)**: Try running the broker locally to see how it differs from traditional IdPs
-- **[Architecture](/docs/architecture)**: Understand the design principles behind agent-native identity
-
-Still unsure? Join the [community discussions](#) to ask about your specific use case.
+- [What is the Agentic Identity Broker?](/docs/introduction) — the one-paragraph picture.
+- [Use cases](/docs/introduction/use-cases) — where delegated agent access is the hard part.
+- [Delegation and consent](/docs/concepts/delegation-and-consent) — the model the broker
+  governs.
+- [Architecture](/docs/concepts/architecture) — how the pieces fit at an operator level.

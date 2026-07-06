@@ -1,3 +1,8 @@
+---
+title: Changelog
+description: Notable changes, breaking changes, and migration guidance for the Agentic Identity Broker.
+---
+
 # Changelog
 
 ## [NEXT VERSION] — Breaking Changes

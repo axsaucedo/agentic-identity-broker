@@ -1,3 +1,8 @@
+---
+title: Set up AWS IRSA access
+description: Grant broker pods access to AWS KMS and DynamoDB on Amazon EKS using IAM Roles for Service Accounts (IRSA), without static credentials.
+---
+
 # Kubernetes IRSA Deployment Guide
 
 This guide covers deploying the Agentic Identity Broker to Amazon EKS using IAM Roles for Service Accounts (IRSA) for secure AWS resource access.
@@ -900,10 +905,10 @@ aws dynamodb restore-table-to-point-in-time \
 ## Next Steps
 
 - [Production deployment checklist](../operations/deployment-checklist.md)
-- [KMS key management](../operations/kms-key-management.md)
-- [DynamoDB recovery procedures](../operations/dynamodb-recovery.md)
-- [Monitoring and alerting](../observability/monitoring.md)
-- [Security hardening](../security/hardening.md)
+- Plan KMS key management
+- Define DynamoDB recovery procedures
+- Set up monitoring and alerting
+- Review security hardening requirements
 
 ## References
 

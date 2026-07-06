@@ -657,7 +657,7 @@ aws s3 sync web/dist/consent/ s3://my-cdn-bucket/consent/
 
 ## Related Documentation
 
-- [ARCHITECTURE.md](/ARCHITECTURE.md) - System architecture
-- [README.md](/README.md) - Consent frontend development guide
-- [API Documentation](/docs/api/consent-endpoints.md) - API reference
-- [Configuration Guide](/docs/configuration.md) - General configuration
+- Architecture documentation: see `ARCHITECTURE.md` in the repository root
+- Consent frontend development guide: see `README.md` in the repository root
+- [API Documentation](../api/consent-endpoints.md) - API reference
+- [Configuration Guide](../configuration.md) - General configuration

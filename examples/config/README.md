@@ -83,12 +83,12 @@ Production environment configuration. Demonstrates:
 **Usage:**
 ```bash
 # Set required environment variables
-export IDENTITY_BROKER_LOG_LEVEL=info
-export IDENTITY_BROKER_LOG_FORMAT=json
-export IDENTITY_BROKER_DB_CONNECTION="postgresql://prod-user:password@prod-db:5432/identity_broker"
-export IDENTITY_BROKER_JWT_SECRET="your-production-secret-key"
-export IDENTITY_BROKER_TLS_CERT_PATH="/etc/agentic-identity-broker/tls/cert.pem"
-export IDENTITY_BROKER_TLS_KEY_PATH="/etc/agentic-identity-broker/tls/key.pem"
+export IDENTITY_BROKER_JWE_SIGNING_KEY="$(openssl rand -base64 32)"
+export IDENTITY_BROKER_STORAGE_POSTGRES_URL="postgresql://prod-user:password@prod-db:5432/identity_broker"
+export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN="arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+export IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI="https://idp.example.com"
+export IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT="https://idp.example.com/oauth2/authorize"
+export IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT="https://idp.example.com/oauth2/token"
 
 ./agentic-identity-broker --config ./examples/config/config.production.yaml
 ```
@@ -138,13 +138,13 @@ JWT Pre-Authentication configuration. Demonstrates:
 - Signed JWT validation with JWKS endpoint (production recommended)
 - Unsigned JWT support for service mesh environments (`verification: none`)
 - CEL expressions for principal and profile attribute extraction (display name, email, picture URL)
-- Backward-compatible configuration with plain-header fallback
+- Fail-closed behavior when `authentication.jwt` is configured (no plain-header fallback)
 - Mutual exclusivity enforcement (`verification: none` + `jwks_uri` → startup error)
 
 **Usage:**
 ```bash
 # Include jwt section in your main configuration file under server.enduser.authentication
-# See jwt-preauth.yaml for complete examples of signed, unsigned, and fallback configurations
+# See jwt-preauth.yaml for complete examples of signed, unsigned, and plain-header-only configurations
 server:
   enduser:
     authentication:
@@ -464,7 +464,7 @@ Create `.env` in the application directory:
 ```
 IDENTITY_BROKER_LOG_LEVEL=debug
 IDENTITY_BROKER_LOG_FORMAT=json
-IDENTITY_BROKER_API_KEY=your-api-key
+IDENTITY_BROKER_JWE_SIGNING_KEY=base64-encoded-32-byte-jwe-key
 ```
 
 **Via YAML substitution:**
@@ -482,7 +482,7 @@ Values with keys containing `IDENTITY_BROKER_`, `password`, `secret`, `token`, `
 Configuration Summary:
   log.level: info [source: CLI]
   log.format: json [source: YAML]
-  IDENTITY_BROKER_API_KEY: ***REDACTED*** [source: Environment]
+  IDENTITY_BROKER_JWE_SIGNING_KEY: ***REDACTED*** [source: Environment]
 ```
 
 ## Examples by Deployment Type
@@ -538,8 +538,9 @@ metadata:
   name: agentic-identity-broker-secrets
 type: Opaque
 stringData:
-  IDENTITY_BROKER_JWT_SECRET: "your-secret-key"
-  IDENTITY_BROKER_DB_CONNECTION: "postgresql://..."
+  IDENTITY_BROKER_JWE_SIGNING_KEY: "base64-encoded-32-byte-jwe-key"
+  IDENTITY_BROKER_STORAGE_POSTGRES_URL: "postgresql://..."
+  IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN: "arn:aws:kms:eu-central-1:123456789012:key/..."
 
 ---
 apiVersion: apps/v1
@@ -560,11 +561,21 @@ spec:
           value: "info"
         - name: IDENTITY_BROKER_LOG_FORMAT
           value: "json"
-        - name: IDENTITY_BROKER_JWT_SECRET
+        - name: IDENTITY_BROKER_JWE_SIGNING_KEY
           valueFrom:
             secretKeyRef:
               name: agentic-identity-broker-secrets
-              key: IDENTITY_BROKER_JWT_SECRET
+              key: IDENTITY_BROKER_JWE_SIGNING_KEY
+        - name: IDENTITY_BROKER_STORAGE_POSTGRES_URL
+          valueFrom:
+            secretKeyRef:
+              name: agentic-identity-broker-secrets
+              key: IDENTITY_BROKER_STORAGE_POSTGRES_URL
+        - name: IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN
+          valueFrom:
+            secretKeyRef:
+              name: agentic-identity-broker-secrets
+              key: IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN
         volumeMounts:
         - name: config
           mountPath: /etc/agentic-identity-broker
@@ -603,7 +614,7 @@ IDENTITY_BROKER_LOG_FORMAT=json
 Local production overrides. Not in version control:
 ```
 # Only for local testing of production config
-IDENTITY_BROKER_DB_CONNECTION=postgresql://localhost:5432/test_db
+IDENTITY_BROKER_STORAGE_POSTGRES_URL=postgresql://localhost:5432/test_db
 ```
 
 ## Configuration Validation
@@ -623,11 +634,11 @@ Please fix the configuration and try again.
 1. **Never commit sensitive values** to version control
    ```bash
    # ❌ Don't do this
-   echo "IDENTITY_BROKER_API_KEY=secret123" >> config.yaml
+   echo "IDENTITY_BROKER_JWE_SIGNING_KEY=base64-encoded-32-byte-jwe-key" >> config.yaml
    git add config.yaml
 
    # ✅ Do this instead
-   echo "IDENTITY_BROKER_API_KEY=${YOUR_API_KEY}" >> config.yaml
+   echo "IDENTITY_BROKER_JWE_SIGNING_KEY=${IDENTITY_BROKER_JWE_SIGNING_KEY}" >> .env.production.local
    ```
 
 2. **Use .env.*.local files** for local overrides
@@ -639,7 +650,7 @@ Please fix the configuration and try again.
 3. **Use environment variables in production**
    ```bash
    # Always prefer environment variables in containerized environments
-   docker run -e IDENTITY_BROKER_JWT_SECRET=your-secret agentic-identity-broker
+   docker run -e IDENTITY_BROKER_JWE_SIGNING_KEY=base64-encoded-32-byte-jwe-key agentic-identity-broker
    ```
 
 4. **Check file permissions** on configuration files
@@ -657,7 +668,7 @@ Please fix the configuration and try again.
      "message": "configuration_loaded",
      "sources": [".env", "config.yaml", "cli_flags"],
      "config_keys": ["log.level", "log.format"],
-     "redacted_keys": ["IDENTITY_BROKER_JWT_SECRET"]
+     "redacted_keys": ["IDENTITY_BROKER_JWE_SIGNING_KEY"]
    }
    ```
 
@@ -675,15 +686,15 @@ echo "log:\n  level: info" > config.yaml
 ./agentic-identity-broker --config config.yaml
 
 # Via .env file
-echo "LOG_LEVEL=info" > .env
+echo "IDENTITY_BROKER_LOG_LEVEL=info" > .env
 ./agentic-identity-broker
 ```
 
-### "Environment variable 'IDENTITY_BROKER_API_KEY' not set"
+### "Environment variable 'IDENTITY_BROKER_JWE_SIGNING_KEY' not set"
 
 Set the environment variable before running:
 ```bash
-export IDENTITY_BROKER_API_KEY=your-api-key
+export IDENTITY_BROKER_JWE_SIGNING_KEY="$(openssl rand -base64 32)"
 ./agentic-identity-broker --config config.yaml
 ```
 

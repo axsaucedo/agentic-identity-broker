@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // PlaywrightHelper manages Playwright browser lifecycle for frontend E2E tests.

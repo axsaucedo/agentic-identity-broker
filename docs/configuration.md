@@ -1,4 +1,9 @@
-# Configuration Guide
+---
+title: Configuration
+description: Configuration sources, precedence, and the full reference of settings for the Agentic Identity Broker.
+---
+
+# Configuration
 
 This guide explains how to configure the Agentic Identity Broker for different deployment environments.
 
@@ -23,7 +28,7 @@ The Identity Broker supports multiple configuration sources with clear precedenc
 
 - **Multiple Sources**: .env files, YAML, CLI flags
 - **Environment Variable Substitution**: Use `${VAR_NAME}` in YAML files
-- **Environment-Specific**: Automatic loading of .env.{environment} files
+- **Environment-Specific**: Automatic loading of `.env.{environment}` files
 - **Secure by Default**: Sensitive values automatically redacted in logs
 - **Clear Validation**: Helpful error messages with fix instructions
 - **Audit Logging**: JSON audit log of all configuration sources
@@ -876,7 +881,7 @@ oauth2_authorization_server:
 | `enabled = false` (default) | `resolveAgentIdByClientId(subject_token.azp)` | Uses the `resolveAgentIdByClientId` helper to map upstream `client_id` → `agent.id` |
 | `enabled = true` | `subject_token.x_agent_id` (use your `agent_id_claim_name`) | Reads the agent UUID directly from the token claim |
 
-> **Breaking change**: The previous expression `subject_token.azp` is no longer valid. Token exchange resolves agents by `agent.id` (UUID), not `agent.client_id`. See [docs/changelog.md](../docs/changelog.md) for migration instructions.
+> **Breaking change**: The previous expression `subject_token.azp` is no longer valid. Token exchange resolves agents by `agent.id` (UUID), not `agent.client_id`. See the [changelog](./changelog.md) for migration instructions.
 
 See `examples/config/oauth2-authorization-server.yaml` for a complete configuration example with both modes commented.
 
@@ -961,7 +966,7 @@ oauth2_authorization_server:
 - Signing key decryption failure prevents token issuance (fail-closed).
 - In `proxy` mode, locally registered agents (no `ClientID`) are rejected. In `local` mode, proxy agents (with `ClientID`) are rejected. Mode boundaries are strict.
 
-See [docs/features/oauth2-server-mode.md](docs/features/oauth2-server-mode.md) for comprehensive end-user documentation.
+See [OAuth2 server modes](/docs/concepts/oauth2-server-modes) for how the broker issues or proxies tokens.
 
 ## Observability / OpenTelemetry
 
@@ -1040,5 +1045,5 @@ When tracing is enabled, the following operations emit child spans:
 - Check the startup summary to see which sources were loaded
 - Verify file paths are absolute or relative to current directory
 - Ensure GO_ENV matches your environment name
-- Review [ADR 002](../adrs/002-configuration-libraries.md) for implementation details
-- Check [ARCHITECTURE.md](../ARCHITECTURE.md) for configuration subsystem architecture
+- Review `adrs/002-configuration-libraries.md` in the repository root for implementation details
+- Check `ARCHITECTURE.md` in the repository root for configuration subsystem architecture
