@@ -1,8 +1,26 @@
 # Agentic Identity Broker
 
-An identity management and OAuth2 delegation service purpose-built for AI agents and autonomous systems. Provides secure identity verification, OAuth2 scope delegation, and consent management for agentic platforms that need to safely authorize AI agents to act on behalf of users across multiple third-party services.
+This project captures delegation chains for on-behalf-of flows in agentic AI, brokers between different OAuth2 infrastructures, and implements a token vault. It is designed to be used by an infrastructure gateway (like [Agentgateway](https://agentgateway.dev)) in the call path between an agent and an MCP server or between agents.
 
-Architected with **hexagonal architecture**, **domain-driven design**, and **constitution-driven development** for maintainability, extensibility, and governance.
+It is designed to simplify both agent development and MCP server development and solve the hard authentication and authorization problems in agentic systems in one place.
+
+From a user perspective, people can consent to delegating specific permissions in systems like Google, GitHub, Databricks, Linear, etc. to a given agent.
+
+## Status
+
+We have started to use this project in production internally for several MCP servers and have seen good potential. We are coding in the open to gauge our approach. If you find it useful, let us know. If you have ideas for other features, let us know via issues. 
+
+While this project was created by professionals with decades of experience in the identity space (including building multiple OIDC and OAuth2 providers), it was developed with a strong focus on agentic engineering and spec-driven development. We review every PR and prioritize sound engineering practices over convenience.
+
+Major roadmap topics include: (a) centralized tool authorization with Open Policy Agent-based authorization policies, (b) support for on-behalf-of flows where no frontend user session exists (semi-autonomous cases with no user directly interacting with an agent), and (c) formalizing token exchange for agent-to-agent calls.
+
+## Use Cases
+
+*Internal MCP Servers* Frameworks like FastMCP can implement the whole OAuth2.1 ceremonies as mandated by the MCP spec but this means that you have to configure it for every MCP Server you deploy and maintain it. You also have to configure secure storage and basically run a multitude of OAuth2 authorization servers. With the identity broker and a gateway you can dumb down MCP server development to only provide tools on the target technologie you want. OAuth2 ceremonies, token vaulting and token translation are done transparently. Because token exchange is done centrally via a gateway, this allows agents to interact with hundreds of MCP servers via one channel. 
+
+*MCP Servers for SaaS* If you want to offer an MCP server to your customers as part of your SaaS, the identity broker can provide an additional consent surface that records which agents were actually used. With centralized tool authorization, you can keep an audit trail of approvals on your side regardless of which agent the customer runs.
+
+*Hosted Agents* The agentic identity broker can simplify agents by requiring only a single user token that can be used with an arbitrary number of MCP servers. When paired with a portal for user interactions, token procurement can be front-loaded in the portal, and the agent's responsibility is to forward this token to upstream MCP servers via a gateway.
 
 ## Key Features
 
