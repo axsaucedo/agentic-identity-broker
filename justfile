@@ -18,6 +18,7 @@ CONTAINER_RUNTIME := `if [ -n "${CONTAINER_RUNTIME:-}" ]; then echo "$CONTAINER_
 
 # Determine compose command (docker-compose or podman-compose)
 COMPOSE_CMD := `if [ -n "${COMPOSE_CMD:-}" ]; then echo "$COMPOSE_CMD"; elif [ -n "${COMPOSE_TOOL:-}" ]; then echo "$COMPOSE_TOOL"; elif command -v podman-compose >/dev/null 2>&1; then echo "podman-compose"; elif command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"; else echo "docker compose"; fi`
+COMPOSE_FILE_ARGS := "--env-file .env.compose -f docker-compose.yml"
 
 
 # Default recipe (shown when running `just` with no args)
@@ -721,7 +722,7 @@ compose-env:
 # Validate docker-compose.yml syntax
 compose-validate:
     @echo "Validating docker-compose.yml..."
-    @{{COMPOSE_CMD}} -f docker-compose.yml config > /dev/null && echo "✓ Syntax valid" || echo "✗ Syntax error"
+    @{{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} config > /dev/null && echo "✓ Syntax valid" || echo "✗ Syntax error"
 
 # Start all services with logs streaming (foreground)
 compose-up: compose-env
@@ -737,13 +738,13 @@ compose-up: compose-env
     @echo "  - Seed data will auto-run once broker is healthy"
     @echo ""
     @echo "Press Ctrl+C to stop"
-    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up
+    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} up
 
 # Start all services in background
 compose-up-detached: compose-env
     @echo "Generating JWE signing key..."
     @echo "Starting docker-compose services in background..."
-    @IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up -d
+    @IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} up -d
     @sleep 2
     @just compose-health
     @echo ""
@@ -759,47 +760,47 @@ compose-up-detached: compose-env
 # Stop all services
 compose-down:
     @echo "Stopping docker-compose services..."
-    {{COMPOSE_CMD}} -f docker-compose.yml down
+    {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} down
 
 # Stop all services and remove volumes
 compose-down-volumes:
     @echo "Stopping docker-compose services and removing volumes..."
-    {{COMPOSE_CMD}} -f docker-compose.yml down -v
+    {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} down -v
 
 # View logs from all services (tail -f)
 compose-logs:
-    {{COMPOSE_CMD}} -f docker-compose.yml logs -f
+    {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} logs -f
 
 # View logs from backend only
 compose-logs-backend:
-    {{COMPOSE_CMD}} -f docker-compose.yml logs -f identity-broker
+    {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} logs -f identity-broker
 
 # View logs from frontend only
 compose-logs-frontend:
-    {{COMPOSE_CMD}} -f docker-compose.yml logs -f frontend
+    {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} logs -f frontend
 
 # View logs from specific service
 compose-logs-service SERVICE:
-    {{COMPOSE_CMD}} -f docker-compose.yml logs -f {{SERVICE}}
+    {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} logs -f {{SERVICE}}
 
 # Restart backend service (after code changes)
 compose-restart-backend:
     @echo "Restarting identity-broker service..."
-    {{COMPOSE_CMD}} -f docker-compose.yml restart identity-broker
+    {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} restart identity-broker
 
 # Restart frontend service (after code changes)
 compose-restart-frontend:
     @echo "Restarting frontend service..."
-    {{COMPOSE_CMD}} -f docker-compose.yml restart frontend
+    {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} restart frontend
 
 # Show service status and connectivity
 compose-health:
     @echo "Checking service health..."
-    @{{COMPOSE_CMD}} -f docker-compose.yml ps
+    @{{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} ps
     @echo ""
     @echo "Testing connectivity..."
-    @{{COMPOSE_CMD}} -f docker-compose.yml exec -T identity-broker curl -s http://localhost:8000/health && echo "✓ Backend health OK" || echo "✗ Backend not ready"
-    @{{COMPOSE_CMD}} -f docker-compose.yml exec -T frontend curl -s http://localhost:3000 > /dev/null && echo "✓ Frontend responding" || echo "✗ Frontend not ready"
+    @{{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} exec -T identity-broker curl -s http://localhost:8000/health && echo "✓ Backend health OK" || echo "✗ Backend not ready"
+    @{{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} exec -T frontend curl -s http://localhost:3000 > /dev/null && echo "✓ Frontend responding" || echo "✗ Frontend not ready"
     @echo ""
 
 # Clean up: stop containers, remove volumes, clean tmp directories
@@ -932,21 +933,6 @@ extproc-test:
     @echo "Running extproc unit tests..."
     go test -v -race ./internal/extproc/... ./cmd/extproc-token-exchange/...
 
-# Auto-detect Docker socket: prefer colima when available, fall back to standard socket
-DOCKER_SOCKET := `if [ -S "${HOME}/.colima/default/docker.sock" ]; then echo "${HOME}/.colima/default/docker.sock"; else echo "/var/run/docker.sock"; fi`
-
-# Run extproc E2E tests (Ginkgo)
-extproc-test-e2e:
-    @echo "Running extproc E2E tests..."
-    @if command -v ginkgo > /dev/null; then \
-        DOCKER_HOST="unix://{{DOCKER_SOCKET}}" \
-        TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="{{DOCKER_SOCKET}}" \
-        TESTCONTAINERS_RYUK_DISABLED=true \
-        ginkgo -v --procs={{GINKGO_PROCS}} ./tests/e2e/extproc/; \
-    else \
-        echo "Error: ginkgo is not installed. Run: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
-        exit 1; \
-    fi
 
 # Build mock MCP server binary
 mock-mcp-server-build:

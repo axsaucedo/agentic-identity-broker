@@ -21,8 +21,10 @@ RUN go mod download
 # Copy source code (will be overridden by volume mount in docker-compose)
 COPY . .
 
-# Create tmp directory for Air output
-RUN mkdir -p tmp
+# Prime the Go build cache so Air's first container build does not spend minutes compiling dependencies.
+RUN mkdir -p tmp \
+    && go build -o /tmp/agentic-identity-broker ./cmd/agentic-identity-broker \
+    && rm -f /tmp/agentic-identity-broker
 
 # Expose ports: 8000 (user API), 14000 (admin API)
 EXPOSE 8000 14000

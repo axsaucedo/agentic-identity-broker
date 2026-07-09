@@ -22,8 +22,8 @@ tmp_dir = "tmp"
   # Ignore these filename extensions or directories
   exclude_dir = ["assets", "tmp", "vendor", "testdata", "bin", "coverage", "node_modules", ".git"]
 
-  # Watch these directories if you specified
-  include_dir = []
+  # Watch only backend-relevant directories; the repo also contains web/, docs/, etc.
+  include_dir = ["cmd", "internal", "scripts", "migrations", "mocks"]
 
   # Exclude files
   exclude_file = []

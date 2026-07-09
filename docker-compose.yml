@@ -52,11 +52,12 @@ services:
     networks:
       - aib-network
     healthcheck:
+      # Cold container builds can take several minutes before the broker binds :8000.
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 5s
-      timeout: 2s
-      retries: 10
-      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 4m
     depends_on:
       upstream-oauth2:
         condition: service_started
