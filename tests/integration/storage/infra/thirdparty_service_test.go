@@ -37,6 +37,50 @@ var thirdpartyProviderMigrations = []bootstrap.SQLMigration{
 	{File: "005_add_agent_service_requirements.up.sql", Version: 5},
 	{File: "006_add_service_protected_resources.up.sql", Version: 6},
 	{File: "007_add_oauth2_flavor.up.sql", Version: 7},
+	{File: "022_add_service_authorization_params.up.sql", Version: 22},
+}
+
+func TestAuthorizationParamsPersistence(t *testing.T) {
+	ctx, repo, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
+	defer cleanup()
+
+	entity := createTestService("authorization-params", "Authorization Params", nil)
+	entity.AuthorizationParams = map[string]string{"business_partner_id": "12345"}
+	require.NoError(t, providerService.Create(ctx, entity))
+
+	stored, err := repo.Get(ctx, entity.ID)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"business_partner_id": "12345"}, stored.AuthorizationParams)
+
+	stored.AuthorizationParams = map[string]string{}
+	stored.Secret = model.NewPlaintextSecret("test-secret")
+	require.NoError(t, providerService.Update(ctx, stored))
+	updated, err := repo.Get(ctx, entity.ID)
+	require.NoError(t, err)
+	assert.Empty(t, updated.AuthorizationParams)
+
+	services, err := repo.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, services, 1)
+	assert.Empty(t, services[0].AuthorizationParams)
+}
+
+func TestAuthorizationParamsOmittedUpdatePreservesResponseAndStorage(t *testing.T) {
+	ctx, repo, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
+	defer cleanup()
+
+	entity := createTestService("authorization-params-omitted-update", "Authorization Params", nil)
+	entity.AuthorizationParams = map[string]string{"business_partner_id": "12345"}
+	require.NoError(t, providerService.Create(ctx, entity))
+
+	updated := createTestService(entity.ID.String(), "Updated Authorization Params", nil)
+	updated.AuthorizationParams = nil
+	require.NoError(t, providerService.Update(ctx, updated))
+	assert.Equal(t, map[string]string{"business_partner_id": "12345"}, updated.AuthorizationParams)
+
+	stored, err := repo.Get(ctx, entity.ID)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"business_partner_id": "12345"}, stored.AuthorizationParams)
 }
 
 // newTestEncryption creates a real memory encryption adapter using the deterministic test KEK.
@@ -53,8 +97,8 @@ func setupThirdpartyProviderTestHarness(
 	t.Helper()
 
 	sharedPostgres := bootstrap.RequireSharedPostgres(t)
-	_, connStr, cleanupDB := sharedPostgres.SetupDatabaseFromTemplate(t, "thirdparty_provider_migrations_007", func(t *testing.T, dbName string) {
-		sharedPostgres.ApplyMigrationsUpTo(t, dbName, thirdpartyProviderMigrations, 7)
+	_, connStr, cleanupDB := sharedPostgres.SetupDatabaseFromTemplate(t, "thirdparty_provider_migrations_022", func(t *testing.T, dbName string) {
+		sharedPostgres.ApplyMigrationsUpTo(t, dbName, thirdpartyProviderMigrations, 22)
 	})
 
 	config := &ports.StorageConfig{

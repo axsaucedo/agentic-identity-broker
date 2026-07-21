@@ -399,6 +399,16 @@ func (s *OAuth2SessionService) InitiateOAuth2Flow(
 
 	// Generate authorization URL with PKCE
 	authURL := cfg.AuthCodeURL(stateToken, oauth2.S256ChallengeOption(verifier))
+	parsedURL, err := url.Parse(authURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse authorization URL: %w", err)
+	}
+	query := parsedURL.Query()
+	for name, value := range service.AuthorizationParams {
+		query.Set(name, value)
+	}
+	parsedURL.RawQuery = query.Encode()
+	authURL = parsedURL.String()
 
 	// Audit log: OAuth2 flow initiated successfully
 	s.logger.Info("oauth2_flow_initiated",

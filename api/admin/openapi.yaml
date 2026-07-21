@@ -1930,6 +1930,13 @@ components:
           example:
             - https://api.github.com
             - https://github.com/api/v3
+        authorization_params:
+          type: object
+          description: Static provider authorization parameters. Broker-owned OAuth2 names are rejected.
+          additionalProperties:
+            type: string
+          example:
+            business_partner_id: "12345"
         created_at:
           type: string
           format: date-time
@@ -2038,6 +2045,13 @@ components:
           example:
             - https://api.github.com
             - https://github.com/api/v3
+        authorization_params:
+          type: object
+          description: Static provider authorization parameters. Broker-owned OAuth2 names are rejected.
+          additionalProperties:
+            type: string
+          example:
+            business_partner_id: "12345"
 
     ServiceUpdateRequest:
       type: object
@@ -2124,6 +2138,13 @@ components:
           example:
             - https://api.github.com
             - https://github.com/api/v3
+        authorization_params:
+          type: object
+          description: Static provider authorization parameters. Omission preserves the current map; an empty object clears it.
+          additionalProperties:
+            type: string
+          example:
+            business_partner_id: "12345"
 
     DiscoveryConfig:
       type: object

@@ -98,6 +98,21 @@ func TestInitiateOAuth2Flow_Success(t *testing.T) {
 	assert.NotEmpty(t, query.Get("state"))
 }
 
+func TestInitiateOAuth2Flow_AddsStoredAuthorizationParams(t *testing.T) {
+	ctx := context.Background()
+	service, _, providerService := setupService(t)
+	serviceID := id.NewServiceID()
+	thirdPartyService := createTestService(serviceID)
+	thirdPartyService.AuthorizationParams = map[string]string{"business_partner_id": "12345"}
+	require.NoError(t, providerService.Create(ctx, thirdPartyService))
+
+	result, err := service.InitiateOAuth2Flow(ctx, id.Principal("user@example.com"), serviceID, "https://example.com/sessions")
+	require.NoError(t, err)
+	parsedURL, err := url.Parse(result.AuthorizationURL)
+	require.NoError(t, err)
+	assert.Equal(t, "12345", parsedURL.Query().Get("business_partner_id"))
+}
+
 func TestInitiateOAuth2Flow_ServiceNotFound(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := setupService(t)

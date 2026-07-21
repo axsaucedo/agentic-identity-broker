@@ -48,6 +48,7 @@ The core fields:
   one is required.
 - `protected_resources` — optional resource URIs used to route
   [token exchange](/docs/concepts/delegation-and-consent#using-a-delegation) to this service.
+- `authorization_params` — optional static provider parameters added by the broker to upstream authorization requests. For Zalando Platform, use `{ "business_partner_id": "12345" }`. These are administrator configuration, never browser-supplied values; omit the field on update to preserve it, or use `{}` to clear it.
 
 With endpoint discovery enabled:
 

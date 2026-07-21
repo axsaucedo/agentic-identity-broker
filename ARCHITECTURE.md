@@ -730,7 +730,6 @@ OAuth2 /authorize request
 
 The gates compose as fail-closed AND: ExtProc OPA can only further restrict a request after broker CEL authorizes token exchange, and broker CEL can still deny token exchange even when ExtProc OPA would allow the proxied request.
 
-
 #### 3.2.2. gRPC Server
 
 **Server**: Implements Envoy's `ExternalProcessorServer` interface with:
@@ -1113,6 +1112,8 @@ Define any project-specific terms or acronyms.)
 **Optional Service**: A third-party OAuth2 service marked with requirement_type="optional" in an agent's service requirements. Displayed in consent UI with visual distinction (neutral badge vs trust-deep for mandatory). Does not block authorization flow - if user lacks session or scopes, authorization proceeds anyway. Allows agents to degrade gracefully when optional integrations unavailable.
 
 **ThirdpartyOAuth2Provider**: External OAuth2 provider (e.g., GitHub, Google, Microsoft) registered in the system. Each provider defines a set of OAuth scopes that can be delegated to agents. Providers have a client_id, client_secret (stored as a `Secret` value object — encrypted at rest, redacted in API responses), and display name. Represented as `model.ThirdpartyOAuth2ProviderEntity` in `internal/domain/model/`. All encryption and decryption of the client secret is owned exclusively by `ThirdpartyOAuth2ProviderService` in `internal/domain/thirdparty/`.
+
+**Provider Authorization Parameters**: Static provider-defined authorization request parameters owned by a `ThirdpartyOAuth2Provider`. They are administrator-managed service configuration, not end-user input, and are appended only when the broker constructs the upstream authorization URL.
 
 **Secret**: Immutable value object in `internal/domain/model/` with two mutually exclusive states: plaintext (`NewPlaintextSecret(value)`) and encrypted (`NewEncryptedSecret(ciphertext)`). `GetPlaintext()` fails on encrypted state; `GetCiphertext()` fails on plaintext state. `Redacted()` always returns `"REDACTED"` regardless of state. Prevents accidental plaintext leakage at the type level — storage adapters can never accidentally persist unencrypted secrets because `GetCiphertext()` will error if encryption was not performed first.
 

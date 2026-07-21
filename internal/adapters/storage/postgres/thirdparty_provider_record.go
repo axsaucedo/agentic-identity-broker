@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -22,20 +23,21 @@ import (
 // This type is used exclusively within the postgres adapter; it is never exposed to
 // domain code. Conversion to/from domain entities uses entityToRecord and recordToEntity.
 type ThirdpartyOAuth2ProviderRecord struct {
-	ID                 string             `db:"id"`
-	DisplayName        string             `db:"display_name"`
-	ClientID           string             `db:"client_id"`
-	SecretCiphertext   []byte             `db:"client_secret_encrypted"`
-	Flavor             string             `db:"oauth2_flavor"`
-	IssuerURI          string             `db:"issuer_uri"`
-	EnableDiscovery    bool               `db:"enable_discovery"`
-	MetadataURL        *string            `db:"metadata_url"`
-	TokenEndpoint      string             `db:"token_endpoint"`
-	AuthorizeEndpoint  string             `db:"authorize_endpoint"`
-	Scopes             providerScopeArray `db:"scopes"`
-	ProtectedResources []string           `db:"-"` // scanned via pq.Array in query methods
-	CreatedAt          time.Time          `db:"created_at"`
-	UpdatedAt          time.Time          `db:"updated_at"`
+	ID                  string                      `db:"id"`
+	DisplayName         string                      `db:"display_name"`
+	ClientID            string                      `db:"client_id"`
+	SecretCiphertext    []byte                      `db:"client_secret_encrypted"`
+	Flavor              string                      `db:"oauth2_flavor"`
+	IssuerURI           string                      `db:"issuer_uri"`
+	EnableDiscovery     bool                        `db:"enable_discovery"`
+	MetadataURL         *string                     `db:"metadata_url"`
+	TokenEndpoint       string                      `db:"token_endpoint"`
+	AuthorizeEndpoint   string                      `db:"authorize_endpoint"`
+	Scopes              providerScopeArray          `db:"scopes"`
+	ProtectedResources  []string                    `db:"-"` // scanned via pq.Array in query methods
+	AuthorizationParams providerAuthorizationParams `db:"authorization_params"`
+	CreatedAt           time.Time                   `db:"created_at"`
+	UpdatedAt           time.Time                   `db:"updated_at"`
 }
 
 // providerScopeArray handles JSONB serialization of model.OAuthScope slices for PostgreSQL.
@@ -92,6 +94,27 @@ func (a providerScopeArray) Value() (driver.Value, error) {
 	return json.Marshal(raw)
 }
 
+type providerAuthorizationParams map[string]string
+
+func (p *providerAuthorizationParams) Scan(value any) error {
+	if value == nil {
+		*p = providerAuthorizationParams{}
+		return nil
+	}
+	bytes, ok := value.([]byte)
+	if !ok {
+		return errors.New("failed to scan providerAuthorizationParams: expected []byte")
+	}
+	return json.Unmarshal(bytes, p)
+}
+
+func (p providerAuthorizationParams) Value() (driver.Value, error) {
+	if p == nil {
+		return json.Marshal(map[string]string{})
+	}
+	return json.Marshal(p)
+}
+
 // entityToRecord converts a ThirdpartyOAuth2ProviderEntity to a ThirdpartyOAuth2ProviderRecord.
 // The entity's Secret must be in encrypted state — GetCiphertext() must succeed.
 // Returns an error if the entity is nil or the secret is not yet encrypted.
@@ -106,18 +129,19 @@ func entityToRecord(entity *model.ThirdpartyOAuth2ProviderEntity) (*ThirdpartyOA
 	}
 
 	record := &ThirdpartyOAuth2ProviderRecord{
-		ID:                entity.ID.String(),
-		DisplayName:       entity.DisplayName,
-		ClientID:          entity.ClientID.String(),
-		SecretCiphertext:  ciphertext,
-		Flavor:            string(entity.Flavor),
-		IssuerURI:         entity.IssuerURI,
-		EnableDiscovery:   entity.Discovery.EnableDiscovery,
-		TokenEndpoint:     entity.Endpoints.TokenEndpoint,
-		AuthorizeEndpoint: entity.Endpoints.AuthorizeEndpoint,
-		Scopes:            providerScopeArray(entity.Scopes),
-		CreatedAt:         entity.CreatedAt,
-		UpdatedAt:         entity.UpdatedAt,
+		ID:                  entity.ID.String(),
+		DisplayName:         entity.DisplayName,
+		ClientID:            entity.ClientID.String(),
+		SecretCiphertext:    ciphertext,
+		Flavor:              string(entity.Flavor),
+		IssuerURI:           entity.IssuerURI,
+		EnableDiscovery:     entity.Discovery.EnableDiscovery,
+		TokenEndpoint:       entity.Endpoints.TokenEndpoint,
+		AuthorizeEndpoint:   entity.Endpoints.AuthorizeEndpoint,
+		Scopes:              providerScopeArray(entity.Scopes),
+		CreatedAt:           entity.CreatedAt,
+		AuthorizationParams: providerAuthorizationParams(maps.Clone(entity.AuthorizationParams)),
+		UpdatedAt:           entity.UpdatedAt,
 	}
 
 	if entity.Discovery.MetadataURL != nil {
@@ -166,8 +190,9 @@ func recordToEntity(record *ThirdpartyOAuth2ProviderRecord) (*model.ThirdpartyOA
 			TokenEndpoint:     record.TokenEndpoint,
 			AuthorizeEndpoint: record.AuthorizeEndpoint,
 		},
-		CreatedAt: record.CreatedAt,
-		UpdatedAt: record.UpdatedAt,
+		CreatedAt:           record.CreatedAt,
+		AuthorizationParams: maps.Clone(map[string]string(record.AuthorizationParams)),
+		UpdatedAt:           record.UpdatedAt,
 	}
 
 	if record.MetadataURL != nil {

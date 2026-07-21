@@ -78,4 +78,9 @@ func TestProviderEntityCopy_IsolatesFromOriginal(t *testing.T) {
 	assert.Equal(t, "Original", copied.DisplayName)
 	assert.Equal(t, "https://resource.example.com", copied.ProtectedResources[0])
 	assert.Equal(t, "read", copied.Scopes[0].ScopeValue)
+	original.AuthorizationParams = map[string]string{"business_partner_id": "12345"}
+	copied, err = providerEntityCopy(original)
+	require.NoError(t, err)
+	original.AuthorizationParams["business_partner_id"] = "changed"
+	assert.Equal(t, "12345", copied.AuthorizationParams["business_partner_id"])
 }

@@ -3,7 +3,9 @@ package model
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -31,6 +33,26 @@ func isAllowedHTTPSScheme(urlStr string, skipHTTPSValidation bool) bool {
 	return false
 }
 
+var reservedAuthorizationParamNames = map[string]struct{}{
+	"client_id": {}, "client_secret": {}, "redirect_uri": {}, "response_type": {}, "scope": {}, "state": {},
+	"code_challenge": {}, "code_challenge_method": {}, "nonce": {}, "request": {}, "request_uri": {},
+}
+
+func validateAuthorizationParams(params map[string]string) error {
+	for name, value := range params {
+		if strings.TrimSpace(name) == "" {
+			return errors.New("authorization parameter name cannot be blank")
+		}
+		if strings.TrimSpace(value) == "" {
+			return errors.New("authorization parameter value cannot be blank")
+		}
+		if _, reserved := reservedAuthorizationParamNames[strings.ToLower(name)]; reserved {
+			return fmt.Errorf("authorization parameter name is reserved: %s", name)
+		}
+	}
+	return nil
+}
+
 // ThirdpartyOAuth2ProviderEntity is the domain entity for an external OAuth2 provider that
 // agents can access on behalf of users (e.g., GitHub, Google, Databricks).
 //
@@ -51,6 +73,7 @@ type ThirdpartyOAuth2ProviderEntity struct {
 	Discovery           DiscoveryConfig
 	Endpoints           OAuth2Endpoints
 	Scopes              []OAuthScope
+	AuthorizationParams map[string]string
 	ProtectedResources  []string
 	ServiceRequirements []ServiceRequirement
 	CreatedAt           time.Time
@@ -168,6 +191,10 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForCreate(skipHTTPSValidation b
 		}
 	}
 
+	if err := validateAuthorizationParams(e.AuthorizationParams); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -251,6 +278,10 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForUpdate(skipHTTPSValidation b
 		if err := scope.Validate(); err != nil {
 			return fmt.Errorf("scope %d: %w", i, err)
 		}
+	}
+
+	if err := validateAuthorizationParams(e.AuthorizationParams); err != nil {
+		return err
 	}
 
 	return nil
@@ -391,6 +422,8 @@ func (e *ThirdpartyOAuth2ProviderEntity) Copy() *ThirdpartyOAuth2ProviderEntity 
 			result.Scopes[i] = scope.Copy()
 		}
 	}
+
+	result.AuthorizationParams = maps.Clone(e.AuthorizationParams)
 
 	if e.ProtectedResources != nil {
 		result.ProtectedResources = make([]string, len(e.ProtectedResources))

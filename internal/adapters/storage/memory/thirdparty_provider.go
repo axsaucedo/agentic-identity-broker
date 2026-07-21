@@ -83,6 +83,9 @@ func (r *InMemoryThirdpartyOAuth2ProviderRepository) Update(ctx context.Context,
 
 	// Preserve immutable created_at from storage — callers must not set it.
 	entity.CreatedAt = existing.CreatedAt
+	if entity.AuthorizationParams == nil {
+		entity.AuthorizationParams = existing.Copy().AuthorizationParams
+	}
 
 	stored, err := providerEntityCopy(entity)
 	if err != nil {

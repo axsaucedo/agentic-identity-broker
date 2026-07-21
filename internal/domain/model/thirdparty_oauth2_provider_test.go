@@ -314,3 +314,35 @@ func TestThirdpartyOAuth2ProviderEntity_NormalizeProtectedResources(t *testing.T
 		assert.Equal(t, firstPass, entity.ProtectedResources)
 	})
 }
+
+func TestThirdpartyOAuth2ProviderEntity_AuthorizationParams(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		params map[string]string
+		want   string
+	}{
+		{name: "valid", params: map[string]string{"business_partner_id": "12345"}},
+		{name: "blank key", params: map[string]string{" ": "value"}, want: "authorization parameter name cannot be blank"},
+		{name: "blank value", params: map[string]string{"name": "\t"}, want: "authorization parameter value cannot be blank"},
+		{name: "reserved key", params: map[string]string{"STATE": "value"}, want: "authorization parameter name is reserved"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateAuthorizationParams(tt.params)
+			if tt.want == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tt.want)
+		})
+	}
+}
+
+func TestThirdpartyOAuth2ProviderEntity_CopyAuthorizationParams(t *testing.T) {
+	entity := &ThirdpartyOAuth2ProviderEntity{AuthorizationParams: map[string]string{"business_partner_id": "12345"}}
+	copy := entity.Copy()
+
+	entity.AuthorizationParams["business_partner_id"] = "changed"
+	assert.Equal(t, "12345", copy.AuthorizationParams["business_partner_id"])
+}

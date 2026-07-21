@@ -39,6 +39,20 @@ func newTestEntity() *model.ThirdpartyOAuth2ProviderEntity {
 	}
 }
 
+func TestProviderRecord_AuthorizationParamsRoundTrip(t *testing.T) {
+	entity := newTestEntity()
+	entity.AuthorizationParams = map[string]string{"business_partner_id": "12345"}
+
+	record, err := entityToRecord(entity)
+	require.NoError(t, err)
+	entity.AuthorizationParams["business_partner_id"] = "changed"
+	assert.Equal(t, "12345", record.AuthorizationParams["business_partner_id"])
+
+	roundTripped, err := recordToEntity(record)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"business_partner_id": "12345"}, roundTripped.AuthorizationParams)
+}
+
 func TestEntityToRecord_Success(t *testing.T) {
 	entity := newTestEntity()
 	record, err := entityToRecord(entity)

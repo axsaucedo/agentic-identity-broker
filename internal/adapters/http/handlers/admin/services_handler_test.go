@@ -177,6 +177,24 @@ func TestServicesHandler_CreateService(t *testing.T) {
 		mockRepo.AssertExpectations(t)
 	})
 
+	t.Run("maps authorization_params", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+		reqBody := ServiceRequest{DisplayName: "Provider", ClientID: "client", ClientSecret: "secret", IssuerURI: "https://example.com", Discovery: DiscoveryConfigRequest{}, Endpoints: &OAuth2EndpointsRequest{TokenEndpoint: "https://example.com/token", AuthorizeEndpoint: "https://example.com/authorize"}, Scopes: []OAuthScopeRequest{{ScopeValue: "read", Description: "Read"}}, AuthorizationParams: map[string]string{"business_partner_id": "12345"}}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(entity *model.ThirdpartyOAuth2ProviderEntity) bool {
+			return entity.AuthorizationParams["business_partner_id"] == "12345"
+		})).Return(nil)
+		w := httptest.NewRecorder()
+		handler.CreateService(w, httptest.NewRequest(http.MethodPost, "/api/services", bytes.NewReader(body)))
+		require.Equal(t, http.StatusCreated, w.Code)
+		var response ServiceResponse
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+		assert.Equal(t, "12345", response.AuthorizationParams["business_partner_id"])
+		mockRepo.AssertExpectations(t)
+	})
+
 	t.Run("invalid request body", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
@@ -498,6 +516,34 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		assert.Equal(t, "REDACTED", resp.ClientSecret)
 
 		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("invalid authorization_params does not update service", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+		serviceID := id.NewServiceID()
+		reqBody := ServiceRequest{
+			DisplayName:         "GitHub Updated",
+			ClientID:            "github-client-id",
+			ClientSecret:        "new-secret",
+			IssuerURI:           "https://github.com",
+			Discovery:           DiscoveryConfigRequest{},
+			Endpoints:           &OAuth2EndpointsRequest{TokenEndpoint: "https://github.com/token", AuthorizeEndpoint: "https://github.com/authorize"},
+			Scopes:              []OAuthScopeRequest{{ScopeValue: "repo", Description: "Repository access"}},
+			AuthorizationParams: map[string]string{"state": "unsafe"},
+		}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPut, "/api/services/"+serviceID.String(), bytes.NewReader(body))
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("service-id", serviceID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		w := httptest.NewRecorder()
+
+		handler.UpdateService(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		mockRepo.AssertNotCalled(t, "Update")
 	})
 
 	t.Run("missing client_secret returns 400", func(t *testing.T) {
