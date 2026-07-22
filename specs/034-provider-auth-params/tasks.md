@@ -197,3 +197,29 @@ Task: "T015 Add PostgreSQL integration tests in tests/integration/storage/infra/
 1. Deliver US1 administrative configuration.
 2. Deliver US2 stored-parameter authorization URL behavior without browser forwarding.
 3. Deliver US3 domain rejection behavior and complete the verification gate.
+
+---
+
+## Phase 7: Remaining Authorization-Code Exchange Coverage
+
+**Purpose**: Complete the specification's required server-side provider parameters on authorization-code exchange requests. Existing tasks cover the authorization URL only; this phase preserves them and adds the missing exchange behavior and proof.
+
+- [X] T041 [P] [US2] Add unit coverage that authorization-code exchange sends stored `AuthorizationParams` on every retry in `internal/domain/oauth2session/service_test.go`
+- [X] T042 [US2] Pass stored `AuthorizationParams` as `oauth2.AuthCodeOption` values on every authorization-code exchange retry in `internal/domain/oauth2session/service.go`
+- [X] T043 [US2] Extend scenarios 2.1–2.3 to capture and assert the upstream authorization-code exchange form uses stored values, omits values for unconfigured services, and never forwards browser values in `tests/e2e/provider_authorization_params_test.go`
+- [X] T044 [US2] Run focused session-service and provider-authorization acceptance tests with `go test ./internal/domain/oauth2session` and `just test-e2e-backend`
+
+**Checkpoint**: Both upstream authorization and authorization-code exchange requests receive only the selected service's stored provider parameters.
+
+---
+
+## Phase 8: Refresh-Token Provider Parameters
+
+**Purpose**: Extend the completed authorization and authorization-code behavior to session refreshes. The target Zalando Platform IdP requires `business_partner_id` on its refresh-token grant, so refresh must use the same stored service configuration without accepting browser input.
+
+- [X] T045 [P] [US2] Add red unit coverage that refresh-token forms include stored `AuthorizationParams` and unconfigured services add none in `internal/domain/oauth2session/service_test.go`
+- [X] T046 [US2] Add stored `AuthorizationParams` to the refresh-token form after broker-owned fields in `internal/domain/oauth2session/service.go`
+- [X] T047 [US2] Extend scenarios 2.1–2.3 to capture and assert refresh-token forms use stored values, omit values for unconfigured services, and never use browser values in `tests/e2e/provider_authorization_params_test.go`
+- [X] T048 [US2] Run session-service and provider-authorization acceptance coverage with `go test ./internal/domain/oauth2session` and `just test-e2e-backend`
+
+**Checkpoint**: Upstream authorization, authorization-code exchange, and refresh-token requests receive only the selected service’s stored provider parameters.

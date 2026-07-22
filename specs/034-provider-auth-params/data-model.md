@@ -24,7 +24,7 @@ The map is part of the provider configuration lifecycle. It is neither a secret 
 | Parameter names are not blank or whitespace-only. | Entity create and update validation. |
 | Parameter values are not blank or whitespace-only. | Entity create and update validation. |
 | A name cannot be a broker-owned OAuth2 field. | Entity create and update validation, case-insensitive. |
-| Reserved names are `client_id`, `client_secret`, `redirect_uri`, `response_type`, `scope`, `state`, `code_challenge`, `code_challenge_method`, `nonce`, `request`, and `request_uri`. | Entity create and update validation. |
+| Reserved names are `client_id`, `client_secret`, `redirect_uri`, `response_type`, `scope`, `state`, `code_challenge`, `code_challenge_method`, `code_verifier`, `nonce`, `request`, `request_uri`, `code`, and `grant_type`. | Entity create and update validation. |
 | A JSON object has only one final value per name. | Standard request decoding semantics; no separate duplicate collection is persisted. |
 
 ## Update Semantics
@@ -35,13 +35,14 @@ The map is part of the provider configuration lifecycle. It is neither a secret 
 | Empty object | Replace the existing map with no parameters. |
 | Non-empty object | Replace the existing map after validation. |
 
-## Authorization Flow
+## OAuth2 Flows
 
 1. The end-user handler validates only its existing broker-owned input, including `redirect_uri`.
 2. `OAuth2SessionService` fetches the persisted third-party service.
-3. The session service builds the normal OAuth2 authorization URL with broker-owned client, callback, scope, state, and PKCE values.
-4. The session service appends the stored `AuthorizationParams` values to that URL.
-5. Browser query values other than supported broker inputs are not read or forwarded; they cannot override stored values.
+3. The session service builds the normal OAuth2 authorization URL with broker-owned client, callback, scope, state, and PKCE values, then appends stored `AuthorizationParams` values.
+4. After callback validation, the session service exchanges the authorization code with normal broker-owned `code`, `grant_type`, and PKCE verifier fields plus stored `AuthorizationParams` values.
+5. When refreshing a session, the service sends normal broker-owned `grant_type`, `refresh_token`, and client credentials plus stored `AuthorizationParams` values.
+6. Browser query values other than supported broker inputs are not read or forwarded; they cannot override stored values.
 
 ## Persistence Migration
 

@@ -42,21 +42,21 @@ Create a normal third-party OAuth2 service with static provider configuration:
 
 **Expected result**: The stored `business_partner_id` remains `12345`. An explicit empty object is the intentional way to clear the map.
 
-## 3. Start authorization
+## 3. Complete authorization, code exchange, and refresh
 
-Open the broker's existing authorization-start endpoint with its normal same-origin post-session `redirect_uri`.
+Open the broker's existing authorization-start endpoint with its normal same-origin post-session `redirect_uri`, complete the upstream provider callback, then exercise the normal session-refresh path after the access token expires.
 
-**Expected result**: The redirect location targets the configured upstream authorization endpoint and includes:
+**Expected result**: The upstream authorization redirect, form-encoded authorization-code exchange, and refresh-token form each include:
 
 - `business_partner_id=12345`
-- broker-generated `client_id`, `redirect_uri`, `response_type=code`, `scope`, and `state`
-- PKCE `code_challenge` and `code_challenge_method` when the normal flow uses PKCE
+- their broker-generated protocol fields, including client identity and callback data where applicable
+- PKCE `code_challenge` and `code_challenge_method` on authorization, and `code_verifier` on code exchange when the normal flow uses PKCE
 
 ## 4. Verify query isolation
 
 Repeat the authorization-start request with `business_partner_id=untrusted` in the browser query string.
 
-**Expected result**: The upstream redirect still contains only `business_partner_id=12345`; `untrusted` is not forwarded.
+**Expected result**: The upstream authorization redirect, subsequent code exchange, and later refresh request still contain only `business_partner_id=12345`; `untrusted` is not forwarded.
 
 ## 5. Verify validation
 

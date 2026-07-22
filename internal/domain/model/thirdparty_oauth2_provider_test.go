@@ -327,6 +327,10 @@ func TestThirdpartyOAuth2ProviderEntity_AuthorizationParams(t *testing.T) {
 		{name: "blank key", params: map[string]string{" ": "value"}, want: "authorization parameter name cannot be blank"},
 		{name: "blank value", params: map[string]string{"name": "\t"}, want: "authorization parameter value cannot be blank"},
 		{name: "reserved key", params: map[string]string{"STATE": "value"}, want: "authorization parameter name is reserved"},
+		{name: "reserved authorization code", params: map[string]string{"CoDe": "value"}, want: "authorization parameter name is reserved"},
+		{name: "reserved grant type", params: map[string]string{"GrAnT_TyPe": "value"}, want: "authorization parameter name is reserved"},
+		{name: "reserved PKCE verifier", params: map[string]string{"CODE_VERIFIER": "value"}, want: "authorization parameter name is reserved"},
+		{name: "reserved refresh token", params: map[string]string{"REFRESH_TOKEN": "value"}, want: "authorization parameter name is reserved"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateAuthorizationParams(tt.params)

@@ -39,6 +39,14 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
+func addProviderAuthorizationParams(values url.Values, params map[string]string) {
+	for name, value := range params {
+		if !model.IsReservedAuthorizationParamName(name) {
+			values.Set(name, value)
+		}
+	}
+}
+
 // OAuth2SessionService orchestrates OAuth2 authorization flows and session management.
 // Uses ThirdpartyOAuth2ProviderService to retrieve third-party services with decrypted client secrets,
 // ensuring OAuth2 configurations always have valid credentials for token exchange.
@@ -311,12 +319,20 @@ func (s *OAuth2SessionService) exchangeCodeWithRetry(
 	config *oauth2.Config,
 	code string,
 	verifier string,
+	authorizationParams map[string]string,
 ) (*oauth2.Token, error) {
 	var lastErr error
 
 	for attempt := 0; attempt < s.config.MaxRetries; attempt++ {
 		// Try to exchange code for token
-		token, err := config.Exchange(ctx, code, oauth2.VerifierOption(verifier))
+		params := url.Values{}
+		addProviderAuthorizationParams(params, authorizationParams)
+		opts := make([]oauth2.AuthCodeOption, 0, len(params)+1)
+		opts = append(opts, oauth2.VerifierOption(verifier))
+		for name, values := range params {
+			opts = append(opts, oauth2.SetAuthURLParam(name, values[0]))
+		}
+		token, err := config.Exchange(ctx, code, opts...)
 		if err == nil {
 			return token, nil
 		}
@@ -404,9 +420,7 @@ func (s *OAuth2SessionService) InitiateOAuth2Flow(
 		return nil, fmt.Errorf("failed to parse authorization URL: %w", err)
 	}
 	query := parsedURL.Query()
-	for name, value := range service.AuthorizationParams {
-		query.Set(name, value)
-	}
+	addProviderAuthorizationParams(query, service.AuthorizationParams)
 	parsedURL.RawQuery = query.Encode()
 	authURL = parsedURL.String()
 
@@ -563,7 +577,7 @@ func (s *OAuth2SessionService) HandleCallback(
 		"callback_url", callbackURL,
 		"token_endpoint", cfg.Endpoint.TokenURL,
 		"client_id", cfg.ClientID)
-	token, err := s.exchangeCodeWithRetry(ctx, cfg, req.Code, claims.PKCEVerifier)
+	token, err := s.exchangeCodeWithRetry(ctx, cfg, req.Code, claims.PKCEVerifier, service.AuthorizationParams)
 	if err != nil {
 		// Audit log: PKCE validation failure (token exchange failure typically indicates PKCE error)
 		s.logger.Error("oauth2_pkce_validation_failed",
@@ -658,6 +672,7 @@ func (s *OAuth2SessionService) RefreshAccessToken(
 	data.Set("refresh_token", refreshToken)
 	data.Set("client_id", entity.ClientID.String())
 	data.Set("client_secret", clientSecret)
+	addProviderAuthorizationParams(data, entity.AuthorizationParams)
 
 	// Create POST request to token endpoint
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, entity.Endpoints.TokenEndpoint, strings.NewReader(data.Encode()))

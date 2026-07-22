@@ -6,7 +6,7 @@
 
 ## Summary
 
-Add an optional, static `authorization_params` string map to each third-party OAuth2 service. Administrators manage and read it through the existing service API; the broker persists it in the existing service aggregate and storage backends, validates blank and broker-owned names, and appends only stored values to the upstream authorization URL. Browser-supplied provider parameters are ignored.
+Add an optional, static `authorization_params` string map to each third-party OAuth2 service. Administrators manage and read it through the existing service API; the broker persists it in the existing service aggregate and storage backends, validates blank and broker-owned names, and supplies only stored values to both upstream authorization and authorization-code exchange requests. Browser-supplied provider parameters are ignored.
 
 ## Technical Context
 
@@ -17,7 +17,7 @@ Add an optional, static `authorization_params` string map to each third-party OA
 **Target Platform**: Linux containerized broker with separate end-user and admin HTTP servers  
 **Project Type**: Backend web service; no frontend change  
 **Performance Goals**: Preserve normal authorization-start performance; the small in-memory configuration map adds no network round trip  
-**Constraints**: Values come only from stored admin configuration; no values in logs; broker-owned OAuth2 fields remain authoritative; update omission preserves existing map  
+**Constraints**: Values come only from stored admin configuration; no values in logs; broker-owned OAuth2 authorization and token fields remain authoritative; update omission preserves existing map; authorization-code exchange and refresh-token requests both receive these provider parameters.
 **Scale/Scope**: One optional map per existing third-party service; no new service type, port, UI, runtime setting, or dependency
 
 ## Constitution Check
@@ -106,7 +106,7 @@ tests/
 1. **Contract and model**: Add `authorization_params` to the existing admin service request and response shapes, OpenAPI schemas, entity, entity copy/redaction behavior, PostgreSQL record mapping, and migration.
 2. **Validation and update semantics**: Add one pure entity validator called by both create and update validation. Reject blank/whitespace values and case-insensitive reserved names. Use a nil map to represent omission; on update, retrieve/preserve existing configuration only when omitted, while an empty object clears it.
 3. **Storage**: Deep-copy the map for memory storage and serialize it as JSONB in PostgreSQL queries and adapter-local records. Preserve old-row behavior with an empty JSONB default.
-4. **Authorization URL**: Build the existing broker OAuth2 URL first, then add the validated persisted map server-side via the URL query. Do not read unknown end-user query parameters or log values.
+4. **Upstream requests**: Build the existing broker OAuth2 authorization URL first, then add the validated persisted map server-side via the URL query. Pass the same map as authorization-code exchange options to `oauth2.Config.Exchange`, and add it to the refresh-token form. Do not read unknown end-user query parameters or log values. The target Zalando Platform IdP requires `business_partner_id` on its refresh-token grant.
 5. **Documentation**: Document the field in the admin contract/OpenAPI and service-management guide, including the Zalando `business_partner_id` example and the no-browser-forwarding boundary.
 
 ## Testing Strategy
@@ -120,18 +120,18 @@ tests/
 **Test data and helpers**:
 
 - Reuse the service request and admin CRUD approach in `tests/e2e/oauth2_provider_flavor_test.go`.
-- Use a mock upstream authorization endpoint that captures the redirect query.
+- Use a mock upstream authorization and token endpoint that captures the redirect query and form-encoded code-exchange body.
 - Create fresh in-memory storage and both production servers in each `BeforeEach`.
-- No new frontend, page object, screenshot, or generic helper is needed unless the existing mock upstream cannot capture the redirect cleanly.
+- No new frontend, page object, screenshot, or generic helper is needed unless the existing mock upstream cannot capture the token request cleanly.
 
 | Spec Scenario | E2E Test | Expected externally visible behavior |
 |---|---|---|
 | User Story 1, Scenario 1 | `It` create, get, and list service configuration | Create/get/list return `business_partner_id: "12345"`. |
 | User Story 1, Scenario 2 | `It` update without map | Omitted field preserves the stored map. |
 | User Story 1, Scenario 3 | `It` omit or empty map | No additional configuration is returned or retained as appropriate. |
-| User Story 2, Scenario 1 | `It` start configured authorization | Upstream redirect includes the stored value and normal broker fields. |
-| User Story 2, Scenario 2 | `It` start unconfigured authorization | Upstream redirect contains no provider-specific value. |
-| User Story 2, Scenario 3 | `It` start with conflicting browser query | Upstream redirect retains stored value and excludes `untrusted`. |
+| User Story 2, Scenario 1 | `It` complete configured authorization | Upstream redirect and code-exchange form each include the stored value and normal broker fields. |
+| User Story 2, Scenario 2 | `It` complete unconfigured authorization | Neither upstream request contains a provider-specific value. |
+| User Story 2, Scenario 3 | `It` start with conflicting browser query | Upstream redirect and code exchange retain stored value and exclude `untrusted`. |
 | User Story 3, Scenario 1 | `It` reject blank key or value | Admin request receives validation failure and persists no change. |
 | User Story 3, Scenario 2 | `It` reject reserved name | Admin request receives validation failure and persists no change. |
 
@@ -143,7 +143,7 @@ Each `It` must carry its exact `// Scenario X.Y from specs/034-provider-auth-par
 |---|---|---|
 | Domain model | `internal/domain/model/thirdparty_oauth2_provider_test.go` | Table-driven blank and reserved-name validation plus map copy isolation. |
 | Admin handler | `internal/adapters/http/handlers/admin/services_handler_test.go` | Create/response map mapping, get/list mapping, update omission preservation, and explicit empty-map clearing. |
-| OAuth2 session service | `internal/domain/oauth2session/service_test.go` | Stored `business_partner_id` appears in the upstream URL; empty map adds nothing. |
+| OAuth2 session service | `internal/domain/oauth2session/service_test.go` | Stored `business_partner_id` appears in the upstream URL, authorization-code exchange form, and refresh-token form; empty maps add nothing. |
 | Memory storage | `internal/adapters/storage/memory/thirdparty_provider_test.go` | Create/get/update/list retain values and do not alias map mutations. |
 | PostgreSQL record | `internal/adapters/storage/postgres/thirdparty_provider_record_test.go` | JSONB record/entity conversions preserve map values. |
 | PostgreSQL integration | `tests/integration/storage/infra/thirdparty_service_test.go` | Real migration-backed create/get/update/list persistence using the shared PostgreSQL bootstrap. |
@@ -159,7 +159,7 @@ just test-integration-infra
 just check
 ```
 
-Run focused test packages during TDD. Before completion, run `just check` and the relevant E2E plus PostgreSQL integration suite; use `just verify` if time and infrastructure are available.
+Run focused test packages during TDD. Before completion, run `just check`, `just test-e2e-backend`, and the relevant PostgreSQL integration suite; use `just verify` if time and infrastructure are available.
 
 ## Complexity Tracking
 

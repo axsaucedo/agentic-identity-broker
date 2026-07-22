@@ -2,17 +2,22 @@ package e2e_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/matchers"
 )
 
@@ -21,8 +26,10 @@ var _ = Describe("Provider authorization parameters", func() {
 		adminServer   *bootstrap.TestServer
 		enduserServer *bootstrap.TestServer
 		storage       *storageadapter.Adapter
+		application   *app.App
 		factory       *bootstrap.StorageFactory
 		principal     string
+		upstream      *helpers.MockUpstreamOAuth2Server
 	)
 
 	serviceRequest := func(params map[string]string) map[string]interface{} {
@@ -33,8 +40,8 @@ var _ = Describe("Provider authorization parameters", func() {
 			"issuer_uri":    "https://provider.example.com",
 			"discovery":     map[string]interface{}{"enable_discovery": false},
 			"endpoints": map[string]interface{}{
-				"token_endpoint":     "https://provider.example.com/oauth/token",
-				"authorize_endpoint": "https://provider.example.com/oauth/authorize",
+				"token_endpoint":     upstream.URL() + "/oauth/token",
+				"authorize_endpoint": upstream.URL() + "/oauth/authorize",
 			},
 			"scopes": []map[string]interface{}{{"scope_value": "profile", "description": "Profile"}},
 		}
@@ -62,11 +69,12 @@ var _ = Describe("Provider authorization parameters", func() {
 		var err error
 		storage, err = factory.NewTestStorage()
 		Expect(err).NotTo(HaveOccurred())
-		app, err := bootstrap.NewServerFactory(fixtures.DefaultOAuth2Config(), logger).BuildApp(storage)
+		upstream = helpers.NewMockUpstreamOAuth2Server().WithSuccessfulTokenResponse()
+		application, err = bootstrap.NewServerFactory(fixtures.DefaultOAuth2Config(), logger).BuildApp(storage)
 		Expect(err).NotTo(HaveOccurred())
-		adminServer, err = bootstrap.NewAdminTestServer(app, logger)
+		adminServer, err = bootstrap.NewAdminTestServer(application, logger)
 		Expect(err).NotTo(HaveOccurred())
-		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
+		enduserServer, err = bootstrap.NewEndUserTestServer(application, logger)
 		Expect(err).NotTo(HaveOccurred())
 		principal = fixtures.DefaultPrincipal().String()
 	})
@@ -80,6 +88,9 @@ var _ = Describe("Provider authorization parameters", func() {
 		}
 		if factory != nil && storage != nil {
 			_ = factory.CloseStorage(storage)
+			if upstream != nil {
+				upstream.Close()
+			}
 		}
 	})
 
@@ -135,40 +146,68 @@ var _ = Describe("Provider authorization parameters", func() {
 		Expect(updated).NotTo(HaveKey("authorization_params"))
 	})
 
-	// Scenario 2.1 from specs/034-provider-auth-params/spec.md
-	It("adds configured parameters to the upstream authorization URL", func() {
-		created := create(serviceRequest(map[string]string{"business_partner_id": "12345"}))
-		response, err := enduserServer.AuthenticatedGET("/api/third-party/"+created["id"].(string)+"/oauth2/authorize?redirect_uri="+url.QueryEscape("http://localhost:8000/done"), principal)
+	completeAuthorization := func(created map[string]interface{}, extraQuery string) url.Values {
+		serviceID := created["id"].(string)
+		response, err := enduserServer.AuthenticatedGET("/api/third-party/"+serviceID+"/oauth2/authorize?redirect_uri="+url.QueryEscape("http://localhost:8000/done")+extraQuery, principal)
 		Expect(err).NotTo(HaveOccurred())
 		defer func() { _ = response.Body.Close() }()
 		Expect(response).To(matchers.HaveStatusCode(http.StatusFound))
-		upstream, err := url.Parse(response.Header.Get("Location"))
+		upstreamURL, err := url.Parse(response.Header.Get("Location"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(upstream.Query().Get("business_partner_id")).To(Equal("12345"))
-		Expect(upstream.Query().Get("state")).NotTo(BeEmpty())
+		upstreamQuery := upstreamURL.Query()
+		Expect(upstreamQuery.Get("state")).NotTo(BeEmpty())
+
+		upstreamResponse, err := (&http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}).Get(upstreamURL.String())
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = upstreamResponse.Body.Close() }()
+		callbackURL, err := url.Parse(upstreamResponse.Header.Get("Location"))
+		Expect(err).NotTo(HaveOccurred())
+		callbackURL.Host = ""
+		callbackURL.Scheme = ""
+		callbackResponse, err := enduserServer.AuthenticatedGET(callbackURL.String(), principal)
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = callbackResponse.Body.Close() }()
+		Expect(callbackResponse).To(matchers.HaveStatusCode(http.StatusFound))
+		return upstreamQuery
+	}
+
+	refresh := func(created map[string]interface{}) {
+		serviceID := id.MustParseServiceID(created["id"].(string))
+		session, err := storage.UserSessions().FindByPrincipalAndService(context.Background(), id.Principal(principal), serviceID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(session).NotTo(BeNil())
+		expired := time.Now().Add(-time.Minute)
+		session.AccessTokenExpiresAt = &expired
+		Expect(storage.UserSessions().Create(context.Background(), session)).To(Succeed())
+		_, _, err = application.OAuth2SessionService.GetValidAccessToken(context.Background(), id.Principal(principal), serviceID)
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	// Scenario 2.1 from specs/034-provider-auth-params/spec.md
+	It("adds configured parameters to the upstream authorization and code exchange", func() {
+		created := create(serviceRequest(map[string]string{"business_partner_id": "12345"}))
+		Expect(completeAuthorization(created, "")["business_partner_id"]).To(ConsistOf("12345"))
+		Expect(upstream.GetLastRequest().Form.Get("business_partner_id")).To(Equal("12345"))
+		refresh(created)
+		Expect(upstream.GetLastRequest().Form.Get("business_partner_id")).To(Equal("12345"))
 	})
 
 	// Scenario 2.2 from specs/034-provider-auth-params/spec.md
 	It("adds no provider parameters for an unconfigured service", func() {
 		created := create(serviceRequest(nil))
-		response, err := enduserServer.AuthenticatedGET("/api/third-party/"+created["id"].(string)+"/oauth2/authorize?redirect_uri="+url.QueryEscape("http://localhost:8000/done"), principal)
-		Expect(err).NotTo(HaveOccurred())
-		defer func() { _ = response.Body.Close() }()
-		upstream, err := url.Parse(response.Header.Get("Location"))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(upstream.Query().Get("business_partner_id")).To(BeEmpty())
+		Expect(completeAuthorization(created, "")).NotTo(HaveKey("business_partner_id"))
+		Expect(upstream.GetLastRequest().Form.Get("business_partner_id")).To(BeEmpty())
+		refresh(created)
+		Expect(upstream.GetLastRequest().Form.Get("business_partner_id")).To(BeEmpty())
 	})
 
 	// Scenario 2.3 from specs/034-provider-auth-params/spec.md
 	It("ignores conflicting browser parameters", func() {
 		created := create(serviceRequest(map[string]string{"business_partner_id": "12345"}))
-		path := "/api/third-party/" + created["id"].(string) + "/oauth2/authorize?redirect_uri=" + url.QueryEscape("http://localhost:8000/done") + "&business_partner_id=untrusted"
-		response, err := enduserServer.AuthenticatedGET(path, principal)
-		Expect(err).NotTo(HaveOccurred())
-		defer func() { _ = response.Body.Close() }()
-		upstream, err := url.Parse(response.Header.Get("Location"))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(upstream.Query().Get("business_partner_id")).To(Equal("12345"))
+		Expect(completeAuthorization(created, "&business_partner_id=untrusted")["business_partner_id"]).To(ConsistOf("12345"))
+		Expect(upstream.GetLastRequest().Form.Get("business_partner_id")).To(Equal("12345"))
+		refresh(created)
+		Expect(upstream.GetLastRequest().Form.Get("business_partner_id")).To(Equal("12345"))
 	})
 
 	// Scenario 3.1 from specs/034-provider-auth-params/spec.md

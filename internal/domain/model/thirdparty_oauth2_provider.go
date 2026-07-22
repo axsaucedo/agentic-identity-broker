@@ -35,7 +35,14 @@ func isAllowedHTTPSScheme(urlStr string, skipHTTPSValidation bool) bool {
 
 var reservedAuthorizationParamNames = map[string]struct{}{
 	"client_id": {}, "client_secret": {}, "redirect_uri": {}, "response_type": {}, "scope": {}, "state": {},
-	"code_challenge": {}, "code_challenge_method": {}, "nonce": {}, "request": {}, "request_uri": {},
+	"code": {}, "grant_type": {}, "code_verifier": {}, "code_challenge": {}, "code_challenge_method": {},
+	"nonce": {}, "request": {}, "request_uri": {}, "refresh_token": {},
+}
+
+// IsReservedAuthorizationParamName reports whether name is controlled by the broker.
+func IsReservedAuthorizationParamName(name string) bool {
+	_, reserved := reservedAuthorizationParamNames[strings.ToLower(name)]
+	return reserved
 }
 
 func validateAuthorizationParams(params map[string]string) error {
@@ -46,7 +53,7 @@ func validateAuthorizationParams(params map[string]string) error {
 		if strings.TrimSpace(value) == "" {
 			return errors.New("authorization parameter value cannot be blank")
 		}
-		if _, reserved := reservedAuthorizationParamNames[strings.ToLower(name)]; reserved {
+		if IsReservedAuthorizationParamName(name) {
 			return fmt.Errorf("authorization parameter name is reserved: %s", name)
 		}
 	}

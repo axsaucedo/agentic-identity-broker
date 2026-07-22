@@ -113,6 +113,125 @@ func TestInitiateOAuth2Flow_AddsStoredAuthorizationParams(t *testing.T) {
 	assert.Equal(t, "12345", parsedURL.Query().Get("business_partner_id"))
 }
 
+func TestHandleCallbackAndRefresh_PassAuthorizationParams(t *testing.T) {
+	ctx := context.Background()
+	service, _, providerService := setupService(t)
+	serviceID := id.NewServiceID()
+	provider := createTestService(serviceID)
+	provider.AuthorizationParams = map[string]string{"business_partner_id": "12345"}
+
+	var requests []url.Values
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		requests = append(requests, r.Form)
+		if r.Form.Get("grant_type") == "authorization_code" && len(requests) == 1 {
+			http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"token","token_type":"Bearer","expires_in":3600}`))
+	}))
+	defer mockServer.Close()
+
+	provider.Endpoints.TokenEndpoint = mockServer.URL
+	require.NoError(t, providerService.Create(ctx, provider))
+	flow, err := service.InitiateOAuth2Flow(ctx, id.Principal("user@example.com"), serviceID, "https://example.com/sessions")
+	require.NoError(t, err)
+	_, err = service.HandleCallback(ctx, id.Principal("user@example.com"), &oauth2session.HandleCallbackRequest{
+		ServiceID: serviceID,
+		Code:      "authorization-code",
+		State:     flow.StateToken,
+	})
+	require.NoError(t, err)
+
+	decryptedProvider, err := providerService.Get(ctx, serviceID)
+	require.NoError(t, err)
+	_, err = service.RefreshAccessToken(ctx, decryptedProvider, "refresh-token")
+	require.NoError(t, err)
+	require.Len(t, requests, 3)
+	for _, request := range requests {
+		assert.Equal(t, "12345", request.Get("business_partner_id"))
+	}
+}
+
+func TestLegacyAuthorizationParamsCannotOverrideBrokerFields(t *testing.T) {
+	ctx := context.Background()
+	service, repo, providerService := setupService(t)
+	serviceID := id.NewServiceID()
+	provider := createTestService(serviceID)
+
+	var requests []url.Values
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		requests = append(requests, r.Form)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"token","token_type":"Bearer","expires_in":3600}`))
+	}))
+	defer mockServer.Close()
+
+	provider.Endpoints.TokenEndpoint = mockServer.URL
+	require.NoError(t, providerService.Create(ctx, provider))
+
+	persisted, err := repo.Get(ctx, serviceID)
+	require.NoError(t, err)
+	persisted.AuthorizationParams = map[string]string{
+		"client_id":           "attacker-client",
+		"code":                "attacker-code",
+		"grant_type":          "attacker-grant",
+		"code_verifier":       "attacker-verifier",
+		"refresh_token":       "attacker-refresh-token",
+		"business_partner_id": "12345",
+	}
+	require.NoError(t, repo.Update(ctx, persisted))
+
+	flow, err := service.InitiateOAuth2Flow(ctx, id.Principal("user@example.com"), serviceID, "https://example.com/sessions")
+	require.NoError(t, err)
+	parsedURL, err := url.Parse(flow.AuthorizationURL)
+	require.NoError(t, err)
+	assert.Equal(t, "test-client-id", parsedURL.Query().Get("client_id"))
+	assert.Equal(t, "code", parsedURL.Query().Get("response_type"))
+	assert.Equal(t, "12345", parsedURL.Query().Get("business_partner_id"))
+
+	_, err = service.HandleCallback(ctx, id.Principal("user@example.com"), &oauth2session.HandleCallbackRequest{
+		ServiceID: serviceID,
+		Code:      "authorization-code",
+		State:     flow.StateToken,
+	})
+	require.NoError(t, err)
+
+	decryptedProvider, err := providerService.Get(ctx, serviceID)
+	require.NoError(t, err)
+	_, err = service.RefreshAccessToken(ctx, decryptedProvider, "refresh-token")
+	require.NoError(t, err)
+	require.Len(t, requests, 2)
+	assert.Equal(t, "authorization-code", requests[0].Get("code"))
+	assert.Equal(t, "authorization_code", requests[0].Get("grant_type"))
+	assert.NotEqual(t, "attacker-verifier", requests[0].Get("code_verifier"))
+	assert.Equal(t, "12345", requests[0].Get("business_partner_id"))
+	assert.Equal(t, "refresh_token", requests[1].Get("grant_type"))
+	assert.Equal(t, "refresh-token", requests[1].Get("refresh_token"))
+	assert.Equal(t, "12345", requests[1].Get("business_partner_id"))
+}
+
+func TestRefreshAccessToken_OmitsAuthorizationParamsForUnconfiguredService(t *testing.T) {
+	service, _, _ := setupService(t)
+	provider := createTestService(id.NewServiceID())
+
+	var request url.Values
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		request = r.Form
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"token","token_type":"Bearer","expires_in":3600}`))
+	}))
+	defer mockServer.Close()
+
+	provider.Endpoints.TokenEndpoint = mockServer.URL
+	_, err := service.RefreshAccessToken(context.Background(), provider, "refresh-token")
+	require.NoError(t, err)
+	assert.Empty(t, request.Get("business_partner_id"))
+}
+
 func TestInitiateOAuth2Flow_ServiceNotFound(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := setupService(t)

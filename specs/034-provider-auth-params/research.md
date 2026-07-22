@@ -38,14 +38,15 @@
 - A normalized child table: rejected; it adds a repository and lifecycle for static key/value configuration that is always read and written with its parent.
 - Serializing JSON into text: rejected; JSONB is already used for structured service data and provides native validation.
 
-## Decision: Add parameters only to the generated upstream URL
+## Decision: Add parameters to authorization and all broker-issued token requests
 
-**Rationale**: `OAuth2SessionService.InitiateOAuth2Flow` is the only path that builds the upstream authorization URL. It fetches the persisted provider through `ThirdpartyOAuth2ProviderService`, creates state and PKCE values, and redirects the handler to the result. Add the validated stored entries there, after broker-owned fields are created, without reading end-user query values beyond the existing broker `redirect_uri` input.
+**Rationale**: `OAuth2SessionService.InitiateOAuth2Flow` builds the upstream authorization URL, `HandleCallback` calls `oauth2.Config.Exchange` for the resulting authorization code, and `RefreshAccessToken` builds the refresh-token form. Add validated stored entries to the generated authorization URL, pass them as `oauth2.AuthCodeOption` values to `Exchange`, and add them to the refresh form. This covers Zalando Platform without trusting browser input: its `OAuth2TokenController` routes authorization-code and refresh-token grants only when `business_partner_id` is present.
 
 **Alternatives considered**:
 
-- Add them in the HTTP handler: rejected; authorization URL construction belongs in the domain session service and direct handler forwarding risks query propagation.
-- Modify the upstream URL from arbitrary request query parameters: rejected; this would make the browser a configuration authority.
+- Add them in the HTTP handler: rejected; upstream request construction belongs in the domain session service and direct handler forwarding risks query propagation.
+- Modify the upstream requests from arbitrary request query parameters: rejected; this would make the browser a configuration authority.
+- Omit them from refresh-token requests: rejected; the target IdP requires `business_partner_id` for its refresh route.
 - Add a provider-specific Zalando branch: rejected; a generic validated map already covers this and avoids provider-specific code.
 
 ## Decision: Reuse existing test layers and documentation surfaces
