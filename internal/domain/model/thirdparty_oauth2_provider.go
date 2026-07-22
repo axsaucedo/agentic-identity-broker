@@ -189,9 +189,6 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForCreate(skipHTTPSValidation b
 		}
 	}
 
-	if len(e.Scopes) == 0 {
-		return errors.New("at least one scope is required")
-	}
 	for i, scope := range e.Scopes {
 		if err := scope.Validate(); err != nil {
 			return fmt.Errorf("scope %d: %w", i, err)
@@ -278,9 +275,6 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForUpdate(skipHTTPSValidation b
 		}
 	}
 
-	if len(e.Scopes) == 0 {
-		return errors.New("at least one scope is required")
-	}
 	for i, scope := range e.Scopes {
 		if err := scope.Validate(); err != nil {
 			return fmt.Errorf("scope %d: %w", i, err)

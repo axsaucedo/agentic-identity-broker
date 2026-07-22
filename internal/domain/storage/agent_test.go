@@ -354,17 +354,17 @@ func TestAgent_ValidateServiceRequirements(t *testing.T) {
 			wantErr: "service_requirements[0] invalid: requirement_type validation failed",
 		},
 		{
-			name: "invalid requirement - empty required_scopes",
+			name: "valid requirement with empty required_scopes",
 			agent: &Agent{
 				ServiceRequirements: []ServiceRequirement{
 					{
 						ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 						RequirementType: RequirementTypeMandatory,
-						RequiredScopes:  []string{}, // Empty
+						RequiredScopes:  []string{},
 					},
 				},
 			},
-			wantErr: "service_requirements[0] invalid: required_scopes must contain at least one scope",
+			wantErr: "",
 		},
 		{
 			name: "duplicate service_id in requirements",
@@ -417,25 +417,20 @@ func TestAgent_ValidateServiceRequirements(t *testing.T) {
 }
 
 func TestAgent_ValidateServiceRequirements_IntegrationWithValidate(t *testing.T) {
-	t.Run("Validate() calls ValidateServiceRequirements()", func(t *testing.T) {
+	t.Run("Validate() allows empty required_scopes", func(t *testing.T) {
 		agent := &Agent{
 			ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 			ClientID:    ptr.To(id.ClientID("test-client")),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
-			ServiceRequirements: []ServiceRequirement{
-				{
-					ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
-					RequirementType: RequirementTypeMandatory,
-					RequiredScopes:  []string{}, // Invalid - empty scopes
-				},
-			},
+			ServiceRequirements: []ServiceRequirement{{
+				ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
+				RequirementType: RequirementTypeMandatory,
+				RequiredScopes:  []string{},
+			}},
 		}
 
-		err := agent.Validate()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "service_requirements validation failed")
-		assert.Contains(t, err.Error(), "required_scopes must contain at least one scope")
+		require.NoError(t, agent.Validate())
 	})
 
 	t.Run("ValidateForCreate() calls ValidateServiceRequirements()", func(t *testing.T) {

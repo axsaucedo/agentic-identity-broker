@@ -177,6 +177,33 @@ func TestServicesHandler_CreateService(t *testing.T) {
 		mockRepo.AssertExpectations(t)
 	})
 
+	t.Run("creates a scope-less service when scopes are omitted", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+		reqBody := ServiceRequest{
+			DisplayName:  "Scope-less IdP",
+			ClientID:     "scope-less-client",
+			ClientSecret: "scope-less-secret",
+			IssuerURI:    "https://idp.example.com",
+			Discovery:    DiscoveryConfigRequest{EnableDiscovery: false},
+			Endpoints:    &OAuth2EndpointsRequest{TokenEndpoint: "https://idp.example.com/token", AuthorizeEndpoint: "https://idp.example.com/authorize"},
+		}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(entity *model.ThirdpartyOAuth2ProviderEntity) bool {
+			return len(entity.Scopes) == 0
+		})).Return(nil)
+
+		w := httptest.NewRecorder()
+		handler.CreateService(w, httptest.NewRequest(http.MethodPost, "/api/services", bytes.NewReader(body)))
+
+		require.Equal(t, http.StatusCreated, w.Code)
+		var response ServiceResponse
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+		assert.Empty(t, response.Scopes)
+		mockRepo.AssertExpectations(t)
+	})
+
 	t.Run("maps authorization_params", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
@@ -515,6 +542,36 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		assert.Equal(t, "GitHub Updated", resp.DisplayName)
 		assert.Equal(t, "REDACTED", resp.ClientSecret)
 
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("updates a service with an empty scope list", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+		serviceID := id.NewServiceID()
+		reqBody := ServiceRequest{
+			DisplayName:  "Scope-less IdP",
+			ClientID:     "scope-less-client",
+			ClientSecret: "scope-less-secret",
+			IssuerURI:    "https://idp.example.com",
+			Discovery:    DiscoveryConfigRequest{EnableDiscovery: false},
+			Endpoints:    &OAuth2EndpointsRequest{TokenEndpoint: "https://idp.example.com/token", AuthorizeEndpoint: "https://idp.example.com/authorize"},
+			Scopes:       []OAuthScopeRequest{},
+		}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(entity *model.ThirdpartyOAuth2ProviderEntity) bool {
+			return entity.ID == serviceID && len(entity.Scopes) == 0
+		})).Return(nil)
+		req := httptest.NewRequest(http.MethodPut, "/api/services/"+serviceID.String(), bytes.NewReader(body))
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("service-id", serviceID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		w := httptest.NewRecorder()
+
+		handler.UpdateService(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
 		mockRepo.AssertExpectations(t)
 	})
 

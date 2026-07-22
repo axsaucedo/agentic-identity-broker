@@ -135,7 +135,6 @@ func TestServiceRequirement_Validate(t *testing.T) {
 				RequirementType: RequirementTypeMandatory,
 				RequiredScopes:  []string{},
 			},
-			wantErr: "required_scopes must contain at least one scope",
 		},
 		{
 			name: "nil required_scopes",
@@ -144,7 +143,6 @@ func TestServiceRequirement_Validate(t *testing.T) {
 				RequirementType: RequirementTypeMandatory,
 				RequiredScopes:  nil,
 			},
-			wantErr: "required_scopes must contain at least one scope",
 		},
 		{
 			name: "empty scope in required_scopes",

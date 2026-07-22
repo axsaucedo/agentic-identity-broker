@@ -333,16 +333,18 @@ func TestInitiateOAuth2Flow_AuthorizationURLContainsRequiredParams(t *testing.T)
 
 func TestInitiateOAuth2Flow_DifferentServicesScopes(t *testing.T) {
 	tests := []struct {
-		name       string
-		scopes     []model.OAuthScope
-		expectedQs string // Expected scope query string
+		name          string
+		scopes        []model.OAuthScope
+		expectedScope string
+		hasScope      bool
 	}{
 		{
 			name: "single scope",
 			scopes: []model.OAuthScope{
 				{ScopeValue: "repo", Description: "Repository access"},
 			},
-			expectedQs: "repo",
+			expectedScope: "repo",
+			hasScope:      true,
 		},
 		{
 			name: "multiple scopes",
@@ -351,7 +353,13 @@ func TestInitiateOAuth2Flow_DifferentServicesScopes(t *testing.T) {
 				{ScopeValue: "user", Description: "User profile"},
 				{ScopeValue: "notifications", Description: "Notifications"},
 			},
-			expectedQs: "repo user notifications",
+			expectedScope: "repo user notifications",
+			hasScope:      true,
+		},
+		{
+			name:     "no scopes omits scope parameter",
+			scopes:   nil,
+			hasScope: false,
 		},
 	}
 
@@ -366,19 +374,16 @@ func TestInitiateOAuth2Flow_DifferentServicesScopes(t *testing.T) {
 			err := providerService.Create(ctx, thirdPartyService)
 			require.NoError(t, err)
 
-			principal := id.Principal("user@example.com")
-			redirectURI := "https://example.com/sessions"
-
-			result, err := service.InitiateOAuth2Flow(ctx, principal, serviceID, redirectURI)
-
-			// Verify success
+			result, err := service.InitiateOAuth2Flow(ctx, id.Principal("user@example.com"), serviceID, "https://example.com/sessions")
 			require.NoError(t, err)
 			require.NotNil(t, result)
 
-			// Verify scopes in authorization URL
 			parsedURL, err := url.Parse(result.AuthorizationURL)
 			require.NoError(t, err)
-			assert.Equal(t, tt.expectedQs, parsedURL.Query().Get("scope"))
+			query := parsedURL.Query()
+			_, hasScope := query["scope"]
+			assert.Equal(t, tt.hasScope, hasScope)
+			assert.Equal(t, tt.expectedScope, query.Get("scope"))
 		})
 	}
 }

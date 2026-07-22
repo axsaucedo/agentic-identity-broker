@@ -1190,7 +1190,11 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 
 	// activeGrant sets up an agent with a mandatory service requirement and an active grant.
 	// DelegatedOAuth2Tokens is empty so step 4 (session expiry) does not interfere.
-	setupAgent := func(agentRepo *MockAgentRepository) {
+	setupAgent := func(agentRepo *MockAgentRepository, scopeLess bool) {
+		requiredScopes := []string{"repo", "user:email"}
+		if scopeLess {
+			requiredScopes = nil
+		}
 		_ = agentRepo.Create(context.Background(), &storage.Agent{
 			ID:           agentID,
 			ClientID:     ptr.To(id.ClientID("client-1")),
@@ -1200,7 +1204,7 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 				{
 					ServiceID:       serviceID,
 					RequirementType: storage.RequirementTypeMandatory,
-					RequiredScopes:  []string{"repo", "user:email"},
+					RequiredScopes:  requiredScopes,
 				},
 			},
 		})
@@ -1220,6 +1224,7 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 		setupSess     func(*MockSessionRepository)
 		wantAction    string
 		wantErrorCode string
+		scopeLess     bool
 	}{
 		{
 			name: "active session with required scopes proceeds",
@@ -1260,6 +1265,26 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 			wantAction: "redirect_to_consent",
 		},
 		{
+			name:      "scope-less mandatory requirement without session redirects to consent",
+			scopeLess: true,
+			setupSess: func(r *MockSessionRepository) {
+				r.findFunc = func(_ context.Context, _ id.Principal, _ id.ServiceID) (*storage.UserSession, error) {
+					return nil, nil
+				}
+			},
+			wantAction: "redirect_to_consent",
+		},
+		{
+			name:      "scope-less mandatory requirement with active session proceeds",
+			scopeLess: true,
+			setupSess: func(r *MockSessionRepository) {
+				r.findFunc = func(_ context.Context, _ id.Principal, _ id.ServiceID) (*storage.UserSession, error) {
+					return &storage.UserSession{ID: id.NewSessionID(), Principal: id.Principal("user@example.com"), ServiceID: serviceID}, nil
+				}
+			},
+			wantAction: "proceed",
+		},
+		{
 			name: "session with insufficient scopes redirects to consent",
 			setupSess: func(r *MockSessionRepository) {
 				r.findFunc = func(_ context.Context, _ id.Principal, _ id.ServiceID) (*storage.UserSession, error) {
@@ -1297,7 +1322,7 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 			grantRepo := NewMockGrantRepository()
 			sessionRepo := NewMockSessionRepository()
 
-			setupAgent(agentRepo)
+			setupAgent(agentRepo, tt.scopeLess)
 			setupGrant(grantRepo)
 			tt.setupSess(sessionRepo)
 

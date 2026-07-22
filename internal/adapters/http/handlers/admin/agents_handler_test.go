@@ -1259,6 +1259,39 @@ func TestAgentsHandler_FR019_CoverageInvariant(t *testing.T) {
 		mockPS.AssertExpectations(t)
 	})
 
+	t.Run("creates an agent with omitted required_scopes for a scope-less service", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		mockPS := new(MockPermissionSetValidator)
+		handler := newAgentsHandlerForFR019Test(mockRepo, mockServiceRepo, mockPS, logger)
+		scopeLessService := &model.ThirdpartyOAuth2ProviderEntity{ID: serviceAID, DisplayName: "Scope-less Service"}
+		mockServiceRepo.On("Get", mock.Anything, serviceAID).Return(scopeLessService, nil)
+		mockPS.On("ValidateIDs", mock.Anything, mock.Anything).Return(nil)
+		mockPS.On("GetByIDs", mock.Anything, mock.Anything).Return([]*storage.PermissionSet{{
+			ID: psID1,
+			ServiceScopes: []storage.ServiceScope{{
+				ServiceID:       serviceAID,
+				RequirementType: storage.RequirementTypeMandatory,
+			}},
+		}}, nil)
+		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(agent *storage.Agent) bool {
+			return len(agent.ServiceRequirements) == 1 && len(agent.ServiceRequirements[0].RequiredScopes) == 0
+		})).Return(nil)
+		rawBody := fmt.Sprintf(`{
+			"client_id": "scope-less-agent",
+			"display_name": "Scope-less Agent",
+			"description": "Uses a scope-less service",
+			"service_requirements": [{"service_id": %q, "requirement_type": "mandatory"}],
+			"permission_sets": [{"permission_set_id": %q, "requirement_type": "mandatory"}]
+		}`, serviceAID.String(), psID1.String())
+		w := httptest.NewRecorder()
+		handler.CreateAgent(w, httptest.NewRequest(http.MethodPost, "/api/agents", strings.NewReader(rawBody)))
+
+		require.Equal(t, http.StatusCreated, w.Code)
+		mockRepo.AssertExpectations(t)
+		mockPS.AssertExpectations(t)
+	})
+
 	t.Run("update agent with uncovered SR service returns 400", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
 		mockServiceRepo := new(MockProviderRepository)

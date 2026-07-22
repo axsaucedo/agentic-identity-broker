@@ -500,7 +500,7 @@ paths:
         - `client_id`: Required, unique across all services
         - `client_secret`: Required (encrypted at rest, never returned)
         - `issuer_uri`: Required, must be HTTPS URL
-        - `scopes`: Required, at least one scope must be provided
+        - `scopes`: Optional. Omit it or provide an empty array when the provider does not use OAuth2 scopes.
 
         **Discovery Modes**:
 
@@ -798,7 +798,8 @@ paths:
         - `name` must be unique (409 Conflict if duplicate)
         - `service_scopes` must contain at least one entry (400)
         - Each `service_id` in `service_scopes` must reference an existing service (400)
-        - Each `scopes` list must contain at least one scope string (400)
+        - Each `scopes` list may be empty for a scope-less service; supplied values
+          must be non-empty (400)
       requestBody:
         required: true
         content:
@@ -819,7 +820,7 @@ paths:
                 $ref: '#/components/schemas/PermissionSetResponse'
         '400':
           description: |
-            Invalid request format, missing service_scopes, empty scopes, or
+            Invalid request format, missing service_scopes, blank supplied scopes, or
             referenced service_id does not exist
           content:
             application/json:
@@ -925,7 +926,7 @@ paths:
                 $ref: '#/components/schemas/PermissionSetResponse'
         '400':
           description: |
-            Invalid request format or ID, missing service_scopes, empty scopes, or
+            Invalid request format or ID, missing service_scopes, blank supplied scopes, or
             referenced service_id does not exist
           content:
             application/json:
@@ -1572,7 +1573,7 @@ components:
           nullable: true
           description: |
             List of third-party OAuth2 services that the agent requires access to.
-            Referential integrity is validated: service_id must exist and required_scopes must match service definition.
+            Referential integrity is validated: service_id must exist and supplied required_scopes must match the service definition. Omit or provide an empty list for scope-less services.
           items:
             $ref: '#/components/schemas/ServiceRequirementRequest'
           example:
@@ -1694,7 +1695,7 @@ components:
           nullable: true
           description: |
             List of third-party OAuth2 services that the agent requires access to.
-            Referential integrity is validated: service_id must exist and required_scopes must match service definition.
+            Referential integrity is validated: service_id must exist and supplied required_scopes must match the service definition. Omit or provide an empty list for scope-less services.
           items:
             $ref: '#/components/schemas/ServiceRequirementRequest'
           example:
@@ -1760,7 +1761,6 @@ components:
       required:
         - service_id
         - requirement_type
-        - required_scopes
       properties:
         service_id:
           type: string
@@ -1785,11 +1785,10 @@ components:
           type: array
           items:
             type: string
-          minItems: 1
           description: |
-            List of OAuth2 scopes the agent requires from this service.
-            - Scopes are case-sensitive and must match service scope definitions
-            - User must have superset of required scopes (case-sensitive comparison)
+            Optional OAuth2 scopes the agent requires from this service.
+            Omit or provide an empty array for a scope-less service.
+            Supplied scopes are case-sensitive and must match service definitions.
           example:
             - repo
             - user:email
@@ -1799,7 +1798,6 @@ components:
       required:
         - service_id
         - requirement_type
-        - required_scopes
       properties:
         service_id:
           type: string
@@ -1819,10 +1817,10 @@ components:
           type: array
           items:
             type: string
-          minItems: 1
           description: |
-            List of OAuth2 scopes the agent requires from this service.
-            Referential integrity enforced: all scopes must exist in the referenced service's scope definitions.
+            Optional OAuth2 scopes the agent requires from this service.
+            Omit or provide an empty array for a scope-less service. Supplied scopes must
+            exist in the referenced service's scope definitions.
           example:
             - repo
             - user:email
@@ -1838,7 +1836,6 @@ components:
         - issuer_uri
         - discovery
         - endpoints
-        - scopes
         - created_at
         - updated_at
       properties:
@@ -1913,8 +1910,7 @@ components:
           $ref: '#/components/schemas/OAuth2Endpoints'
         scopes:
           type: array
-          description: Available OAuth2 scopes for this service (at least one required)
-          minItems: 1
+          description: Optional OAuth2 scopes for this service. Omit or provide an empty array when the provider does not use scopes.
           items:
             $ref: '#/components/schemas/OAuth2Scope'
         protected_resources:
@@ -1956,7 +1952,6 @@ components:
         - display_name
         - client_secret
         - discovery
-        - scopes
       properties:
         display_name:
           type: string
@@ -2024,8 +2019,7 @@ components:
           $ref: '#/components/schemas/OAuth2EndpointsRequest'
         scopes:
           type: array
-          description: Available OAuth2 scopes for this service (at least one required)
-          minItems: 1
+          description: Optional OAuth2 scopes for this service. Omit or provide an empty array when the provider does not use scopes.
           items:
             $ref: '#/components/schemas/OAuth2ScopeRequest'
           example:
@@ -2059,7 +2053,6 @@ components:
         - display_name
         - client_secret
         - discovery
-        - scopes
       properties:
         display_name:
           type: string
@@ -2122,8 +2115,7 @@ components:
           $ref: '#/components/schemas/OAuth2EndpointsRequest'
         scopes:
           type: array
-          description: Available OAuth2 scopes for this service (at least one required)
-          minItems: 1
+          description: Optional OAuth2 scopes for this service. Omit or provide an empty array when the provider does not use scopes.
           items:
             $ref: '#/components/schemas/OAuth2ScopeRequest'
         protected_resources:
@@ -2391,7 +2383,6 @@ components:
       type: object
       required:
         - service_id
-        - scopes
       properties:
         service_id:
           type: string
@@ -2402,8 +2393,9 @@ components:
           type: array
           items:
             type: string
-          minItems: 1
-          description: One or more OAuth2 scope strings for this service
+          description: |
+            Optional OAuth2 scope strings for this service. Omit or provide an empty
+            array for a scope-less service; supplied values must be non-empty.
           example:
             - repo:read
             - user:email
@@ -2534,11 +2526,6 @@ components:
               value:
                 error: validation failed
                 message: token_endpoint is required when discovery is disabled
-            no_scopes:
-              summary: At least one scope required
-              value:
-                error: validation failed
-                message: at least one scope is required
 
     NotFoundError:
       description: Resource not found

@@ -2,6 +2,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,25 +11,33 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/permissionset"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
 )
 
+// ProviderScopeValidator resolves provider scope configuration.
+type ProviderScopeValidator interface {
+	Get(context.Context, id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error)
+}
+
 // PermissionSetsHandler handles HTTP requests for permission set CRUD operations.
 type PermissionSetsHandler struct {
-	svc    *permissionset.Service
-	logger *slog.Logger
+	svc                    *permissionset.Service
+	providerScopeValidator ProviderScopeValidator
+	logger                 *slog.Logger
 }
 
 // NewPermissionSetsHandler creates a new permission sets handler.
-func NewPermissionSetsHandler(svc *permissionset.Service, logger *slog.Logger) *PermissionSetsHandler {
+func NewPermissionSetsHandler(svc *permissionset.Service, providerScopeValidator ProviderScopeValidator, logger *slog.Logger) *PermissionSetsHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &PermissionSetsHandler{
-		svc:    svc,
-		logger: logger,
+		svc:                    svc,
+		providerScopeValidator: providerScopeValidator,
+		logger:                 logger,
 	}
 }
 
@@ -80,7 +89,7 @@ func (h *PermissionSetsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate request
-	if err := h.validateCreateRequest(&req); err != nil {
+	if err := h.validateCreateRequest(ctx, &req); err != nil {
 		h.logger.Warn("validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
@@ -204,7 +213,7 @@ func (h *PermissionSetsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate request
-	if err := h.validateCreateRequest(&req); err != nil {
+	if err := h.validateCreateRequest(ctx, &req); err != nil {
 		h.logger.Warn("validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
@@ -283,7 +292,7 @@ func (h *PermissionSetsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // validateCreateRequest validates the create permission set request.
-func (h *PermissionSetsHandler) validateCreateRequest(req *CreatePermissionSetRequest) error {
+func (h *PermissionSetsHandler) validateCreateRequest(ctx context.Context, req *CreatePermissionSetRequest) error {
 	if req.Name == "" {
 		return errors.New("name is required")
 	}
@@ -297,18 +306,32 @@ func (h *PermissionSetsHandler) validateCreateRequest(req *CreatePermissionSetRe
 		return errors.New("service_scopes must contain at least one entry")
 	}
 
-	// Validate each service scope
 	for i, ss := range req.ServiceScopes {
 		if ss.ServiceID == "" {
 			return fmt.Errorf("service_scope[%d]: service_id is required", i)
 		}
-		if len(ss.Scopes) == 0 {
-			return fmt.Errorf("service_scope[%d]: at least one scope is required", i)
+		for j, scope := range ss.Scopes {
+			if scope == "" {
+				return fmt.Errorf("service_scope[%d].scopes[%d]: scope cannot be empty", i, j)
+			}
 		}
 		if ss.RequirementType != "" {
 			rt := storage.RequirementType(ss.RequirementType)
 			if !rt.Valid() {
 				return fmt.Errorf("service_scope[%d]: invalid requirement_type %q", i, ss.RequirementType)
+			}
+		}
+		if h.providerScopeValidator != nil {
+			serviceID, err := id.ParseServiceID(ss.ServiceID)
+			if err != nil {
+				return fmt.Errorf("service_scope[%d]: invalid service_id: %w", i, err)
+			}
+			provider, err := h.providerScopeValidator.Get(ctx, serviceID)
+			if err != nil {
+				return fmt.Errorf("service_scope[%d]: failed to load service: %w", i, err)
+			}
+			if len(ss.Scopes) == 0 && len(provider.Scopes) > 0 {
+				return fmt.Errorf("service_scope[%d]: scopes are required for a scoped service", i)
 			}
 		}
 	}

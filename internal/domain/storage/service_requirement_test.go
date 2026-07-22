@@ -59,8 +59,16 @@ func TestServiceRequirement_Validate(t *testing.T) {
 				RequirementType: RequirementTypeMandatory,
 				RequiredScopes:  []string{},
 			},
-			wantErr: true,
-			errMsg:  "required_scopes must contain at least one scope",
+			wantErr: false,
+		},
+		{
+			name: "nil required_scopes",
+			sr: &ServiceRequirement{
+				ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
+				RequirementType: RequirementTypeMandatory,
+				RequiredScopes:  nil,
+			},
+			wantErr: false,
 		},
 		{
 			name: "empty scope in required_scopes",

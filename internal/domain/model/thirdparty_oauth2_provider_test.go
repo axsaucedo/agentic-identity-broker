@@ -259,6 +259,49 @@ func TestThirdpartyOAuth2ProviderEntity_ValidateForCreate_FlavorDispatch(t *test
 	}
 }
 
+func TestThirdpartyOAuth2ProviderEntity_ValidateForCreate_AllowsEmptyScopes(t *testing.T) {
+	t.Parallel()
+
+	for _, scopes := range [][]OAuthScope{nil, {}} {
+		entity := &ThirdpartyOAuth2ProviderEntity{
+			DisplayName: "Scope-less provider",
+			ClientID:    "scope-less-client",
+			Secret:      NewPlaintextSecret("scope-less-secret"),
+			IssuerURI:   "https://idp.example.com",
+			Discovery:   DiscoveryConfig{EnableDiscovery: false},
+			Endpoints: OAuth2Endpoints{
+				TokenEndpoint:     "https://idp.example.com/token",
+				AuthorizeEndpoint: "https://idp.example.com/authorize",
+			},
+			Scopes: scopes,
+		}
+
+		require.NoError(t, entity.ValidateForCreate(false))
+	}
+}
+
+func TestThirdpartyOAuth2ProviderEntity_ValidateForUpdate_AllowsEmptyScopes(t *testing.T) {
+	t.Parallel()
+
+	for _, scopes := range [][]OAuthScope{nil, {}} {
+		entity := &ThirdpartyOAuth2ProviderEntity{
+			ID:          id.NewServiceID(),
+			DisplayName: "Scope-less provider",
+			ClientID:    "scope-less-client",
+			Secret:      NewPlaintextSecret("scope-less-secret"),
+			IssuerURI:   "https://idp.example.com",
+			Discovery:   DiscoveryConfig{EnableDiscovery: false},
+			Endpoints: OAuth2Endpoints{
+				TokenEndpoint:     "https://idp.example.com/token",
+				AuthorizeEndpoint: "https://idp.example.com/authorize",
+			},
+			Scopes: scopes,
+		}
+
+		require.NoError(t, entity.ValidateForUpdate(false))
+	}
+}
+
 func TestThirdpartyOAuth2ProviderEntity_NormalizeProtectedResources(t *testing.T) {
 	t.Parallel()
 

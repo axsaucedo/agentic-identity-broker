@@ -15,7 +15,7 @@ import (
 // Domain invariants:
 // - ServiceID must be a valid UUID
 // - RequirementType must be "mandatory" or "optional"
-// - RequiredScopes must contain at least one scope
+// - RequiredScopes may be empty when the service does not use scopes
 // - Each scope name must be non-empty
 type ServiceRequirement struct {
 	ServiceID       id.ServiceID    `json:"service_id" db:"service_id"`
@@ -27,7 +27,6 @@ type ServiceRequirement struct {
 // Returns error if:
 // - ServiceID is empty
 // - RequirementType is invalid
-// - RequiredScopes is empty
 // - Any scope is empty
 func (sr *ServiceRequirement) Validate() error {
 	if sr.ServiceID.IsZero() {
@@ -36,10 +35,6 @@ func (sr *ServiceRequirement) Validate() error {
 
 	if err := sr.RequirementType.Validate(); err != nil {
 		return fmt.Errorf("requirement_type validation failed: %w", err)
-	}
-
-	if len(sr.RequiredScopes) == 0 {
-		return fmt.Errorf("required_scopes must contain at least one scope")
 	}
 
 	for i, scope := range sr.RequiredScopes {

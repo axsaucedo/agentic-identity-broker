@@ -420,6 +420,9 @@ func (s *OAuth2SessionService) InitiateOAuth2Flow(
 		return nil, fmt.Errorf("failed to parse authorization URL: %w", err)
 	}
 	query := parsedURL.Query()
+	if len(service.Scopes) == 0 {
+		query.Del("scope")
+	}
 	addProviderAuthorizationParams(query, service.AuthorizationParams)
 	parsedURL.RawQuery = query.Encode()
 	authURL = parsedURL.String()

@@ -884,6 +884,71 @@ func TestResolveEffectiveScopes_ScopeUnion(t *testing.T) {
 	assert.Contains(t, scopes[svcA], "write")
 }
 
+func TestResolveEffectiveScopes_ScopeLessServiceIsCovered(t *testing.T) {
+	t.Parallel()
+
+	serviceID := id.NewServiceID()
+	permissionSetID := id.NewPermissionSetID()
+	psService := permissionset.NewPermissionSetService(&MockPermissionSetRepository{psMap: map[id.PermissionSetID]*storagedomain.PermissionSet{
+		permissionSetID: {
+			ID: permissionSetID,
+			ServiceScopes: []storagedomain.ServiceScope{{
+				ServiceID:       serviceID,
+				RequirementType: storagedomain.RequirementTypeMandatory,
+			}},
+		},
+	}}, &MockGrantRepository{}, slog.Default())
+	defer psService.Close()
+
+	svc := &TokenExchangeService{permissionSetService: psService}
+	effectiveScopes, err := svc.resolveEffectiveScopes(context.Background(), &storagedomain.UserGrant{
+		GrantedPermissionSets: []storagedomain.GrantedPermissionSetEntry{{
+			PermissionSetID:    permissionSetID,
+			IncludedServiceIDs: []id.ServiceID{serviceID},
+		}},
+	}, &storagedomain.Agent{ServiceRequirements: []storagedomain.ServiceRequirement{{
+		ServiceID:       serviceID,
+		RequirementType: storagedomain.RequirementTypeMandatory,
+	}}})
+
+	require.NoError(t, err)
+	assert.Contains(t, effectiveScopes, serviceID)
+	assert.Empty(t, effectiveScopes[serviceID])
+}
+
+func TestResolveEffectiveScopes_OmitsScopesOutsideSRCeiling(t *testing.T) {
+	t.Parallel()
+
+	serviceID := id.NewServiceID()
+	permissionSetID := id.NewPermissionSetID()
+	psService := permissionset.NewPermissionSetService(&MockPermissionSetRepository{psMap: map[id.PermissionSetID]*storagedomain.PermissionSet{
+		permissionSetID: {
+			ID: permissionSetID,
+			ServiceScopes: []storagedomain.ServiceScope{{
+				ServiceID:       serviceID,
+				Scopes:          []string{"read"},
+				RequirementType: storagedomain.RequirementTypeMandatory,
+			}},
+		},
+	}}, &MockGrantRepository{}, slog.Default())
+	defer psService.Close()
+
+	svc := &TokenExchangeService{permissionSetService: psService}
+	effectiveScopes, err := svc.resolveEffectiveScopes(context.Background(), &storagedomain.UserGrant{
+		GrantedPermissionSets: []storagedomain.GrantedPermissionSetEntry{{
+			PermissionSetID:    permissionSetID,
+			IncludedServiceIDs: []id.ServiceID{serviceID},
+		}},
+	}, &storagedomain.Agent{ServiceRequirements: []storagedomain.ServiceRequirement{{
+		ServiceID:       serviceID,
+		RequiredScopes:  []string{"write"},
+		RequirementType: storagedomain.RequirementTypeMandatory,
+	}}})
+
+	require.NoError(t, err)
+	assert.NotContains(t, effectiveScopes, serviceID)
+}
+
 // TestResolveEffectiveScopes_SRCeiling tests T046: SR scope ceiling intersection (FR-013)
 func TestResolveEffectiveScopes_SRCeiling(t *testing.T) {
 	t.Parallel()

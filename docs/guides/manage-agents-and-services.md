@@ -44,8 +44,9 @@ The core fields:
 - `discovery.enable_discovery` — when `true`, the broker fetches the provider's endpoints from
   `{issuer_uri}/.well-known/oauth-authorization-server`. When `false`, you supply
   `endpoints.token_endpoint` and `endpoints.authorize_endpoint` explicitly.
-- `scopes` — the scopes the provider offers, each as `{scope_value, description}`. At least
-  one is required.
+- `scopes` — optional scopes the provider offers, each as `{scope_value, description}`.
+  Omit the field or use an empty list for a provider that does not use OAuth2 scopes; the
+  broker then omits `scope` from its upstream authorization request.
 - `protected_resources` — optional resource URIs used to route
   [token exchange](/docs/concepts/delegation-and-consent#using-a-delegation) to this service.
 - `authorization_params` — optional static provider parameters added by the broker to upstream authorization requests. For Zalando Platform, use `{ "business_partner_id": "12345" }`. These are administrator configuration, never browser-supplied values; omit the field on update to preserve it, or use `{}` to clear it.
@@ -92,6 +93,25 @@ curl -X POST http://localhost:14000/api/services \
   }'
 ```
 
+For an IdP that does not accept scopes, omit `scopes` entirely:
+
+```json
+{
+  "display_name": "Corporate session IdP",
+  "client_id": "corporate-session-client",
+  "client_secret": "secret-value-never-exposed",
+  "issuer_uri": "https://idp.corp.example.com",
+  "discovery": { "enable_discovery": false },
+  "endpoints": {
+    "token_endpoint": "https://idp.corp.example.com/oauth/token",
+    "authorize_endpoint": "https://idp.corp.example.com/oauth/authorize"
+  }
+}
+```
+
+Include that service in a permission set with `"scopes": []`. This still requires a user
+session when included as mandatory, but it does not require a scope match.
+
 The response returns the created service with a system-generated `id` (a UUID) and the
 `client_secret` shown as `"REDACTED"`. Record the `id` — permission sets reference it.
 
@@ -112,8 +132,9 @@ The fields:
 - `name` — a unique, human-readable name (up to 255 characters).
 - `description` — what capabilities the set grants, in the language you want users to see.
 - `service_scopes` — one or more entries, each `{service_id, scopes[], requirement_type}`,
-  where `service_id` is a service UUID from the previous section, `scopes` is a non-empty list
-  of that service's scope strings, and `requirement_type` is `mandatory` or `optional`.
+  where `service_id` is a service UUID from the previous section. `scopes` may be omitted or
+  empty for a scope-less service; otherwise its non-empty values must match the service's
+  configured scopes. `requirement_type` is `mandatory` or `optional`.
 
 ```bash
 curl -X POST http://localhost:14000/api/permission-sets \

@@ -504,10 +504,11 @@ func (s *TokenExchangeService) resolveEffectiveScopes(
 				scopes = append(scopes, scope)
 			}
 		}
-		if len(scopes) > 0 {
-			sort.Strings(scopes)
-			effectiveScopes[svcID] = scopes
+		sort.Strings(scopes)
+		if len(scopes) == 0 && len(scopeSet) > 0 {
+			continue
 		}
+		effectiveScopes[svcID] = scopes
 	}
 
 	return effectiveScopes, nil

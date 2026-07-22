@@ -45,12 +45,11 @@ func (ps *PermissionSet) validateCommon() error {
 		if ss.ServiceID.IsZero() {
 			return fmt.Errorf("service_scope[%d]: service_id is required", i)
 		}
-		if len(ss.Scopes) == 0 {
-			return fmt.Errorf("service_scope[%d]: at least one scope is required", i)
-		}
-
 		scopeSet := make(map[string]bool)
 		for _, scope := range ss.Scopes {
+			if scope == "" {
+				return fmt.Errorf("service_scope[%d]: scope cannot be empty", i)
+			}
 			if scopeSet[scope] {
 				return fmt.Errorf("service_scope[%d]: duplicate scope '%s'", i, scope)
 			}

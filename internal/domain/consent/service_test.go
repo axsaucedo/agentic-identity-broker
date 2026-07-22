@@ -853,6 +853,65 @@ func TestService_GrantConsent(t *testing.T) {
 		assert.Len(t, grant.GrantedPermissionSets, 1)
 	})
 
+	t.Run("scope-less mandatory service requires an active session", func(t *testing.T) {
+		psID := id.NewPermissionSetID()
+		sessionID := id.NewSessionID()
+		scopeLessAgent := &storage.Agent{
+			ID:          agentID,
+			ClientID:    ptr.To(id.ClientID("scope-less-agent")),
+			DisplayName: "Scope-less Agent",
+			Description: "Requires a scope-less service",
+			ServiceRequirements: []storage.ServiceRequirement{{
+				ServiceID:       serviceID1,
+				RequirementType: storage.RequirementTypeMandatory,
+			}},
+			PermissionSets: []storage.AgentPermissionSetEntry{{
+				PermissionSetID: psID,
+				RequirementType: storage.RequirementTypeMandatory,
+			}},
+		}
+		permissionSet := &storage.PermissionSet{
+			ID:          psID,
+			Name:        "Scope-less session",
+			Description: "Requires only a provider session",
+			ServiceScopes: []storage.ServiceScope{{
+				ServiceID:       serviceID1,
+				RequirementType: storage.RequirementTypeMandatory,
+			}},
+		}
+		newService := func(sessions map[id.SessionID]*storage.UserSession) *Service {
+			return NewService(
+				&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: scopeLessAgent}},
+				newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: {ID: serviceID1, DisplayName: "Scope-less IdP"}}}),
+				&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+				&mockUserSessionRepo{sessions: sessions},
+				&mockPermissionSetService{permissionSets: map[id.PermissionSetID]*storage.PermissionSet{psID: permissionSet}},
+				slog.Default(),
+			)
+		}
+		req := &GrantRequest{
+			Principal: id.Principal("user@example.com"),
+			AgentID:   agentID,
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{
+				PermissionSetID:    psID,
+				IncludedServiceIDs: []id.ServiceID{serviceID1},
+			}},
+		}
+
+		grant, err := newService(map[id.SessionID]*storage.UserSession{}).GrantConsent(ctx, req)
+		require.ErrorIs(t, err, ErrUnconnectedServices)
+		assert.Nil(t, grant)
+
+		grant, err = newService(map[id.SessionID]*storage.UserSession{sessionID: {
+			ID:                    sessionID,
+			Principal:             req.Principal,
+			ServiceID:             serviceID1,
+			RefreshTokenExpiresAt: ptr.To(time.Now().Add(time.Hour)),
+		}}).GrantConsent(ctx, req)
+		require.NoError(t, err)
+		require.NotNil(t, grant)
+	})
+
 	t.Run("invalid scopes", func(t *testing.T) {
 		t.Parallel()
 

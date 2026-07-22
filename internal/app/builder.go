@@ -651,7 +651,7 @@ func (b *Builder) Build() (*App, error) {
 	app.AdminHandlers = &AdminHandlers{
 		Agents:         admin.NewAgentsHandler(agentService, app.ProviderService, app.PermissionSetService, b.logger),
 		Services:       admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
-		PermissionSets: admin.NewPermissionSetsHandler(app.PermissionSetService, b.logger),
+		PermissionSets: admin.NewPermissionSetsHandler(app.PermissionSetService, app.ProviderService, b.logger),
 	}
 
 	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger, app.SessionTokenService)

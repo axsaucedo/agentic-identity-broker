@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/permissionset"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
@@ -116,17 +117,32 @@ func (n *nopGrantRepo) CountGrantsReferencingPermissionSet(ctx context.Context, 
 	return 0, nil
 }
 
+type providerScopeValidatorFunc func(context.Context, id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error)
+
+func (f providerScopeValidatorFunc) Get(ctx context.Context, serviceID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	return f(ctx, serviceID)
+}
+
 // newPermissionSetsHandlerForTest creates a PermissionSetsHandler backed by a real service
 // wrapping a mock repository. This ensures the architecture invariant holds in tests:
 // the handler always goes through the domain service, never raw storage.
 func newPermissionSetsHandlerForTest(mockRepo *MockPermissionSetRepository, logger *slog.Logger) *PermissionSetsHandler {
 	svc := permissionset.NewPermissionSetService(mockRepo, &nopGrantRepo{}, logger)
-	return NewPermissionSetsHandler(svc, logger)
+	return NewPermissionSetsHandler(svc, providerScopeValidatorFunc(func(context.Context, id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+		return &model.ThirdpartyOAuth2ProviderEntity{Scopes: []model.OAuthScope{{ScopeValue: "read"}}}, nil
+	}), logger)
 }
 
 func newPermissionSetsHandlerWithGrantRepo(mockRepo *MockPermissionSetRepository, grantRepo *nopGrantRepo, logger *slog.Logger) *PermissionSetsHandler {
 	svc := permissionset.NewPermissionSetService(mockRepo, grantRepo, logger)
-	return NewPermissionSetsHandler(svc, logger)
+	return NewPermissionSetsHandler(svc, providerScopeValidatorFunc(func(context.Context, id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+		return &model.ThirdpartyOAuth2ProviderEntity{Scopes: []model.OAuthScope{{ScopeValue: "read"}}}, nil
+	}), logger)
+}
+
+func newPermissionSetsHandlerWithProviderForTest(mockRepo *MockPermissionSetRepository, providerScopeValidator ProviderScopeValidator, logger *slog.Logger) *PermissionSetsHandler {
+	svc := permissionset.NewPermissionSetService(mockRepo, &nopGrantRepo{}, logger)
+	return NewPermissionSetsHandler(svc, providerScopeValidator, logger)
 }
 
 func TestPermissionSetsHandler_Create(t *testing.T) {
@@ -173,6 +189,57 @@ func TestPermissionSetsHandler_Create(t *testing.T) {
 		assert.Len(t, resp.ServiceScopes, 1)
 
 		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("creates a permission set with a scope-less service", func(t *testing.T) {
+		mockRepo := new(MockPermissionSetRepository)
+		handler := newPermissionSetsHandlerWithProviderForTest(mockRepo, providerScopeValidatorFunc(func(context.Context, id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+			return &model.ThirdpartyOAuth2ProviderEntity{}, nil
+		}), logger)
+		serviceID := id.NewServiceID()
+		reqBody := CreatePermissionSetRequest{
+			Name:        "Scope-less service",
+			Description: "Requires a session without OAuth scopes",
+			ServiceScopes: []ServiceScopeRequest{{
+				ServiceID:       serviceID.String(),
+				RequirementType: "mandatory",
+			}},
+		}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(ps *storage.PermissionSet) bool {
+			return len(ps.ServiceScopes) == 1 && len(ps.ServiceScopes[0].Scopes) == 0 && ps.ServiceScopes[0].RequirementType == storage.RequirementTypeMandatory
+		})).Return(nil)
+		w := httptest.NewRecorder()
+
+		handler.Create(w, httptest.NewRequest(http.MethodPost, "/api/permission-sets", bytes.NewReader(body)))
+
+		require.Equal(t, http.StatusCreated, w.Code)
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("rejects an empty scope list for a scoped service", func(t *testing.T) {
+		mockRepo := new(MockPermissionSetRepository)
+		serviceID := id.NewServiceID()
+		handler := newPermissionSetsHandlerWithProviderForTest(mockRepo, providerScopeValidatorFunc(func(_ context.Context, requestedID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+			require.Equal(t, serviceID, requestedID)
+			return &model.ThirdpartyOAuth2ProviderEntity{Scopes: []model.OAuthScope{{ScopeValue: "read"}}}, nil
+		}), logger)
+		body, err := json.Marshal(CreatePermissionSetRequest{
+			Name:        "Invalid scope-less declaration",
+			Description: "Scoped service requires scopes",
+			ServiceScopes: []ServiceScopeRequest{{
+				ServiceID:       serviceID.String(),
+				RequirementType: "mandatory",
+			}},
+		})
+		require.NoError(t, err)
+		w := httptest.NewRecorder()
+
+		handler.Create(w, httptest.NewRequest(http.MethodPost, "/api/permission-sets", bytes.NewReader(body)))
+
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		mockRepo.AssertNotCalled(t, "Create")
 	})
 
 	t.Run("name conflict returns 409", func(t *testing.T) {
@@ -227,6 +294,27 @@ func TestPermissionSetsHandler_Create(t *testing.T) {
 		handler.Create(w, req)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("blank supplied scope returns 400", func(t *testing.T) {
+		mockRepo := new(MockPermissionSetRepository)
+		handler := newPermissionSetsHandlerForTest(mockRepo, logger)
+		reqBody := CreatePermissionSetRequest{
+			Name:        "Invalid scope",
+			Description: "Contains a blank scope",
+			ServiceScopes: []ServiceScopeRequest{{
+				ServiceID: id.NewServiceID().String(),
+				Scopes:    []string{""},
+			}},
+		}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+		w := httptest.NewRecorder()
+
+		handler.Create(w, httptest.NewRequest(http.MethodPost, "/api/permission-sets", bytes.NewReader(body)))
+
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		mockRepo.AssertNotCalled(t, "Create")
 	})
 }
 
@@ -417,6 +505,39 @@ func TestPermissionSetsHandler_Update(t *testing.T) {
 		handler.Update(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("updates with a scope-less service", func(t *testing.T) {
+		mockRepo := new(MockPermissionSetRepository)
+		psID := id.NewPermissionSetID()
+		serviceID := id.NewServiceID()
+		handler := newPermissionSetsHandlerWithProviderForTest(mockRepo, providerScopeValidatorFunc(func(_ context.Context, requestedID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+			require.Equal(t, serviceID, requestedID)
+			return &model.ThirdpartyOAuth2ProviderEntity{}, nil
+		}), logger)
+		mockRepo.On("Get", mock.Anything, psID).Return(&storage.PermissionSet{ID: psID, CreatedAt: time.Now().UTC()}, nil)
+		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(ps *storage.PermissionSet) bool {
+			return len(ps.ServiceScopes) == 1 && len(ps.ServiceScopes[0].Scopes) == 0
+		})).Return(nil)
+		body, err := json.Marshal(CreatePermissionSetRequest{
+			Name:        "Scope-less service",
+			Description: "Requires a session without OAuth scopes",
+			ServiceScopes: []ServiceScopeRequest{{
+				ServiceID:       serviceID.String(),
+				RequirementType: "mandatory",
+			}},
+		})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPut, "/api/permission-sets/"+psID.String(), bytes.NewReader(body))
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("id", psID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		w := httptest.NewRecorder()
+
+		handler.Update(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
 		mockRepo.AssertExpectations(t)
 	})
 
