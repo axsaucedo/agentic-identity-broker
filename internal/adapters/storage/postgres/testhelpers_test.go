@@ -305,7 +305,8 @@ func applyMigrationsUpToDatabase(t *testing.T, container testcontainers.Containe
 		{"019_migrate_user_grants_to_permission_sets.up.sql", 19},
 		{"020_add_service_scope_requirement_type.up.sql", 20},
 		{"021_enforce_single_current_signing_key.up.sql", 21},
-		{"022_create_refresh_token_sessions.up.sql", 22},
+		{"022_add_service_authorization_params.up.sql", 22},
+		{"023_create_refresh_token_sessions.up.sql", 23},
 	}
 
 	for _, migration := range migrations {
