@@ -179,7 +179,7 @@ func NewLocalGrantStrategy(minting ports.TokenMintingStrategy, logger *slog.Logg
 	return &localGrantStrategy{minting: minting, logger: logger}
 }
 
-// HandleTokenGrant dispatches client_credentials and authorization_code grants to the local minting strategy.
+// HandleTokenGrant dispatches client_credentials, authorization_code, and refresh_token grants to the local minting strategy.
 func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values, _ *ports.TokenGrantResolution) {
 	switch grantType {
 	case "client_credentials":
@@ -247,9 +247,44 @@ func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Req
 
 		s.writeTokenResponse(w, resp)
 
+	case "refresh_token":
+		rawClientID := formData.Get("client_id")
+		clientSecret := formData.Get("client_secret")
+		refreshToken := formData.Get("refresh_token")
+		scope := formData.Get("scope")
+
+		if rawClientID == "" {
+			writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "client_id is required")
+			return
+		}
+		if refreshToken == "" {
+			writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "refresh_token is required")
+			return
+		}
+
+		resp, err := s.minting.HandleRefreshToken(r.Context(), id.ClientID(rawClientID), clientSecret, refreshToken, scope)
+		if err != nil {
+			if s.logger != nil {
+				s.logger.Error("refresh_token grant failed", "error", err, "client_id", rawClientID)
+			}
+			s.handleMintingError(w, err, "refresh_token", rawClientID)
+			return
+		}
+
+		if s.logger != nil {
+			s.logger.Info("TokenIssued",
+				"event", "TokenIssued",
+				"grant_type", "refresh_token",
+				"client_id", rawClientID,
+				"scope", scope,
+			)
+		}
+
+		s.writeTokenResponse(w, resp)
+
 	default:
 		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "unsupported_grant_type",
-			"grant_type must be 'client_credentials' or 'authorization_code'")
+			"grant_type must be 'client_credentials', 'authorization_code', or 'refresh_token'")
 	}
 }
 
@@ -291,6 +326,9 @@ func (s *localGrantStrategy) writeTokenResponse(w http.ResponseWriter, resp *por
 		"access_token": resp.AccessToken,
 		"token_type":   resp.TokenType,
 		"expires_in":   resp.ExpiresIn,
+	}
+	if resp.RefreshToken != "" {
+		tokenResp["refresh_token"] = resp.RefreshToken
 	}
 	if resp.Scope != "" {
 		tokenResp["scope"] = resp.Scope

@@ -231,6 +231,16 @@ func TestOAuth2AuthServerConfig_Validate_LocalMode(t *testing.T) {
 		assert.Contains(t, err.Error(), "signing_keys.bootstrap_timeout")
 	})
 
+	t.Run("local mode rejects negative refresh token TTL", func(t *testing.T) {
+		cfg := validLocalOAuth2Config()
+		cfg.Local.RefreshTokenTTL = -time.Hour
+
+		err := cfg.Validate()
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "local.refresh_token_ttl")
+	})
+
 	t.Run("local mode with proxy section set — error", func(t *testing.T) {
 		cfg := validLocalOAuth2Config()
 		cfg.Proxy.UpstreamIssuerURI = "https://issuer.example.com"
@@ -298,6 +308,16 @@ func TestOAuth2AuthServerConfig_Validate_HybridMode(t *testing.T) {
 		err := cfg.Validate()
 		require.NoError(t, err)
 		assert.Equal(t, time.Hour, cfg.Local.TokenTTL)
+	})
+
+	t.Run("hybrid mode rejects negative refresh token TTL", func(t *testing.T) {
+		cfg := validHybridConfig()
+		cfg.Local.RefreshTokenTTL = -time.Hour
+
+		err := cfg.Validate()
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "local.refresh_token_ttl")
 	})
 }
 
@@ -401,6 +421,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 	localFields := LocalModeConfig{
 		IssuerURI:             "https://auth.cdn.example.com",
 		TokenTTL:              2 * time.Hour,
+		RefreshTokenTTL:       30 * 24 * time.Hour,
 		TokenClaimsExpression: `{"sub": claims.sub}`,
 		SigningKeys: LocalSigningKeysConfig{
 			BootstrapTimeout: 45 * time.Second,
@@ -417,6 +438,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 	}
 	sharedResponseTypes := []string{"code", "token"}
 	sharedGrantTypes := []string{"authorization_code", "client_credentials", "refresh_token"}
+	sharedScopes := []string{"offline_access"}
 
 	t.Run("proxy mode propagates all upstream fields", func(t *testing.T) {
 		cfg := OAuth2AuthServerConfig{
@@ -424,6 +446,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 			Proxy:                  proxyFields,
 			SupportedResponseTypes: sharedResponseTypes,
 			SupportedGrantTypes:    sharedGrantTypes,
+			SupportedScopes:        sharedScopes,
 			MultiAgentClient:       mac,
 		}
 		result, err := cfg.Resolve()
@@ -437,6 +460,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		assert.Equal(t, sharedResponseTypes, p.SupportedResponseTypes)
 		assert.Equal(t, sharedGrantTypes, p.SupportedGrantTypes)
 		assert.Equal(t, mac, p.MultiAgentClient)
+		assert.Equal(t, sharedScopes, p.SupportedScopes)
 	})
 
 	t.Run("proxy mode applies default timeout and grant types when zero", func(t *testing.T) {
@@ -455,6 +479,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		assert.Equal(t, 30*time.Second, p.UpstreamTimeout, "default timeout must be 30s")
 		assert.Equal(t, []string{"code"}, p.SupportedResponseTypes, "default response type must be 'code'")
 		assert.Equal(t, []string{"authorization_code"}, p.SupportedGrantTypes, "default proxy grant type")
+		assert.Empty(t, p.SupportedScopes)
 	})
 
 	t.Run("local mode propagates all local fields", func(t *testing.T) {
@@ -463,6 +488,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 			Local:                  localFields,
 			SupportedResponseTypes: sharedResponseTypes,
 			SupportedGrantTypes:    sharedGrantTypes,
+			SupportedScopes:        sharedScopes,
 			CIMD:                   cimd,
 		}
 		result, err := cfg.Resolve()
@@ -471,11 +497,13 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		l := result.(*LocalOAuth2Config)
 		assert.Equal(t, localFields.IssuerURI, l.IssuerURI)
 		assert.Equal(t, localFields.TokenTTL, l.TokenTTL)
+		assert.Equal(t, localFields.RefreshTokenTTL, l.RefreshTokenTTL)
 		assert.Equal(t, localFields.TokenClaimsExpression, l.TokenClaimsExpression)
 		assert.Equal(t, localFields.SigningKeys, l.SigningKeys)
 		assert.Equal(t, sharedResponseTypes, l.SupportedResponseTypes)
 		assert.Equal(t, sharedGrantTypes, l.SupportedGrantTypes)
 		assert.Equal(t, cimd, l.CIMD)
+		assert.Equal(t, sharedScopes, l.SupportedScopes)
 	})
 
 	t.Run("local mode applies default token TTL and grant types when zero", func(t *testing.T) {
@@ -484,9 +512,11 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		require.NoError(t, err)
 		l := result.(*LocalOAuth2Config)
 		assert.Equal(t, time.Hour, l.TokenTTL, "default local token TTL must be 1h")
+		assert.Equal(t, 30*24*time.Hour, l.RefreshTokenTTL, "default local refresh token TTL must be 30d")
 		assert.Equal(t, DefaultSigningKeyBootstrapTimeout, l.SigningKeys.BootstrapTimeout)
 		assert.Equal(t, []string{"code"}, l.SupportedResponseTypes)
-		assert.Equal(t, []string{"authorization_code", "client_credentials"}, l.SupportedGrantTypes)
+		assert.Equal(t, []string{"authorization_code", "client_credentials", "refresh_token"}, l.SupportedGrantTypes)
+		assert.Equal(t, []string{"offline_access"}, l.SupportedScopes)
 	})
 
 	t.Run("hybrid mode propagates proxy and local fields independently", func(t *testing.T) {
@@ -496,6 +526,7 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 			Local:                  localFields,
 			SupportedResponseTypes: sharedResponseTypes,
 			SupportedGrantTypes:    sharedGrantTypes,
+			SupportedScopes:        sharedScopes,
 			MultiAgentClient:       mac,
 			CIMD:                   cimd,
 		}
@@ -511,14 +542,17 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		assert.Equal(t, sharedResponseTypes, h.Proxy.SupportedResponseTypes)
 		assert.Equal(t, sharedGrantTypes, h.Proxy.SupportedGrantTypes)
 		assert.Equal(t, mac, h.Proxy.MultiAgentClient)
+		assert.Equal(t, sharedScopes, h.Proxy.SupportedScopes)
 
 		assert.Equal(t, localFields.IssuerURI, h.Local.IssuerURI)
 		assert.Equal(t, localFields.TokenTTL, h.Local.TokenTTL)
 		assert.Equal(t, localFields.TokenClaimsExpression, h.Local.TokenClaimsExpression)
+		assert.Equal(t, localFields.RefreshTokenTTL, h.Local.RefreshTokenTTL)
 		assert.Equal(t, localFields.SigningKeys, h.Local.SigningKeys)
 		assert.Equal(t, sharedResponseTypes, h.Local.SupportedResponseTypes)
 		assert.Equal(t, sharedGrantTypes, h.Local.SupportedGrantTypes)
 		assert.Equal(t, cimd, h.Local.CIMD)
+		assert.Equal(t, sharedScopes, h.Local.SupportedScopes)
 	})
 
 	t.Run("hybrid mode applies default token TTL and grant types when zero", func(t *testing.T) {
@@ -534,11 +568,14 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		require.NoError(t, err)
 		h := result.(*HybridOAuth2Config)
 		assert.Equal(t, time.Hour, h.Local.TokenTTL, "default hybrid local token TTL must be 1h")
+		assert.Equal(t, 30*24*time.Hour, h.Local.RefreshTokenTTL, "default hybrid local refresh token TTL must be 30d")
 		assert.Equal(t, DefaultSigningKeyBootstrapTimeout, h.Local.SigningKeys.BootstrapTimeout)
 		assert.Equal(t, []string{"code"}, h.Proxy.SupportedResponseTypes, "default proxy response type")
-		assert.Equal(t, []string{"authorization_code", "client_credentials"}, h.Proxy.SupportedGrantTypes, "default hybrid grant types")
+		assert.Equal(t, []string{"authorization_code", "client_credentials", "refresh_token"}, h.Proxy.SupportedGrantTypes, "default hybrid grant types")
 		assert.Equal(t, []string{"code"}, h.Local.SupportedResponseTypes, "default local response type")
-		assert.Equal(t, []string{"authorization_code", "client_credentials"}, h.Local.SupportedGrantTypes, "default hybrid grant types")
+		assert.Equal(t, []string{"authorization_code", "client_credentials", "refresh_token"}, h.Local.SupportedGrantTypes, "default hybrid grant types")
+		assert.Equal(t, []string{"offline_access"}, h.Proxy.SupportedScopes)
+		assert.Equal(t, []string{"offline_access"}, h.Local.SupportedScopes)
 		assert.Equal(t, 30*time.Second, h.Proxy.UpstreamTimeout, "default hybrid proxy timeout must be 30s")
 	})
 

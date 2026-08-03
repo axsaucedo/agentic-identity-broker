@@ -179,14 +179,19 @@ type TokenMintingStrategy interface {
 	// HandleAuthorizationCodeExchange processes an authorization_code grant type request.
 	// Returns the token response or an error.
 	HandleAuthorizationCodeExchange(ctx context.Context, clientID id.ClientID, clientSecret, code, redirectURI, codeVerifier string) (*TokenResponse, error)
+
+	// HandleRefreshToken processes a refresh_token grant type request.
+	// Returns the token response or an error.
+	HandleRefreshToken(ctx context.Context, clientID id.ClientID, clientSecret, refreshToken, scope string) (*TokenResponse, error)
 }
 
 // TokenResponse represents a successful OAuth2 token response from a minting strategy.
 type TokenResponse struct {
-	AccessToken string
-	TokenType   string
-	ExpiresIn   int64
-	Scope       string
+	AccessToken  string
+	RefreshToken string
+	TokenType    string
+	ExpiresIn    int64
+	Scope        string
 }
 
 // AuthorizationCodeIssuer abstracts how the authorize endpoint issues authorization codes.

@@ -150,6 +150,148 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (local mode)", func() {
 		Expect(tokenBody["token_type"]).To(Equal("Bearer"))
 	})
 
+	// Scenario 4.1 and 4.5 from specs/025-oauth2-server/spec.md
+	Context("offline_access refresh tokens", func() {
+		var client *http.Client
+
+		BeforeEach(func() {
+			client = &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			}}
+		})
+
+		// requestToken runs a full authorization-code + PKCE flow for the given scope and
+		// returns the decoded token endpoint response the client observes.
+		requestToken := func(scope string) map[string]interface{} {
+			verifier := helpers.PKCEVerifier()
+			challenge := helpers.GenerateCodeChallenge(verifier)
+
+			authURL := enduserServer.BaseURL() + "/oauth2/authorize?" + url.Values{
+				"response_type":         {"code"},
+				"client_id":             {agent.ID.String()},
+				"redirect_uri":          {"http://localhost:9999/callback"},
+				"state":                 {"offline-state"},
+				"scope":                 {scope},
+				"code_challenge":        {challenge},
+				"code_challenge_method": {"S256"},
+			}.Encode()
+
+			req, _ := http.NewRequest("GET", authURL, nil)
+			req.Header.Set("X-Remote-User", "test@example.com")
+			resp, err := client.Do(req)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+			Expect(resp.StatusCode).To(Equal(http.StatusFound))
+
+			locURL, _ := url.Parse(resp.Header.Get("Location"))
+			code := locURL.Query().Get("code")
+			Expect(code).ToNot(BeEmpty())
+
+			form := url.Values{
+				"grant_type":    {"authorization_code"},
+				"client_id":     {agent.ID.String()},
+				"client_secret": {clientSecret},
+				"code":          {code},
+				"redirect_uri":  {"http://localhost:9999/callback"},
+				"code_verifier": {verifier},
+			}
+			tokenResp, err := http.Post(
+				enduserServer.BaseURL()+"/oauth2/token",
+				"application/x-www-form-urlencoded",
+				strings.NewReader(form.Encode()),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = tokenResp.Body.Close() }()
+			Expect(tokenResp.StatusCode).To(Equal(http.StatusOK))
+
+			var tokenBody map[string]interface{}
+			Expect(json.NewDecoder(tokenResp.Body).Decode(&tokenBody)).ToNot(HaveOccurred())
+			return tokenBody
+		}
+
+		// exchangeRefreshToken performs a refresh_token grant at the token endpoint.
+		exchangeRefreshToken := func(refreshToken string) *http.Response {
+			refreshForm := url.Values{
+				"grant_type":    {"refresh_token"},
+				"client_id":     {agent.ID.String()},
+				"client_secret": {clientSecret},
+				"refresh_token": {refreshToken},
+			}
+			resp, err := http.Post(
+				enduserServer.BaseURL()+"/oauth2/token",
+				"application/x-www-form-urlencoded",
+				strings.NewReader(refreshForm.Encode()),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			return resp
+		}
+
+		Context("when offline_access is requested", func() {
+			var tokenBody map[string]interface{}
+
+			BeforeEach(func() {
+				tokenBody = requestToken("read offline_access")
+			})
+
+			It("issues a refresh token alongside the access token", func() {
+				Expect(tokenBody).To(HaveKey("access_token"))
+				refreshToken, ok := tokenBody["refresh_token"].(string)
+				Expect(ok).To(BeTrue())
+				Expect(refreshToken).ToNot(BeEmpty())
+			})
+
+			It("rotates the refresh token and lets the client use the rotated one", func() {
+				refreshToken := tokenBody["refresh_token"].(string)
+
+				refreshResp := exchangeRefreshToken(refreshToken)
+				defer func() { _ = refreshResp.Body.Close() }()
+				Expect(refreshResp.StatusCode).To(Equal(http.StatusOK))
+
+				var refreshedBody map[string]interface{}
+				Expect(json.NewDecoder(refreshResp.Body).Decode(&refreshedBody)).ToNot(HaveOccurred())
+				Expect(refreshedBody).To(HaveKey("access_token"))
+				newRefreshToken, ok := refreshedBody["refresh_token"].(string)
+				Expect(ok).To(BeTrue())
+				Expect(newRefreshToken).ToNot(BeEmpty())
+				Expect(newRefreshToken).ToNot(Equal(refreshToken))
+
+				// The rotated refresh token is itself usable by the client.
+				secondResp := exchangeRefreshToken(newRefreshToken)
+				defer func() { _ = secondResp.Body.Close() }()
+				Expect(secondResp.StatusCode).To(Equal(http.StatusOK))
+			})
+
+			It("rejects reuse of a rotated refresh token", func() {
+				refreshToken := tokenBody["refresh_token"].(string)
+
+				firstResp := exchangeRefreshToken(refreshToken)
+				Expect(firstResp.StatusCode).To(Equal(http.StatusOK))
+				_ = firstResp.Body.Close()
+
+				reuseResp := exchangeRefreshToken(refreshToken)
+				defer func() { _ = reuseResp.Body.Close() }()
+				Expect(reuseResp.StatusCode).To(Equal(http.StatusBadRequest))
+
+				var reuseBody map[string]interface{}
+				Expect(json.NewDecoder(reuseResp.Body).Decode(&reuseBody)).ToNot(HaveOccurred())
+				Expect(reuseBody["error"]).To(Equal("invalid_grant"))
+			})
+		})
+
+		Context("when offline_access is not requested", func() {
+			var tokenBody map[string]interface{}
+
+			BeforeEach(func() {
+				tokenBody = requestToken("read")
+			})
+
+			It("omits the refresh token", func() {
+				Expect(tokenBody).To(HaveKey("access_token"))
+				Expect(tokenBody).NotTo(HaveKey("refresh_token"))
+			})
+		})
+	})
+
 	// Scenario 4.2 from specs/025-oauth2-server/spec.md
 	It("invalid redirect URI rejected", func() {
 		client := &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error {

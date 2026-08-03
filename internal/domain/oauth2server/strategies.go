@@ -23,6 +23,7 @@ import (
 var (
 	_ fositeOAuth2.AccessTokenStrategy   = (*JWXAccessTokenStrategy)(nil)
 	_ fositeOAuth2.AuthorizeCodeStrategy = (*RandomCodeStrategy)(nil)
+	_ fositeOAuth2.RefreshTokenStrategy  = (*RandomRefreshTokenStrategy)(nil)
 )
 
 // baseClaims are JWT claims that cannot be overridden by CEL expressions.
@@ -202,6 +203,34 @@ func (s *RandomCodeStrategy) AuthorizeCodeSignature(_ context.Context, code stri
 // ValidateAuthorizeCode validates an authorization code.
 // Validation happens in storage (expiry, single-use), not in the strategy.
 func (s *RandomCodeStrategy) ValidateAuthorizeCode(_ context.Context, _ fosite.Requester, _ string) error {
+	return nil
+}
+
+// RandomRefreshTokenStrategy implements fosite's RefreshTokenStrategy using crypto/rand.
+type RandomRefreshTokenStrategy struct{}
+
+// GenerateRefreshToken generates a random refresh token.
+func (s *RandomRefreshTokenStrategy) GenerateRefreshToken(_ context.Context, _ fosite.Requester) (string, string, error) {
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", "", fmt.Errorf("failed to generate random refresh token: %w", err)
+	}
+	token := base64.RawURLEncoding.EncodeToString(tokenBytes)
+	signature := sha256Hex(token)
+	return token, signature, nil
+}
+
+// RefreshTokenSignature returns a signature for the given refresh token.
+func (s *RandomRefreshTokenStrategy) RefreshTokenSignature(_ context.Context, token string) string {
+	return sha256Hex(token)
+}
+
+// ValidateRefreshToken validates a refresh token using its hydrated session expiry.
+func (s *RandomRefreshTokenStrategy) ValidateRefreshToken(_ context.Context, req fosite.Requester, _ string) error {
+	expiresAt := req.GetSession().GetExpiresAt(fosite.RefreshToken)
+	if !expiresAt.IsZero() && time.Now().After(expiresAt) {
+		return fosite.ErrTokenExpired
+	}
 	return nil
 }
 

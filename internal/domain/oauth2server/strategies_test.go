@@ -11,6 +11,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/ory/fosite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -281,6 +282,46 @@ func TestRandomCodeStrategy_GenerateAuthorizeCode(t *testing.T) {
 	t.Run("validate is no-op", func(t *testing.T) {
 		err := strategy.ValidateAuthorizeCode(context.Background(), nil, "any-code")
 		assert.NoError(t, err)
+	})
+}
+
+func TestRandomRefreshTokenStrategy(t *testing.T) {
+	strategy := &RandomRefreshTokenStrategy{}
+
+	t.Run("generates unique tokens", func(t *testing.T) {
+		token1, sig1, err := strategy.GenerateRefreshToken(context.Background(), nil)
+		require.NoError(t, err)
+		token2, sig2, err := strategy.GenerateRefreshToken(context.Background(), nil)
+		require.NoError(t, err)
+
+		assert.NotEqual(t, token1, token2)
+		assert.NotEqual(t, sig1, sig2)
+		assert.NotEmpty(t, token1)
+		assert.NotEmpty(t, sig1)
+	})
+
+	t.Run("signature is deterministic for same token", func(t *testing.T) {
+		token, sig, err := strategy.GenerateRefreshToken(context.Background(), nil)
+		require.NoError(t, err)
+
+		computedSig := strategy.RefreshTokenSignature(context.Background(), token)
+		assert.Equal(t, sig, computedSig)
+	})
+
+	t.Run("validate accepts unexpired token", func(t *testing.T) {
+		req := buildTestRequest("agent", "user@example.com", []string{"offline_access"})
+		req.GetSession().SetExpiresAt(fosite.RefreshToken, time.Now().Add(time.Hour))
+
+		err := strategy.ValidateRefreshToken(context.Background(), req, "any-token")
+		assert.NoError(t, err)
+	})
+
+	t.Run("validate rejects expired token", func(t *testing.T) {
+		req := buildTestRequest("agent", "user@example.com", []string{"offline_access"})
+		req.GetSession().SetExpiresAt(fosite.RefreshToken, time.Now().Add(-time.Minute))
+
+		err := strategy.ValidateRefreshToken(context.Background(), req, "any-token")
+		require.ErrorIs(t, err, fosite.ErrTokenExpired)
 	})
 }
 

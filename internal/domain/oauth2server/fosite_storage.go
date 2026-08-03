@@ -10,15 +10,20 @@ import (
 	"time"
 
 	"github.com/ory/fosite"
+	fositestorage "github.com/ory/fosite/storage"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
+var _ fositestorage.Transactional = (*FositeStorage)(nil)
+
 // FositeStorage wraps project repositories to implement fosite storage interfaces.
 type FositeStorage struct {
 	codeRepo       ports.AuthorizationCodeRepository
+	refreshRepo    ports.RefreshTokenSessionRepository
+	transactions   ports.OAuth2TransactionManager
 	pkceRepo       ports.PKCESessionRepository
 	credRepo       ports.ClientCredentialRepository
 	clientResolver ports.ClientResolver
@@ -28,18 +33,25 @@ type FositeStorage struct {
 // NewFositeStorage creates a new FositeStorage wrapping our repositories.
 func NewFositeStorage(
 	codeRepo ports.AuthorizationCodeRepository,
+	refreshRepo ports.RefreshTokenSessionRepository,
 	pkceRepo ports.PKCESessionRepository,
 	credRepo ports.ClientCredentialRepository,
 	clientResolver ports.ClientResolver,
 	logger *slog.Logger,
+	transactions ...ports.OAuth2TransactionManager,
 ) *FositeStorage {
-	return &FositeStorage{
+	storage := &FositeStorage{
 		codeRepo:       codeRepo,
+		refreshRepo:    refreshRepo,
 		pkceRepo:       pkceRepo,
 		credRepo:       credRepo,
 		clientResolver: clientResolver,
 		logger:         logger,
 	}
+	if len(transactions) > 0 {
+		storage.transactions = transactions[0]
+	}
+	return storage
 }
 
 // mapStorageError translates a storage error for fosite consumption.
@@ -60,6 +72,30 @@ func (s *FositeStorage) mapStorageError(ctx context.Context, err error) error {
 	}
 	s.logger.ErrorContext(ctx, "unexpected error type in OAuth2 flow", "error", err.Error())
 	return err
+}
+
+// BeginTX begins the storage transaction Fosite uses for token operations.
+func (s *FositeStorage) BeginTX(ctx context.Context) (context.Context, error) {
+	if s.transactions == nil {
+		return ctx, nil
+	}
+	return s.transactions.BeginTX(ctx)
+}
+
+// Commit commits the storage transaction for a Fosite token operation.
+func (s *FositeStorage) Commit(ctx context.Context) error {
+	if s.transactions == nil {
+		return nil
+	}
+	return s.transactions.Commit(ctx)
+}
+
+// Rollback rolls back the storage transaction for a Fosite token operation.
+func (s *FositeStorage) Rollback(ctx context.Context) error {
+	if s.transactions == nil {
+		return nil
+	}
+	return s.transactions.Rollback(ctx)
 }
 
 // CreateAuthorizeCodeSession stores an authorization code issued by the authorization endpoint.
@@ -171,23 +207,81 @@ func (s *FositeStorage) DeleteAccessTokenSession(_ context.Context, _ string) er
 	return nil // JWT tokens are stateless
 }
 
-// CreateRefreshTokenSession is not supported (no refresh tokens in this mode).
-func (s *FositeStorage) CreateRefreshTokenSession(_ context.Context, _ string, _ string, _ fosite.Requester) error {
+// CreateRefreshTokenSession stores a refresh token for single-use rotation.
+func (s *FositeStorage) CreateRefreshTokenSession(ctx context.Context, signature string, _ string, req fosite.Requester) error {
+	agentID, err := extractAgentID(req.GetClient())
+	if err != nil {
+		return fmt.Errorf("CreateRefreshTokenSession: %w", err)
+	}
+
+	session := &storage.RefreshTokenSession{
+		Signature: signature,
+		RequestID: req.GetID(),
+		AgentID:   agentID,
+		ClientID:  id.NewClientID(req.GetClient().GetID()),
+		Principal: id.NewPrincipal(req.GetSession().GetSubject()),
+		Scope:     strings.Join(req.GetGrantedScopes(), " "),
+		ExpiresAt: req.GetSession().GetExpiresAt(fosite.RefreshToken),
+		CreatedAt: time.Now(),
+	}
+	if err := session.Validate(); err != nil {
+		return err
+	}
+	return s.refreshRepo.Create(ctx, session)
+}
+
+// GetRefreshTokenSession retrieves and hydrates a refresh token session.
+func (s *FositeStorage) GetRefreshTokenSession(ctx context.Context, signature string, _ fosite.Session) (fosite.Requester, error) {
+	refreshSession, err := s.refreshRepo.FindBySignature(ctx, signature)
+	if err != nil {
+		return nil, s.mapStorageError(ctx, err)
+	}
+
+	client, err := s.GetClient(ctx, refreshSession.ClientID.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up client: %w", err)
+	}
+
+	req := &fosite.Request{
+		ID:     refreshSession.RequestID,
+		Client: client,
+		Session: &fosite.DefaultSession{
+			Subject: refreshSession.Principal.String(),
+			ExpiresAt: map[fosite.TokenType]time.Time{
+				fosite.RefreshToken: refreshSession.ExpiresAt,
+			},
+		},
+		RequestedScope: splitScope(refreshSession.Scope),
+		GrantedScope:   splitScope(refreshSession.Scope),
+		RequestedAt:    refreshSession.CreatedAt,
+	}
+
+	if refreshSession.UsedAt != nil {
+		return req, fosite.ErrInactiveToken
+	}
+
+	return req, nil
+}
+
+// DeleteRefreshTokenSession marks a refresh token inactive. It is idempotent: a token that is
+// already used (or absent) is treated as successfully deleted, which fosite relies on during
+// refresh-token reuse detection.
+func (s *FositeStorage) DeleteRefreshTokenSession(ctx context.Context, signature string) error {
+	if err := s.refreshRepo.MarkUsed(ctx, signature); err != nil {
+		var se *storage.StorageError
+		if errors.As(err, &se) && se.Kind == storage.ErrorKindNotFound {
+			return nil
+		}
+		return s.mapStorageError(ctx, err)
+	}
 	return nil
 }
 
-// GetRefreshTokenSession is not supported.
-func (s *FositeStorage) GetRefreshTokenSession(_ context.Context, _ string, _ fosite.Session) (fosite.Requester, error) {
-	return nil, fosite.ErrNotFound
-}
-
-// DeleteRefreshTokenSession is not supported.
-func (s *FositeStorage) DeleteRefreshTokenSession(_ context.Context, _ string) error {
-	return nil
-}
-
-// RotateRefreshToken is not supported.
-func (s *FositeStorage) RotateRefreshToken(_ context.Context, _ string, _ string) error {
+// RotateRefreshToken marks the presented refresh token inactive before minting a new one.
+func (s *FositeStorage) RotateRefreshToken(ctx context.Context, _ string, signature string) error {
+	if err := s.refreshRepo.MarkUsed(ctx, signature); err != nil {
+		return s.mapStorageError(ctx, err)
+	}
 	return nil
 }
 
@@ -196,8 +290,11 @@ func (s *FositeStorage) RevokeAccessToken(_ context.Context, _ string) error {
 	return nil
 }
 
-// RevokeRefreshToken is a no-op (refresh tokens not supported).
-func (s *FositeStorage) RevokeRefreshToken(_ context.Context, _ string) error {
+// RevokeRefreshToken revokes all refresh tokens belonging to a request chain.
+func (s *FositeStorage) RevokeRefreshToken(ctx context.Context, requestID string) error {
+	if err := s.refreshRepo.RevokeByRequestID(ctx, requestID); err != nil {
+		return s.mapStorageError(ctx, err)
+	}
 	return nil
 }
 
@@ -256,7 +353,12 @@ func (s *FositeStorage) GetClient(ctx context.Context, clientID string) (fosite.
 	}
 
 	if resolution.CIMDMetadata != nil {
-		return &publicClient{clientID: clientID, agent: resolution.Agent, redirectURIs: resolution.CIMDMetadata.RedirectURIs}, nil
+		return &publicClient{
+			clientID:     clientID,
+			agent:        resolution.Agent,
+			redirectURIs: resolution.CIMDMetadata.RedirectURIs,
+			grantTypes:   publicClientGrantTypes(resolution.CIMDMetadata.GrantTypes),
+		}, nil
 	}
 
 	// LocalClient agents may or may not have credentials registered.
@@ -267,7 +369,12 @@ func (s *FositeStorage) GetClient(ctx context.Context, clientID string) (fosite.
 	cred, err := s.credRepo.GetByAgentID(ctx, resolution.Agent.ID)
 	if err != nil {
 		if isStorageNotFound(err) && resolution.Agent.ClientType() == storage.LocalClient {
-			return &publicClient{clientID: clientID, agent: resolution.Agent, redirectURIs: resolution.Agent.RedirectURIs}, nil
+			return &publicClient{
+				clientID:     clientID,
+				agent:        resolution.Agent,
+				redirectURIs: resolution.Agent.RedirectURIs,
+				grantTypes:   fosite.Arguments{"authorization_code", "refresh_token"},
+			}, nil
 		}
 		return nil, s.mapStorageError(ctx, err)
 	}

@@ -36,6 +36,13 @@ type HealthChecker interface {
 	HealthCheck(ctx context.Context) error
 }
 
+// OAuth2TransactionManager supplies atomic storage operations for Fosite token flows.
+type OAuth2TransactionManager interface {
+	BeginTX(ctx context.Context) (context.Context, error)
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
 // User represents a user entity in the storage layer.
 // Domain entity - does not expose storage implementation details.
 type User struct {
@@ -394,6 +401,25 @@ type AuthorizationCodeRepository interface {
 	MarkUsed(ctx context.Context, id id.AuthorizationCodeID) error
 
 	// DeleteExpired removes expired authorization codes. Returns the count of deleted codes.
+	DeleteExpired(ctx context.Context) (int, error)
+}
+
+// RefreshTokenSessionRepository stores issued refresh tokens for single-use rotation.
+// The signature (SHA-256 of the opaque token) is the primary key.
+type RefreshTokenSessionRepository interface {
+	// Create stores a refresh token session keyed by token signature.
+	Create(ctx context.Context, session *storage.RefreshTokenSession) error
+
+	// FindBySignature retrieves a refresh token session by its signature.
+	FindBySignature(ctx context.Context, signature string) (*storage.RefreshTokenSession, error)
+
+	// MarkUsed marks a refresh token session as used or revoked.
+	MarkUsed(ctx context.Context, signature string) error
+
+	// RevokeByRequestID revokes all refresh token sessions for a fosite request ID.
+	RevokeByRequestID(ctx context.Context, requestID string) error
+
+	// DeleteExpired removes expired refresh token sessions.
 	DeleteExpired(ctx context.Context) (int, error)
 }
 

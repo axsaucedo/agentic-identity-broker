@@ -26,6 +26,7 @@ import (
 type mockTokenMintingStrategy struct {
 	clientCredentialsFn         func(context.Context, id.ClientID, string, string) (*ports.TokenResponse, error)
 	authorizationCodeExchangeFn func(context.Context, id.ClientID, string, string, string, string) (*ports.TokenResponse, error)
+	refreshTokenFn              func(context.Context, id.ClientID, string, string, string) (*ports.TokenResponse, error)
 }
 
 func (m *mockTokenMintingStrategy) HandleClientCredentials(ctx context.Context, clientID id.ClientID, clientSecret, scope string) (*ports.TokenResponse, error) {
@@ -36,13 +37,20 @@ func (m *mockTokenMintingStrategy) HandleAuthorizationCodeExchange(ctx context.C
 	return m.authorizationCodeExchangeFn(ctx, clientID, clientSecret, code, redirectURI, codeVerifier)
 }
 
-// fixedMinting returns a mock strategy that always returns the given response/error for both grant types.
+func (m *mockTokenMintingStrategy) HandleRefreshToken(ctx context.Context, clientID id.ClientID, clientSecret, refreshToken, scope string) (*ports.TokenResponse, error) {
+	return m.refreshTokenFn(ctx, clientID, clientSecret, refreshToken, scope)
+}
+
+// fixedMinting returns a mock strategy that always returns the given response/error for all local grant types.
 func fixedMinting(resp *ports.TokenResponse, err error) *mockTokenMintingStrategy {
 	return &mockTokenMintingStrategy{
 		clientCredentialsFn: func(_ context.Context, _ id.ClientID, _, _ string) (*ports.TokenResponse, error) {
 			return resp, err
 		},
 		authorizationCodeExchangeFn: func(_ context.Context, _ id.ClientID, _, _, _, _ string) (*ports.TokenResponse, error) {
+			return resp, err
+		},
+		refreshTokenFn: func(_ context.Context, _ id.ClientID, _, _, _ string) (*ports.TokenResponse, error) {
 			return resp, err
 		},
 	}
@@ -748,9 +756,10 @@ func TestWriteTokenResponse(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		s.writeTokenResponse(w, &ports.TokenResponse{
-			AccessToken: "tok123",
-			TokenType:   "Bearer",
-			ExpiresIn:   3600,
+			AccessToken:  "tok123",
+			RefreshToken: "refresh123",
+			TokenType:    "Bearer",
+			ExpiresIn:    3600,
 		})
 
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -760,6 +769,7 @@ func TestWriteTokenResponse(t *testing.T) {
 		var body map[string]interface{}
 		assert.NoError(t, json.NewDecoder(w.Body).Decode(&body))
 		assert.Equal(t, "tok123", body["access_token"])
+		assert.Equal(t, "refresh123", body["refresh_token"])
 		assert.Equal(t, "Bearer", body["token_type"])
 		assert.EqualValues(t, 3600, body["expires_in"])
 		assert.NotContains(t, body, "scope")
@@ -941,9 +951,78 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 	}
 }
 
+func TestHandleLocalMinting_RefreshToken(t *testing.T) {
+	successResp := &ports.TokenResponse{AccessToken: "tok789", RefreshToken: "refresh789", TokenType: "Bearer", ExpiresIn: 1800, Scope: "read offline_access"}
+
+	tests := []struct {
+		name          string
+		body          string
+		mintingErr    error
+		wantStatus    int
+		wantErrorCode string
+	}{
+		{
+			name:       "success returns 200 with refresh token body",
+			body:       "grant_type=refresh_token&client_id=550e8400-e29b-41d4-a716-446655440000&client_secret=secret&refresh_token=rt-123&scope=read+offline_access",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:          "missing client_id returns 400 invalid_request",
+			body:          "grant_type=refresh_token&refresh_token=rt-123",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_request",
+		},
+		{
+			name:          "missing refresh_token returns 400 invalid_request",
+			body:          "grant_type=refresh_token&client_id=550e8400-e29b-41d4-a716-446655440000",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_request",
+		},
+		{
+			name:          "invalid grant surfaces as invalid_grant",
+			body:          "grant_type=refresh_token&client_id=550e8400-e29b-41d4-a716-446655440000&refresh_token=stale",
+			mintingErr:    oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant),
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_grant",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			minting := &mockTokenMintingStrategy{
+				refreshTokenFn: func(_ context.Context, _ id.ClientID, _, _, _ string) (*ports.TokenResponse, error) {
+					if tt.mintingErr != nil {
+						return nil, tt.mintingErr
+					}
+					return successResp, nil
+				},
+			}
+			handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(minting, nil), OAuth2Service: newLocalModeOAuth2Service()}
+			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			var body map[string]interface{}
+			_ = json.NewDecoder(w.Body).Decode(&body)
+			if tt.wantErrorCode != "" {
+				assert.Equal(t, tt.wantErrorCode, body["error"])
+			} else {
+				assert.Equal(t, "tok789", body["access_token"])
+				assert.Equal(t, "refresh789", body["refresh_token"])
+				assert.Equal(t, "Bearer", body["token_type"])
+				assert.EqualValues(t, 1800, body["expires_in"])
+				assert.Equal(t, "read offline_access", body["scope"])
+			}
+		})
+	}
+}
+
 // TestHandleLocalMinting_UnsupportedGrantType verifies the default branch returns
-// 400 unsupported_grant_type for any grant type other than client_credentials or
-// authorization_code (e.g. password, implicit, device_code).
+// 400 unsupported_grant_type for any grant type other than client_credentials,
+// authorization_code, or refresh_token (e.g. password, implicit, device_code).
 func TestHandleLocalMinting_UnsupportedGrantType(t *testing.T) {
 	handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(fixedMinting(nil, nil), nil), OAuth2Service: newLocalModeOAuth2Service()}
 	req := httptest.NewRequest("POST", "/oauth2/token",

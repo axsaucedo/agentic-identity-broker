@@ -13,6 +13,17 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
+// Compile-time interface check
+var _ ports.OAuth2TransactionManager = (*Adapter)(nil)
+
+type noOpOAuth2TransactionManager struct{}
+
+func (noOpOAuth2TransactionManager) BeginTX(ctx context.Context) (context.Context, error) {
+	return ctx, nil
+}
+func (noOpOAuth2TransactionManager) Commit(context.Context) error   { return nil }
+func (noOpOAuth2TransactionManager) Rollback(context.Context) error { return nil }
+
 // lifecycleAdapter defines the lifecycle operations expected on storage adapters.
 type lifecycleAdapter interface {
 	Initialize(context.Context) error
@@ -29,17 +40,19 @@ type signingKeyAdapter interface {
 // Adapters implement repository interfaces (UserRepository, etc.)
 // This struct is returned by NewAdapter factory function.
 type Adapter struct {
-	lifecycle          lifecycleAdapter
-	users              ports.UserRepository
-	agents             ports.AgentRepository
-	providers          ports.ThirdpartyOAuth2ProviderRepository
-	userGrants         ports.UserGrantRepository
-	userSessions       ports.UserSessionRepository
-	permissionSets     ports.PermissionSetRepository
-	brokerCredentials  ports.ClientCredentialRepository
-	signingKeys        signingKeyAdapter
-	authorizationCodes ports.AuthorizationCodeRepository
-	pkceSessions       ports.PKCESessionRepository
+	lifecycle            lifecycleAdapter
+	users                ports.UserRepository
+	agents               ports.AgentRepository
+	providers            ports.ThirdpartyOAuth2ProviderRepository
+	userGrants           ports.UserGrantRepository
+	userSessions         ports.UserSessionRepository
+	permissionSets       ports.PermissionSetRepository
+	brokerCredentials    ports.ClientCredentialRepository
+	signingKeys          signingKeyAdapter
+	authorizationCodes   ports.AuthorizationCodeRepository
+	refreshTokenSessions ports.RefreshTokenSessionRepository
+	pkceSessions         ports.PKCESessionRepository
+	oauth2Transactions   ports.OAuth2TransactionManager
 }
 
 // NewAdapter creates a storage adapter based on configuration.
@@ -75,17 +88,19 @@ func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 	userGrants := memory.NewUserGrantRepository().WithPermissionSetRepository(permissionSets)
 	signingKeys := memory.NewSigningKeyStore()
 	return &Adapter{
-		lifecycle:          memAdapter,
-		users:              memAdapter,
-		agents:             agentRepo,
-		providers:          memory.NewInMemoryThirdpartyOAuth2ProviderRepository(),
-		userGrants:         userGrants,
-		userSessions:       memory.NewInMemoryUserSessionRepository(),
-		permissionSets:     permissionSets,
-		brokerCredentials:  memory.NewClientCredentialStore(),
-		signingKeys:        signingKeys,
-		authorizationCodes: memory.NewAuthorizationCodeStore(),
-		pkceSessions:       memory.NewPKCESessionStore(),
+		lifecycle:            memAdapter,
+		users:                memAdapter,
+		agents:               agentRepo,
+		providers:            memory.NewInMemoryThirdpartyOAuth2ProviderRepository(),
+		userGrants:           userGrants,
+		userSessions:         memory.NewInMemoryUserSessionRepository(),
+		permissionSets:       permissionSets,
+		brokerCredentials:    memory.NewClientCredentialStore(),
+		signingKeys:          signingKeys,
+		authorizationCodes:   memory.NewAuthorizationCodeStore(),
+		refreshTokenSessions: memory.NewRefreshTokenSessionStore(),
+		pkceSessions:         memory.NewPKCESessionStore(),
+		oauth2Transactions:   noOpOAuth2TransactionManager{},
 	}, nil
 }
 
@@ -102,17 +117,19 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 	signingKeys := postgres.NewSigningKeyRepo(pgAdapter)
 
 	return &Adapter{
-		lifecycle:          pgAdapter,
-		users:              pgAdapter,
-		agents:             postgres.NewAgentRepository(pgAdapter),
-		providers:          postgres.NewPostgresThirdpartyOAuth2ProviderRepository(pgAdapter),
-		userGrants:         postgres.NewUserGrantRepository(pgAdapter),
-		userSessions:       postgres.NewUserSessionRepository(pgAdapter),
-		permissionSets:     postgres.NewPermissionSetRepository(pgAdapter),
-		brokerCredentials:  postgres.NewClientCredentialRepo(pgAdapter),
-		signingKeys:        signingKeys,
-		authorizationCodes: postgres.NewAuthorizationCodeRepo(pgAdapter),
-		pkceSessions:       postgres.NewPKCESessionRepo(pgAdapter),
+		lifecycle:            pgAdapter,
+		users:                pgAdapter,
+		agents:               postgres.NewAgentRepository(pgAdapter),
+		providers:            postgres.NewPostgresThirdpartyOAuth2ProviderRepository(pgAdapter),
+		userGrants:           postgres.NewUserGrantRepository(pgAdapter),
+		userSessions:         postgres.NewUserSessionRepository(pgAdapter),
+		permissionSets:       postgres.NewPermissionSetRepository(pgAdapter),
+		brokerCredentials:    postgres.NewClientCredentialRepo(pgAdapter),
+		signingKeys:          signingKeys,
+		authorizationCodes:   postgres.NewAuthorizationCodeRepo(pgAdapter),
+		refreshTokenSessions: postgres.NewRefreshTokenSessionRepo(pgAdapter),
+		pkceSessions:         postgres.NewPKCESessionRepo(pgAdapter),
+		oauth2Transactions:   pgAdapter,
 	}, nil
 }
 
@@ -210,6 +227,26 @@ func (a *Adapter) SigningKeyBootstrapCoordinator() ports.SigningKeyBootstrapCoor
 // AuthorizationCodes returns the AuthorizationCodeRepository interface implementation.
 func (a *Adapter) AuthorizationCodes() ports.AuthorizationCodeRepository {
 	return a.authorizationCodes
+}
+
+// RefreshTokenSessions returns the RefreshTokenSessionRepository interface implementation.
+func (a *Adapter) RefreshTokenSessions() ports.RefreshTokenSessionRepository {
+	return a.refreshTokenSessions
+}
+
+// BeginTX begins a transaction for a Fosite token flow.
+func (a *Adapter) BeginTX(ctx context.Context) (context.Context, error) {
+	return a.oauth2Transactions.BeginTX(ctx)
+}
+
+// Commit commits a Fosite token-flow transaction.
+func (a *Adapter) Commit(ctx context.Context) error {
+	return a.oauth2Transactions.Commit(ctx)
+}
+
+// Rollback rolls back a Fosite token-flow transaction.
+func (a *Adapter) Rollback(ctx context.Context) error {
+	return a.oauth2Transactions.Rollback(ctx)
 }
 
 // PKCESessions returns the PKCESessionRepository interface implementation.

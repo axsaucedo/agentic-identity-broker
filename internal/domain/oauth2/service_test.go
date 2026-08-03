@@ -437,6 +437,40 @@ func TestService_HandleAuthorization(t *testing.T) {
 	}
 }
 
+func TestService_HandleAuthorization_AllowsOfflineAccessReservedScope(t *testing.T) {
+	agentID := id.NewAgentID()
+	agentRepo := NewMockAgentRepository()
+	grantRepo := NewMockGrantRepository()
+	require.NoError(t, agentRepo.Create(context.Background(), &storage.Agent{
+		ID:            agentID,
+		ClientID:      ptr.To(id.ClientID(agentID.String())),
+		DisplayName:   "Offline Scope Agent",
+		Description:   "Agent that allows read but not offline_access explicitly",
+		RedirectURIs:  []string{"https://client.example.com/callback"},
+		AllowedScopes: []string{"read"},
+	}))
+
+	svc := newTestAuthorizationService(agentRepo, grantRepo, &OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+		ModeStrategy:              NewProxyModeStrategy(),
+		SupportedResponseTypes:    []string{"code"},
+		SupportedGrantTypes:       []string{"authorization_code"},
+	})
+
+	decision, err := svc.HandleAuthorization(context.Background(), &ports.AuthorizationRequest{
+		ClientID:     id.ClientID(agentID.String()),
+		RedirectURI:  "https://client.example.com/callback",
+		ResponseType: "code",
+		Scope:        "read offline_access",
+		State:        "xyz",
+		OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
+	}, id.NewPrincipal("user@example.com"))
+	require.NoError(t, err)
+	require.NotNil(t, decision)
+	assert.Equal(t, "redirect_to_consent", decision.Action)
+}
+
 // TestService_HandleAuthorization_SessionExpiry tests that expired delegated sessions
 // redirect back to consent even when the grant itself is still active.
 func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {

@@ -31,6 +31,7 @@ type ProxyOAuth2Config struct {
 	UpstreamJWKSMaxRefresh    time.Duration
 	SupportedResponseTypes    []string
 	SupportedGrantTypes       []string
+	SupportedScopes           []string
 	MultiAgentClient          MultiAgentClientConfig
 }
 
@@ -64,10 +65,12 @@ func (c *ProxyOAuth2Config) JWKSMaxRefresh() time.Duration {
 type LocalOAuth2Config struct {
 	IssuerURI              string
 	TokenTTL               time.Duration
+	RefreshTokenTTL        time.Duration
 	TokenClaimsExpression  string
 	SigningKeys            LocalSigningKeysConfig
 	SupportedResponseTypes []string
 	SupportedGrantTypes    []string
+	SupportedScopes        []string
 	CIMD                   CIMDConfig
 }
 

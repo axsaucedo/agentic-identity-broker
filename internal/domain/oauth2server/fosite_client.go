@@ -23,7 +23,7 @@ func (c *confidentialClient) GetID() string             { return c.clientID }
 func (c *confidentialClient) GetHashedSecret() []byte   { return []byte(c.credential.SecretHash) }
 func (c *confidentialClient) GetRedirectURIs() []string { return c.agent.RedirectURIs }
 func (c *confidentialClient) GetGrantTypes() fosite.Arguments {
-	return fosite.Arguments{"authorization_code", "client_credentials"}
+	return fosite.Arguments{"authorization_code", "client_credentials", "refresh_token"}
 }
 func (c *confidentialClient) GetResponseTypes() fosite.Arguments { return fosite.Arguments{"code"} }
 func (c *confidentialClient) GetScopes() fosite.Arguments {
@@ -41,13 +41,14 @@ type publicClient struct {
 	clientID     string
 	agent        *storage.Agent
 	redirectURIs []string
+	grantTypes   fosite.Arguments
 }
 
 func (c *publicClient) GetID() string             { return c.clientID }
 func (c *publicClient) GetHashedSecret() []byte   { return nil }
 func (c *publicClient) GetRedirectURIs() []string { return c.redirectURIs }
 func (c *publicClient) GetGrantTypes() fosite.Arguments {
-	return fosite.Arguments{"authorization_code"}
+	return c.grantTypes
 }
 func (c *publicClient) GetResponseTypes() fosite.Arguments { return fosite.Arguments{"code"} }
 func (c *publicClient) GetScopes() fosite.Arguments {
@@ -66,6 +67,13 @@ type agentHolder interface {
 
 func (c *confidentialClient) getAgent() *storage.Agent { return c.agent }
 func (c *publicClient) getAgent() *storage.Agent       { return c.agent }
+
+func publicClientGrantTypes(cimd []string) fosite.Arguments {
+	if len(cimd) == 0 {
+		return fosite.Arguments{"authorization_code"}
+	}
+	return fosite.Arguments(cimd)
+}
 
 func extractAgentID(client fosite.Client) (id.AgentID, error) {
 	h, ok := client.(agentHolder)

@@ -33,13 +33,15 @@ func newTestProvider(t *testing.T) (*Provider, *memory.AgentRepository, *Signing
 
 	provider, err := NewProvider(
 		codeRepo,
+		memory.NewRefreshTokenSessionStore(),
 		memory.NewPKCESessionStore(),
 		credRepo,
 		&testClientResolver{agentRepo: agentRepo},
 		signingKeySvc,
 		"https://broker.example.com",
 		time.Hour, // 1h TTL
-		"",        // no CEL expression
+		time.Hour,
+		"", // no CEL expression
 		logger,
 	)
 	require.NoError(t, err)
@@ -343,6 +345,178 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 		)
 		assert.Error(t, err)
 		assert.ErrorIs(t, err, ErrInvalidClient)
+	})
+}
+
+func TestProvider_HandleAuthorize_AllowsOfflineAccessReservedScope(t *testing.T) {
+	provider, agentRepo, _ := newTestProvider(t)
+	agent, _, _ := setupTestCredentials(t, provider, agentRepo)
+	agent.RedirectURIs = []string{"http://localhost:8080/callback"}
+	agent.AllowedScopes = []string{"read"}
+	require.NoError(t, agentRepo.Update(context.Background(), agent))
+
+	code, err := provider.HandleAuthorize(
+		context.Background(),
+		agent.ID.String(),
+		"http://localhost:8080/callback",
+		"code",
+		"read offline_access",
+		"state",
+		generateS256Challenge("offline-access-verifier-1234567890123456789"),
+		"S256",
+		id.NewPrincipal("user@example.com"),
+	)
+	require.NoError(t, err)
+	assert.NotEmpty(t, code)
+}
+
+func TestProvider_RefreshTokens(t *testing.T) {
+	t.Run("offline_access yields refresh token and refresh grant rotates it", func(t *testing.T) {
+		provider, agentRepo, _ := newTestProvider(t)
+		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
+		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
+		require.NoError(t, agentRepo.Update(context.Background(), agent))
+
+		verifier := "offline-access-verifier-123456789012345678901"
+		challenge := generateS256Challenge(verifier)
+
+		code, err := provider.HandleAuthorize(
+			context.Background(),
+			agent.ID.String(),
+			"http://localhost:8080/callback",
+			"code",
+			"read offline_access",
+			"state",
+			challenge,
+			"S256",
+			id.NewPrincipal("user@example.com"),
+		)
+		require.NoError(t, err)
+
+		resp, err := provider.HandleAuthorizationCodeExchange(
+			context.Background(),
+			agent.ID.String(),
+			plaintext,
+			code,
+			"http://localhost:8080/callback",
+			verifier,
+		)
+		require.NoError(t, err)
+		require.NotEmpty(t, resp.RefreshToken)
+
+		refreshed, err := provider.HandleRefreshToken(context.Background(), agent.ID.String(), plaintext, resp.RefreshToken, "")
+		require.NoError(t, err)
+		require.NotEmpty(t, refreshed.AccessToken)
+		require.NotEmpty(t, refreshed.RefreshToken)
+		assert.NotEqual(t, resp.RefreshToken, refreshed.RefreshToken)
+
+		_, err = provider.HandleRefreshToken(context.Background(), agent.ID.String(), plaintext, resp.RefreshToken, "")
+		assert.ErrorIs(t, err, ErrInvalidGrant)
+	})
+
+	t.Run("missing offline_access omits refresh token", func(t *testing.T) {
+		provider, agentRepo, _ := newTestProvider(t)
+		agent, _, plaintext := setupTestCredentials(t, provider, agentRepo)
+		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
+		require.NoError(t, agentRepo.Update(context.Background(), agent))
+
+		verifier := "no-offline-access-verifier-1234567890123456789"
+		challenge := generateS256Challenge(verifier)
+
+		code, err := provider.HandleAuthorize(
+			context.Background(),
+			agent.ID.String(),
+			"http://localhost:8080/callback",
+			"code",
+			"read",
+			"state",
+			challenge,
+			"S256",
+			id.NewPrincipal("user@example.com"),
+		)
+		require.NoError(t, err)
+
+		resp, err := provider.HandleAuthorizationCodeExchange(
+			context.Background(),
+			agent.ID.String(),
+			plaintext,
+			code,
+			"http://localhost:8080/callback",
+			verifier,
+		)
+		require.NoError(t, err)
+		assert.Empty(t, resp.RefreshToken)
+	})
+
+	t.Run("cimd client without refresh_token grant gets no refresh token", func(t *testing.T) {
+		codeRepo := memory.NewAuthorizationCodeStore()
+		refreshRepo := memory.NewRefreshTokenSessionStore()
+		credRepo := memory.NewClientCredentialStore()
+		signingKeyRepo := memory.NewSigningKeyStore()
+		enc := &testEncryptor{}
+		logger := testSlogger()
+		agent := &dstorage.Agent{
+			ID:          id.NewAgentID(),
+			ClientID:    nil,
+			DisplayName: "CIMD Agent",
+			Description: "CIMD agent without refresh grant",
+		}
+		resolver := &mockClientResolver{resolveFunc: func(_ context.Context, clientID id.ClientID) (*ports.ClientResolution, error) {
+			return &ports.ClientResolution{
+				Agent: agent,
+				CIMDMetadata: &ports.CIMDMetadataDTO{
+					ClientID:     string(clientID),
+					RedirectURIs: []string{"https://client.example.com/callback"},
+					GrantTypes:   []string{"authorization_code"},
+				},
+			}, nil
+		}}
+
+		signingKeySvc := NewSigningKeyService(signingKeyRepo, signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
+		provider, err := NewProvider(
+			codeRepo,
+			refreshRepo,
+			memory.NewPKCESessionStore(),
+			credRepo,
+			resolver,
+			signingKeySvc,
+			"https://broker.example.com",
+			time.Hour,
+			time.Hour,
+			"",
+			logger,
+		)
+		require.NoError(t, err)
+		_, err = signingKeySvc.generateAndStore(context.Background(), "ES256", true, time.Now())
+		require.NoError(t, err)
+
+		verifier := "cimd-no-refresh-verifier-123456789012345678901"
+		challenge := generateS256Challenge(verifier)
+		clientID := "https://client.example.com/metadata.json"
+
+		code, err := provider.HandleAuthorize(
+			context.Background(),
+			clientID,
+			"https://client.example.com/callback",
+			"code",
+			"offline_access",
+			"state",
+			challenge,
+			"S256",
+			id.NewPrincipal("user@example.com"),
+		)
+		require.NoError(t, err)
+
+		resp, err := provider.HandleAuthorizationCodeExchange(
+			context.Background(),
+			clientID,
+			"",
+			code,
+			"https://client.example.com/callback",
+			verifier,
+		)
+		require.NoError(t, err)
+		assert.Empty(t, resp.RefreshToken)
 	})
 }
 
@@ -754,8 +928,7 @@ func TestProvider_CEL_RequestGrantType(t *testing.T) {
 		logger := testSlogger()
 
 		svc := NewSigningKeyService(signingKeyRepo, signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
-		p, err := NewProvider(codeRepo, memory.NewPKCESessionStore(), credRepo, &testClientResolver{agentRepo: agentRepo}, svc,
-			"https://broker.example.com", time.Hour, expr, logger)
+		p, err := NewProvider(codeRepo, memory.NewRefreshTokenSessionStore(), memory.NewPKCESessionStore(), credRepo, &testClientResolver{agentRepo: agentRepo}, svc, "https://broker.example.com", time.Hour, time.Hour, expr, logger)
 		require.NoError(t, err)
 
 		_, err = svc.generateAndStore(context.Background(), "ES256", true, time.Now())
@@ -819,17 +992,7 @@ func TestProvider_CEL_AudienceListClaimFailsAuthorizationCodeExchange(t *testing
 		logger := testSlogger()
 
 		svc := NewSigningKeyService(signingKeyRepo, signingKeyRepo, enc, newNoopBranchKeyManager(), logger)
-		p, err := NewProvider(
-			codeRepo,
-			memory.NewPKCESessionStore(),
-			credRepo,
-			&testClientResolver{agentRepo: agentRepo},
-			svc,
-			"https://broker.example.com",
-			time.Hour,
-			expr,
-			logger,
-		)
+		p, err := NewProvider(codeRepo, memory.NewRefreshTokenSessionStore(), memory.NewPKCESessionStore(), credRepo, &testClientResolver{agentRepo: agentRepo}, svc, "https://broker.example.com", time.Hour, time.Hour, expr, logger)
 		require.NoError(t, err)
 
 		_, err = svc.generateAndStore(context.Background(), "ES256", true, time.Now())

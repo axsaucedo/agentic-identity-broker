@@ -357,6 +357,7 @@ type LocalModeConfig struct {
 	// server.enduser.public_url when empty, allowing independent control behind CDNs or proxies.
 	IssuerURI             string                 `mapstructure:"issuer_uri"`
 	TokenTTL              time.Duration          `mapstructure:"token_ttl"`
+	RefreshTokenTTL       time.Duration          `mapstructure:"refresh_token_ttl"`
 	TokenClaimsExpression string                 `mapstructure:"token_claims_expression"`
 	SigningKeys           LocalSigningKeysConfig `mapstructure:"signing_keys"`
 }
@@ -372,9 +373,10 @@ type OAuth2AuthServerConfig struct {
 	Proxy ProxyModeConfig `mapstructure:"proxy"`
 	Local LocalModeConfig `mapstructure:"local"`
 
-	// SupportedResponseTypes and SupportedGrantTypes are shared; defaults differ by mode.
+	// SupportedResponseTypes, SupportedGrantTypes, and SupportedScopes are shared; defaults differ by mode.
 	SupportedResponseTypes []string `mapstructure:"supported_response_types"`
 	SupportedGrantTypes    []string `mapstructure:"supported_grant_types"`
+	SupportedScopes        []string `mapstructure:"supported_scopes"`
 
 	// MultiAgentClient holds optional multi-agent client sharing configuration.
 	MultiAgentClient MultiAgentClientConfig `mapstructure:"multi_agent_client"`
@@ -413,7 +415,7 @@ func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 		return c.newValidationError("oauth2_authorization_server.cimd.enabled requires mode 'local' or 'hybrid'; CIMD is incompatible with proxy mode")
 	}
 
-	if c.Local.TokenTTL != 0 || c.Local.TokenClaimsExpression != "" || c.Local.IssuerURI != "" || c.Local.SigningKeys.BootstrapTimeout != 0 {
+	if c.Local.TokenTTL != 0 || c.Local.RefreshTokenTTL != 0 || c.Local.TokenClaimsExpression != "" || c.Local.IssuerURI != "" || c.Local.SigningKeys.BootstrapTimeout != 0 {
 		return c.newValidationError("oauth2_authorization_server.local must be empty in proxy mode")
 	}
 
@@ -447,13 +449,19 @@ func (c *OAuth2AuthServerConfig) validateLocalMode() error {
 	}
 
 	c.applyLocalDefaults()
-	c.applySharedDefaults([]string{"authorization_code", "client_credentials"})
+	if err := c.validateRefreshTokenTTL(); err != nil {
+		return err
+	}
+	c.applySharedDefaults([]string{"authorization_code", "client_credentials", "refresh_token"})
 	if err := c.validateLocalSigningKeys(); err != nil {
 		return err
 	}
 
 	if err := c.validateCIMDCache(); err != nil {
 		return err
+	}
+	if len(c.SupportedScopes) == 0 {
+		c.SupportedScopes = []string{"offline_access"}
 	}
 
 	if c.MultiAgentClient.Enabled {
@@ -469,12 +477,18 @@ func (c *OAuth2AuthServerConfig) validateHybridMode() error {
 		return err
 	}
 	c.applyLocalDefaults()
-	c.applySharedDefaults([]string{"authorization_code", "client_credentials"})
+	if err := c.validateRefreshTokenTTL(); err != nil {
+		return err
+	}
+	c.applySharedDefaults([]string{"authorization_code", "client_credentials", "refresh_token"})
 	if err := c.validateLocalSigningKeys(); err != nil {
 		return err
 	}
 	if err := c.validateCIMDCache(); err != nil {
 		return err
+	}
+	if len(c.SupportedScopes) == 0 {
+		c.SupportedScopes = []string{"offline_access"}
 	}
 	return c.validateMultiAgentClient()
 }
@@ -504,9 +518,19 @@ func (c *OAuth2AuthServerConfig) applyLocalDefaults() {
 	if c.Local.TokenTTL == 0 {
 		c.Local.TokenTTL = time.Hour
 	}
+	if c.Local.RefreshTokenTTL == 0 {
+		c.Local.RefreshTokenTTL = 30 * 24 * time.Hour
+	}
 	if c.Local.SigningKeys.BootstrapTimeout == 0 {
 		c.Local.SigningKeys.BootstrapTimeout = DefaultSigningKeyBootstrapTimeout
 	}
+}
+
+func (c *OAuth2AuthServerConfig) validateRefreshTokenTTL() error {
+	if c.Local.RefreshTokenTTL < 0 {
+		return c.newValidationError("oauth2_authorization_server.local.refresh_token_ttl must be a positive duration")
+	}
+	return nil
 }
 
 func (c *OAuth2AuthServerConfig) validateLocalSigningKeys() error {
@@ -553,16 +577,19 @@ func (c *OAuth2AuthServerConfig) Resolve() (OAuth2ModeConfig, error) {
 			UpstreamJWKSMaxRefresh:    c.Proxy.UpstreamJWKSMaxRefresh,
 			SupportedResponseTypes:    c.SupportedResponseTypes,
 			SupportedGrantTypes:       c.SupportedGrantTypes,
+			SupportedScopes:           c.SupportedScopes,
 			MultiAgentClient:          c.MultiAgentClient,
 		}, nil
 	case servermode.Local:
 		return &LocalOAuth2Config{
 			IssuerURI:              c.Local.IssuerURI,
 			TokenTTL:               c.Local.TokenTTL,
+			RefreshTokenTTL:        c.Local.RefreshTokenTTL,
 			TokenClaimsExpression:  c.Local.TokenClaimsExpression,
 			SigningKeys:            c.Local.SigningKeys,
 			SupportedResponseTypes: c.SupportedResponseTypes,
 			SupportedGrantTypes:    c.SupportedGrantTypes,
+			SupportedScopes:        c.SupportedScopes,
 			CIMD:                   c.CIMD,
 		}, nil
 	case servermode.Hybrid:
@@ -576,15 +603,18 @@ func (c *OAuth2AuthServerConfig) Resolve() (OAuth2ModeConfig, error) {
 				UpstreamJWKSMaxRefresh:    c.Proxy.UpstreamJWKSMaxRefresh,
 				SupportedResponseTypes:    c.SupportedResponseTypes,
 				SupportedGrantTypes:       c.SupportedGrantTypes,
+				SupportedScopes:           c.SupportedScopes,
 				MultiAgentClient:          c.MultiAgentClient,
 			},
 			Local: LocalOAuth2Config{
 				IssuerURI:              c.Local.IssuerURI,
 				TokenTTL:               c.Local.TokenTTL,
+				RefreshTokenTTL:        c.Local.RefreshTokenTTL,
 				TokenClaimsExpression:  c.Local.TokenClaimsExpression,
 				SigningKeys:            c.Local.SigningKeys,
 				SupportedResponseTypes: c.SupportedResponseTypes,
 				SupportedGrantTypes:    c.SupportedGrantTypes,
+				SupportedScopes:        c.SupportedScopes,
 				CIMD:                   c.CIMD,
 			},
 		}, nil

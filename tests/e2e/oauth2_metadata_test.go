@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/matchers"
@@ -382,6 +383,58 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 
 			tokenEndpoint, _ := metadata["token_endpoint"].(string)
 			Expect(tokenEndpoint).To(Equal(expectedBaseURL + "/oauth2/token"))
+		})
+	})
+
+	// Scenario 4.1 and 4.5 from specs/025-oauth2-server/spec.md
+	Context("local mode offline access advertisement", func() {
+		var (
+			localServer         *bootstrap.TestServer
+			localStorageFactory *bootstrap.StorageFactory
+			localStorage        *storageadapter.Adapter
+			metadata            map[string]interface{}
+		)
+
+		BeforeEach(func() {
+			testConfig := fixtures.LocalConfig()
+			localStorageFactory = bootstrap.NewStorageFactory(logger)
+			var err error
+			localStorage, err = localStorageFactory.NewTestStorage()
+			Expect(err).ToNot(HaveOccurred())
+
+			testFactory := bootstrap.NewServerFactory(testConfig, logger)
+			builder, err := bootstrap.NewTestServerBuilder(testConfig, localStorage, testFactory, logger)
+			Expect(err).ToNot(HaveOccurred())
+
+			localServer, err = builder.Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			resp, err := localServer.PublicGET(metadataEndpoint)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			Expect(json.NewDecoder(resp.Body).Decode(&metadata)).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			if localServer != nil {
+				localServer.Close()
+			}
+			if localStorage != nil {
+				_ = localStorageFactory.CloseStorage(localStorage)
+			}
+		})
+
+		It("advertises the refresh_token grant type", func() {
+			grantTypes, ok := metadata["grant_types_supported"].([]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(grantTypes).To(ContainElement("refresh_token"))
+		})
+
+		It("advertises the offline_access scope", func() {
+			scopes, ok := metadata["scopes_supported"].([]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(scopes).To(ContainElement("offline_access"))
 		})
 	})
 })

@@ -24,6 +24,10 @@ func (s *localMintingStrategy) HandleAuthorizationCodeExchange(ctx context.Conte
 	return s.provider.HandleAuthorizationCodeExchange(ctx, string(clientID), clientSecret, code, redirectURI, codeVerifier)
 }
 
+func (s *localMintingStrategy) HandleRefreshToken(ctx context.Context, clientID id.ClientID, clientSecret, refreshToken, scope string) (*ports.TokenResponse, error) {
+	return s.provider.HandleRefreshToken(ctx, string(clientID), clientSecret, refreshToken, scope)
+}
+
 type localCodeIssuer struct {
 	provider *oauth2server.Provider
 }

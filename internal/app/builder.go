@@ -182,9 +182,11 @@ type oauthResolved struct {
 	jwksMaxRefresh            time.Duration
 	localIssuerURI            string
 	localTokenTTL             time.Duration
+	localRefreshTokenTTL      time.Duration
 	localClaimsExpression     string
 	responseTypes             []string
 	grantTypes                []string
+	supportedScopes           []string
 	multiAgentClient          ports.MultiAgentClientConfig
 	cimdConfig                ports.CIMDConfig
 	cimdEnabled               bool
@@ -204,15 +206,18 @@ func extractOAuthValues(cfg ports.OAuth2ModeConfig, publicURL string) oauthResol
 		r.jwksMaxRefresh = c.JWKSMaxRefresh()
 		r.responseTypes = c.SupportedResponseTypes
 		r.grantTypes = c.SupportedGrantTypes
+		r.supportedScopes = c.SupportedScopes
 		r.multiAgentClient = c.MultiAgentClient
 	case *ports.LocalOAuth2Config:
 		if c.IssuerURI != "" {
 			r.localIssuerURI = c.IssuerURI
 		}
 		r.localTokenTTL = c.TokenTTL
+		r.localRefreshTokenTTL = c.RefreshTokenTTL
 		r.localClaimsExpression = c.TokenClaimsExpression
 		r.responseTypes = c.SupportedResponseTypes
 		r.grantTypes = c.SupportedGrantTypes
+		r.supportedScopes = c.SupportedScopes
 		r.cimdConfig = c.CIMD
 		r.cimdEnabled = c.CIMD.Enabled
 	case *ports.HybridOAuth2Config:
@@ -224,11 +229,13 @@ func extractOAuthValues(cfg ports.OAuth2ModeConfig, publicURL string) oauthResol
 		r.jwksMaxRefresh = c.Proxy.JWKSMaxRefresh()
 		r.responseTypes = c.ResponseTypes()
 		r.grantTypes = c.GrantTypes()
+		r.supportedScopes = c.Local.SupportedScopes
 		r.multiAgentClient = c.Proxy.MultiAgentClient
 		if c.Local.IssuerURI != "" {
 			r.localIssuerURI = c.Local.IssuerURI
 		}
 		r.localTokenTTL = c.Local.TokenTTL
+		r.localRefreshTokenTTL = c.Local.RefreshTokenTTL
 		r.localClaimsExpression = c.Local.TokenClaimsExpression
 		r.cimdConfig = c.Local.CIMD
 		r.cimdEnabled = c.Local.CIMD.Enabled
@@ -442,6 +449,7 @@ func (b *Builder) Build() (*App, error) {
 			IssuerURI:                 ov.localIssuerURI,
 			SupportedResponseTypes:    ov.responseTypes,
 			SupportedGrantTypes:       ov.grantTypes,
+			SupportedScopes:           ov.supportedScopes,
 			MultiAgentClient:          ov.multiAgentClient,
 			CIMDEnabled:               ov.cimdEnabled,
 			ModeStrategy:              modeStrategyFor(oauthCfg.ServerMode()),
@@ -689,14 +697,17 @@ func (b *Builder) Build() (*App, error) {
 	buildLocalProvider := func(signingKeyService *oauth2server.SigningKeyService, tokenTTL time.Duration, claimsExpr string, bootstrapTimeout time.Duration) (*oauth2server.Provider, error) {
 		provider, err := oauth2server.NewProvider(
 			b.storage.AuthorizationCodes(),
+			b.storage.RefreshTokenSessions(),
 			b.storage.PKCESessions(),
 			b.storage.BrokerCredentials(),
 			clientResolver,
 			signingKeyService,
 			localIssuerURI,
 			tokenTTL,
+			ov.localRefreshTokenTTL,
 			claimsExpr,
 			b.logger,
+			b.storage,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OAuth2 server provider: %w", err)

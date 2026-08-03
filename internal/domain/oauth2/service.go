@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/oidcscope"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -38,6 +39,9 @@ type OAuth2Config struct {
 
 	// Supported grant types (default: ["authorization_code", "refresh_token"])
 	SupportedGrantTypes []string
+
+	// Supported scopes advertised in RFC 8414 metadata.
+	SupportedScopes []string
 
 	// MultiAgentClient holds optional multi-agent client sharing configuration.
 	// When Enabled, multiple agents may share a single upstream OAuth2 client ID.
@@ -201,6 +205,9 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 			allowedSet[scope] = true
 		}
 		for _, scope := range strings.Fields(req.Scope) {
+			if oidcscope.IsReservedRefreshTokenScope(scope) {
+				continue
+			}
 			if !allowedSet[scope] {
 				errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "invalid_scope", "requested scope is not permitted")
 				if buildURLErr != nil && s.logger != nil {
@@ -485,7 +492,7 @@ func (s *AuthorizationService) GenerateMetadata(ctx context.Context) (*ports.Met
 		if len(grantTypes) == 0 {
 			switch s.config.ModeStrategy.Mode() {
 			case servermode.Local, servermode.Hybrid:
-				grantTypes = []string{"authorization_code", "client_credentials"}
+				grantTypes = []string{"authorization_code", "client_credentials", "refresh_token"}
 			default:
 				grantTypes = []string{"authorization_code"}
 			}
@@ -498,6 +505,7 @@ func (s *AuthorizationService) GenerateMetadata(ctx context.Context) (*ports.Met
 		TokenEndpoint:                     fmt.Sprintf("%s/oauth2/token", issuer),
 		ResponseTypesSupported:            s.config.SupportedResponseTypes,
 		GrantTypesSupported:               grantTypes,
+		ScopesSupported:                   s.config.SupportedScopes,
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
 	}
 

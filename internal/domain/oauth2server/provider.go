@@ -14,6 +14,7 @@ import (
 	"github.com/ory/fosite/handler/pkce"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/oidcscope"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -25,11 +26,13 @@ import (
 type Provider struct {
 	authCodeHandler *fositeOAuth2.AuthorizeExplicitGrantHandler
 	ccHandler       *fositeOAuth2.ClientCredentialsGrantHandler
+	refreshHandler  *fositeOAuth2.RefreshTokenGrantHandler
 	pkceHandler     *pkce.Handler
 
-	fositeStorage  *FositeStorage
-	clientAuth     *ClientAuthService
-	accessStrategy *JWXAccessTokenStrategy
+	fositeStorage   *FositeStorage
+	clientAuth      *ClientAuthService
+	accessStrategy  *JWXAccessTokenStrategy
+	refreshStrategy *RandomRefreshTokenStrategy
 
 	config *fosite.Config
 	logger *slog.Logger
@@ -38,14 +41,17 @@ type Provider struct {
 // NewProvider constructs the OAuth2 server provider with fosite handlers.
 func NewProvider(
 	codeRepo ports.AuthorizationCodeRepository,
+	refreshRepo ports.RefreshTokenSessionRepository,
 	pkceRepo ports.PKCESessionRepository,
 	credRepo ports.ClientCredentialRepository,
 	clientResolver ports.ClientResolver,
 	signingKeyService *SigningKeyService,
 	issuerURI string,
 	tokenTTL time.Duration,
+	refreshTokenTTL time.Duration,
 	tokenClaimsExpression string,
 	logger *slog.Logger,
+	transactions ...ports.OAuth2TransactionManager,
 ) (*Provider, error) {
 	// Compile token claims CEL expression at startup (FR-013b: fail if invalid)
 	customClaimsEval, err := NewTokenClaimsEvaluator(tokenClaimsExpression)
@@ -62,18 +68,24 @@ func NewProvider(
 		return nil, fmt.Errorf("invalid access token strategy configuration: %w", err)
 	}
 	codeStrategy := &RandomCodeStrategy{}
+	refreshStrategy := &RandomRefreshTokenStrategy{}
 
 	// Storage adapters
-	storage := NewFositeStorage(codeRepo, pkceRepo, credRepo, clientResolver, logger)
+	storage := NewFositeStorage(codeRepo, refreshRepo, pkceRepo, credRepo, clientResolver, logger, transactions...)
 
 	config := &fosite.Config{
 		AuthorizeCodeLifespan:          60 * time.Second,
 		AccessTokenLifespan:            tokenTTL,
+		RefreshTokenLifespan:           refreshTokenTTL,
+		RefreshTokenScopes:             oidcscope.ReservedRefreshTokenScopes,
 		EnforcePKCE:                    true,
 		EnablePKCEPlainChallengeMethod: false,
 		// Empty AllowedScopes means unrestricted in our domain model.
 		// fosite's default WildcardScopeStrategy treats empty as no scopes allowed.
 		ScopeStrategy: func(allowedScopes []string, requestedScope string) bool {
+			if oidcscope.IsReservedRefreshTokenScope(requestedScope) {
+				return true
+			}
 			if len(allowedScopes) == 0 {
 				return true
 			}
@@ -96,6 +108,7 @@ func NewProvider(
 		authCodeHandler: &fositeOAuth2.AuthorizeExplicitGrantHandler{
 			AccessTokenStrategy:    accessStrategy,
 			AuthorizeCodeStrategy:  codeStrategy,
+			RefreshTokenStrategy:   refreshStrategy,
 			CoreStorage:            storage,
 			TokenRevocationStorage: storage,
 			Config:                 config,
@@ -104,16 +117,23 @@ func NewProvider(
 			HandleHelper: helper,
 			Config:       config,
 		},
+		refreshHandler: &fositeOAuth2.RefreshTokenGrantHandler{
+			AccessTokenStrategy:    accessStrategy,
+			RefreshTokenStrategy:   refreshStrategy,
+			TokenRevocationStorage: storage,
+			Config:                 config,
+		},
 		pkceHandler: &pkce.Handler{
 			AuthorizeCodeStrategy: codeStrategy,
 			Storage:               storage,
 			Config:                config,
 		},
-		fositeStorage:  storage,
-		clientAuth:     clientAuth,
-		accessStrategy: accessStrategy,
-		config:         config,
-		logger:         logger,
+		fositeStorage:   storage,
+		clientAuth:      clientAuth,
+		accessStrategy:  accessStrategy,
+		refreshStrategy: refreshStrategy,
+		config:          config,
+		logger:          logger,
 	}, nil
 }
 
@@ -235,6 +255,9 @@ func (p *Provider) HandleAuthorize(
 	scopes := splitScope(scope)
 	if len(agent.AllowedScopes) > 0 && len(scopes) > 0 {
 		for _, s := range scopes {
+			if oidcscope.IsReservedRefreshTokenScope(s) {
+				continue
+			}
 			if !containsScope(agent.AllowedScopes, s) {
 				return "", fosite.ErrInvalidScope.WithHintf("scope %q is not allowed for this client", s)
 			}
@@ -359,12 +382,82 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		return nil, err
 	}
 
-	return &ports.TokenResponse{
+	resp := &ports.TokenResponse{
 		AccessToken: fositeResp.GetAccessToken(),
 		TokenType:   "Bearer",
 		ExpiresIn:   int64(p.config.AccessTokenLifespan.Seconds()),
 		Scope:       strings.Join(req.GetGrantedScopes(), " "),
-	}, nil
+	}
+	if refreshToken, ok := fositeResp.GetExtra("refresh_token").(string); ok {
+		resp.RefreshToken = refreshToken
+	}
+	return resp, nil
+}
+
+// HandleRefreshToken processes a refresh_token grant for locally-minted tokens.
+func (p *Provider) HandleRefreshToken(
+	ctx context.Context,
+	clientID string,
+	secret string,
+	refreshToken string,
+	scope string,
+) (tokenResp *ports.TokenResponse, err error) {
+	defer func() { err = translateFositeError(err) }()
+
+	fositeClient, err := p.fositeStorage.GetClient(ctx, clientID)
+	if err != nil {
+		if errors.Is(err, fosite.ErrNotFound) {
+			return nil, fosite.ErrInvalidClient.WithHintf("client %s not found", clientID)
+		}
+		return nil, fosite.ErrServerError.WithDebugf("client lookup failed: %v", err)
+	}
+
+	switch bc := fositeClient.(type) {
+	case *confidentialClient:
+		authedClient, err := p.clientAuth.Authenticate(ctx, bc.agent.ID, secret)
+		if err != nil {
+			return nil, err
+		}
+		fositeClient = &confidentialClient{clientID: clientID, agent: authedClient.Agent, credential: authedClient.Credential}
+	case *publicClient:
+		// Public clients authenticate by client_id only.
+	default:
+		return nil, fosite.ErrServerError.WithDebugf("unexpected client type %T", fositeClient)
+	}
+
+	requestScope := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {refreshToken},
+		"client_id":     {clientID},
+	}
+	if scope != "" {
+		requestScope.Set("scope", scope)
+	}
+
+	req := fosite.NewAccessRequest(&fosite.DefaultSession{})
+	req.Client = fositeClient
+	req.GrantTypes = fosite.Arguments{"refresh_token"}
+	req.Form = requestScope
+
+	if err := p.refreshHandler.HandleTokenEndpointRequest(ctx, req); err != nil {
+		return nil, err
+	}
+
+	fositeResp := fosite.NewAccessResponse()
+	if err := p.refreshHandler.PopulateTokenEndpointResponse(ctx, req, fositeResp); err != nil {
+		return nil, err
+	}
+
+	resp := &ports.TokenResponse{
+		AccessToken: fositeResp.GetAccessToken(),
+		TokenType:   "Bearer",
+		ExpiresIn:   int64(p.config.AccessTokenLifespan.Seconds()),
+		Scope:       strings.Join(req.GetGrantedScopes(), " "),
+	}
+	if newRefreshToken, ok := fositeResp.GetExtra("refresh_token").(string); ok {
+		resp.RefreshToken = newRefreshToken
+	}
+	return resp, nil
 }
 
 func splitScope(scope string) fosite.Arguments {
