@@ -259,7 +259,7 @@ func applyMigrations(t *testing.T, container testcontainers.Container) {
 
 func applyMigrationsToDatabase(t *testing.T, container testcontainers.Container, dbName string) {
 	t.Helper()
-	applyMigrationsUpToDatabase(t, container, dbName, 22)
+	applyMigrationsUpToDatabase(t, container, dbName, 23)
 }
 
 // applyMigrationsUpTo applies migrations sequentially against the default database.
