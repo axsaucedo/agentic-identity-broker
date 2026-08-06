@@ -228,6 +228,39 @@ Note the shape:
   `previous_invalidated_at` timestamp. Tokens issued under the previous secret stay valid until
   they expire.
 
+## Provider-specific configuration hints
+
+### Google
+
+Google requires two `authorization_params` to support token refresh:
+
+```json
+"authorization_params": {
+  "access_type": "offline",
+  "prompt": "consent"
+}
+```
+
+- **`access_type: offline`** tells Google to issue a refresh token alongside the access token.
+  Without it, Google returns only a short-lived access token and the broker cannot refresh the
+  session when it expires.
+- **`prompt: consent`** forces the consent screen on every authorization. Google only returns a
+  refresh token on the **first** consent grant for a given user–client pair. If the user has
+  previously authorized the same OAuth2 client (even outside the broker), Google silently skips
+  the refresh token in subsequent responses. Adding `prompt: consent` ensures a fresh refresh
+  token is issued every time.
+
+If either parameter is missing, the broker stores the session without a refresh token. Once the
+access token expires (typically after one hour), the broker returns `invalid_grant` with the
+message *"User session has expired. All tokens are no longer valid"* and the user must
+re-authenticate.
+
+:::tip
+After adding or changing `authorization_params`, existing sessions are unaffected. Users with
+sessions that were created without a refresh token must re-authenticate to pick up the new
+parameters.
+:::
+
 ## Related
 
 - **[/api/admin](/api/admin)** — the full admin OpenAPI reference: every field, response
