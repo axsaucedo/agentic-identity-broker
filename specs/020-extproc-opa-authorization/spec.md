@@ -4,7 +4,7 @@
 **Created**: 2026-03-14  
 **Status**: Draft  
 **Input**: User description: "Implement OPA-based authorization in the ExtProc application as described in issue #200. Authorization is optional. Support OPA config file for bundle pulling or a local Rego file. Input should reflect ExtProc attributes similar to the OPA Envoy plugin. MCP and A2A protocol specifics should be extracted in ExtProc and passed as structured input to OPA."
-**Related**: [Issue #200 — Permission Sets & Three-Tier Tool Authorization](https://github.com/zalando-infosec/agentic-identity-broker/issues/200)
+**Related**: [Issue #200 — Permission Sets & Three-Tier Tool Authorization](https://github.com/zalando-incubator/agentic-identity-broker/issues/200)
 
 ## Clarifications
 

@@ -51,7 +51,7 @@ The SDK `Decision()` method uses a path format like `/aib/extproc/authz/result` 
 
 1. **Low-level `rego` package** — Requires manual policy compilation, no bundle management. Would need custom bundle polling implementation for the OPA config file mode. Rejected: more code, less functionality.
 2. **OPA as sidecar** — External OPA server queried via REST API. Rejected: contradicts ExtProc's single-binary deployment model (ADR 011).
-3. **CEL (already in codebase)** — cel-go is used for token exchange authorization (ADR 009). However, CEL lacks the policy management features (bundles, decision logging) and the set-based allow/deny rule composition that OPA provides. OPA is better suited for the multi-tier authorization model from issue #200.
+3. **CEL (already in codebase)** — cel-go is used for token exchange authorization (ADR 009). However, CEL lacks the policy management features (bundles, decision logging) and the set-based allow/deny rule composition that OPA provides. OPA is better suited for the broader three-tier authorization model.
 
 ---
 

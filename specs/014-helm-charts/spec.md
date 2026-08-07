@@ -208,10 +208,10 @@ As a platform operator, I want to configure CPU and memory resource limits for t
 
 | Parameter | Type | Purpose | Default |
 |-----------|------|---------|---------|
-| `image.repository` | string | Docker image repository | `ghcr.io/zalando-infosec/agentic-identity-broker` |
+| `image.repository` | string | Docker image repository | `ghcr.io/zalando-incubator/agentic-identity-broker` |
 | `image.tag` | string | Docker image tag | Chart appVersion |
 | `image.pullPolicy` | string | Image pull policy | `IfNotPresent` |
-| `migration.image.repository` | string | Migration Docker image repository | `ghcr.io/zalando-infosec/agentic-identity-broker-migrate` |
+| `migration.image.repository` | string | Migration Docker image repository | `ghcr.io/zalando-incubator/agentic-identity-broker-migrate` |
 | `migration.image.tag` | string | Migration image tag | Chart appVersion |
 | `migration.image.pullPolicy` | string | Migration image pull policy | `IfNotPresent` |
 | `replicaCount` | integer | Number of broker replicas | `1` |
@@ -255,7 +255,7 @@ As a platform operator, I want to configure CPU and memory resource limits for t
 replicaCount: 2
 
 image:
-  repository: ghcr.io/zalando-infosec/agentic-identity-broker
+  repository: ghcr.io/zalando-incubator/agentic-identity-broker
   tag: ""  # Defaults to chart appVersion
   pullPolicy: IfNotPresent
 
@@ -263,7 +263,7 @@ image:
 migration:
   enabled: true  # Auto-enabled when storage.type=postgres
   image:
-    repository: ghcr.io/zalando-infosec/agentic-identity-broker-migrate
+    repository: ghcr.io/zalando-incubator/agentic-identity-broker-migrate
     tag: ""  # Defaults to chart appVersion
     pullPolicy: IfNotPresent
   backoffLimit: 10

@@ -3,7 +3,7 @@
 **Feature Branch**: `019-permission-sets`
 **Created**: 2026-03-14
 **Status**: Draft
-**Input**: User description: "Implement the permission set feature described in https://github.com/zalando-infosec/agentic-identity-broker/issues/200. Permission sets should be manageable on the admin endpoint. In the consent screen the permission sets should be displayed above and independent of the required services. The services should only show up as action items if they do not have an active session. PermissionSets should be able to cover multiple services to optimize for usability."
+**Input**: User description: "Implement the permission set feature described in https://github.com/zalando-incubator/agentic-identity-broker/issues/200. Permission sets should be manageable on the admin endpoint. In the consent screen the permission sets should be displayed above and independent of the required services. The services should only show up as action items if they do not have an active session. PermissionSets should be able to cover multiple services to optimize for usability."
 
 ## User Scenarios & Testing *(mandatory)*
 

@@ -42,7 +42,7 @@ Two environments: `test`, `prod` (or `production`, normalized to `prod`).
 | KMS PendingDeletion | 30 days | 7 days |
 | DynamoDB PITR | Enabled | Disabled |
 | DynamoDB DeletionProtection | On | Off |
-| IRSA parameters | **Required** (panics if missing) | Optional (defaults to account root) |
+| IRSA parameters | **Required** (`serviceAccountSubject`, `oidcProviderArn`, `oidcSubjectKey`) | **Required** (`serviceAccountSubject`, `oidcProviderArn`, `oidcSubjectKey`) |
 
 ### Stack Outputs → Environment Variables
 
@@ -54,12 +54,10 @@ Two environments: `test`, `prod` (or `production`, normalized to `prod`).
 
 ### IRSA (IAM Roles for Service Accounts)
 
-Production deployments use federated web identity trust via EKS OIDC provider. Props:
+All environments use federated web identity trust via an IAM OIDC provider. Props:
+- `ServiceAccountSubject` — Kubernetes service account subject claim (`system:serviceaccount:<namespace>:<sa-name>`)
 - `OIDCProviderArn` — full OIDC provider ARN
-- `K8sNamespace` — Kubernetes namespace
-- `K8sServiceAccountName` — service account name
-
-Non-production defaults to `AccountRootPrincipal` for local dev convenience.
+- `OIDCSubjectKey` — IAM condition key for the subject claim (`<oidc-provider-host>:sub`)
 
 ## IAM Permissions (Least Privilege)
 
@@ -78,11 +76,14 @@ just cdk-deploy         # Deploy stack (default: test)
 Manual CDK commands:
 ```bash
 cd infra/cdk
-cdk deploy -c env=test
-cdk deploy -c env=prod \
+cdk deploy -c env=test \
+  -c serviceAccountSubject=system:serviceaccount:identity-broker:agentic-identity-broker \
   -c oidcProviderArn=arn:aws:iam::ACCOUNT:oidc-provider/... \
-  -c k8sNamespace=identity-broker \
-  -c k8sServiceAccountName=agentic-identity-broker
+  -c oidcSubjectKey=oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE:sub
+cdk deploy -c env=prod \
+  -c serviceAccountSubject=system:serviceaccount:identity-broker:agentic-identity-broker \
+  -c oidcProviderArn=arn:aws:iam::ACCOUNT:oidc-provider/... \
+  -c oidcSubjectKey=oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE:sub
 cdk diff                # Preview changes
 cdk destroy             # Tear down (non-prod only)
 ```
