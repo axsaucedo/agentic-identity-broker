@@ -18,6 +18,7 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
 
+	httpmiddleware "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	agentsservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/agents"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -432,6 +433,9 @@ func TestBuilderTokenExchangeExpectedAudience(t *testing.T) {
 		if app.TokenExchangeService == nil {
 			t.Error("expected TokenExchangeService to be set when token exchange is configured")
 		}
+		if app.ApprovalRequestAuthenticator == nil {
+			t.Error("expected ApprovalRequestAuthenticator to be set when token exchange is configured")
+		}
 	})
 
 	t.Run("custom ExpectedAudience is accepted and service is wired", func(t *testing.T) {
@@ -444,6 +448,29 @@ func TestBuilderTokenExchangeExpectedAudience(t *testing.T) {
 		if app.TokenExchangeService == nil {
 			t.Error("expected TokenExchangeService to be set when token exchange is configured")
 		}
+		if app.ApprovalRequestAuthenticator == nil {
+			t.Error("expected ApprovalRequestAuthenticator to be set when token exchange is configured")
+		}
+	})
+
+	t.Run("wires approval authentication without token exchange service", func(t *testing.T) {
+		app, err := buildAppWithTokenExchange(t, func(cfg *ports.Config) {
+			cfg.TokenExchange.ClaimExtraction.PrincipalExpression = ""
+			cfg.TokenExchange.Authorization.CEL.Expression = ""
+			cfg.TokenExchange.ClaimExtraction.AgentIDExpression = "subject_token.azp"
+		})
+		require.NoError(t, err)
+		require.Nil(t, app.TokenExchangeService)
+
+		handler := httpmiddleware.RequireApprovalClientAssertion(app.ApprovalRequestAuthenticator)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		req := httptest.NewRequest(http.MethodGet, "/api/approvals", nil)
+		req.Header.Set("Authorization", "Bearer invalid")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
 }
 

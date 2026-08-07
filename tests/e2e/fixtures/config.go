@@ -84,6 +84,14 @@ func DefaultOAuth2Config() *ports.Config {
 				RawKey: TestKEKMaterialDeterministic(),
 			},
 		},
+		Approvals: ports.ApprovalsConfig{
+			PendingTTL:         10 * time.Minute,
+			SyncCoalesceWindow: 1 * time.Second,
+			RateLimit: ports.ApprovalRateLimitConfig{
+				MaxPendingPerPair:    50,
+				MaxRequestsPerMinute: 10,
+			},
+		},
 		Security: ports.SecurityConfig{},
 	}
 }

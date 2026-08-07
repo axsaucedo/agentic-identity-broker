@@ -514,13 +514,9 @@ func (s *TokenExchangeService) resolveEffectiveScopes(
 	return effectiveScopes, nil
 }
 
-// jwtToClaims converts a JWT token to a claims map for CEL evaluation.
-// Extracts all claims from the token into a flat map suitable for CEL expressions.
-// Uses the lestrrat-go/jwx library API for token introspection via Keys() and Get().
 func jwtToClaims(token jwt.Token) map[string]any {
 	claims := make(map[string]any)
 
-	// Extract standard claims
 	if iss, _ := token.Issuer(); iss != "" {
 		claims["iss"] = iss
 	}
@@ -547,16 +543,13 @@ func jwtToClaims(token jwt.Token) map[string]any {
 		claims["jti"] = jti
 	}
 
-	// Extract all custom claims from the token
-	// Use Keys() to get all claim names and Get() to retrieve each value
 	for _, key := range token.Keys() {
-		// Avoid overwriting standard claims that were already extracted
-		if _, exists := claims[key]; !exists {
-			// Try to get the claim value
-			var value any
-			if err := token.Get(key, &value); err == nil {
-				claims[key] = value
-			}
+		if _, exists := claims[key]; exists {
+			continue
+		}
+		var value any
+		if err := token.Get(key, &value); err == nil {
+			claims[key] = value
 		}
 	}
 

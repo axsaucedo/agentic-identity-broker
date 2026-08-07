@@ -593,3 +593,15 @@ broker:
 
   # -- Additional broker configuration (merged into config.yaml)
   extraConfig: {}
+
+# Tool Approval configuration
+approvals:
+  # -- Time before a pending approval expires
+  pending_ttl: "10m"
+  # -- Coalesce window for long-poll sync notifications
+  sync_coalesce_window: "1s"
+  rate_limit:
+    # -- Maximum pending approvals per (principal, agent) pair
+    max_pending_per_pair: 50
+    # -- Maximum approval creation requests per minute per (principal, agent) pair
+    max_requests_per_minute: 10

@@ -1,8 +1,8 @@
 # Feature Specification: Offline Access Refresh Tokens
 
-**Feature Branch**: `033-offline-access-refresh`  
-**Created**: 2026-07-08  
-**Status**: Draft  
+**Feature Branch**: `033-offline-access-refresh`
+**Created**: 2026-07-08
+**Status**: Draft
 **Input**: User description: "retroactively create a spec for the executed plan and the implementation that was done on this branch."
 
 ## User Scenarios & Testing *(mandatory)*

@@ -26,14 +26,18 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/approval"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
 	enduserHandlers "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/enduser"
+	httpmiddleware "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwks"
 	jwtauthadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwtauth"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	postgresstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/postgres"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/telemetry"
 	agentsservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/agents"
+	domainapproval "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/approval"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
@@ -62,16 +66,19 @@ type App struct {
 	BranchKeyManager ports.BranchKeyManager
 
 	// Domain services
-	ConsentService       *consentservice.Service
-	ProviderService      *thirdparty.ThirdpartyOAuth2ProviderService
-	PermissionSetService *permissionset.Service
-	OAuth2SessionService *oauth2session.OAuth2SessionService
-	OAuth2Service        ports.OAuth2Service
-	TokenExchangeService *tokenexchange.TokenExchangeService
-	SessionTokenService  *sessiontoken.Service
+	ConsentService         *consentservice.Service
+	ProviderService        *thirdparty.ThirdpartyOAuth2ProviderService
+	PermissionSetService   *permissionset.Service
+	OAuth2SessionService   *oauth2session.OAuth2SessionService
+	OAuth2Service          ports.OAuth2Service
+	TokenExchangeService   *tokenexchange.TokenExchangeService
+	ApprovalService        *domainapproval.Service
+	ApprovalSyncSubscriber *postgresstorage.ApprovalSyncSubscriber // nil when storage is not postgres
+	SessionTokenService    *sessiontoken.Service
 
 	// JWT pre-authentication (optional, nil when not configured)
-	JWTAuthenticator domjwtauth.JWTAuthenticator
+	JWTAuthenticator             domjwtauth.JWTAuthenticator
+	ApprovalRequestAuthenticator *httpmiddleware.ApprovalRequestAuthenticator
 
 	// Handler groups for routing
 	AdminHandlers   *AdminHandlers
@@ -435,9 +442,15 @@ func (b *Builder) Build() (*App, error) {
 	}
 
 	// Computed once and used in OAuth2Config, shared JWKS adapter creation, and token exchange wiring.
+	// Token exchange requires both claim extraction and a client-authorization policy;
+	// approval auth can reuse either configured component with secure CEL defaults.
 	tokenExchangeEnabled := ov.upstreamIssuerURI != "" &&
 		b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
 		b.config.TokenExchange.Authorization.CEL.Expression != ""
+	approvalAuthEnabled := ov.upstreamIssuerURI != "" &&
+		(b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" ||
+			b.config.TokenExchange.ClaimExtraction.AgentIDExpression != "" ||
+			b.config.TokenExchange.Authorization.CEL.Expression != "")
 
 	// Create OAuth2 service — mode-specific config drives all decisions.
 	var clientResolver ports.ClientResolver
@@ -561,12 +574,10 @@ func (b *Builder) Build() (*App, error) {
 		ov.multiAgentClient.Enabled,
 	)
 
-	// Shared upstream JWKS adapter: in proxy/hybrid mode the broker resolves upstream
-	// OAuth2 metadata at startup so every upstream-verification surface uses the same
-	// readiness model. The only exception is the test-only JWKS publisher override when
-	// no other consumer needs upstream JWKS verification.
+	// Shared upstream JWKS adapter is required when token exchange, approval authentication,
+	// multi-agent verification, or proxy/hybrid JWKS publishing needs upstream keys.
 	var sharedUpstreamJWKS *jwks.Adapter
-	if ov.upstreamIssuerURI != "" && (b.jwksPublisher == nil || tokenExchangeEnabled || ov.multiAgentClient.Enabled) {
+	if ov.upstreamIssuerURI != "" && (b.jwksPublisher == nil || tokenExchangeEnabled || approvalAuthEnabled || ov.multiAgentClient.Enabled) {
 		discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(), ov.upstreamTimeout)
 		discovered, err := domstorage.DiscoverOAuth2Endpoints(
 			discoveryCtx,
@@ -648,6 +659,34 @@ func (b *Builder) Build() (*App, error) {
 	}
 
 	// Phase 3: Create handler instances
+
+	// Approval service
+	approvalRateLimiter := domainapproval.NewApprovalRateLimiter(
+		b.config.Approvals.RateLimit.MaxPendingPerPair,
+		b.config.Approvals.RateLimit.MaxRequestsPerMinute,
+	)
+	approvalBroadcaster := domainapproval.NewApprovalSyncBroadcaster(b.config.Approvals.SyncCoalesceWindow)
+	app.ApprovalService = domainapproval.NewService(
+		b.storage.ToolApprovals(),
+		b.storage.ToolApprovalQueries(),
+		b.storage.ToolApprovalMetrics(),
+		b.storage.ApprovalSyncState(),
+		b.storage.Agents(),
+		approvalRateLimiter,
+		approvalBroadcaster,
+		b.config.Approvals.PendingTTL,
+		b.config.Server.EndUser.PublicURL,
+		b.logger,
+	)
+
+	// Wire approval sync subscriber for PostgreSQL backend (cross-instance long-poll wake-up)
+	if b.config.Storage.Backend == "postgres" {
+		app.ApprovalSyncSubscriber = postgresstorage.NewApprovalSyncSubscriber(
+			b.config.Storage.Postgres.ConnectionURL,
+			approvalBroadcaster,
+			b.logger,
+		)
+	}
 
 	// Assert PermissionSetService is available — FR-006 and FR-019 require it.
 	// Both storage backends always wire PermissionSets(), so nil means a wiring bug.
@@ -839,17 +878,16 @@ func (b *Builder) Build() (*App, error) {
 		panic(fmt.Sprintf("BUG: unhandled OAuth2ModeConfig type %T — update strategy switch", oauthCfg))
 	}
 
-	// Token exchange trusts the broker-published JWKS surface for subject tokens,
-	// while client assertions remain tied to the upstream issuer and JWKS.
-	if tokenExchangeEnabled {
-		if app.ConsentService == nil {
-			return nil, fmt.Errorf("token exchange service requires consent service, but storage repositories (Agents, Services, UserGrants) are not available")
-		}
+	app.ApprovalRequestAuthenticator = httpmiddleware.NewApprovalRequestAuthenticator(nil, nil)
+
+	var approvalJWTValidator *tokenexchange.JWTValidator
+	var approvalCELEvaluator *tokenexchange.CELEvaluator
+	if approvalAuthEnabled {
 		if jwksPublisher == nil {
-			return nil, fmt.Errorf("token exchange requires JWKS publisher, but none was wired")
+			return nil, fmt.Errorf("approval authentication requires JWKS publisher, but none was wired")
 		}
 		if sharedUpstreamJWKS == nil {
-			return nil, fmt.Errorf("token exchange requires upstream JWKS adapter, but none was initialized")
+			return nil, fmt.Errorf("approval authentication requires upstream JWKS adapter, but none was initialized")
 		}
 
 		celConfig := tokenexchange.CELEvaluatorConfig{
@@ -862,15 +900,15 @@ func (b *Builder) Build() (*App, error) {
 			celConfig.ResolveAgentIDByClientID = newTokenExchangeAgentIDResolver(agentService, b.config.Storage.Timeouts.Read)
 		}
 
-		celEvaluator, err := tokenexchange.NewCELEvaluator(celConfig)
+		var err error
+		approvalCELEvaluator, err = tokenexchange.NewCELEvaluator(celConfig)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create CEL evaluator for token exchange: %w", err)
+			return nil, fmt.Errorf("failed to create CEL evaluator for approval authentication: %w", err)
 		}
 
-		clientAssertionJWKSAdapter := sharedUpstreamJWKS
 		subjectTokenJWKSAdapter, err := jwks.NewPublishedAdapter(jwksPublisher)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create published JWKS adapter for token exchange subject tokens: %w", err)
+			return nil, fmt.Errorf("failed to create published JWKS adapter for approval subject tokens: %w", err)
 		}
 
 		subjectTokenIssuers := []string{ov.upstreamIssuerURI}
@@ -883,25 +921,32 @@ func (b *Builder) Build() (*App, error) {
 			brokerAudience = tokenexchange.DefaultBrokerAudience
 		}
 
-		jwtValidator, err := tokenexchange.NewJWTValidatorWithPolicies(
+		approvalJWTValidator, err = tokenexchange.NewJWTValidatorWithPolicies(
 			tokenexchange.JWTValidationPolicy{
 				JWKSProvider:    subjectTokenJWKSAdapter,
 				ExpectedIssuers: subjectTokenIssuers,
 			},
 			tokenexchange.JWTValidationPolicy{
-				JWKSProvider:    clientAssertionJWKSAdapter,
+				JWKSProvider:    sharedUpstreamJWKS,
 				ExpectedIssuers: []string{ov.upstreamIssuerURI},
 			},
 			brokerAudience,
 			tokenexchange.DefaultClockSkewTolerance,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create JWT validator for token exchange: %w", err)
+			return nil, fmt.Errorf("failed to create JWT validator for approval authentication: %w", err)
+		}
+		app.ApprovalRequestAuthenticator = httpmiddleware.NewApprovalRequestAuthenticator(approvalJWTValidator, approvalCELEvaluator)
+	}
+
+	if tokenExchangeEnabled {
+		if app.ConsentService == nil {
+			return nil, fmt.Errorf("token exchange service requires consent service, but storage repositories (Agents, Services, UserGrants) are not available")
 		}
 
 		tokenExchangeService, err := tokenexchange.NewTokenExchangeService(
-			jwtValidator,
-			celEvaluator,
+			approvalJWTValidator,
+			approvalCELEvaluator,
 			app.ProviderService,
 			app.OAuth2SessionService,
 			app.ConsentService,
@@ -912,7 +957,6 @@ func (b *Builder) Build() (*App, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create token exchange service: %w", err)
 		}
-
 		app.TokenExchangeService = tokenExchangeService
 	}
 
@@ -939,9 +983,18 @@ func (b *Builder) Build() (*App, error) {
 			Logger:        b.logger,
 			GrantHandler:  grantHandler,
 		},
-		OAuth2Metadata: oauth2MetadataHandler,
-		JWKS:           jwksHandler,
-		SPA:            handlers.NewSPAHandler(b.staticWebResourcesPath, b.logger),
+		OAuth2Metadata:    oauth2MetadataHandler,
+		ApprovalCreate:    approval.NewCreateHandler(app.ApprovalService),
+		ApprovalGet:       approval.NewGetHandler(app.ApprovalService),
+		ApprovalApprove:   approval.NewApproveHandler(app.ApprovalService),
+		ApprovalDeny:      approval.NewDenyHandler(app.ApprovalService),
+		ApprovalConsume:   approval.NewConsumeHandler(app.ApprovalService),
+		ApprovalRevoke:    approval.NewRevokeHandler(app.ApprovalService),
+		ApprovalSync:      approval.NewSyncHandler(app.ApprovalService),
+		ApprovalPermanent: approval.NewPermanentHandler(app.ApprovalService),
+		ApprovalPending:   approval.NewPendingHandler(app.ApprovalService),
+		JWKS:              jwksHandler,
+		SPA:               handlers.NewSPAHandler(b.staticWebResourcesPath, b.logger),
 	}
 
 	return app, nil

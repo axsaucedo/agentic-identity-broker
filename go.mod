@@ -52,6 +52,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.44.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.21.0
+	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.81.1
 )
 
@@ -90,7 +91,6 @@ require (
 	go.opentelemetry.io/otel/exporters/zipkin v1.21.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
-	golang.org/x/time v0.15.0 // indirect
 	gopkg.in/ini.v1 v1.67.1 // indirect
 )
 

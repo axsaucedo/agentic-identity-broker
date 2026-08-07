@@ -105,6 +105,41 @@ func TestSetupEnduserRoutes_ConsentAllowsNonBrowserPost(t *testing.T) {
 	require.Equal(t, http.StatusCreated, postResp.Code)
 }
 
+func TestSetupEnduserRoutes_ApprovalBrowserRoutesRequirePrincipal(t *testing.T) {
+	t.Parallel()
+
+	router, _ := newEnduserConsentRouter(t)
+
+	missingPrincipalReq := httptest.NewRequest(http.MethodGet, "/api/approvals/pending", nil)
+	missingPrincipalResp := httptest.NewRecorder()
+	router.ServeHTTP(missingPrincipalResp, missingPrincipalReq)
+	require.Equal(t, http.StatusUnauthorized, missingPrincipalResp.Code)
+
+	authenticatedReq := httptest.NewRequest(http.MethodGet, "/api/approvals/pending", nil)
+	authenticatedReq.Header.Set("X-Remote-User", "user@example.com")
+	authenticatedResp := httptest.NewRecorder()
+	router.ServeHTTP(authenticatedResp, authenticatedReq)
+	require.Equal(t, http.StatusOK, authenticatedResp.Code)
+}
+
+func TestSetupEnduserRoutes_ApprovalMutationsRejectCrossOriginPost(t *testing.T) {
+	t.Parallel()
+
+	router, _ := newEnduserConsentRouter(t)
+	for _, action := range []string{"approve", "deny", "revoke"} {
+		t.Run(action, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/approvals/00000000-0000-0000-0000-000000000000/"+action, nil)
+			req.Header.Set("X-Remote-User", "user@example.com")
+			req.Header.Set("Origin", "https://evil.example.com")
+			req.Host = "broker.example.com"
+
+			resp := httptest.NewRecorder()
+			router.ServeHTTP(resp, req)
+			require.Equal(t, http.StatusForbidden, resp.Code)
+		})
+	}
+}
+
 func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
 	t.Helper()
 
@@ -139,10 +174,11 @@ func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
 		},
 		func(r chi.Router) {
 			routing.SetupEnduserRoutes(r, application.EnduserHandlers, routing.EnduserRouteConfig{
-				Authentication: application.Config.Server.EndUser.Authentication,
-				Logger:         logger,
-				CORS:           application.Config.Server.EndUser.CORS,
-				Telemetry:      application.Config.Telemetry,
+				Authentication:               application.Config.Server.EndUser.Authentication,
+				Logger:                       logger,
+				ApprovalRequestAuthenticator: application.ApprovalRequestAuthenticator,
+				CORS:                         application.Config.Server.EndUser.CORS,
+				Telemetry:                    application.Config.Telemetry,
 			})
 		},
 		logger,

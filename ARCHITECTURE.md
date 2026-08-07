@@ -405,6 +405,51 @@ ginkgo -v --focus="Authorization Endpoint" ./tests/e2e/
 - `net/http/httptest` (HTTP test server)
 - Production `app.Builder` and `httpAdapter.Server` (no custom test implementations)
 
+#### 3.1.5. Tool Approval Domain
+
+**Purpose**: Human-in-the-loop authorization for agent tool calls. When an AI agent attempts to invoke a tool that requires human authorization, the system creates a pending approval record, presents it to the user, and blocks the tool call until the user approves or denies it.
+
+**Domain Model**:
+- **ToolApproval**: Aggregate root representing an approval record with lifecycle status (pending → approved/denied), persistence scope (once/session/permanent), and consumption tracking.
+- **ApprovalService**: Core business logic (`internal/domain/approval/service.go`) — create, get, approve, deny, consume, list permanent, revoke, sync state. Enforces principal-matching, expiry checks, rate limiting, and idempotency.
+
+**API Endpoints** (8 routes on end-user server):
+```
+POST   /api/approvals              # Create pending (ExtProc → Broker)
+GET    /api/approvals              # Long-poll sync (ExtProc polling)
+GET    /api/approvals/permanent    # List permanent (Consent UI)
+GET    /api/approvals/{id}         # Get detail (Approval UI)
+POST   /api/approvals/{id}/approve # Approve with persistence choice
+POST   /api/approvals/{id}/deny    # Deny (optional permanent)
+POST   /api/approvals/{id}/consume # Consume once-use approval
+POST   /api/approvals/{id}/revoke  # Revoke permanent approval
+```
+
+**Storage**: Migrations 008 (tool_approvals table) and 009 (approval_sync_state table). PostgreSQL adapter with JSONB for arguments column. In-memory adapter for testing.
+
+**Rate Limiting**: Per (principal, agent) pair using `golang.org/x/time/rate` token bucket. Configured via `approvals.rate_limit.max_pending_per_pair` and `approvals.rate_limit.max_requests_per_minute`.
+
+**Trace Context**: `POST /api/approvals` accepts an optional W3C `traceparent` header. The broker persists the validated remote context so later browser lifecycle spans can link to the originating tool call.
+
+#### 3.1.6. Long-Poll Sync with PostgreSQL LISTEN/NOTIFY
+
+**Purpose**: Enable real-time approval state synchronization between ExtProc gateway instances and the broker without polling overhead.
+
+**Architecture** (see [ADR 014](adrs/014-long-poll-listen-notify.md)):
+
+- **Long-Poll HTTP**: `GET /api/approvals` blocks using `select{}` on change channel, timeout timer, or client disconnect. Uses `If-None-Match` / `ETag` with monotonic version counter.
+- **ApprovalSyncBroadcaster**: In-process fan-out with configurable coalesce window (default 1s). Subscribers register buffered channels; broadcast wakes all subscribers after coalesce delay.
+- **ApprovalSyncSubscriber**: One goroutine per broker instance holds a dedicated `pgx.Conn` for `LISTEN approval_sync`. On notification receipt, triggers broadcaster.
+- **Cross-Instance**: PostgreSQL `NOTIFY approval_sync` issued in the same transaction as `approval_sync_state.version` increment. All broker instances receive the notification and wake their local long-poll connections.
+
+**Components**:
+```
+internal/domain/approval/sync_broadcaster.go      # Subscribe/Unsubscribe/Broadcast with coalesce
+internal/domain/approval/rate_limiter.go          # Per-pair token bucket rate limiting
+internal/adapters/storage/postgres/
+    approval_sync_subscriber.go                   # pgx LISTEN goroutine with reconnect
+```
+
 #### 3.1.4. Public API Documentation
 
 **Purpose**: Comprehensive OpenAPI 3.0.3 documentation of all HTTP APIs exposed by the Identity Broker service.
@@ -1031,6 +1076,9 @@ This section lists all architectural decisions made for this project. ADRs docum
 
 - [ADR 015: CIMD Fetcher Architecture](adrs/015-cimd-fetcher-architecture.md) - SSRF-hardened HTTP client, in-process caching, hexagonal port, strategy pattern for opaque vs URL-based client IDs
 
+### Tool Approval
+- [ADR 014: Long-Poll with PostgreSQL LISTEN/NOTIFY](adrs/014-long-poll-listen-notify.md) - Cross-instance approval sync via long-poll HTTP + PostgreSQL LISTEN/NOTIFY with coalesce window
+
 ## 11. Project Identification
 
 Project Name: Agentic Identity Broker
@@ -1314,3 +1362,23 @@ Define any project-specific terms or acronyms.)
 **JWTVerificationMode**: String enum (`"jwks"` or `"none"`) controlling JWT signature verification behavior. `"jwks"` (default) requires JWKS URI and validates cryptographic signatures against published key sets. `"none"` accepts unsigned JWTs (alg: "none") for trusted upstream environments such as service meshes. Unsigned mode requires explicit opt-in and is mutually exclusive with `jwks_uri`.
 
 **JWTValidationFailed**: Domain event emitted when JWT pre-authentication fails. Contains failure reason (e.g., `invalid_signature`, `token_expired`, `audience_mismatch`), header name, and remote address. Logged as structured audit data for security monitoring per FR-020/SR-005. Not persisted — emitted as structured log entries.
+
+### Tool Approval Domain
+
+**ToolApproval**: Aggregate root representing a human-in-the-loop authorization record for a tool invocation. Contains tool name, arguments, principal, agent reference, lifecycle status, and persistence scope. Located in `internal/domain/storage/tool_approval.go`. Identified by `ApprovalID` (typed UUID per ADR 013).
+
+**ApprovalStatus**: Value object enum with three states: `pending` (awaiting user decision), `approved` (user authorized the tool call), `denied` (user rejected the tool call). State transitions are one-way: pending → approved or pending → denied.
+
+**ApprovalPersistence**: Value object enum controlling how long an approval decision persists: `once` (single use, consumed after first match), `session` (valid for the agent session duration, scoped by `agent_session_id`), `permanent` (persists indefinitely, visible in consent management UI). Set by the user during approve/deny action.
+
+**ApprovalSyncState**: Single-row entity tracking a monotonically increasing version counter. Incremented on every approval mutation. Used as the ETag source for the long-poll sync endpoint. Located in `migrations/009_create_approval_sync_state.up.sql`.
+
+**ApprovalCreated**: Domain event emitted when ExtProc creates a new pending approval. Carries approval_id, principal, agent_id, tool_name, and captured W3C traceparent request context for span linking.
+
+**ApprovalApproved**: Domain event emitted when a user approves a pending tool call. Carries approval_id, principal, persistence scope, and timestamp. Triggers sync version increment.
+
+**ApprovalDenied**: Domain event emitted when a user denies a pending tool call. Carries approval_id, principal, optional persistence scope, and timestamp. Triggers sync version increment.
+
+**ApprovalConsumed**: Domain event emitted when a once-persistence approval is consumed by ExtProc after use. Carries approval_id and timestamp. Triggers sync version increment.
+
+**ApprovalExpired**: Domain event emitted lazily when an expired approval is first accessed. Carries approval_id and expiry timestamp. Emitted as OTel span linked to originating trace if present.

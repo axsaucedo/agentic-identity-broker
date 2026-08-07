@@ -192,11 +192,12 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 		healthComponents = app.EnduserHealthComponents
 		routeSetup = func(r chi.Router) {
 			routing.SetupEnduserRoutes(r, app.EnduserHandlers, routing.EnduserRouteConfig{
-				Authentication:   app.Config.Server.EndUser.Authentication,
-				JWTAuthenticator: app.JWTAuthenticator,
-				Logger:           logger,
-				CORS:             app.Config.Server.EndUser.CORS,
-				Telemetry:        app.Config.Telemetry,
+				Authentication:               app.Config.Server.EndUser.Authentication,
+				JWTAuthenticator:             app.JWTAuthenticator,
+				ApprovalRequestAuthenticator: app.ApprovalRequestAuthenticator,
+				Logger:                       logger,
+				CORS:                         app.Config.Server.EndUser.CORS,
+				Telemetry:                    app.Config.Telemetry,
 			})
 			if spaSaved != nil {
 				r.Handle("/*", spaSaved)
@@ -670,10 +671,11 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 	// Step 6: Register production routes on the existing mux
 	// This adds all the actual endpoints while keeping the same httptest server
 	routing.SetupEnduserRoutes(router, appInstance.EnduserHandlers, routing.EnduserRouteConfig{
-		Authentication:   appInstance.Config.Server.EndUser.Authentication,
-		JWTAuthenticator: appInstance.JWTAuthenticator,
-		Logger:           b.logger,
-		Telemetry:        appInstance.Config.Telemetry,
+		Authentication:               appInstance.Config.Server.EndUser.Authentication,
+		JWTAuthenticator:             appInstance.JWTAuthenticator,
+		ApprovalRequestAuthenticator: appInstance.ApprovalRequestAuthenticator,
+		Logger:                       b.logger,
+		Telemetry:                    appInstance.Config.Telemetry,
 	})
 
 	b.logger.Info("Test server created and configured", "url", testServer.URL)

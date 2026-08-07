@@ -169,10 +169,10 @@ func (cp *ConsentPage) getApproveButton(ctx context.Context) playwright.Locator 
 func (cp *ConsentPage) waitForAgentNameHeading(ctx context.Context) error {
 	agentNameHeading := cp.page().GetByTestId("agent-name-heading")
 	err := agentNameHeading.WaitFor(playwright.LocatorWaitForOptions{
-		Timeout: playwright.Float(10000),
+		Timeout: playwright.Float(float64(cp.timeout.Milliseconds())),
 	})
 	if err != nil {
-		return fmt.Errorf("agent name heading not found (page may not have loaded): %w", err)
+		return fmt.Errorf("agent name heading not found after waiting %v (page may not have loaded): %w", cp.timeout, err)
 	}
 	return nil
 }

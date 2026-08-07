@@ -17,6 +17,7 @@ This package defines per-entity ID types that the compiler enforces. Without typ
 | Type | Entity | Database Column |
 |---|---|---|
 | `AgentID` | AI agent | `agents.id` |
+| `ApprovalID` | Tool approval | `tool_approvals.id` |
 | `AuthorizationCodeID` | OAuth2 authorization code | `authorization_codes.id` |
 | `CredentialID` | Broker client credential | `client_credentials.id` |
 | `GrantID` | User grant | `user_grants.id` |

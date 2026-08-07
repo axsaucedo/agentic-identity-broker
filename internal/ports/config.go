@@ -44,6 +44,7 @@ type Config struct {
 	Security         SecurityConfig         `mapstructure:"security"`
 	Encryption       EncryptionConfig       `mapstructure:"encryption"`
 	Telemetry        TelemetryConfig        `mapstructure:"telemetry"`
+	Approvals        ApprovalsConfig        `mapstructure:"approvals"`
 }
 
 // ServerConfig contains configuration for both HTTP servers.
@@ -971,4 +972,17 @@ func DefaultTelemetryConfig() TelemetryConfig {
 			Compression: OTLPCompressionNone,
 		},
 	}
+}
+
+// ApprovalsConfig contains configuration for the tool approval system.
+type ApprovalsConfig struct {
+	PendingTTL         time.Duration           `mapstructure:"pending_ttl"`
+	SyncCoalesceWindow time.Duration           `mapstructure:"sync_coalesce_window"`
+	RateLimit          ApprovalRateLimitConfig `mapstructure:"rate_limit"`
+}
+
+// ApprovalRateLimitConfig contains rate limiting settings for approval creation.
+type ApprovalRateLimitConfig struct {
+	MaxPendingPerPair    int `mapstructure:"max_pending_per_pair"`
+	MaxRequestsPerMinute int `mapstructure:"max_requests_per_minute"`
 }

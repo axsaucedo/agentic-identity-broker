@@ -5,6 +5,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/approval"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
 	enduserHandlers "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
@@ -47,6 +48,17 @@ type EnduserHandlers struct {
 	OAuth2Authorize *enduser.OAuth2AuthorizeHandler
 	OAuth2Token     *enduser.OAuth2TokenHandler
 	OAuth2Metadata  *enduser.OAuth2MetadataHandler
+
+	// Approval handlers for /api/approvals routes
+	ApprovalCreate    *approval.CreateHandler
+	ApprovalGet       *approval.GetHandler
+	ApprovalApprove   *approval.ApproveHandler
+	ApprovalDeny      *approval.DenyHandler
+	ApprovalConsume   *approval.ConsumeHandler
+	ApprovalRevoke    *approval.RevokeHandler
+	ApprovalSync      *approval.SyncHandler
+	ApprovalPermanent *approval.PermanentHandler
+	ApprovalPending   *approval.PendingHandler
 
 	// JWKS handler (all OAuth2 modes — serves aggregated signing key public material)
 	JWKS *enduserHandlers.JWKSHandler

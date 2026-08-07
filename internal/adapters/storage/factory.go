@@ -21,6 +21,7 @@ type noOpOAuth2TransactionManager struct{}
 func (noOpOAuth2TransactionManager) BeginTX(ctx context.Context) (context.Context, error) {
 	return ctx, nil
 }
+
 func (noOpOAuth2TransactionManager) Commit(context.Context) error   { return nil }
 func (noOpOAuth2TransactionManager) Rollback(context.Context) error { return nil }
 
@@ -46,13 +47,17 @@ type Adapter struct {
 	providers            ports.ThirdpartyOAuth2ProviderRepository
 	userGrants           ports.UserGrantRepository
 	userSessions         ports.UserSessionRepository
+	toolApprovals        ports.ToolApprovalRepository
+	toolApprovalQueries  ports.ToolApprovalQueryRepository
+	toolApprovalMetrics  ports.ToolApprovalMetricsRepository
+	approvalSyncState    ports.ApprovalSyncStateRepository
 	permissionSets       ports.PermissionSetRepository
 	brokerCredentials    ports.ClientCredentialRepository
 	signingKeys          signingKeyAdapter
-	authorizationCodes   ports.AuthorizationCodeRepository
 	refreshTokenSessions ports.RefreshTokenSessionRepository
-	pkceSessions         ports.PKCESessionRepository
 	oauth2Transactions   ports.OAuth2TransactionManager
+	authorizationCodes   ports.AuthorizationCodeRepository
+	pkceSessions         ports.PKCESessionRepository
 }
 
 // NewAdapter creates a storage adapter based on configuration.
@@ -86,6 +91,7 @@ func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 	agentRepo := memory.NewAgentRepository()
 	permissionSets := memory.NewPermissionSetRepository().WithAgentRepository(agentRepo)
 	userGrants := memory.NewUserGrantRepository().WithPermissionSetRepository(permissionSets)
+	toolApprovalRepo := memory.NewToolApprovalRepository()
 	signingKeys := memory.NewSigningKeyStore()
 	return &Adapter{
 		lifecycle:            memAdapter,
@@ -94,13 +100,17 @@ func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		providers:            memory.NewInMemoryThirdpartyOAuth2ProviderRepository(),
 		userGrants:           userGrants,
 		userSessions:         memory.NewInMemoryUserSessionRepository(),
+		toolApprovals:        toolApprovalRepo,
+		toolApprovalQueries:  toolApprovalRepo,
+		toolApprovalMetrics:  toolApprovalRepo,
+		approvalSyncState:    memory.NewApprovalSyncStateRepository(),
 		permissionSets:       permissionSets,
 		brokerCredentials:    memory.NewClientCredentialStore(),
 		signingKeys:          signingKeys,
 		authorizationCodes:   memory.NewAuthorizationCodeStore(),
 		refreshTokenSessions: memory.NewRefreshTokenSessionStore(),
-		pkceSessions:         memory.NewPKCESessionStore(),
 		oauth2Transactions:   noOpOAuth2TransactionManager{},
+		pkceSessions:         memory.NewPKCESessionStore(),
 	}, nil
 }
 
@@ -114,6 +124,7 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		return nil, err
 	}
 
+	toolApprovalRepo := postgres.NewToolApprovalRepository(pgAdapter)
 	signingKeys := postgres.NewSigningKeyRepo(pgAdapter)
 
 	return &Adapter{
@@ -123,13 +134,17 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		providers:            postgres.NewPostgresThirdpartyOAuth2ProviderRepository(pgAdapter),
 		userGrants:           postgres.NewUserGrantRepository(pgAdapter),
 		userSessions:         postgres.NewUserSessionRepository(pgAdapter),
+		toolApprovals:        toolApprovalRepo,
+		toolApprovalQueries:  toolApprovalRepo,
+		toolApprovalMetrics:  toolApprovalRepo,
+		approvalSyncState:    postgres.NewApprovalSyncStateRepository(pgAdapter),
 		permissionSets:       postgres.NewPermissionSetRepository(pgAdapter),
 		brokerCredentials:    postgres.NewClientCredentialRepo(pgAdapter),
 		signingKeys:          signingKeys,
 		authorizationCodes:   postgres.NewAuthorizationCodeRepo(pgAdapter),
 		refreshTokenSessions: postgres.NewRefreshTokenSessionRepo(pgAdapter),
-		pkceSessions:         postgres.NewPKCESessionRepo(pgAdapter),
 		oauth2Transactions:   pgAdapter,
+		pkceSessions:         postgres.NewPKCESessionRepo(pgAdapter),
 	}, nil
 }
 
@@ -201,6 +216,26 @@ func (a *Adapter) UserGrants() ports.UserGrantRepository {
 // Used for user session CRUD operations.
 func (a *Adapter) UserSessions() ports.UserSessionRepository {
 	return a.userSessions
+}
+
+// ToolApprovals returns the ToolApprovalRepository interface implementation.
+func (a *Adapter) ToolApprovals() ports.ToolApprovalRepository {
+	return a.toolApprovals
+}
+
+// ToolApprovalQueries returns the ToolApprovalQueryRepository interface implementation.
+func (a *Adapter) ToolApprovalQueries() ports.ToolApprovalQueryRepository {
+	return a.toolApprovalQueries
+}
+
+// ToolApprovalMetrics returns the ToolApprovalMetricsRepository interface implementation.
+func (a *Adapter) ToolApprovalMetrics() ports.ToolApprovalMetricsRepository {
+	return a.toolApprovalMetrics
+}
+
+// ApprovalSyncState returns the ApprovalSyncStateRepository interface implementation.
+func (a *Adapter) ApprovalSyncState() ports.ApprovalSyncStateRepository {
+	return a.approvalSyncState
 }
 
 // PermissionSets returns the PermissionSetRepository interface implementation.

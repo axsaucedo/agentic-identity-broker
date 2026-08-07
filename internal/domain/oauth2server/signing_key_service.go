@@ -237,8 +237,10 @@ func (s *SigningKeyService) EnsureInitialKey(ctx context.Context, algorithm stri
 			return nil
 		}
 
-		// Bootstrap activates immediately because no prior JWKS caches exist to invalidate.
-		created, err = s.generateAndStore(lockCtx, algorithm, true, time.Now().UTC())
+		// Bootstrap activates effectively immediately because no prior JWKS caches exist to
+		// invalidate. Backdate by one second so a just-created key is readable even when the
+		// broker clock is slightly ahead of PostgreSQL during concurrent startup.
+		created, err = s.generateAndStore(lockCtx, algorithm, true, time.Now().UTC().Add(-time.Second))
 		if err != nil {
 			return fmt.Errorf("failed to generate initial signing key: %w", err)
 		}

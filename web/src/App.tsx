@@ -26,6 +26,8 @@ const AgentGrantDetailPage = lazy(() => import('./pages/AgentGrantDetailPage'));
 const ThirdPartySessionsPage = lazy(
   () => import('./pages/ThirdPartySessionsPage'),
 );
+const ApprovalPage = lazy(() => import('./pages/ApprovalPage'));
+const ToolAuthorizationsPage = lazy(() => import('./pages/ToolAuthorizationsPage'));
 const ErrorPage = lazy(() => import('./pages/ErrorPage'));
 
 /**
@@ -57,6 +59,14 @@ function App() {
               <Route
                 path="/oauth2/sessions"
                 element={<ThirdPartySessionsPage />}
+              />
+              <Route
+                path="/approvals/:id"
+                element={<ApprovalPage />}
+              />
+              <Route
+                path="/tool-authorizations"
+                element={<ToolAuthorizationsPage />}
               />
               <Route path="*" element={<ErrorPage />} />
             </Routes>

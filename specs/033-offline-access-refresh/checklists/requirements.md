@@ -1,7 +1,7 @@
 # Specification Quality Checklist: Offline Access Refresh Tokens
 
-**Purpose**: Validate specification completeness and quality before proceeding to planning  
-**Created**: 2026-07-08  
+**Purpose**: Validate specification completeness and quality before proceeding to planning
+**Created**: 2026-07-08
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality

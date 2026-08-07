@@ -23,6 +23,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -46,6 +47,14 @@ import (
 
 // agentgwLogger writes structured test output to GinkgoWriter for test visibility.
 var agentgwLogger = bootstrap.NewTestLogger()
+
+func init() {
+	if os.Getenv("TESTCONTAINERS_RYUK_DISABLED") == "" {
+		if err := os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true"); err != nil {
+			panic(err)
+		}
+	}
+}
 
 // agentgwContextKey is used for storing request-scoped values in context.
 type agentgwContextKey string

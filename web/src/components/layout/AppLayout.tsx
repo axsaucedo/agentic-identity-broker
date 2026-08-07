@@ -27,6 +27,7 @@ function Header() {
 
   const navLinks = [
     { label: 'Agent Delegations', href: '/' },
+    { label: 'Tool Authorizations', href: '/tool-authorizations' },
     { label: 'Third-Party Sessions', href: '/oauth2/sessions' },
   ];
 

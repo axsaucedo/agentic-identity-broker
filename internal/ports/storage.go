@@ -337,6 +337,66 @@ type PermissionSetRepository interface {
 	CountPermissionSetsForService(ctx context.Context, serviceID id.ServiceID) (int, error)
 }
 
+// ToolApprovalRepository defines core CRUD operations for tool approval entities.
+// Follows ISP: max 6 methods.
+type ToolApprovalRepository interface {
+	// Create creates a new pending tool approval.
+	// Uses partial unique index for deduplication (principal, agent_id, tool_name, arguments_hash)
+	// where status=pending AND consumed=false.
+	// Returns the existing record if a duplicate is found (idempotent).
+	Create(ctx context.Context, approval *storage.ToolApproval) (*storage.ToolApproval, error)
+
+	// Get retrieves a tool approval by ID.
+	// Returns StorageError{Kind: NotFound} if not found.
+	Get(ctx context.Context, id id.ApprovalID) (*storage.ToolApproval, error)
+
+	// Approve transitions a pending approval to approved status.
+	Approve(ctx context.Context, id id.ApprovalID, persistence storage.ApprovalPersistence, approvedAt time.Time) (*storage.ToolApproval, error)
+
+	// Deny transitions a pending approval to denied status.
+	Deny(ctx context.Context, id id.ApprovalID, persistence *storage.ApprovalPersistence, deniedAt time.Time) (*storage.ToolApproval, error)
+
+	// RevokePermanent atomically clears a permanent approval or denial.
+	RevokePermanent(ctx context.Context, id id.ApprovalID, revokedAt time.Time) (*storage.ToolApproval, error)
+
+	// Consume marks an approved once-persistence approval as consumed.
+	Consume(ctx context.Context, id id.ApprovalID, consumedAt time.Time) (*storage.ToolApproval, error)
+}
+
+// ToolApprovalQueryRepository defines read-side list queries for tool approvals.
+// Used by the long-poll sync endpoint and the consent management UI.
+type ToolApprovalQueryRepository interface {
+	// ListAllActive lists all active approvals, optionally filtered by principal and active agent sessions.
+	ListAllActive(ctx context.Context, principalFilter *id.Principal, activeAgentSessionIDs []string) ([]*storage.ToolApproval, error)
+
+	// ListActiveByPrincipalAndAgent lists active approvals for a principal-agent pair.
+	ListActiveByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.ToolApproval, error)
+
+	// ListPermanentByPrincipal lists permanent approvals/denials for a principal.
+	ListPermanentByPrincipal(ctx context.Context, principal id.Principal) ([]*storage.ToolApproval, error)
+}
+
+// ToolApprovalMetricsRepository defines the count query for rate limiting.
+type ToolApprovalMetricsRepository interface {
+	// CountPendingByPrincipalAndAgent counts pending (non-expired) approvals for rate limiting.
+	CountPendingByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) (int, error)
+}
+
+// ApprovalSyncStateRepository manages the global approval sync version counter.
+type ApprovalSyncStateRepository interface {
+	// GetVersion returns the current sync version.
+	GetVersion(ctx context.Context) (int64, error)
+
+	// IncrementVersion atomically increments the version counter.
+	// Returns the new version.
+	IncrementVersion(ctx context.Context) (int64, error)
+}
+
+// ApprovalMutationSyncRepository reports whether approval mutations update the sync version atomically.
+type ApprovalMutationSyncRepository interface {
+	ApprovalMutationsSyncAtomically() bool
+}
+
 // ClientCredentialRepository manages broker-issued OAuth2 client credentials.
 // One credential set per agent (enforced by UNIQUE on agent_id).
 type ClientCredentialRepository interface {

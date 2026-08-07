@@ -17,6 +17,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -257,9 +260,15 @@ func applyMigrations(t *testing.T, container testcontainers.Container) {
 	applyMigrationsToDatabase(t, container, "testdb")
 }
 
-func applyMigrationsToDatabase(t *testing.T, container testcontainers.Container, dbName string) {
+func applyMigrationsToDatabase(t *testing.T, _ testcontainers.Container, dbName string) {
 	t.Helper()
-	applyMigrationsUpToDatabase(t, container, dbName, 23)
+
+	projectRoot, err := findProjectRoot()
+	require.NoError(t, err)
+	m, err := migrate.New("file://"+filepath.Join(projectRoot, "migrations"), buildConnString(dbName))
+	require.NoError(t, err)
+	defer func() { _, _ = m.Close() }()
+	require.NoError(t, m.Up())
 }
 
 // applyMigrationsUpTo applies migrations sequentially against the default database.
@@ -307,6 +316,9 @@ func applyMigrationsUpToDatabase(t *testing.T, container testcontainers.Containe
 		{"021_enforce_single_current_signing_key.up.sql", 21},
 		{"022_add_service_authorization_params.up.sql", 22},
 		{"023_create_refresh_token_sessions.up.sql", 23},
+		{"024_create_tool_approvals.up.sql", 24},
+		{"025_create_approval_sync_state.up.sql", 25},
+		{"026_sync_approval_mutations.up.sql", 26},
 	}
 
 	for _, migration := range migrations {

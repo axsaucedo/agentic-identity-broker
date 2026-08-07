@@ -1022,6 +1022,38 @@
           "description": "Additional broker configuration (merged into config.yaml)"
         }
       }
+    },
+    "approvals": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Tool approval configuration",
+      "properties": {
+        "pending_ttl": {
+          "type": "string",
+          "description": "Time before a pending approval expires (e.g. 10m)"
+        },
+        "sync_coalesce_window": {
+          "type": "string",
+          "description": "Coalesce window for long-poll sync notifications (e.g. 1s)"
+        },
+        "rate_limit": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Rate limiting for approval creation",
+          "properties": {
+            "max_pending_per_pair": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum pending approvals per principal/agent pair"
+            },
+            "max_requests_per_minute": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum approval creation requests per minute per principal/agent pair"
+            }
+          }
+        }
+      }
     }
   },
   "definitions": {

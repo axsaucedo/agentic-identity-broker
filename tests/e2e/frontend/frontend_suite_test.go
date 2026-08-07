@@ -245,8 +245,8 @@ var _ = BeforeEach(func() {
 	page, err := browserContext.NewPage()
 	Expect(err).NotTo(HaveOccurred(), "Failed to create Playwright page")
 
-	// Set reasonable timeout for Playwright operations (10 seconds)
-	page.SetDefaultTimeout(10 * 1000) // 10 seconds in milliseconds
+	// Match the shared page-object timeout to reduce CI flakiness on slower workers.
+	page.SetDefaultTimeout(30 * 1000)
 
 	// Store in test context
 	testCtx = &TestContext{

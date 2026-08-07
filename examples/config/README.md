@@ -770,3 +770,26 @@ See [docs/configuration.md](../../docs/configuration.md) for the complete list.
 - [ADR 002](../../adrs/002-configuration-libraries.md) - Library selection rationale
 - [ADR 011](../../adrs/011-opentelemetry-provider-pattern.md) - OpenTelemetry provider pattern
 - [Architecture](../../ARCHITECTURE.md) - Configuration subsystem architecture
+
+### `approvals.yaml`
+
+Tool approval configuration. Demonstrates:
+- Pending TTL for approval expiry
+- Sync coalesce window for long-poll batching
+- Rate limiting per (principal, agent) pair
+
+**Key settings:**
+| Setting | Default | Description |
+|---|---|---|
+| `approvals.pending_ttl` | `10m` | Time before a pending approval expires |
+| `approvals.sync_coalesce_window` | `1s` | Batch window for long-poll notifications |
+| `approvals.rate_limit.max_pending_per_pair` | `50` | Max pending approvals per principal-agent pair |
+| `approvals.rate_limit.max_requests_per_minute` | `10` | Max creation rate per principal-agent pair |
+
+**Environment Variables:**
+| Config Key | Environment Variable |
+|---|---|
+| `approvals.pending_ttl` | `APPROVAL_PENDING_TTL` |
+| `approvals.sync_coalesce_window` | `APPROVAL_SYNC_COALESCE_WINDOW` |
+| `approvals.rate_limit.max_pending_per_pair` | `APPROVAL_RATE_LIMIT_MAX_PENDING` |
+| `approvals.rate_limit.max_requests_per_minute` | `APPROVAL_RATE_LIMIT_REQUESTS_PER_MINUTE` |

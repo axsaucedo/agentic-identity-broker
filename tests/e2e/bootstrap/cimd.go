@@ -91,11 +91,12 @@ func NewCIMDEndUserTestServer(storage interface{}, sf *ServerFactory, cimdFetche
 
 	// Phase 3: register end-user routes on the already-started router.
 	routing.SetupEnduserRoutes(router, appInstance.EnduserHandlers, routing.EnduserRouteConfig{
-		Authentication:   appInstance.Config.Server.EndUser.Authentication,
-		JWTAuthenticator: appInstance.JWTAuthenticator,
-		Logger:           logger,
-		CORS:             appInstance.Config.Server.EndUser.CORS,
-		Telemetry:        appInstance.Config.Telemetry,
+		Authentication:               appInstance.Config.Server.EndUser.Authentication,
+		JWTAuthenticator:             appInstance.JWTAuthenticator,
+		ApprovalRequestAuthenticator: appInstance.ApprovalRequestAuthenticator,
+		Logger:                       logger,
+		CORS:                         appInstance.Config.Server.EndUser.CORS,
+		Telemetry:                    appInstance.Config.Telemetry,
 	})
 	if appInstance.EnduserHandlers.SPA != nil {
 		router.Handle("/*", appInstance.EnduserHandlers.SPA)

@@ -174,6 +174,17 @@ func (l *Loader) setDefaults() {
 
 	// Set security configuration defaults
 	l.v.SetDefault("security.skip_thirdparty_https_validation", false)
+
+	// Approval configuration defaults
+	l.v.SetDefault("approvals.pending_ttl", "10m")
+	l.v.SetDefault("approvals.sync_coalesce_window", "1s")
+	l.v.SetDefault("approvals.rate_limit.max_pending_per_pair", 50)
+	l.v.SetDefault("approvals.rate_limit.max_requests_per_minute", 10)
+	_ = l.v.BindEnv("approvals.pending_ttl", "APPROVAL_PENDING_TTL")
+	_ = l.v.BindEnv("approvals.sync_coalesce_window", "APPROVAL_SYNC_COALESCE_WINDOW")
+	_ = l.v.BindEnv("approvals.rate_limit.max_pending_per_pair", "APPROVAL_RATE_LIMIT_MAX_PENDING")
+	_ = l.v.BindEnv("approvals.rate_limit.max_requests_per_minute", "APPROVAL_RATE_LIMIT_REQUESTS_PER_MINUTE")
+
 	// Telemetry configuration defaults
 	telDefaults := ports.DefaultTelemetryConfig()
 	l.v.SetDefault("telemetry.enabled", telDefaults.Enabled)

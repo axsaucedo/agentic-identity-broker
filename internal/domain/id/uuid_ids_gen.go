@@ -34,6 +34,35 @@ func (id *AgentID) Scan(src interface{}) error   { return (*uuid.UUID)(id).Scan(
 func (id AgentID) MarshalText() ([]byte, error)  { return uuid.UUID(id).MarshalText() }
 func (id *AgentID) UnmarshalText(b []byte) error { return (*uuid.UUID)(id).UnmarshalText(b) }
 
+// ApprovalID uniquely identifies a approval entity.
+type ApprovalID uuid.UUID
+
+func NewApprovalID() ApprovalID { return ApprovalID(uuid.New()) }
+func ParseApprovalID(s string) (ApprovalID, error) {
+	id, err := uuid.Parse(s)
+	return ApprovalID(id), err
+}
+func MustParseApprovalID(s string) ApprovalID      { return ApprovalID(uuid.MustParse(s)) }
+func (id ApprovalID) String() string               { return uuid.UUID(id).String() }
+func (id ApprovalID) IsZero() bool                 { return uuid.UUID(id) == uuid.Nil }
+func (id ApprovalID) MarshalJSON() ([]byte, error) { return json.Marshal(uuid.UUID(id).String()) }
+func (id *ApprovalID) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	parsed, err := uuid.Parse(s)
+	if err != nil {
+		return err
+	}
+	*id = ApprovalID(parsed)
+	return nil
+}
+func (id ApprovalID) Value() (driver.Value, error)  { return uuid.UUID(id).String(), nil }
+func (id *ApprovalID) Scan(src interface{}) error   { return (*uuid.UUID)(id).Scan(src) }
+func (id ApprovalID) MarshalText() ([]byte, error)  { return uuid.UUID(id).MarshalText() }
+func (id *ApprovalID) UnmarshalText(b []byte) error { return (*uuid.UUID)(id).UnmarshalText(b) }
+
 // ServiceID uniquely identifies a service entity.
 type ServiceID uuid.UUID
 

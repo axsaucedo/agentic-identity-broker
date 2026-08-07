@@ -93,11 +93,12 @@ func run(cmd *cobra.Command, args []string) error {
 	// Create route setup function for enduser server
 	enduserRouteSetup := func(r chi.Router) {
 		routing.SetupEnduserRoutes(r, application.EnduserHandlers, routing.EnduserRouteConfig{
-			Authentication:   cfg.Server.EndUser.Authentication,
-			JWTAuthenticator: application.JWTAuthenticator,
-			Logger:           logger,
-			CORS:             cfg.Server.EndUser.CORS,
-			Telemetry:        cfg.Telemetry,
+			Authentication:               cfg.Server.EndUser.Authentication,
+			JWTAuthenticator:             application.JWTAuthenticator,
+			ApprovalRequestAuthenticator: application.ApprovalRequestAuthenticator,
+			Logger:                       logger,
+			CORS:                         cfg.Server.EndUser.CORS,
+			Telemetry:                    cfg.Telemetry,
 		})
 	}
 
@@ -208,6 +209,18 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 		return nil
 	})
+
+	// Start approval sync subscriber if configured (PostgreSQL LISTEN/NOTIFY)
+	if application.ApprovalSyncSubscriber != nil {
+		g.Go(func() error {
+			logger.Info("Starting approval sync subscriber (LISTEN/NOTIFY)")
+			if err := application.ApprovalSyncSubscriber.Listen(ctx); err != nil && ctx.Err() == nil {
+				logger.Error("Approval sync subscriber failed", "error", err)
+				return fmt.Errorf("approval sync subscriber failed: %w", err)
+			}
+			return nil
+		})
+	}
 
 	// Wait for either signal or server error
 	var startErr error

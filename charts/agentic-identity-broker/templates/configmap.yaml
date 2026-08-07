@@ -242,3 +242,11 @@ data:
     # Additional configuration
     {{- toYaml .Values.broker.extraConfig | nindent 4 }}
     {{- end }}
+
+    # Tool approval configuration
+    approvals:
+      pending_ttl: {{ .Values.approvals.pending_ttl | quote }}
+      sync_coalesce_window: {{ .Values.approvals.sync_coalesce_window | quote }}
+      rate_limit:
+        max_pending_per_pair: {{ .Values.approvals.rate_limit.max_pending_per_pair }}
+        max_requests_per_minute: {{ .Values.approvals.rate_limit.max_requests_per_minute }}

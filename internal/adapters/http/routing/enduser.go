@@ -25,6 +25,8 @@ type EnduserRouteConfig struct {
 	// When set, JWT is used for authentication; absent JWT header is rejected with 401 (fail-closed).
 	JWTAuthenticator jwtauth.JWTAuthenticator
 
+	ApprovalRequestAuthenticator *middleware.ApprovalRequestAuthenticator
+
 	// Logger for middleware
 	Logger *slog.Logger
 
@@ -57,6 +59,19 @@ type EnduserRouteConfig struct {
 //	GET    /api/third-party/{serviceId}/session       - Get session details
 //	DELETE /api/third-party/{serviceId}/session       - Terminate session
 //
+//	Approval Routes (machine-facing):
+//	POST   /api/approvals                             - Create pending approval (dual auth: subject token + client assertion)
+//	GET    /api/approvals                             - Sync approvals (long-poll, client assertion)
+//	POST   /api/approvals/{id}/consume                - Consume approved token (subject token)
+//
+//	Approval Routes (browser-facing, require principal):
+//	GET    /api/approvals/permanent                   - List permanent approvals
+//	GET    /api/approvals/pending                     - List pending approvals
+//	GET    /api/approvals/{id}                        - Get approval detail
+//	POST   /api/approvals/{id}/approve                - Approve
+//	POST   /api/approvals/{id}/deny                   - Deny
+//	POST   /api/approvals/{id}/revoke                 - Revoke permanent approval
+//
 //	OAuth2 Authorization Server Routes (optional):
 //	GET    /oauth2/authorize                          - Authorization endpoint
 //	POST   /oauth2/token                              - Token endpoint
@@ -81,6 +96,31 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 	r.Route("/api", func(r chi.Router) {
 		// Apply CORS middleware (no-op if AllowedOrigins empty)
 		r.Use(middleware.CORSMiddleware(cfg.CORS))
+
+		// Approval routes — machine-facing endpoints use dedicated approval auth middleware,
+		// while browser endpoints continue to use the acting-user principal middleware.
+		if h.ApprovalGet != nil {
+			requirePrincipal := middleware.RequirePrincipalMiddleware(cfg.Authentication, cfg.JWTAuthenticator, cfg.Logger)
+			browserMutationProtection := http.NewCrossOriginProtection()
+
+			r.Route("/approvals", func(approvalRouter chi.Router) {
+				// Gateway/control-plane endpoints.
+				approvalRouter.With(middleware.RequireApprovalSubjectTokenAndClientAssertion(cfg.ApprovalRequestAuthenticator)).Post("/", h.ApprovalCreate.ServeHTTP)
+				approvalRouter.With(middleware.RequireApprovalClientAssertion(cfg.ApprovalRequestAuthenticator)).Get("/", h.ApprovalSync.ServeHTTP)
+
+				// Browser-facing principal-scoped listings.
+				approvalRouter.With(requirePrincipal).Get("/permanent", h.ApprovalPermanent.ServeHTTP)
+				approvalRouter.With(requirePrincipal).Get("/pending", h.ApprovalPending.ServeHTTP)
+
+				approvalRouter.Route("/{id}", func(r chi.Router) {
+					r.With(requirePrincipal).Get("/", h.ApprovalGet.ServeHTTP)
+					r.With(requirePrincipal, browserMutationProtection.Handler).Post("/approve", h.ApprovalApprove.ServeHTTP)
+					r.With(requirePrincipal, browserMutationProtection.Handler).Post("/deny", h.ApprovalDeny.ServeHTTP)
+					r.With(requirePrincipal, browserMutationProtection.Handler).Post("/revoke", h.ApprovalRevoke.ServeHTTP)
+					r.With(middleware.RequireApprovalSubjectToken(cfg.ApprovalRequestAuthenticator)).Post("/consume", h.ApprovalConsume.ServeHTTP)
+				})
+			})
+		}
 
 		// Create subrouter for authenticated routes
 		r.Route("/", func(authRouter chi.Router) {

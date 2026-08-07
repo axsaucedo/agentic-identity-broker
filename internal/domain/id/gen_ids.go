@@ -12,6 +12,7 @@ var uuidTypes = []struct {
 	Entity string // e.g. "agent"
 }{
 	{"AgentID", "agent"},
+	{"ApprovalID", "approval"},
 	{"ServiceID", "service"},
 	{"GrantID", "grant"},
 	{"SessionID", "session"},

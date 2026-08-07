@@ -73,6 +73,26 @@ function createApiClient(): AxiosInstance {
           } as ApiError);
         }
 
+        // 409 Conflict - Resource state conflict (e.g. already actioned)
+        if (status === 409) {
+          return Promise.reject({
+            status,
+            code: 'CONFLICT',
+            message:
+              data?.message ||
+              'This resource has already been modified.',
+          } as ApiError);
+        }
+
+        // 410 Gone - Resource expired or no longer available
+        if (status === 410) {
+          return Promise.reject({
+            status,
+            code: 'GONE',
+            message: data?.message || 'This resource is no longer available.',
+          } as ApiError);
+        }
+
         // 500+ Server Error - Service temporarily unavailable
         if (status >= 500) {
           return Promise.reject({
