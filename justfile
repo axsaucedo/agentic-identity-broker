@@ -653,6 +653,12 @@ docker-push: build-linux-amd64 build-linux-arm64 web-build
     @echo "  - {{IMAGE_NAME}}-migrate:{{VERSION}}"
     @echo "  - {{IMAGE_NAME}}-extproc:{{VERSION}}"
 
+#TODO: Remove for OSS
+docker-promote:
+    @echo "Promoting docker images to production channel..."
+    cdp-promote-image {{IMAGE_NAME}}:{{VERSION}}
+    cdp-promote-image {{IMAGE_NAME}}-migrate:{{VERSION}}
+    cdp-promote-image {{IMAGE_NAME}}-extproc:{{VERSION}}
 
 # Build multi-architecture migrate Docker image (validates both platforms, no output)
 docker-build-migrate:
