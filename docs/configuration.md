@@ -885,6 +885,33 @@ oauth2_authorization_server:
 
 See `examples/config/oauth2-authorization-server.yaml` for a complete configuration example with both modes commented.
 
+### Token Exchange Client Assertion Configuration
+
+#### token_exchange.client_assertion
+
+**Description**: Configures the external identity-provider trust anchor used to validate privileged-gateway `client_assertion` JWTs for RFC 8693 token exchange and machine-facing approval authentication. Broker-minted tokens are never valid client assertions.
+
+| Option | Type | Default | Required? | Environment Variable | Rules |
+|--------|------|---------|-----------|----------------------|-------|
+| `token_exchange.client_assertion.issuer_uri` | string | Proxy upstream issuer | Yes for configured token exchange in `local` mode | `IDENTITY_BROKER_TOKEN_EXCHANGE_CLIENT_ASSERTION_ISSUER_URI` | External IdP issuer URI. In `proxy` and `hybrid` modes, an empty value defaults to `oauth2_authorization_server.proxy.upstream_issuer_uri`. In `local` mode it must be explicit. The broker's own issuer is rejected at startup. |
+| `token_exchange.client_assertion.jwks_uri` | string | Discovered from `issuer_uri` | No | `IDENTITY_BROKER_TOKEN_EXCHANGE_CLIENT_ASSERTION_JWKS_URI` | Explicit external IdP JWKS endpoint. Set this when the IdP does not support OAuth/OIDC discovery. |
+| `token_exchange.client_assertion.jwks_min_refresh` | duration | `15m` | No | `IDENTITY_BROKER_TOKEN_EXCHANGE_CLIENT_ASSERTION_JWKS_MIN_REFRESH` | Minimum interval between client-assertion JWKS refresh attempts. Must be a non-negative Go duration. |
+| `token_exchange.client_assertion.jwks_max_refresh` | duration | `max(jwks_min_refresh, 1h)` | No | `IDENTITY_BROKER_TOKEN_EXCHANGE_CLIENT_ASSERTION_JWKS_MAX_REFRESH` | Maximum client-assertion JWKS refresh interval. Must be a non-negative Go duration; values below the effective minimum are raised to it. |
+
+**Example**:
+
+```yaml
+token_exchange:
+  client_assertion:
+    issuer_uri: "https://privileged-gateway-idp.example.com"
+    # Optional when discovery is unavailable:
+    # jwks_uri: "https://privileged-gateway-idp.example.com/keys"
+    # jwks_min_refresh: "15m"
+    # jwks_max_refresh: "1h"
+```
+
+In `local` mode, set `issuer_uri` whenever token exchange or approval authentication is configured. In `proxy` and `hybrid` modes it defaults to the configured proxy upstream issuer when omitted. The configured issuer must be an external IdP; a broker-self issuer is rejected at startup to prevent broker-minted tokens from becoming privileged client assertions.
+
 ### OAuth2 Server Mode Configuration
 
 #### oauth2_authorization_server

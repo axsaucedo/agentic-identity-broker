@@ -453,6 +453,37 @@ func TestBuilderTokenExchangeExpectedAudience(t *testing.T) {
 		}
 	})
 
+	t.Run("local mode wires token exchange with an external trust anchor", func(t *testing.T) {
+		app, err := buildAppWithTokenExchange(t, func(cfg *ports.Config) {
+			cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+				Mode:  "local",
+				Local: ports.LocalModeConfig{TokenTTL: time.Hour},
+			}
+			cfg.TokenExchange.ClientAssertion.IssuerURI = upstream.URL
+		})
+		require.NoError(t, err)
+		require.NotNil(t, app.TokenExchangeService)
+
+		request := httptest.NewRequest(http.MethodGet, "/api/approvals", nil)
+		request.Header.Set("Authorization", "Bearer invalid")
+		recorder := httptest.NewRecorder()
+		httpmiddleware.RequireApprovalClientAssertion(app.ApprovalRequestAuthenticator)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		})).ServeHTTP(recorder, request)
+		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	})
+
+	t.Run("local mode rejects the broker issuer as trust anchor", func(t *testing.T) {
+		_, err := buildAppWithTokenExchange(t, func(cfg *ports.Config) {
+			cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+				Mode:  "local",
+				Local: ports.LocalModeConfig{TokenTTL: time.Hour},
+			}
+			cfg.TokenExchange.ClientAssertion.IssuerURI = " HTTP://LOCALHOST:8000/ "
+		})
+		require.ErrorContains(t, err, "must be an external identity provider")
+	})
+
 	t.Run("wires approval authentication without token exchange service", func(t *testing.T) {
 		app, err := buildAppWithTokenExchange(t, func(cfg *ports.Config) {
 			cfg.TokenExchange.ClaimExtraction.PrincipalExpression = ""
@@ -580,9 +611,7 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 		}
 	})
 
-	t.Run("local mode with token-exchange defaults — Build() succeeds without upstream discovery", func(t *testing.T) {
-		// Mirrors the chart's packaged defaults: local mode + non-empty token exchange CEL expressions
-		// but no proxy config. The builder must not attempt OAuth2 endpoint discovery in this case.
+	t.Run("local mode with token exchange requires an external trust anchor", func(t *testing.T) {
 		cfg := baseConfig(jweKey)
 		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
 			Mode:  "local",
@@ -599,8 +628,8 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 			},
 		}
 		_, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).Build()
-		if err != nil {
-			t.Fatalf("Build() in local mode with token-exchange defaults failed: %v", err)
+		if err == nil || !strings.Contains(err.Error(), "no client-assertion trust anchor is set") {
+			t.Fatalf("Build() error = %v, want missing client-assertion trust anchor", err)
 		}
 	})
 

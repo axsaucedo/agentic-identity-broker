@@ -250,6 +250,10 @@ func (l *Loader) setDefaults() {
 	// Operators can override it to match whatever audience their JWTs carry.
 	l.v.SetDefault("token_exchange.expected_audience", tokenexchange.DefaultBrokerAudience)
 	_ = l.v.BindEnv("token_exchange.expected_audience", "IDENTITY_BROKER_TOKEN_EXCHANGE_EXPECTED_AUDIENCE")
+	_ = l.v.BindEnv("token_exchange.client_assertion.issuer_uri", "IDENTITY_BROKER_TOKEN_EXCHANGE_CLIENT_ASSERTION_ISSUER_URI")
+	_ = l.v.BindEnv("token_exchange.client_assertion.jwks_uri", "IDENTITY_BROKER_TOKEN_EXCHANGE_CLIENT_ASSERTION_JWKS_URI")
+	_ = l.v.BindEnv("token_exchange.client_assertion.jwks_min_refresh", "IDENTITY_BROKER_TOKEN_EXCHANGE_CLIENT_ASSERTION_JWKS_MIN_REFRESH")
+	_ = l.v.BindEnv("token_exchange.client_assertion.jwks_max_refresh", "IDENTITY_BROKER_TOKEN_EXCHANGE_CLIENT_ASSERTION_JWKS_MAX_REFRESH")
 
 	// Record defaults source
 	l.sources = append(l.sources, ports.ConfigSource{

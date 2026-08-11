@@ -648,6 +648,19 @@ func (e *oauth2ValidationError) Field() string {
 	return e.field
 }
 
+// ClientAssertionTrustConfig configures the trust anchor used to validate the privileged gateway's
+// client_assertion JWT in RFC 8693 token exchange and machine-facing approval authentication.
+// It is independent of whether the broker mints tokens locally or proxies them.
+// When IssuerURI is empty, it defaults to oauth2_authorization_server.proxy.upstream_issuer_uri
+// in proxy and hybrid modes. In local mode it must be set explicitly and must identify an external
+// identity provider; broker-minted tokens must never be accepted as client assertions.
+type ClientAssertionTrustConfig struct {
+	IssuerURI      string        `mapstructure:"issuer_uri"`
+	JWKSURI        string        `mapstructure:"jwks_uri"`
+	JWKSMinRefresh time.Duration `mapstructure:"jwks_min_refresh"`
+	JWKSMaxRefresh time.Duration `mapstructure:"jwks_max_refresh"`
+}
+
 // TokenExchangeConfig contains configuration for RFC 8693 Token Exchange.
 // This allows gateways to exchange tokens issued by the upstream OAuth2 server
 // for third-party OAuth2 tokens stored in the token vault.
@@ -658,6 +671,10 @@ type TokenExchangeConfig struct {
 	// Configurable to support deployments where the broker is known under a different identifier.
 	// Environment variable: IDENTITY_BROKER_TOKEN_EXCHANGE_EXPECTED_AUDIENCE
 	ExpectedAudience string `mapstructure:"expected_audience"`
+
+	// ClientAssertion configures the external identity provider used to validate privileged
+	// gateway client assertions.
+	ClientAssertion ClientAssertionTrustConfig `mapstructure:"client_assertion"`
 
 	// ClaimExtraction defines how to extract user principal and agent identifier from subject_token JWT.
 	// Both are configurable via CEL expressions for flexibility in token structure mapping.

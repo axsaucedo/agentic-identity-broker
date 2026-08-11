@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -441,16 +443,29 @@ func (b *Builder) Build() (*App, error) {
 		)
 	}
 
-	// Computed once and used in OAuth2Config, shared JWKS adapter creation, and token exchange wiring.
-	// Token exchange requires both claim extraction and a client-authorization policy;
-	// approval auth can reuse either configured component with secure CEL defaults.
-	tokenExchangeEnabled := ov.upstreamIssuerURI != "" &&
+	// The external client-assertion trust anchor defaults to the proxy upstream in
+	// proxy and hybrid modes. Local mode has no upstream and requires it explicitly.
+	clientAssertionIssuerURI := b.config.TokenExchange.ClientAssertion.IssuerURI
+	if clientAssertionIssuerURI == "" {
+		clientAssertionIssuerURI = ov.upstreamIssuerURI
+	}
+	switch oauthCfg.(type) {
+	case *ports.LocalOAuth2Config, *ports.HybridOAuth2Config:
+		if clientAssertionIssuerURI != "" && normalizedIssuerURI(clientAssertionIssuerURI) == normalizedIssuerURI(ov.localIssuerURI) {
+			return nil, fmt.Errorf("token_exchange.client_assertion.issuer_uri must be an external identity provider, not the broker's own issuer (%q); broker-minted tokens must never be accepted as privileged-client assertions", ov.localIssuerURI)
+		}
+	}
+
+	approvalAuthRequested := b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" ||
+		b.config.TokenExchange.ClaimExtraction.AgentIDExpression != "" ||
+		b.config.TokenExchange.Authorization.CEL.Expression != ""
+	if approvalAuthRequested && clientAssertionIssuerURI == "" {
+		return nil, fmt.Errorf("token exchange / approval authentication is configured (token_exchange.claim_extraction or authorization) but no client-assertion trust anchor is set: set token_exchange.client_assertion.issuer_uri (required in local mode; defaults to oauth2_authorization_server.proxy.upstream_issuer_uri in proxy/hybrid mode)")
+	}
+	tokenExchangeEnabled := clientAssertionIssuerURI != "" &&
 		b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
 		b.config.TokenExchange.Authorization.CEL.Expression != ""
-	approvalAuthEnabled := ov.upstreamIssuerURI != "" &&
-		(b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" ||
-			b.config.TokenExchange.ClaimExtraction.AgentIDExpression != "" ||
-			b.config.TokenExchange.Authorization.CEL.Expression != "")
+	approvalAuthEnabled := clientAssertionIssuerURI != "" && approvalAuthRequested
 
 	// Create OAuth2 service — mode-specific config drives all decisions.
 	var clientResolver ports.ClientResolver
@@ -614,6 +629,69 @@ func (b *Builder) Build() (*App, error) {
 			}
 			return errors.Join(shared.Shutdown(ctx), prevErr)
 		}
+	}
+
+	var clientAssertionJWKS *jwks.Adapter
+	clientAssertionConfig := b.config.TokenExchange.ClientAssertion
+	clientAssertionConfigUnset := clientAssertionConfig.IssuerURI == "" &&
+		clientAssertionConfig.JWKSURI == "" &&
+		clientAssertionConfig.JWKSMinRefresh == 0 &&
+		clientAssertionConfig.JWKSMaxRefresh == 0
+	switch {
+	case clientAssertionIssuerURI == "":
+		// Token exchange and approval authentication are disabled.
+	case clientAssertionConfigUnset:
+		clientAssertionJWKS = sharedUpstreamJWKS
+	default:
+		clientAssertionJWKSURI := clientAssertionConfig.JWKSURI
+		if clientAssertionJWKSURI == "" {
+			discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(), ov.upstreamTimeout)
+			discovered, err := domstorage.DiscoverOAuth2Endpoints(
+				discoveryCtx,
+				clientAssertionIssuerURI,
+				nil,
+				b.config.Security.SkipThirdpartyHTTPSValidation,
+			)
+			discoveryCancel()
+			if err != nil {
+				return nil, fmt.Errorf("failed to discover token_exchange client-assertion issuer metadata: %w", err)
+			}
+			if discovered.JWKsURI == "" {
+				return nil, fmt.Errorf("token_exchange client-assertion issuer metadata did not include a jwks_uri")
+			}
+			clientAssertionJWKSURI = discovered.JWKsURI
+		}
+		clientAssertionJWKSMinRefresh := clientAssertionConfig.JWKSMinRefresh
+		if clientAssertionJWKSMinRefresh == 0 {
+			clientAssertionJWKSMinRefresh = 15 * time.Minute
+		}
+		clientAssertionJWKSMaxRefresh := clientAssertionConfig.JWKSMaxRefresh
+		if clientAssertionJWKSMaxRefresh == 0 || clientAssertionJWKSMaxRefresh < clientAssertionJWKSMinRefresh {
+			if clientAssertionJWKSMinRefresh > time.Hour {
+				clientAssertionJWKSMaxRefresh = clientAssertionJWKSMinRefresh
+			} else {
+				clientAssertionJWKSMaxRefresh = time.Hour
+			}
+		}
+		adapter, err := jwks.NewJWKSAdapter(
+			clientAssertionJWKSURI,
+			upstreamClient,
+			clientAssertionJWKSMinRefresh,
+			clientAssertionJWKSMaxRefresh,
+			b.logger,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create client-assertion JWKS adapter: %w", err)
+		}
+		prevShutdown := app.Shutdown
+		app.Shutdown = func(ctx context.Context) error {
+			var prevErr error
+			if prevShutdown != nil {
+				prevErr = prevShutdown(ctx)
+			}
+			return errors.Join(adapter.Shutdown(ctx), prevErr)
+		}
+		clientAssertionJWKS = adapter
 	}
 
 	// Create JWT pre-authentication adapter if configured
@@ -886,8 +964,8 @@ func (b *Builder) Build() (*App, error) {
 		if jwksPublisher == nil {
 			return nil, fmt.Errorf("approval authentication requires JWKS publisher, but none was wired")
 		}
-		if sharedUpstreamJWKS == nil {
-			return nil, fmt.Errorf("approval authentication requires upstream JWKS adapter, but none was initialized")
+		if clientAssertionJWKS == nil {
+			return nil, fmt.Errorf("approval authentication requires a client-assertion JWKS trust anchor, but none was initialized")
 		}
 
 		celConfig := tokenexchange.CELEvaluatorConfig{
@@ -911,9 +989,14 @@ func (b *Builder) Build() (*App, error) {
 			return nil, fmt.Errorf("failed to create published JWKS adapter for approval subject tokens: %w", err)
 		}
 
-		subjectTokenIssuers := []string{ov.upstreamIssuerURI}
-		if _, ok := oauthCfg.(*ports.HybridOAuth2Config); ok {
-			subjectTokenIssuers = append(subjectTokenIssuers, localIssuerURI)
+		var subjectTokenIssuers []string
+		switch oauthCfg.(type) {
+		case *ports.LocalOAuth2Config:
+			subjectTokenIssuers = []string{localIssuerURI}
+		case *ports.HybridOAuth2Config:
+			subjectTokenIssuers = []string{ov.upstreamIssuerURI, localIssuerURI}
+		default:
+			subjectTokenIssuers = []string{ov.upstreamIssuerURI}
 		}
 
 		brokerAudience := b.config.TokenExchange.ExpectedAudience
@@ -927,8 +1010,8 @@ func (b *Builder) Build() (*App, error) {
 				ExpectedIssuers: subjectTokenIssuers,
 			},
 			tokenexchange.JWTValidationPolicy{
-				JWKSProvider:    sharedUpstreamJWKS,
-				ExpectedIssuers: []string{ov.upstreamIssuerURI},
+				JWKSProvider:    clientAssertionJWKS,
+				ExpectedIssuers: []string{clientAssertionIssuerURI},
 			},
 			brokerAudience,
 			tokenexchange.DefaultClockSkewTolerance,
@@ -998,6 +1081,20 @@ func (b *Builder) Build() (*App, error) {
 	}
 
 	return app, nil
+}
+
+func normalizedIssuerURI(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	parsed.Host = strings.ToLower(parsed.Host)
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	parsed.RawPath = strings.TrimRight(parsed.RawPath, "/")
+
+	return parsed.String()
 }
 
 func newTokenExchangeAgentIDResolver(agentService *agentsservice.Service, timeout time.Duration) func(string) (string, error) {

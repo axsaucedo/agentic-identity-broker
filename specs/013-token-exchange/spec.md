@@ -140,6 +140,22 @@ Administrators need to configure which resource URIs map to which third-party se
 
 ---
 
+### User Story 7 - Token Exchange Supports Local and Hybrid Broker Modes (Priority: P1)
+
+The broker can issue local subject tokens while still requiring privileged-client authentication through an external identity provider. Hybrid deployments must also use an explicitly configured client-assertion JWKS when it differs from the upstream JWKS.
+
+**Why this priority**: Local and hybrid modes must preserve the security boundary between broker-issued subject tokens and externally issued client assertions.
+
+**Independent Test**: A privileged client exchanges a locally issued subject token with an externally issued assertion, while a broker-issued assertion is rejected and an explicit client-assertion JWKS is selected when configured.
+
+**Acceptance Scenarios**:
+
+1. **Given** local mode has an external client-assertion trust anchor and a valid locally issued subject_token, **When** a privileged client sends a token-exchange request with a valid externally issued client_assertion, **Then** the system processes the exchange.
+2. **Given** local mode has an external client-assertion trust anchor, **When** a privileged client sends a token-exchange request with a broker-issued client_assertion, **Then** the system returns 401 Unauthorized with error=invalid_client.
+3. **Given** hybrid mode configures a client-assertion JWKS URI distinct from the upstream JWKS, **When** a client_assertion is issued by the configured issuer and signed by the configured JWKS, **Then** the system validates the assertion using the configured JWKS and processes the exchange.
+
+---
+
 ### Edge Cases
 
 - **Token refresh during exchange fails**: When access_token is expired and refresh attempt fails (invalid_grant from third-party), system returns error=invalid_grant with description indicating refresh failed and re-authentication required

@@ -204,6 +204,46 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestValidateTokenExchangeConfig(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   ports.ClientAssertionTrustConfig
+		security ports.SecurityConfig
+		errMsg   string
+	}{
+		{
+			name:   "rejects HTTP issuer when HTTPS validation is enabled",
+			config: ports.ClientAssertionTrustConfig{IssuerURI: "http://idp.example"},
+			errMsg: "HTTPS URL",
+		},
+		{
+			name:     "accepts HTTP issuer when HTTPS validation is disabled",
+			config:   ports.ClientAssertionTrustConfig{IssuerURI: "http://idp.example"},
+			security: ports.SecurityConfig{SkipThirdpartyHTTPSValidation: true},
+		},
+		{
+			name:   "rejects negative JWKS minimum refresh",
+			config: ports.ClientAssertionTrustConfig{JWKSMinRefresh: -time.Minute},
+			errMsg: "non-negative duration",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateTokenExchangeConfig(&ports.TokenExchangeConfig{ClientAssertion: tt.config}, &tt.security)
+			if tt.errMsg == "" {
+				if err != nil {
+					t.Fatalf("validateTokenExchangeConfig() error = %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.errMsg) {
+				t.Fatalf("validateTokenExchangeConfig() error = %v, want %q", err, tt.errMsg)
+			}
+		})
+	}
+}
+
 // TestValidateJWTConfig tests JWT pre-authentication configuration validation.
 // Covers mutual exclusivity checks, required fields, defaults application,
 // and CEL expression validation per FR-003a and SR-004.

@@ -857,6 +857,30 @@
               "type": "string",
               "description": "Expected audience claim value for subject_token and client_assertion JWTs"
             },
+            "clientAssertion": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "External IdP trust anchor for privileged-gateway client assertions",
+              "properties": {
+                "issuerUri": {
+                  "type": "string",
+                  "description": "External IdP issuer URI; required for configured token exchange in local mode"
+                },
+                "jwksUri": {
+                  "type": "string",
+                  "description": "Explicit client-assertion JWKS URI; empty discovers it from issuerUri"
+                },
+                "jwksMinRefresh": {
+                  "type": "string",
+                  "description": "Minimum client-assertion JWKS refresh interval as a Go duration"
+                },
+                "jwksMaxRefresh": {
+                  "type": "string",
+                  "description": "Maximum client-assertion JWKS refresh interval as a Go duration"
+                }
+              }
+            },
+
             "claimExtraction": {
               "type": "object",
               "additionalProperties": false,

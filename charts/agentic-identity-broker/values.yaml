@@ -496,6 +496,17 @@ broker:
     # -- Expected audience (aud) claim value for subject_token and client_assertion JWTs.
     # Defaults to "token-exchange-broker" if empty.
     expectedAudience: ""
+    clientAssertion:
+      # -- External IdP issuer for privileged-gateway client assertions. Required for configured
+      # token exchange in local mode; empty defaults to the proxy upstream issuer in proxy/hybrid mode.
+      issuerUri: ""
+      # -- Explicit client-assertion JWKS endpoint. Empty discovers it from issuerUri.
+      jwksUri: ""
+      # -- Minimum client-assertion JWKS refresh interval. Empty defaults to 15m.
+      jwksMinRefresh: ""
+      # -- Maximum client-assertion JWKS refresh interval. Empty defaults to max(jwksMinRefresh, 1h).
+      jwksMaxRefresh: ""
+
     claimExtraction:
       # -- CEL expression to extract the user principal from subject_token.
       # Default: "subject_token.sub"

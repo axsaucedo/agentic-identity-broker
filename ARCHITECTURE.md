@@ -549,7 +549,7 @@ End-User Server (Port 8000):
   └── POST /oauth2/token                             (proxy, local, hybrid, and token-exchange flows)
 ```
 
-**Upstream JWKS bootstrap policy**: In `proxy` and `hybrid` modes the upstream JWKS can be consumed by three different surfaces: the public `/oauth2/jwks.json` publisher, RFC 8693 token-exchange JWT validation, and multi-agent upstream-token verification. The builder resolves upstream OAuth2 metadata at startup for all upstream-backed verification surfaces, so proxy/hybrid mode does not start with an unknown upstream verifier configuration. If metadata discovery fails, startup fails. After successful startup, later upstream JWKS refresh failures still fail closed at request time: `/oauth2/jwks.json` returns HTTP 503 and verification-dependent flows reject requests until the upstream recovers.
+**Upstream JWKS bootstrap policy**: In `proxy` and `hybrid` modes the upstream JWKS remains required by the public `/oauth2/jwks.json` publisher and multi-agent upstream-token verification. The builder resolves upstream OAuth2 metadata at startup for those surfaces, so proxy/hybrid mode does not start with an unknown upstream verifier configuration. If that metadata discovery fails, startup fails. RFC 8693 client-assertion validation instead uses the dedicated `token_exchange.client_assertion.issuer_uri` trust anchor: it defaults to the proxy upstream in `proxy` and `hybrid` modes and works independently in `proxy`, `local`, and `hybrid` modes. A configured anchor without an explicit `jwks_uri` is discovered at startup; discovery or verifier initialization failure prevents startup. An explicit `jwks_uri` supports IdPs without discovery. After startup, upstream JWKS refresh failures return HTTP 503 from `/oauth2/jwks.json`, and client-assertion or other verification-dependent flows fail closed until their required JWKS source recovers.
 
 **Local issuance admin endpoints** (served only when local issuance is active: `local` or `hybrid`):
 
@@ -1241,7 +1241,9 @@ Define any project-specific terms or acronyms.)
 
 **TokenExchangeResponse**: RFC 8693 compliant response containing access_token, token_type, issued_token_type, and optional expires_in. Returned as JSON from successful token exchange. Format enables clients to use the exchanged token with third-party services.
 
-**ClientAssertion**: JWT authenticating the privileged client (API gateway or reverse proxy) making the token exchange request. Contains privileged client identifier in 'sub' claim. Validated against upstream OAuth2 server's JWKS. Represents the privileged client's identity and authorization to perform token exchange.
+**ClientAssertion**: JWT authenticating the privileged client (API gateway or reverse proxy) making the token exchange request. Contains privileged client identifier in the `sub` claim. Validated against the external client-assertion trust anchor's JWKS, not against broker-minted credentials. Represents the privileged client's identity and authorization to perform token exchange.
+
+**ClientAssertion Trust Anchor**: The external identity provider configured by `token_exchange.client_assertion.issuer_uri` whose issuer and JWKS validate privileged-client `ClientAssertion` JWTs. It may use an explicit `token_exchange.client_assertion.jwks_uri` when the IdP has no discovery endpoint. It defaults to the proxy upstream in `proxy` and `hybrid` modes; `local` mode has no proxy upstream and therefore requires an explicit external issuer. The broker's own issuer is rejected as this anchor so broker-minted tokens can never authenticate as privileged-client assertions.
 
 **SubjectToken**: JWT containing both user principal and agent identifier from the upstream OAuth2 server. Principal extracted via configurable CEL expression (default: sub claim). Agent identifier extracted via configurable CEL expression (default: azp claim). Identifies the end-user and agent on whose behalf token exchange is requested.
 

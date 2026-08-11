@@ -5,6 +5,18 @@
 
 # Token exchange configuration
 token_exchange:
+  # Client-assertion trust anchor for privileged gateway credentials.
+  # Required in local mode when token exchange is configured. In proxy/hybrid mode,
+  # omit this block to use oauth2_authorization_server.proxy.upstream_issuer_uri.
+  # It MUST be an external IdP; broker-minted tokens are never valid client assertions.
+  # client_assertion:
+  #   issuer_uri: "https://privileged-gateway-idp.example.com"
+  #   # Optional when the IdP does not support discovery:
+  #   jwks_uri: "https://privileged-gateway-idp.example.com/keys"
+  #   # Refresh defaults: min 15m; max max(jwks_min_refresh, 1h).
+  #   jwks_min_refresh: "15m"
+  #   jwks_max_refresh: "1h"
+
   # Claim extraction configures CEL expressions to extract claims from subject_token
   claim_extraction:
     # principal_expression extracts the user principal/subject from the subject_token JWT.

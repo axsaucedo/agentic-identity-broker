@@ -177,6 +177,22 @@ data:
       {{- if .expectedAudience }}
       expected_audience: {{ .expectedAudience | quote }}
       {{- end }}
+      {{- if or .clientAssertion.issuerUri .clientAssertion.jwksUri .clientAssertion.jwksMinRefresh .clientAssertion.jwksMaxRefresh }}
+      client_assertion:
+        {{- if .clientAssertion.issuerUri }}
+        issuer_uri: {{ .clientAssertion.issuerUri | quote }}
+        {{- end }}
+        {{- if .clientAssertion.jwksUri }}
+        jwks_uri: {{ .clientAssertion.jwksUri | quote }}
+        {{- end }}
+        {{- if .clientAssertion.jwksMinRefresh }}
+        jwks_min_refresh: {{ .clientAssertion.jwksMinRefresh | quote }}
+        {{- end }}
+        {{- if .clientAssertion.jwksMaxRefresh }}
+        jwks_max_refresh: {{ .clientAssertion.jwksMaxRefresh | quote }}
+        {{- end }}
+      {{- end }}
+
       claim_extraction:
         principal_expression: {{ .claimExtraction.principalExpression | quote }}
         agent_id_expression: {{ .claimExtraction.agentIdExpression | quote }}

@@ -48,6 +48,10 @@ func Validate(cfg *ports.Config) error {
 		return err
 	}
 
+	if err := validateTokenExchangeConfig(&cfg.TokenExchange, &cfg.Security); err != nil {
+		return err
+	}
+
 	// Validate encryption configuration
 	if err := validateEncryptionConfig(&cfg.Encryption); err != nil {
 		return err
@@ -611,6 +615,41 @@ func validateJWTConfig(jwt *ports.JWTConfig, prefix string, security *ports.Secu
 		)
 	}
 
+	return nil
+}
+
+func validateTokenExchangeConfig(cfg *ports.TokenExchangeConfig, security *ports.SecurityConfig) error {
+	clientAssertion := &cfg.ClientAssertion
+	if err := validateOptionalHTTPSURL(clientAssertion.IssuerURI, "token_exchange.client_assertion.issuer_uri", security); err != nil {
+		return err
+	}
+	if err := validateOptionalHTTPSURL(clientAssertion.JWKSURI, "token_exchange.client_assertion.jwks_uri", security); err != nil {
+		return err
+	}
+	if clientAssertion.JWKSMinRefresh < 0 {
+		return formatValidationError("token_exchange.client_assertion.jwks_min_refresh", clientAssertion.JWKSMinRefresh.String(), "non-negative duration", nil)
+	}
+	if clientAssertion.JWKSMaxRefresh < 0 {
+		return formatValidationError("token_exchange.client_assertion.jwks_max_refresh", clientAssertion.JWKSMaxRefresh.String(), "non-negative duration", nil)
+	}
+	return nil
+}
+
+func validateOptionalHTTPSURL(value, field string, security *ports.SecurityConfig) error {
+	if value == "" {
+		return nil
+	}
+	u, err := url.Parse(value)
+	if err != nil {
+		return formatValidationError(field, value, "valid URL", err)
+	}
+	skipHTTPS := security != nil && security.SkipThirdpartyHTTPSValidation
+	if u.Scheme == "http" && !skipHTTPS {
+		return formatValidationError(field, value, "HTTPS URL (set security.skip_thirdparty_https_validation to allow HTTP in development)", nil)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return formatValidationError(field, value, "HTTP or HTTPS URL", nil)
+	}
 	return nil
 }
 

@@ -24,7 +24,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/matchers"
 )
 
-var _ = Describe("Hybrid Mode Token Exchange Validation", func() {
+var _ = Describe("Local Mode Token Exchange Validation", func() {
 	var (
 		logger         *slog.Logger
 		storageFactory *bootstrap.StorageFactory
@@ -68,9 +68,12 @@ var _ = Describe("Hybrid Mode Token Exchange Validation", func() {
 		session := fixtures.GitHubSessionForPrincipal(principal)
 		Expect(testStorage.UserSessions().Create(ctx, session)).To(Succeed())
 
-		config := fixtures.HybridConfig(mockUpstream.Server.URL)
+		config := fixtures.LocalConfig()
 		config.OAuth2AuthServer.Local.TokenClaimsExpression = `{"azp": agent.id, "aud": "token-exchange-broker"}`
 		config.TokenExchange = ports.TokenExchangeConfig{
+			ClientAssertion: ports.ClientAssertionTrustConfig{
+				IssuerURI: mockUpstream.Server.URL,
+			},
 			ClaimExtraction: ports.ClaimExtractionConfig{
 				PrincipalExpression: "subject_token.sub",
 				AgentIDExpression:   "subject_token.azp",
@@ -136,7 +139,7 @@ var _ = Describe("Hybrid Mode Token Exchange Validation", func() {
 			"client_id":             {agent.ID.String()},
 			"redirect_uri":          {localAgentRedirectURI},
 			"response_type":         {"code"},
-			"state":                 {"hybrid-token-exchange-state"},
+			"state":                 {"local-token-exchange-state"},
 			"code_challenge":        {challenge},
 			"code_challenge_method": {"S256"},
 		}.Encode()
@@ -232,9 +235,9 @@ var _ = Describe("Hybrid Mode Token Exchange Validation", func() {
 		return resp
 	}
 
-	// Scenario 1.5 from specs/032-aggregated-jwks/spec.md
-	It("should accept upstream-issued subject tokens in hybrid mode", func() {
-		resp := postTokenExchange(tokenFixtures.SubjectToken, tokenFixtures.ClientAssertion)
+	// Scenario US7-S1 from specs/013-token-exchange/spec.md
+	It("should accept a locally-issued subject token with an external client assertion", func() {
+		resp := postTokenExchange(mintLocalSubjectToken(), tokenFixtures.ClientAssertion)
 		defer func() { _ = resp.Body.Close() }()
 
 		Expect(resp).To(matchers.HaveStatusCode(http.StatusOK))
@@ -244,25 +247,9 @@ var _ = Describe("Hybrid Mode Token Exchange Validation", func() {
 		Expect(body["access_token"]).To(Equal("github-token-xyz"))
 	})
 
-	// Scenario 1.4 from specs/032-aggregated-jwks/spec.md
-	It("should accept locally-issued subject tokens in hybrid mode", func() {
-		localSubjectToken := mintLocalSubjectToken()
-
-		resp := postTokenExchange(localSubjectToken, tokenFixtures.ClientAssertion)
-		defer func() { _ = resp.Body.Close() }()
-
-		Expect(resp).To(matchers.HaveStatusCode(http.StatusOK))
-
-		var body map[string]any
-		Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-		Expect(body["access_token"]).To(Equal("github-token-xyz"))
-	})
-
-	// Scenario US1-S5 from specs/013-token-exchange/spec.md
-	It("should reject locally-issued client assertions in hybrid mode", func() {
-		localClientAssertion := mintLocalSubjectToken()
-
-		resp := postTokenExchange(tokenFixtures.SubjectToken, localClientAssertion)
+	// Scenario US7-S2 from specs/013-token-exchange/spec.md
+	It("should reject a locally-issued client assertion", func() {
+		resp := postTokenExchange(mintLocalSubjectToken(), mintLocalSubjectToken())
 		defer func() { _ = resp.Body.Close() }()
 
 		Expect(resp).To(matchers.HaveStatusCode(http.StatusUnauthorized))
@@ -270,141 +257,5 @@ var _ = Describe("Hybrid Mode Token Exchange Validation", func() {
 		var body map[string]any
 		Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
 		Expect(body["error"]).To(Equal("invalid_client"))
-	})
-})
-
-var _ = Describe("Token Exchange Client-Assertion JWKS Override", func() {
-	var (
-		logger         *slog.Logger
-		storageFactory *bootstrap.StorageFactory
-		mockUpstream   *helpers.MockUpstreamOAuth2Server
-		mockJWKS       *helpers.MockJWKSServer
-		testStorage    *storageadapter.Adapter
-		adminServer    *bootstrap.TestServer
-		enduserServer  *bootstrap.TestServer
-		principal      string
-		agent          *domainstorage.Agent
-		tokenFixtures  *TokenFixtures
-	)
-
-	const localAgentRedirectURI = "http://localhost:9999/callback"
-
-	BeforeEach(func() {
-		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
-		storageFactory = bootstrap.NewStorageFactory(logger)
-		mockUpstream = helpers.NewMockUpstreamOAuth2Server()
-		mockJWKS = helpers.NewMockJWKSServer()
-		principal = fixtures.DefaultPrincipal().String()
-
-		var err error
-		testStorage, err = storageFactory.NewTestStorage()
-		Expect(err).ToNot(HaveOccurred())
-
-		agent = fixtures.LocalAgent()
-		agent.RedirectURIs = []string{localAgentRedirectURI}
-		Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
-
-		ctx := context.Background()
-		Expect(fixtures.SeedPlaceholderGrantData(ctx, testStorage)).To(Succeed())
-
-		githubService := fixtures.GitHubService()
-		githubService.Endpoints.TokenEndpoint = mockUpstream.URL() + "/oauth/token"
-		githubService.Endpoints.AuthorizeEndpoint = mockUpstream.URL() + "/oauth/authorize"
-		Expect(testStorage.Services().Create(ctx, githubService)).To(Succeed())
-
-		grant := fixtures.ActiveGrant(principal, agent.ID.String(), githubService.ID.String(), []string{"repo", "user"})
-		Expect(testStorage.UserGrants().Create(ctx, grant)).To(Succeed())
-
-		session := fixtures.GitHubSessionForPrincipal(principal)
-		Expect(testStorage.UserSessions().Create(ctx, session)).To(Succeed())
-
-		config := fixtures.HybridConfig(mockUpstream.Server.URL)
-		config.OAuth2AuthServer.Local.TokenClaimsExpression = `{"azp": agent.id, "aud": "token-exchange-broker"}`
-		config.TokenExchange = ports.TokenExchangeConfig{
-			ClientAssertion: ports.ClientAssertionTrustConfig{
-				IssuerURI: mockUpstream.Server.URL,
-				JWKSURI:   mockJWKS.JWKSURL(),
-			},
-			ClaimExtraction: ports.ClaimExtractionConfig{
-				PrincipalExpression: "subject_token.sub",
-				AgentIDExpression:   "subject_token.azp",
-			},
-			Authorization: ports.AuthorizationConfig{
-				Type: "cel",
-				CEL: ports.CELAuthorizationConfig{
-					Expression:        "true",
-					EvaluationTimeout: 100 * time.Millisecond,
-				},
-			},
-		}
-
-		serverFactory := bootstrap.NewServerFactory(config, logger)
-		app, err := serverFactory.BuildApp(testStorage)
-		Expect(err).ToNot(HaveOccurred())
-
-		adminServer, err = bootstrap.NewAdminTestServer(app, logger)
-		Expect(err).ToNot(HaveOccurred())
-		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
-		Expect(err).ToNot(HaveOccurred())
-
-		Expect(helpers.ProvisionSigningKey(adminServer.BaseURL())).ToNot(HaveOccurred())
-		tokenFixtures = generateTokenFixtures(mockUpstream, principal, agent)
-	})
-
-	AfterEach(func() {
-		if adminServer != nil {
-			adminServer.Close()
-		}
-		if enduserServer != nil {
-			enduserServer.Close()
-		}
-		if mockJWKS != nil {
-			mockJWKS.Close()
-		}
-		if mockUpstream != nil {
-			mockUpstream.Close()
-		}
-		if testStorage != nil {
-			_ = storageFactory.CloseStorage(testStorage)
-		}
-	})
-
-	postTokenExchange := func(subjectToken, clientAssertion string) *http.Response {
-		resp, err := enduserServer.PublicPOST(
-			"/oauth2/token",
-			"application/x-www-form-urlencoded",
-			strings.NewReader(url.Values{
-				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {subjectToken},
-				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
-				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {clientAssertion},
-				"resource":              {"https://api.github.com"},
-			}.Encode()),
-		)
-		Expect(err).ToNot(HaveOccurred())
-		return resp
-	}
-
-	// Scenario US7-S3 from specs/013-token-exchange/spec.md
-	It("uses the explicit client-assertion JWKS when the issuer equals the upstream", func() {
-		now := time.Now()
-		assertion, err := mockJWKS.SignJWT(map[string]any{
-			"sub": "test-gateway",
-			"iss": mockUpstream.URL(),
-			"aud": "token-exchange-broker",
-			"exp": now.Add(time.Hour).Unix(),
-			"iat": now.Unix(),
-		})
-		Expect(err).ToNot(HaveOccurred())
-
-		resp := postTokenExchange(tokenFixtures.SubjectToken, assertion)
-		defer func() { _ = resp.Body.Close() }()
-
-		Expect(resp).To(matchers.HaveStatusCode(http.StatusOK))
-
-		var body map[string]any
-		Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-		Expect(body["access_token"]).To(Equal("github-token-xyz"))
 	})
 })
