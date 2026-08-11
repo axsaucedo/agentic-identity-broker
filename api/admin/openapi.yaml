@@ -1786,12 +1786,19 @@ components:
           items:
             type: string
           description: |
-            Optional OAuth2 scopes the agent requires from this service.
-            Omit or provide an empty array for a scope-less service.
+            Optional OAuth2 scopes the agent requires from this service. Must be empty when
+            `require_all_scopes` is true. Omit or provide an empty array for a scope-less service.
             Supplied scopes are case-sensitive and must match service definitions.
           example:
             - repo
             - user:email
+        require_all_scopes:
+          type: boolean
+          default: false
+          description: |
+            When true, the agent receives the full scope union its granted permission sets
+            provide for this service; required_scopes must be empty. When false (default),
+            required_scopes is the per-agent scope ceiling.
 
     ServiceRequirementRequest:
       type: object
@@ -1818,12 +1825,19 @@ components:
           items:
             type: string
           description: |
-            Optional OAuth2 scopes the agent requires from this service.
-            Omit or provide an empty array for a scope-less service. Supplied scopes must
-            exist in the referenced service's scope definitions.
+            Optional OAuth2 scopes the agent requires from this service. Must be empty when
+            `require_all_scopes` is true. Omit or provide an empty array for a scope-less service.
+            Supplied scopes must exist in the referenced service's scope definitions.
           example:
             - repo
             - user:email
+        require_all_scopes:
+          type: boolean
+          default: false
+          description: |
+            When true, the agent receives the full scope union its granted permission sets
+            provide for this service; required_scopes must be empty. When false (default),
+            required_scopes is the per-agent scope ceiling.
 
     Service:
       type: object

@@ -51,9 +51,10 @@ func NewAgentsHandler(agentService *agents.Service, providerService *thirdparty.
 
 // ServiceRequirementRequest represents a service requirement in the request.
 type ServiceRequirementRequest struct {
-	ServiceID       string   `json:"service_id"`
-	RequirementType string   `json:"requirement_type"`
-	RequiredScopes  []string `json:"required_scopes"`
+	ServiceID        string   `json:"service_id"`
+	RequirementType  string   `json:"requirement_type"`
+	RequiredScopes   []string `json:"required_scopes"`
+	RequireAllScopes bool     `json:"require_all_scopes,omitempty"`
 }
 
 // PermissionSetRequest represents a permission set declaration in the request.
@@ -80,10 +81,11 @@ type AgentRequest struct {
 
 // ServiceRequirementResponse represents a service requirement in the response.
 type ServiceRequirementResponse struct {
-	ServiceID       string   `json:"service_id"`
-	ServiceName     string   `json:"service_name,omitempty"`
-	RequirementType string   `json:"requirement_type"`
-	RequiredScopes  []string `json:"required_scopes"`
+	ServiceID        string   `json:"service_id"`
+	ServiceName      string   `json:"service_name,omitempty"`
+	RequirementType  string   `json:"requirement_type"`
+	RequiredScopes   []string `json:"required_scopes"`
+	RequireAllScopes bool     `json:"require_all_scopes,omitempty"`
 }
 
 // PermissionSetDeclarationResponse represents a permission set declaration in the response.
@@ -420,9 +422,10 @@ func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMa
 		resp.ServiceRequirements = make([]ServiceRequirementResponse, len(agent.ServiceRequirements))
 		for i, sr := range agent.ServiceRequirements {
 			respSR := ServiceRequirementResponse{
-				ServiceID:       sr.ServiceID.String(),
-				RequirementType: sr.RequirementType.String(),
-				RequiredScopes:  sr.RequiredScopes,
+				ServiceID:        sr.ServiceID.String(),
+				RequirementType:  sr.RequirementType.String(),
+				RequiredScopes:   sr.RequiredScopes,
+				RequireAllScopes: sr.RequireAllScopes,
 			}
 			if service, ok := serviceMap[sr.ServiceID]; ok {
 				respSR.ServiceName = service.DisplayName
@@ -464,9 +467,10 @@ func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRe
 		}
 
 		result[i] = storage.ServiceRequirement{
-			ServiceID:       parsedSvcID,
-			RequirementType: reqType,
-			RequiredScopes:  req.RequiredScopes,
+			ServiceID:        parsedSvcID,
+			RequirementType:  reqType,
+			RequiredScopes:   req.RequiredScopes,
+			RequireAllScopes: req.RequireAllScopes,
 		}
 	}
 
