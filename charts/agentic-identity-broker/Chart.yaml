@@ -11,6 +11,6 @@ keywords:
   - authentication
 maintainers:
   - name: Agentic Identity Broker Team
-home: https://github.com/zalando-incubator/agentic-identity-broker
+home: https://github.com/zalando-infosec/agentic-identity-broker
 sources:
-  - https://github.com/zalando-incubator/agentic-identity-broker
+  - https://github.com/zalando-infosec/agentic-identity-broker

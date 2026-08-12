@@ -56,7 +56,7 @@ A single `EncryptionStack` provisions:
 
 3. **IAM Role** — least-privilege access for encryption operations
    - Name: `AgenticIdentityBrokerEncryptionRole-{env}`
-   - Trust principal and subject condition set via `-c oidcProviderArn=<oidc-provider-arn> -c oidcSubjectKey=<oidc-provider-host>:sub -c serviceAccountSubject=<oidc-subject>` (required for all environments)
+   - Trust principal set via `-c serviceAccountSubject=<oidc-subject>` (required for all environments)
    - Permissions:
      - KMS: Encrypt, Decrypt, GenerateDataKey, ReEncrypt*, DescribeKey
      - KMS: CreateGrant (conditioned on `kms:GrantIsForAWSResource`)
@@ -74,12 +74,8 @@ A single `EncryptionStack` provisions:
 
 ```bash
 cdk deploy -c env=test \
-  -c oidcProviderArn=<oidc-provider-arn> \
-  -c oidcSubjectKey=<oidc-provider-host>:sub \
   -c serviceAccountSubject=system:serviceaccount:identity-broker:agentic-identity-broker
 cdk deploy -c env=prod \
-  -c oidcProviderArn=<oidc-provider-arn> \
-  -c oidcSubjectKey=<oidc-provider-host>:sub \
   -c serviceAccountSubject=system:serviceaccount:identity-broker:agentic-identity-broker
 ```
 
@@ -103,7 +99,7 @@ All resources are tagged via `Tags.Of(stack).Add()`:
 - **22 unit tests** validate KMS, DynamoDB, IAM, outputs, tags, and environment parameterization using CDK assertions
 - **Justfile integration**: `just cdk-test`, `just cdk-synth`, `just cdk-deploy` for developer ergonomics
 - **Separate Go module** (`infra/cdk/go.mod`) isolates CDK dependencies from the main application binary
-- **Reproducible**: Any environment can be stood up with a single parameterized `cdk deploy` command
+- **Reproducible**: Any environment can be stood up with a single `cdk deploy` command
 
 ### Negative
 

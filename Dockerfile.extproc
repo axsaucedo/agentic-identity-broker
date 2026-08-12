@@ -2,7 +2,7 @@
 # Builds from the project root go.mod (unlike Dockerfile.mock which builds
 # from sub-module directories under mocks/).
 ARG BASE_IMAGE=default
-FROM alpine:3 AS default
+FROM container-registry.zalando.net/library/alpine-3:latest AS default
 
 # Builder stage
 FROM golang:1.25-alpine AS builder

@@ -23,7 +23,7 @@ Your job is to surface these tendencies. When in doubt, flag it as a discussion 
 
 ## Input
 
-You will be given a PR number in the `zalando-incubator/agentic-identity-broker` repository. The PR diff is available in `pr.diff` and the PR metadata in `pr-details.json` (both are local files in the working directory). The full repository is checked out at the default branch.
+You will be given a PR number in the `zalando-infosec/agentic-identity-broker` repository. The PR diff is available in `pr.diff` and the PR metadata in `pr-details.json` (both are local files in the working directory). The full repository is checked out at the default branch.
 
 The `pr-details.json` file contains a `headRefOid` field with the PR head commit SHA. Use this value when constructing GitHub file links.
 
@@ -259,7 +259,7 @@ Findings:
 
 - **Do NOT review individual lines of code.** No typos, nil checks, or style issues.
 - **Do NOT suggest refactoring that isn't architecturally motivated.**
-- **DO provide links** to changed files using `https://github.com/zalando-incubator/agentic-identity-broker/blob/{headRefOid}/{path}` format, where `{headRefOid}` is the value of the `headRefOid` field from `pr-details.json`.
+- **DO provide links** to changed files using `https://github.com/zalando-infosec/agentic-identity-broker/blob/{headRefOid}/{path}` format, where `{headRefOid}` is the value of the `headRefOid` field from `pr-details.json`.
 - **DO reference specific pre-existing ADRs** by number when flagging contradictions.
 - **DO compare against ARCHITECTURE.md glossary** explicitly.
 - **BE CONCISE** — each finding is 1-3 sentences + a file link. Entire review scannable in 2 minutes.

@@ -1,7 +1,7 @@
 # Agentic Identity Broker - Production Docker Image
 # This Dockerfile packages pre-built backend and frontend artifacts
 ARG BASE_IMAGE=default
-FROM alpine:3 AS default
+FROM container-registry.zalando.net/library/alpine-3:latest AS default
 FROM ${BASE_IMAGE}
 
 # Build arguments for multi-architecture support via docker buildx

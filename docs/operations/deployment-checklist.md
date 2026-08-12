@@ -10,9 +10,8 @@ description: A pre-deployment, deployment, and post-deployment checklist for run
 ### For Kubernetes IRSA Deployments
 
 - [ ] EKS cluster has OIDC provider configured
-- [ ] OIDC provider ARN captured for `-c oidcProviderArn=...`
-- [ ] OIDC subject key captured for `-c oidcSubjectKey=...` (for EKS: `<issuer-host>:sub`)
-- [ ] Kubernetes namespace and service account name defined for `-c serviceAccountSubject=...`
+- [ ] OIDC provider ARN extracted (`aws eks describe-cluster`)
+- [ ] Kubernetes namespace and service account name defined
 - [ ] Environment set correctly (-c env=prod for production)
 - [ ] AWS credentials configured (aws sts get-caller-identity)
 - [ ] VPC/network access to KMS and DynamoDB verified
@@ -24,7 +23,7 @@ description: A pre-deployment, deployment, and post-deployment checklist for run
 
 ### Kubernetes IRSA Deployment (Recommended)
 
-The IRSA pattern uses federated identity via an IAM OIDC provider for secure, credential-free AWS access from Kubernetes pods. CDK deployment requires `oidcProviderArn`, `oidcSubjectKey`, and `serviceAccountSubject` context values.
+The IRSA pattern uses federated identity via EKS OIDC provider for secure, credential-free AWS access from Kubernetes pods.
 
 ```bash
 # 1. Extract OIDC provider information
@@ -33,10 +32,9 @@ OIDC_ISSUER=$(aws eks describe-cluster \
   --query 'cluster.identity.oidc.issuer' \
   --output text)
 
-OIDC_PROVIDER_HOST=${OIDC_ISSUER#https://}
+OIDC_ID=$(echo $OIDC_ISSUER | awk -F'/' '{print $NF}')
 ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
-OIDC_PROVIDER_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/${OIDC_PROVIDER_HOST}"
-OIDC_SUBJECT_KEY="${OIDC_PROVIDER_HOST}:sub"
+OIDC_PROVIDER_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/${OIDC_ID}"
 
 # 2. Define service account details
 export K8S_NAMESPACE="identity-broker"
@@ -46,22 +44,16 @@ export K8S_SERVICE_ACCOUNT="broker-sa"
 cd infra/cdk
 npx cdk synth \
   -c env=prod \
-  -c oidcProviderArn="$OIDC_PROVIDER_ARN" \
-  -c oidcSubjectKey="$OIDC_SUBJECT_KEY" \
   -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 
 # 4. Preview infrastructure changes
 npx cdk diff \
   -c env=prod \
-  -c oidcProviderArn="$OIDC_PROVIDER_ARN" \
-  -c oidcSubjectKey="$OIDC_SUBJECT_KEY" \
   -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 
 # 5. Deploy with confirmation prompt
 npx cdk deploy \
   -c env=prod \
-  -c oidcProviderArn="$OIDC_PROVIDER_ARN" \
-  -c oidcSubjectKey="$OIDC_SUBJECT_KEY" \
   -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 ```
 
@@ -118,8 +110,8 @@ npx cdk deploy \
     --query 'Role.AssumeRolePolicyDocument' \
     --output json | jq .
 
-  # Expected: Principal.Federated = OIDC provider ARN from oidcProviderArn
-  # Expected: Condition.StringEquals maps oidcSubjectKey to serviceAccountSubject
+  # Expected: Principal.Federated = OIDC provider ARN
+  # Expected: Condition.StringEquals includes namespace and service account
   ```
 
 - [ ] **Extract stack outputs for Helm configuration**:
@@ -399,7 +391,7 @@ All AWS KMS configuration can be set via environment variables:
 ### Before Production Deployment
 
 - [ ] All HIGH priority fixes implemented and tested
-- [ ] `serviceAccountSubject`, `oidcProviderArn`, and `oidcSubjectKey` enforced (panic if missing)
+- [ ] `serviceAccountSubject` enforced (panic if missing)
 - [ ] Environment validation prevents typos (dev/staging/prod only)
 - [ ] KMS key rotation backward compatibility tested
 - [ ] Security review completed

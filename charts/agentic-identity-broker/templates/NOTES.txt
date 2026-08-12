@@ -49,4 +49,4 @@ To learn more about the release, try:
   $ curl http://localhost:14000/health
 {{- end }}
 
-📚 Documentation: https://github.com/zalando-incubator/agentic-identity-broker/tree/main/docs
+📚 Documentation: https://github.com/zalando-infosec/agentic-identity-broker/tree/main/docs

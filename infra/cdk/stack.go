@@ -45,12 +45,6 @@ type EncryptionStackProps struct {
 	// For Kubernetes workloads this is typically "system:serviceaccount:<namespace>:<sa-name>".
 	ServiceAccountSubject string
 
-	// OIDCProviderArn is the IAM OIDC identity-provider ARN bound as the trust principal (Federated).
-	OIDCProviderArn string
-
-	// OIDCSubjectKey is the IAM condition key for the subject claim, e.g. "<oidc-provider-host>:sub".
-	OIDCSubjectKey string
-
 	// Tags is a map of optional resource tags to apply to all taggable resources.
 	// Standard tags (Project, Component, Environment) are applied by default.
 	// Tags provided here will override defaults or add additional tags (e.g., Application, Team, CostCenter).
@@ -99,18 +93,11 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	// ─── Service Account Validation ──────────────────────────────────────
 	//
 	// ServiceAccountSubject is required for all environments — omitting it
-	// leaves the IAM OIDC trust policy without the bound Kubernetes subject.
+	// leaves an empty subject in the CDP trust policy, making the role unusable.
 	if props.ServiceAccountSubject == "" {
 		panic(fmt.Sprintf(
 			"ERROR: serviceAccountSubject is required for env=%s.\n"+
-				"Usage: cdk synth -c env=%s -c serviceAccountSubject=<subject> -c oidcProviderArn=<oidc-provider-arn> -c oidcSubjectKey=<oidc-provider-host>:sub",
-			props.Environment, props.Environment))
-	}
-
-	if props.OIDCProviderArn == "" || props.OIDCSubjectKey == "" {
-		panic(fmt.Sprintf(
-			"ERROR: oidcProviderArn and oidcSubjectKey are required for env=%s.\n"+
-				"Usage: cdk synth -c env=%s -c serviceAccountSubject=<subject> -c oidcProviderArn=<oidc-provider-arn> -c oidcSubjectKey=<oidc-provider-host>:sub",
+				"Usage: cdk synth -c env=%s -c serviceAccountSubject=<subject>",
 			props.Environment, props.Environment))
 	}
 
@@ -228,8 +215,8 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	// ─── IAM Role (Encryption Operations) ───────────────────────────────
 	//
 	// Dedicated role with least-privilege access to KMS and DynamoDB.
-	// The trust policy is fully replaced below to bind the IAM OIDC identity provider as
-	// the federated principal; the typed CDK API cannot express the dynamic condition key.
+	// The trust policy is fully replaced below via AddPropertyOverride to inject
+	// CDP OIDC variable placeholders that the CDK typed API cannot express.
 	encryptionRole := awsiam.NewRole(stack, jsii.String("EncryptionRole"), &awsiam.RoleProps{
 		RoleName:           jsii.String(fmt.Sprintf("AgenticIdentityBrokerEncryptionRole-%s", props.Environment)),
 		Description:        jsii.String("IAM role for Agentic Identity Broker encryption operations (KMS + DynamoDB)"),
@@ -237,8 +224,8 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 		MaxSessionDuration: awscdk.Duration_Hours(jsii.Number(MaxSessionDurationHours)),
 	})
 
-	// Override the trust policy with a manual IAM OIDC trust relationship.
-	// The dynamic StringEquals key is supplied through CDK context and rendered verbatim.
+	// Override trust policy with a manual Zalando CDP trust relationship.
+	// CDP substitutes {{{CDP_OIDC_PROVIDER_ARN}}} and {{{CDP_OIDC_SUBJECT_KEY}}} at pipeline time.
 	cfnRole := encryptionRole.Node().DefaultChild().(awsiam.CfnRole)
 	cfnRole.AddPropertyOverride(
 		jsii.String("AssumeRolePolicyDocument"),
@@ -248,12 +235,12 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 				map[string]interface{}{
 					"Effect": "Allow",
 					"Principal": map[string]interface{}{
-						"Federated": props.OIDCProviderArn,
+						"Federated": "{{{CDP_OIDC_PROVIDER_ARN}}}",
 					},
 					"Action": "sts:AssumeRoleWithWebIdentity",
 					"Condition": map[string]interface{}{
 						"StringEquals": map[string]interface{}{
-							props.OIDCSubjectKey: props.ServiceAccountSubject,
+							"{{{CDP_OIDC_SUBJECT_KEY}}}": props.ServiceAccountSubject,
 						},
 					},
 				},
