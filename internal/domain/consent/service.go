@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"sort"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -130,14 +131,15 @@ func (s *Service) GetAgentConsentDetail(ctx context.Context, agentID id.AgentID,
 		return nil, ErrAgentNotFound
 	}
 
-	// Enrich service requirements with connection status
-	requirements, err := s.resolveServiceRequirements(ctx, agent, principal)
+	// Resolve permission sets before enriching requirements so the consent response can
+	// disclose every scope a require_all_scopes requirement can receive.
+	resolvedPermissionSets, err := s.resolvePermissionSets(ctx, agent)
 	if err != nil {
 		return nil, err
 	}
 
-	// Resolve permission sets
-	resolvedPermissionSets, err := s.resolvePermissionSets(ctx, agent)
+	// Enrich service requirements with connection status and disclosed scopes.
+	requirements, err := s.resolveServiceRequirements(ctx, agent, principal, resolvedPermissionSets)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +162,7 @@ func (s *Service) GetAgentConsentDetail(ctx context.Context, agentID id.AgentID,
 	}, nil
 }
 
-func (s *Service) resolveServiceRequirements(ctx context.Context, agent *storage.Agent, principal id.Principal) ([]ServiceRequirementStatus, error) {
+func (s *Service) resolveServiceRequirements(ctx context.Context, agent *storage.Agent, principal id.Principal, resolvedPermissionSets []ResolvedPermissionSetEntry) ([]ServiceRequirementStatus, error) {
 	if len(agent.ServiceRequirements) == 0 {
 		return []ServiceRequirementStatus{}, nil
 	}
@@ -202,8 +204,28 @@ func (s *Service) resolveServiceRequirements(ctx context.Context, agent *storage
 			scopeDesc[scope.ScopeValue] = scope.Description
 		}
 
-		scopes := make([]ServiceScopeInfo, len(req.RequiredScopes))
-		for i, name := range req.RequiredScopes {
+		scopeNames := req.RequiredScopes
+		if req.RequireAllScopes {
+			scopeSet := make(map[string]struct{})
+			for _, entry := range resolvedPermissionSets {
+				for _, serviceScopes := range entry.PermissionSet.ServiceScopes {
+					if serviceScopes.ServiceID != req.ServiceID {
+						continue
+					}
+					for _, scope := range serviceScopes.Scopes {
+						scopeSet[scope] = struct{}{}
+					}
+				}
+			}
+			scopeNames = make([]string, 0, len(scopeSet))
+			for scope := range scopeSet {
+				scopeNames = append(scopeNames, scope)
+			}
+			sort.Strings(scopeNames)
+		}
+
+		scopes := make([]ServiceScopeInfo, len(scopeNames))
+		for i, name := range scopeNames {
 			scopes[i] = ServiceScopeInfo{Name: name, Description: scopeDesc[name]}
 		}
 

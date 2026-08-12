@@ -332,13 +332,17 @@ export interface LoadingState {
 
 /**
  * Service requirement for an agent (Phase 6).
- * Specifies which services an agent needs access to.
+ * Specifies which services an agent needs access to and the permissions disclosed for consent.
  */
 export interface ServiceRequirement {
   kind: 'requirement';
   serviceId: string;
   serviceName: string;
   requirementType: 'mandatory' | 'optional';
+  /**
+   * Explicit requirements expose their configured scope ceiling. All-scope requirements expose
+   * the sorted, deduplicated Permission Set union for this service.
+   */
   requiredScopes: Array<{
     name: string;
     description?: string;

@@ -136,6 +136,28 @@ func TestGetAgentDetail_Success(t *testing.T) {
 	assert.Len(t, response.Data.Services[0].RequiredScopes, 2)
 }
 
+func TestToServiceRequirementForUser_SerializesDisclosedScopes(t *testing.T) {
+	serviceID := id.NewServiceID()
+
+	result := toServiceRequirementForUser([]consent.ServiceRequirementStatus{{
+		ServiceID:       serviceID,
+		DisplayName:     "GitHub",
+		RequirementType: storage.RequirementTypeMandatory,
+		RequiredScopes: []consent.ServiceScopeInfo{
+			{Name: "admin", Description: "Admin access"},
+			{Name: "read", Description: "Read access"},
+			{Name: "write", Description: "Write access"},
+		},
+	}})
+
+	require.Len(t, result, 1)
+	assert.Equal(t, serviceID.String(), result[0].ServiceID)
+	assert.Equal(t, []ScopeWithDescription{
+		{Name: "admin", Description: "Admin access"},
+		{Name: "read", Description: "Read access"},
+		{Name: "write", Description: "Write access"},
+	}, result[0].RequiredScopes)
+}
 func TestGetAgentDetail_AgentNotFound(t *testing.T) {
 	mockService := &mockAgentDetailService{
 		getAgentConsentDetailFunc: func(_ context.Context, _ id.AgentID, _ id.Principal) (*consent.AgentConsentDetail, error) {

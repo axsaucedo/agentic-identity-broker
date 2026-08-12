@@ -7,7 +7,7 @@
 
 ## Summary
 
-Introduce `PermissionSet` as a first-class domain entity — an admin-defined bundle of OAuth2 scopes spanning one or more third-party services. Agents declare an ordered list of permission sets (mandatory/optional) alongside `ServiceRequirements` which act as session gating + per-agent scope ceilings. The consent screen renders permission sets as a card-based selection UI above service connections; within each PS card, only services intersecting with the agent's `service_requirements` are shown, with per-service toggles for optional SR services. Service connections are **dynamic** — mandatory SR services always visible, optional SR services only when included via a selected PS. The Approve button is disabled until all displayed services have active sessions (FR-020). Submitted grants store a structured `granted_permission_sets: {ps_id: [included_service_ids]}` in `UserGrant` using positive inclusion (replacing `DelegatedToken`). Token exchange resolves effective per-service scope unions from cached permission set definitions, intersects them with SR scope ceilings, and validates coverage by existing `UserSession` tokens.
+Introduce `PermissionSet` as a first-class domain entity — an admin-defined bundle of OAuth2 scopes spanning one or more third-party services. Agents declare an ordered list of permission sets (mandatory/optional) alongside `ServiceRequirements` which act as session gating plus either per-agent scope ceilings or an explicit `require_all_scopes` Permission Set-union mode. The consent screen renders permission sets as a card-based selection UI above service connections; within each PS card, only services intersecting with the agent's `service_requirements` are shown, with per-service toggles for optional SR services. Service connections are dynamic — mandatory SR services always visible, optional SR services only when included via a selected PS. The Approve button is disabled until all displayed services have active sessions. For `require_all_scopes`, the consent response discloses the assigned-PS scope union for that requirement service while retaining scope redaction in permission-set cards.
 
 ---
 
@@ -180,7 +180,8 @@ tests/
 | US4.S1 | It("stores granted_permission_sets with ps_id and included_service_ids for mandatory + toggled optional") |
 | US4.S2 | It("includes granted_permission_sets in token exchange response") |
 | US4.S3 | It("upserts UserGrant with new granted_permission_sets on re-consent") |
-| US4.S4 | It("computes scope union for two permission sets both covering Service A, intersected with SR ceiling") |
+| US4.S4 | It("computes scope union for two permission sets both covering Service A, intersected with an explicit SR ceiling") |
+| US3.S6 | It("discloses the assigned permission-set scope union for a require-all-scopes requirement") |
 | Edge | It("fails token exchange with descriptive error when UserSession scopes are insufficient") |
 
 **Red Phase Requirements**: Realistic assertions against actual HTTP responses — no placeholder failures. All 24 tests compile and fail before implementation.
@@ -207,10 +208,11 @@ tests/
 
 **Unit Tests**:
 - `internal/domain/storage/permission_set_test.go` — entity validation
-- `internal/domain/consent/service_test.go` — ConsentInfo resolution: PS card filtering to SR-intersecting services, dynamic service connections computation, submission gating validation (hand-rolled mocks)
-- `internal/domain/tokenexchange/service_test.go` — cache behavior, scope union, SR scope ceiling intersection, insufficient scope error
+- `internal/domain/consent/service_test.go` — ConsentInfo resolution: PS card filtering to SR-intersecting services, dynamic service connections computation, submission gating validation, and require-all-scopes disclosure union (hand-rolled mocks)
+- `internal/domain/tokenexchange/service_test.go` — cache behavior, scope union, explicit SR scope ceiling intersection, require-all-scopes passthrough, insufficient scope error
 - `internal/adapters/http/handlers/admin/permission_sets_handler_test.go` — HTTP handler (testify/mock)
 - `internal/adapters/http/handlers/admin/agents_handler_test.go` — FR-019 coverage invariant validation (testify/mock)
+- `internal/adapters/http/handlers/consent/agent_detail_handler_test.go` — serialized all-scope consent disclosure
 
 **Integration Tests**:
 - `internal/adapters/storage/postgres/permission_set_repository_test.go` — real Postgres via testcontainers

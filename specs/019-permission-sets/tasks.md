@@ -257,6 +257,7 @@
 - [ ] T088 [P] Verify `PermissionSetService` background eviction goroutine exits cleanly on server shutdown (no goroutine leak) — tested in T021a; confirm in E2E shutdown scenario
 - [ ] T089 Run `just test` — no race conditions in `psCache` sync.Map operations or memory repository
 - [ ] T090 Complete `quickstart.md` verification checklist — all items checked before opening PR
+- [X] T091 Add `require_all_scopes` ServiceRequirement mode: validate mutual exclusion with `required_scopes`, resolve the granted Permission Set union at token exchange, disclose the assigned Permission Set union in consent service requirements, and cover the admin, domain, handler, and end-user contract paths.
 
 ---
 

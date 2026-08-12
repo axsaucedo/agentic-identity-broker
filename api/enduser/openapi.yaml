@@ -310,7 +310,7 @@ paths:
         - Service ID (UUID)
         - Service name (e.g., "Google Drive", "GitHub")
         - Service logo URL
-        - Available scopes with human-readable descriptions
+        - The OAuth2 permissions the agent can receive for the service, with human-readable descriptions. For a `require_all_scopes` requirement, this is the sorted, deduplicated union from this agent's assigned Permission Sets that cover that service.
 
         **Use Cases**:
 
@@ -2351,7 +2351,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ScopeWithDescription"
-          description: OAuth2 scopes required for this service
+          description: |
+            OAuth2 permissions the agent can receive for this service. For an explicit-scope
+            requirement, this is its required scope ceiling. For `require_all_scopes`, this is
+            the sorted, deduplicated union supplied by the agent's assigned Permission Sets for
+            this service only; unrelated Permission Set services are excluded.
         connectionStatus:
           type: string
           enum:

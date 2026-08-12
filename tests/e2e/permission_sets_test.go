@@ -587,7 +587,77 @@ var _ = Describe("Permission Sets (019)", func() {
 			Expect(activeIDs).To(ContainElement(githubServiceID), "github service must appear in active_session_service_ids")
 		})
 
-		// US2.S4 from specs/019-permission-sets/spec.md
+		// US3.S6 from specs/019-permission-sets/spec.md
+
+		It("discloses the assigned permission-set scope union for a require-all-scopes requirement", func() {
+			ps1Resp, err := adminServer.DirectRequest(
+				"POST", "/api/permission-sets", adminPrincipal,
+				map[string]string{"Content-Type": "application/json"},
+				psJSON(map[string]interface{}{
+					"name":        "All scopes one",
+					"description": "First GitHub capability",
+					"service_scopes": []map[string]interface{}{
+						{"service_id": githubServiceID, "scopes": []string{"repo:read"}},
+						{"service_id": googleServiceID, "scopes": []string{"calendar.read"}},
+					},
+				}),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(ps1Resp.StatusCode).To(Equal(http.StatusCreated))
+			ps1ID := parsePS(ps1Resp)["id"].(string)
+
+			ps2Resp, err := adminServer.DirectRequest(
+				"POST", "/api/permission-sets", adminPrincipal,
+				map[string]string{"Content-Type": "application/json"},
+				psJSON(map[string]interface{}{
+					"name":        "All scopes two",
+					"description": "Second GitHub capability",
+					"service_scopes": []map[string]interface{}{
+						{"service_id": githubServiceID, "scopes": []string{"repo:read", "user:email"}},
+					},
+				}),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(ps2Resp.StatusCode).To(Equal(http.StatusCreated))
+			ps2ID := parsePS(ps2Resp)["id"].(string)
+
+			agentResp, err := adminServer.DirectRequest(
+				"POST", "/api/agents", adminPrincipal,
+				map[string]string{"Content-Type": "application/json"},
+				psJSON(map[string]interface{}{
+					"client_id":    "all-scopes-consent-agent",
+					"display_name": "All Scopes Consent Agent",
+					"description":  "Discloses permission-set scope union",
+					"service_requirements": []map[string]interface{}{
+						{"service_id": githubServiceID, "requirement_type": "mandatory", "require_all_scopes": true},
+					},
+					"permission_sets": []map[string]interface{}{
+						{"permission_set_id": ps1ID, "requirement_type": "mandatory"},
+						{"permission_set_id": ps2ID, "requirement_type": "mandatory"},
+					},
+				}),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(agentResp.StatusCode).To(Equal(http.StatusCreated))
+			allScopesAgentID := parsePS(agentResp)["id"].(string)
+
+			resp, err := enduserServer.AuthenticatedGET(fmt.Sprintf("/api/consent/agents/%s", allScopesAgentID), userPrincipal)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			services := parsePS(resp)["services"].([]interface{})
+			Expect(services).To(HaveLen(1))
+			scopes := services[0].(map[string]interface{})["requiredScopes"].([]interface{})
+			scopeNames := make([]string, len(scopes))
+			scopeDescriptions := make([]string, len(scopes))
+			for i, scope := range scopes {
+				scopeData := scope.(map[string]interface{})
+				scopeNames[i] = scopeData["name"].(string)
+				scopeDescriptions[i] = scopeData["description"].(string)
+			}
+			Expect(scopeNames).To(Equal([]string{"repo:read", "user:email"}))
+			Expect(scopeDescriptions).To(Equal([]string{"Read repositories", "Read email"}))
+		})
 		It("shows connect button with Required/Optional badge for service without active session", func() {
 			// US2.S4 — service_requirements present in response for services without active sessions
 			resp, err := enduserServer.AuthenticatedGET(

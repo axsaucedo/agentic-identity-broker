@@ -1700,6 +1700,76 @@ func TestService_GetAgentConsentDetail_WithPermissionSets(t *testing.T) {
 		assert.Equal(t, psID, detail.ResolvedPermissionSets[0].PermissionSet.ID)
 		assert.Equal(t, storage.RequirementTypeMandatory, detail.ResolvedPermissionSets[0].RequirementType)
 	})
+
+	t.Run("discloses the all-scopes union for the required service only", func(t *testing.T) {
+		t.Parallel()
+
+		serviceID2 := id.NewServiceID()
+		psID1 := id.NewPermissionSetID()
+		psID2 := id.NewPermissionSetID()
+		psService := permissionset.NewPermissionSetService(&mockPermissionSetService{
+			permissionSets: map[id.PermissionSetID]*storage.PermissionSet{
+				psID1: {
+					ID: psID1,
+					ServiceScopes: []storage.ServiceScope{
+						{ServiceID: serviceID1, Scopes: []string{"write", "read"}},
+						{ServiceID: serviceID2, Scopes: []string{"unrelated"}},
+					},
+				},
+				psID2: {
+					ID: psID2,
+					ServiceScopes: []storage.ServiceScope{
+						{ServiceID: serviceID1, Scopes: []string{"admin", "read"}},
+					},
+				},
+			},
+		}, &mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}}, slog.Default())
+		defer psService.Close()
+
+		agentWithAllScopes := &storage.Agent{
+			ID:          agentID,
+			ClientID:    ptr.To(id.ClientID("test-client")),
+			DisplayName: "Test Agent",
+			Description: "A test agent",
+			ServiceRequirements: []storage.ServiceRequirement{{
+				ServiceID:        serviceID1,
+				RequirementType:  storage.RequirementTypeMandatory,
+				RequireAllScopes: true,
+			}},
+			PermissionSets: []storage.AgentPermissionSetEntry{
+				{PermissionSetID: psID1, RequirementType: storage.RequirementTypeMandatory},
+				{PermissionSetID: psID2, RequirementType: storage.RequirementTypeOptional},
+			},
+		}
+		providerService := newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{
+			serviceID1: {
+				ID: serviceID1,
+				Scopes: []model.OAuthScope{
+					{ScopeValue: "admin", Description: "Admin access"},
+					{ScopeValue: "read", Description: "Read access"},
+					{ScopeValue: "write", Description: "Write access"},
+				},
+			},
+		}})
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agentWithAllScopes}},
+			providerService,
+			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			&mockUserSessionRepo{sessions: map[id.SessionID]*storage.UserSession{}},
+			psService,
+			slog.Default(),
+		)
+
+		detail, err := svc.GetAgentConsentDetail(ctx, agentID, id.Principal("user@example.com"))
+
+		require.NoError(t, err)
+		require.Len(t, detail.ServiceRequirements, 1)
+		assert.Equal(t, []ServiceScopeInfo{
+			{Name: "admin", Description: "Admin access"},
+			{Name: "read", Description: "Read access"},
+			{Name: "write", Description: "Write access"},
+		}, detail.ServiceRequirements[0].RequiredScopes)
+	})
 }
 
 func TestService_ValidateSubmission(t *testing.T) {
