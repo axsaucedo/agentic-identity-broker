@@ -3,6 +3,8 @@ package tokenexchange
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -207,7 +209,7 @@ func (v *JWTValidator) mapParseError(err error, tokenType string, tokenString st
 	case errors.Is(err, jwt.TokenNotYetValidError()):
 		return NewInvalidGrantError(tokenType + " is not yet valid (nbf)").WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.subjectTokenPolicy.ExpectedIssuers))
 	case errors.Is(err, jwt.ParseError()):
-		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed").WithCause(err)
+		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed").WithCause(err).WithDetails(diagnoseTokenShape(tokenString))
 	default:
 		return NewInvalidGrantError(tokenType + " validation failed").WithCause(err)
 	}
@@ -282,6 +284,119 @@ func (v *JWTValidator) extractDiagnostics(tokenString string, expectedIssuers []
 	}
 
 	return fmt.Sprintf("[%s]", strings.Join(parts, " "))
+}
+
+// maxHeaderValueLen bounds each surfaced JOSE header value so a hostile or oversized
+// header cannot bloat structured logs.
+const maxHeaderValueLen = 64
+
+// diagnoseTokenShape produces non-reversible structural diagnostics for a token that
+// failed compact/JSON parsing (the jwt.ParseError branch). Per SR-005 it never emits
+// raw token bytes, the payload, or the signature. It reports only:
+//   - overall length and dot/segment counts
+//   - a coarse classification of the first byte (never the byte itself)
+//   - per-segment base64url decodability and decoded byte length
+//   - allowlisted JOSE header metadata (alg/enc/typ/cty/kid) decoded from the
+//     protected header segment of a compact JWS (3 segments) or JWE (5 segments)
+//
+// This is enough to distinguish an encrypted JWE, a signed-but-unverifiable JWS, an
+// opaque token, and a misrouted JSON document without exposing credential material.
+func diagnoseTokenShape(tokenString string) string {
+	if tokenString == "" {
+		return ""
+	}
+
+	segments := strings.Split(tokenString, ".")
+	parts := []string{
+		fmt.Sprintf("len=%d", len(tokenString)),
+		fmt.Sprintf("dot_count=%d", len(segments)-1),
+		fmt.Sprintf("segments=%d", len(segments)),
+		"first_byte_class=" + classifyFirstByte(tokenString),
+	}
+
+	b64 := make([]string, len(segments))
+	for i, seg := range segments {
+		if decoded, err := base64.RawURLEncoding.DecodeString(seg); err == nil {
+			b64[i] = fmt.Sprintf("ok(%d)", len(decoded))
+		} else {
+			b64[i] = "bad"
+		}
+	}
+	parts = append(parts, fmt.Sprintf("seg_b64url=[%s]", strings.Join(b64, ",")))
+
+	// Compact JWS (3 segments) and JWE (5 segments) both carry the protected JOSE
+	// header in segment 0; surface allowlisted metadata to identify the algorithm.
+	if len(segments) == 3 || len(segments) == 5 {
+		if header := decodeJOSEHeader(segments[0]); header != "" {
+			parts = append(parts, "header="+header)
+		}
+	}
+
+	return "[" + strings.Join(parts, " ") + "]"
+}
+
+// classifyFirstByte returns a coarse, non-reversible class of the leading byte so
+// logs can distinguish a JSON document, a base64url compact token, and garbage
+// without ever recording the byte value itself.
+func classifyFirstByte(s string) string {
+	if s == "" {
+		return "empty"
+	}
+	switch c := s[0]; {
+	case c == '{':
+		return "json_open_brace"
+	case c == ' ' || c == '\t' || c == '\n' || c == '\r':
+		return "whitespace"
+	case (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_':
+		return "base64url"
+	default:
+		return "other"
+	}
+}
+
+// decodeJOSEHeader base64url-decodes a compact-serialization protected header segment
+// and returns allowlisted metadata fields only. Returns an empty string when the
+// segment is not base64url-encoded JSON or carries none of the allowlisted fields.
+// The payload, signature, and any non-allowlisted header parameters are never emitted.
+func decodeJOSEHeader(segment string) string {
+	raw, err := base64.RawURLEncoding.DecodeString(segment)
+	if err != nil {
+		return ""
+	}
+	var hdr struct {
+		Alg string `json:"alg"`
+		Enc string `json:"enc"`
+		Typ string `json:"typ"`
+		Cty string `json:"cty"`
+		Kid string `json:"kid"`
+	}
+	if err := json.Unmarshal(raw, &hdr); err != nil {
+		return ""
+	}
+
+	var fields []string
+	for _, f := range []struct{ name, value string }{
+		{"alg", hdr.Alg},
+		{"enc", hdr.Enc},
+		{"typ", hdr.Typ},
+		{"cty", hdr.Cty},
+		{"kid", hdr.Kid},
+	} {
+		if f.value != "" {
+			fields = append(fields, fmt.Sprintf("%s=%q", f.name, truncateHeaderValue(f.value)))
+		}
+	}
+	if len(fields) == 0 {
+		return ""
+	}
+	return "{" + strings.Join(fields, " ") + "}"
+}
+
+func truncateHeaderValue(s string) string {
+	if len(s) <= maxHeaderValueLen {
+		return s
+	}
+	return s[:maxHeaderValueLen] + "..."
 }
 
 func (v *JWTValidator) parseWithPolicy(tokenString string, keyset jwk.Set, policy JWTValidationPolicy) (jwt.Token, error) {
