@@ -471,9 +471,15 @@ func (s *TokenExchangeService) resolveEffectiveScopes(
 		}
 	}
 
-	// Build SR scope ceiling index
-	srCeiling := make(map[id.ServiceID]map[string]bool, len(agent.ServiceRequirements))
+	// Build per-service SR indexes: explicit-scope ceilings vs. all-scopes passthroughs.
+	hasSR := len(agent.ServiceRequirements) > 0
+	srCeiling := make(map[id.ServiceID]map[string]bool)
+	srAllScopes := make(map[id.ServiceID]bool)
 	for _, sr := range agent.ServiceRequirements {
+		if sr.RequireAllScopes {
+			srAllScopes[sr.ServiceID] = true
+			continue
+		}
 		ceiling := make(map[string]bool, len(sr.RequiredScopes))
 		for _, scope := range sr.RequiredScopes {
 			ceiling[scope] = true
@@ -481,32 +487,33 @@ func (s *TokenExchangeService) resolveEffectiveScopes(
 		srCeiling[sr.ServiceID] = ceiling
 	}
 
-	// FR-013: When the agent declares service_requirements, services outside the SR
-	// ceiling are explicitly ignored and scopes are intersected with the SR ceiling.
-	// When the agent has no service_requirements (but does declare permission_sets),
-	// consent validation already accepted all PS-covered services as valid (same rule
-	// as consent/service.go:415). Skip the filter and use PS-derived scopes directly.
+	// FR-013: when the agent declares service_requirements, PS-covered services outside the
+	// SR set are ignored. A require_all_scopes service takes the full PS union; other SR
+	// services are intersected with their required_scopes ceiling. Agents with no SR use
+	// PS-derived scopes directly.
 	effectiveScopes := make(map[id.ServiceID][]string, len(perServiceScopes))
-	if len(srCeiling) > 0 {
-		// Restrict to SR-declared services and intersect with SR scope ceiling.
-		for svcID := range perServiceScopes {
-			if _, inSR := srCeiling[svcID]; !inSR {
-				delete(perServiceScopes, svcID)
-			}
-		}
-	}
-
 	for svcID, scopeSet := range perServiceScopes {
-		ceiling := srCeiling[svcID] // nil when no SRs — all scopes pass
+		_, hasCeiling := srCeiling[svcID]
+		allScopes := srAllScopes[svcID]
+		if hasSR && !hasCeiling && !allScopes {
+			continue // service not declared in agent service_requirements
+		}
 		var scopes []string
-		for scope := range scopeSet {
-			if ceiling == nil || ceiling[scope] {
+		if !hasSR || allScopes {
+			for scope := range scopeSet {
 				scopes = append(scopes, scope)
+			}
+		} else {
+			ceiling := srCeiling[svcID]
+			for scope := range scopeSet {
+				if ceiling[scope] {
+					scopes = append(scopes, scope)
+				}
 			}
 		}
 		sort.Strings(scopes)
 		if len(scopes) == 0 && len(scopeSet) > 0 {
-			continue
+			continue // fully capped out — drop (fail-closed for a zero-scope ceiling)
 		}
 		effectiveScopes[svcID] = scopes
 	}

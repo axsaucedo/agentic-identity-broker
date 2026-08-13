@@ -80,6 +80,26 @@ func TestServiceRequirement_Validate(t *testing.T) {
 			wantErr: true,
 			errMsg:  "required_scopes[1] is empty",
 		},
+		{
+			name: "require_all_scopes with empty required_scopes",
+			sr: &ServiceRequirement{
+				ServiceID:        id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
+				RequirementType:  RequirementTypeMandatory,
+				RequireAllScopes: true,
+			},
+			wantErr: false,
+		},
+		{
+			name: "require_all_scopes with required_scopes",
+			sr: &ServiceRequirement{
+				ServiceID:        id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
+				RequirementType:  RequirementTypeMandatory,
+				RequiredScopes:   []string{"repo"},
+				RequireAllScopes: true,
+			},
+			wantErr: true,
+			errMsg:  "required_scopes must be empty when require_all_scopes is true",
+		},
 	}
 
 	for _, tt := range tests {

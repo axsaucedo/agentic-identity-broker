@@ -46,7 +46,7 @@ Acceptable within domain ring: `tokenexchange/` → `consent/`, `oauth2session/`
 ### Value Objects
 - `OAuthScope` — permission scope (`ScopeValue` + `Description`)
 - `RequirementType` — enum: mandatory/optional
-- `ServiceRequirement` — agent's declared need: `ServiceID` + `RequirementType` + `RequiredScopes[]`
+- `ServiceRequirement` — agent's declared need: `ServiceID` + `RequirementType` + `RequiredScopes[]` ceiling, or `RequireAllScopes` to consume the full granted permission-set scope union
 - `DelegatedToken` — grant component: `ThirdpartyOAuth2ServiceID` + `Scopes[]`
 - `EncryptionContext` — AAD metadata (JSONB, implements `driver.Valuer`/`sql.Scanner`); exactly one approved subject key such as `service_id` or `kid`
 - `BranchKeySubject` — typed encryption namespace wrapper selecting either the `service` or `signing_key` branch-key subject

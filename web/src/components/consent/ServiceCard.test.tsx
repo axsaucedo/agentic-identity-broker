@@ -69,6 +69,27 @@ describe('ServiceCard', () => {
     expect(screen.getByText('GitHub')).toBeInTheDocument();
   });
 
+  it('displays disclosed all-scope requirement permissions', () => {
+    const allScopesRequirement: ThirdpartyService = {
+      kind: 'requirement',
+      serviceId: 'github',
+      serviceName: 'GitHub',
+      requirementType: 'mandatory',
+      requiredScopes: [
+        { name: 'admin', description: 'Admin access' },
+        { name: 'read', description: 'Read access' },
+        { name: 'write', description: 'Write access' },
+      ],
+      connectionStatus: 'not_connected',
+    };
+
+    render(<ServiceCard service={allScopesRequirement} />);
+
+    expect(screen.getByText('admin')).toBeInTheDocument();
+    expect(screen.getByText('read')).toBeInTheDocument();
+    expect(screen.getByText('write')).toBeInTheDocument();
+  });
+
   it('expands and collapses scope list on button click', () => {
     const { container } = render(<ServiceCard service={mockService} />);
 

@@ -994,6 +994,37 @@ func TestResolveEffectiveScopes_SRCeiling(t *testing.T) {
 	assert.NotContains(t, scopes[svcA], "admin")
 }
 
+func TestResolveEffectiveScopes_RequireAllScopes(t *testing.T) {
+	t.Parallel()
+
+	svcA := id.NewServiceID()
+	psID := id.NewPermissionSetID()
+	psService := permissionset.NewPermissionSetService(&MockPermissionSetRepository{psMap: map[id.PermissionSetID]*storagedomain.PermissionSet{
+		psID: {
+			ID:   psID,
+			Name: "PS1",
+			ServiceScopes: []storagedomain.ServiceScope{
+				{ServiceID: svcA, Scopes: []string{"read", "write", "admin"}, RequirementType: storagedomain.RequirementTypeOptional},
+			},
+		},
+	}}, &MockGrantRepository{}, slog.Default())
+	defer psService.Close()
+
+	svc := &TokenExchangeService{permissionSetService: psService}
+	effectiveScopes, err := svc.resolveEffectiveScopes(context.Background(), &storagedomain.UserGrant{
+		GrantedPermissionSets: []storagedomain.GrantedPermissionSetEntry{{
+			PermissionSetID:    psID,
+			IncludedServiceIDs: []id.ServiceID{svcA},
+		}},
+	}, &storagedomain.Agent{ServiceRequirements: []storagedomain.ServiceRequirement{{
+		ServiceID:        svcA,
+		RequireAllScopes: true,
+	}}})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"admin", "read", "write"}, effectiveScopes[svcA])
+}
+
 // TestResolveEffectiveScopes_PerServiceInclusion tests T046: only included services contribute scopes
 func TestResolveEffectiveScopes_PerServiceInclusion(t *testing.T) {
 	t.Parallel()

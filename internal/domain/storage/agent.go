@@ -224,9 +224,10 @@ func (a *Agent) Copy() *Agent {
 		copy.ServiceRequirements = make([]ServiceRequirement, len(a.ServiceRequirements))
 		for i, sr := range a.ServiceRequirements {
 			copy.ServiceRequirements[i] = ServiceRequirement{
-				ServiceID:       sr.ServiceID,
-				RequirementType: sr.RequirementType,
-				RequiredScopes:  append([]string(nil), sr.RequiredScopes...),
+				ServiceID:        sr.ServiceID,
+				RequirementType:  sr.RequirementType,
+				RequiredScopes:   append([]string(nil), sr.RequiredScopes...),
+				RequireAllScopes: sr.RequireAllScopes,
 			}
 		}
 	}

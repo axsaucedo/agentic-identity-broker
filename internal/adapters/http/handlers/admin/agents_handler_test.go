@@ -285,6 +285,70 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 
 		mockRepo.AssertExpectations(t)
 	})
+
+	t.Run("require_all_scopes round-trips in response", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
+		serviceID := id.NewServiceID()
+		service := &model.ThirdpartyOAuth2ProviderEntity{ID: serviceID, DisplayName: "Test Service"}
+
+		mockServiceRepo.On("Get", mock.Anything, serviceID).Return(service, nil)
+		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(a *storage.Agent) bool {
+			return len(a.ServiceRequirements) == 1 && a.ServiceRequirements[0].RequireAllScopes
+		})).Return(nil)
+
+		bodyBytes, err := json.Marshal(AgentRequest{
+			ClientID:    ptr.To("all-scopes-client"),
+			DisplayName: "All Scopes Agent",
+			Description: "Test agent",
+			ServiceRequirements: []ServiceRequirementRequest{{
+				ServiceID:        serviceID.String(),
+				RequirementType:  "mandatory",
+				RequireAllScopes: true,
+			}},
+		})
+		require.NoError(t, err)
+
+		w := httptest.NewRecorder()
+		handler.CreateAgent(w, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(bodyBytes)))
+
+		require.Equal(t, http.StatusCreated, w.Code)
+		var resp AgentResponse
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+		require.Len(t, resp.ServiceRequirements, 1)
+		assert.True(t, resp.ServiceRequirements[0].RequireAllScopes)
+		mockRepo.AssertExpectations(t)
+		mockServiceRepo.AssertExpectations(t)
+	})
+
+	t.Run("require_all_scopes with required_scopes returns 400", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
+
+		bodyBytes, err := json.Marshal(AgentRequest{
+			ClientID:    ptr.To("invalid-all-scopes-client"),
+			DisplayName: "Invalid All Scopes Agent",
+			Description: "Test agent",
+			ServiceRequirements: []ServiceRequirementRequest{{
+				ServiceID:        id.NewServiceID().String(),
+				RequirementType:  "mandatory",
+				RequiredScopes:   []string{"x"},
+				RequireAllScopes: true,
+			}},
+		})
+		require.NoError(t, err)
+
+		w := httptest.NewRecorder()
+		handler.CreateAgent(w, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(bodyBytes)))
+
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		var resp ErrorResponse
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+		assert.Contains(t, resp.Message, "required_scopes must be empty when require_all_scopes is true")
+		mockRepo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+	})
 }
 
 func TestAgentsHandler_GetAgent(t *testing.T) {
