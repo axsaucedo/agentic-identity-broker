@@ -13,6 +13,7 @@ import (
 	fositestorage "github.com/ory/fosite/storage"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -117,6 +118,10 @@ func (s *FositeStorage) CreateAuthorizeCodeSession(ctx context.Context, code str
 		ExpiresAt:     session.GetExpiresAt(fosite.AuthorizeCode),
 		CreatedAt:     time.Now(),
 	}
+	if profile, ok := principal.ProfileFromContext(ctx); ok {
+		authCode.Email = profile.Email()
+		authCode.DisplayName = profile.DisplayName()
+	}
 	return s.codeRepo.Create(ctx, authCode)
 }
 
@@ -146,6 +151,7 @@ func (s *FositeStorage) GetAuthorizeCodeSession(ctx context.Context, code string
 			fosite.AuthorizeCode: authCode.ExpiresAt,
 		},
 	}
+	setSessionProfile(session, authCode.Email, authCode.DisplayName)
 
 	req := &fosite.Request{
 		ID:             authCode.ID.String(),
@@ -214,15 +220,19 @@ func (s *FositeStorage) CreateRefreshTokenSession(ctx context.Context, signature
 		return fmt.Errorf("CreateRefreshTokenSession: %w", err)
 	}
 
+	email, displayName := sessionProfile(req.GetSession())
+
 	session := &storage.RefreshTokenSession{
-		Signature: signature,
-		RequestID: req.GetID(),
-		AgentID:   agentID,
-		ClientID:  id.NewClientID(req.GetClient().GetID()),
-		Principal: id.NewPrincipal(req.GetSession().GetSubject()),
-		Scope:     strings.Join(req.GetGrantedScopes(), " "),
-		ExpiresAt: req.GetSession().GetExpiresAt(fosite.RefreshToken),
-		CreatedAt: time.Now(),
+		Signature:   signature,
+		RequestID:   req.GetID(),
+		AgentID:     agentID,
+		ClientID:    id.NewClientID(req.GetClient().GetID()),
+		Principal:   id.NewPrincipal(req.GetSession().GetSubject()),
+		Email:       email,
+		DisplayName: displayName,
+		Scope:       strings.Join(req.GetGrantedScopes(), " "),
+		ExpiresAt:   req.GetSession().GetExpiresAt(fosite.RefreshToken),
+		CreatedAt:   time.Now(),
 	}
 	if err := session.Validate(); err != nil {
 		return err
@@ -242,15 +252,18 @@ func (s *FositeStorage) GetRefreshTokenSession(ctx context.Context, signature st
 		return nil, fmt.Errorf("failed to look up client: %w", err)
 	}
 
-	req := &fosite.Request{
-		ID:     refreshSession.RequestID,
-		Client: client,
-		Session: &fosite.DefaultSession{
-			Subject: refreshSession.Principal.String(),
-			ExpiresAt: map[fosite.TokenType]time.Time{
-				fosite.RefreshToken: refreshSession.ExpiresAt,
-			},
+	sess := &fosite.DefaultSession{
+		Subject: refreshSession.Principal.String(),
+		ExpiresAt: map[fosite.TokenType]time.Time{
+			fosite.RefreshToken: refreshSession.ExpiresAt,
 		},
+	}
+	setSessionProfile(sess, refreshSession.Email, refreshSession.DisplayName)
+
+	req := &fosite.Request{
+		ID:             refreshSession.RequestID,
+		Client:         client,
+		Session:        sess,
 		RequestedScope: splitScope(refreshSession.Scope),
 		GrantedScope:   splitScope(refreshSession.Scope),
 		RequestedAt:    refreshSession.CreatedAt,

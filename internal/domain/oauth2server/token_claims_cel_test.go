@@ -169,6 +169,36 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "client_credentials", claims["grant"])
 	})
+
+	t.Run("principal profile claims come from session extra claims", func(t *testing.T) {
+		eval, err := NewTokenClaimsEvaluator(`{"email": principal.email, "name": principal.display_name}`)
+		require.NoError(t, err)
+
+		session := &fosite.DefaultSession{
+			Subject:   "u@example.com",
+			ExpiresAt: map[fosite.TokenType]time.Time{fosite.AccessToken: time.Now().Add(time.Hour)},
+		}
+		setSessionProfile(session, ptr.To("u@example.com"), "Jane Doe")
+		req := &fosite.Request{
+			Client:       &confidentialClient{clientID: "c", agent: &storage.Agent{ID: id.NewAgentID(), ClientID: ptr.To(id.ClientID("c"))}, credential: &storage.ClientCredential{}},
+			Session:      session,
+			GrantedScope: []string{"read"},
+		}
+
+		claims, err := eval.Evaluate(context.Background(), req)
+		require.NoError(t, err)
+		assert.Equal(t, "u@example.com", claims["email"])
+		assert.Equal(t, "Jane Doe", claims["name"])
+	})
+
+	t.Run("principal profile claims default to empty", func(t *testing.T) {
+		eval, err := NewTokenClaimsEvaluator(`{"email": principal.email}`)
+		require.NoError(t, err)
+
+		claims, err := eval.Evaluate(context.Background(), buildTestRequest("c", "u@example.com", []string{"read"}))
+		require.NoError(t, err)
+		assert.Equal(t, "", claims["email"])
+	})
 }
 
 // buildTestRequest creates a fosite.Requester for testing CEL evaluation.

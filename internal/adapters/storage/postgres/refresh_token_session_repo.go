@@ -34,10 +34,10 @@ func (r *RefreshTokenSessionRepo) Create(ctx context.Context, session *storage.R
 	defer cancel()
 
 	_, err := r.adapter.oauth2Executor(execCtx).ExecContext(execCtx,
-		`INSERT INTO refresh_token_sessions (signature, request_id, agent_id, client_id, principal, scope, expires_at, used_at, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		`INSERT INTO refresh_token_sessions (signature, request_id, agent_id, client_id, principal, scope, expires_at, used_at, created_at, email, display_name)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		session.Signature, session.RequestID, session.AgentID, session.ClientID, session.Principal,
-		session.Scope, session.ExpiresAt, session.UsedAt, session.CreatedAt,
+		session.Scope, session.ExpiresAt, session.UsedAt, session.CreatedAt, session.Email, session.DisplayName,
 	)
 	if err != nil {
 		return storage.NewStorageError("RefreshTokenSessionRepo.Create", storage.ErrorKindUnknown, err, "failed to create refresh token session")
@@ -55,7 +55,7 @@ func (r *RefreshTokenSessionRepo) FindBySignature(ctx context.Context, signature
 
 	var session storage.RefreshTokenSession
 	err := r.adapter.db.GetContext(queryCtx, &session,
-		`SELECT signature, request_id, agent_id, client_id, principal, scope, expires_at, used_at, created_at
+		`SELECT signature, request_id, agent_id, client_id, principal, scope, expires_at, used_at, created_at, email, display_name
 		 FROM refresh_token_sessions WHERE signature = $1`, signature)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {

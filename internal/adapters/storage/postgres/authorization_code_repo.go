@@ -35,11 +35,11 @@ func (r *AuthorizationCodeRepo) Create(ctx context.Context, code *storage.Author
 	defer cancel()
 
 	_, err := r.adapter.oauth2Executor(execCtx).ExecContext(execCtx,
-		`INSERT INTO authorization_codes (id, code_hash, agent_id, client_id, principal, redirect_uri, code_challenge, scope, expires_at, used_at, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		`INSERT INTO authorization_codes (id, code_hash, agent_id, client_id, principal, redirect_uri, code_challenge, scope, expires_at, used_at, created_at, email, display_name)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 		code.ID, code.CodeHash, code.AgentID, code.ClientID, code.Principal,
 		code.RedirectURI, code.CodeChallenge, code.Scope,
-		code.ExpiresAt, code.UsedAt, code.CreatedAt,
+		code.ExpiresAt, code.UsedAt, code.CreatedAt, code.Email, code.DisplayName,
 	)
 	if err != nil {
 		return storage.NewStorageError("AuthorizationCodeRepo.Create", storage.ErrorKindUnknown, err, "failed to create authorization code")
@@ -57,7 +57,7 @@ func (r *AuthorizationCodeRepo) FindByCodeHash(ctx context.Context, codeHash str
 
 	var code storage.AuthorizationCode
 	err := r.adapter.db.GetContext(queryCtx, &code,
-		`SELECT id, code_hash, agent_id, client_id, principal, redirect_uri, code_challenge, scope, expires_at, used_at, created_at
+		`SELECT id, code_hash, agent_id, client_id, principal, redirect_uri, code_challenge, scope, expires_at, used_at, created_at, email, display_name
 		 FROM authorization_codes WHERE code_hash = $1`, codeHash)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {

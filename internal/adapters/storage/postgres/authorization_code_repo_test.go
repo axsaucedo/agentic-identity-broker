@@ -11,6 +11,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -57,6 +58,8 @@ func TestAuthorizationCodeRepo(t *testing.T) {
 			CodeChallenge: "S256challenge",
 			Scope:         "read",
 			ExpiresAt:     time.Now().UTC().Add(60 * time.Second),
+			Email:         ptr.To("u@example.com"),
+			DisplayName:   "Jane Doe",
 			CreatedAt:     time.Now().UTC(),
 		}
 		err := repo.Create(ctx, code)
@@ -67,6 +70,28 @@ func TestAuthorizationCodeRepo(t *testing.T) {
 		assert.Equal(t, codeHash, got.CodeHash)
 		assert.Equal(t, agent.ID, got.AgentID)
 		assert.Equal(t, "user@example.com", got.Principal.String())
+		assert.Equal(t, "u@example.com", *got.Email)
+		assert.Equal(t, "Jane Doe", got.DisplayName)
+	})
+
+	t.Run("FindByCodeHash preserves nil email", func(t *testing.T) {
+		agent := createTestAgent(t, adapter)
+		codeHash := "nil-email-" + id.NewAuthorizationCodeID().String()[:10]
+		code := &storage.AuthorizationCode{
+			ID:            id.NewAuthorizationCodeID(),
+			CodeHash:      codeHash,
+			AgentID:       agent.ID,
+			Principal:     id.NewPrincipal("user@example.com"),
+			RedirectURI:   "http://localhost:9999/callback",
+			CodeChallenge: "S256challenge",
+			ExpiresAt:     time.Now().UTC().Add(60 * time.Second),
+			CreatedAt:     time.Now().UTC(),
+		}
+		require.NoError(t, repo.Create(ctx, code))
+
+		got, err := repo.FindByCodeHash(ctx, codeHash)
+		require.NoError(t, err)
+		assert.Nil(t, got.Email)
 	})
 
 	t.Run("MarkUsed", func(t *testing.T) {

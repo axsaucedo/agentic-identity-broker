@@ -354,6 +354,7 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 			fosite.AccessToken: time.Now().Add(p.config.AccessTokenLifespan),
 		},
 	}
+	setSessionProfile(session, authCode.Email, authCode.DisplayName)
 	req := fosite.NewAccessRequest(session)
 	req.Client = fositeClient
 	req.GrantTypes = fosite.Arguments{"authorization_code"}

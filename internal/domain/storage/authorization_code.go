@@ -15,6 +15,8 @@ type AuthorizationCode struct {
 	AgentID       id.AgentID             `json:"agent_id" db:"agent_id"`
 	ClientID      id.ClientID            `json:"client_id" db:"client_id"`
 	Principal     id.Principal           `json:"principal" db:"principal"`
+	Email         *string                `json:"email,omitempty" db:"email"`
+	DisplayName   string                 `json:"display_name" db:"display_name"`
 	RedirectURI   string                 `json:"redirect_uri" db:"redirect_uri"`
 	CodeChallenge string                 `json:"code_challenge" db:"code_challenge"`
 	Scope         string                 `json:"scope" db:"scope"`

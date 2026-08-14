@@ -2,6 +2,7 @@ package e2e_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -592,5 +593,137 @@ var _ = Describe("US4b: Authorization Code Flow — LocalClient as public client
 			Expect(locURL.Query().Get("error")).ToNot(BeEmpty(), "expected OAuth2 error in redirect")
 			Expect(locURL.Query().Get("code")).To(BeEmpty(), "expected no authorization code to be issued")
 		}
+	})
+})
+
+var _ = Describe("OAuth2 Token Claims (principal profile)", func() {
+	var (
+		adminServer    *bootstrap.TestServer
+		enduserServer  *bootstrap.TestServer
+		storageFactory *bootstrap.StorageFactory
+		testStorage    *storageadapter.Adapter
+		logger         *slog.Logger
+		agent          *domainstorage.Agent
+		clientSecret   string
+	)
+
+	BeforeEach(func() {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+		storageFactory = bootstrap.NewStorageFactory(logger)
+		var err error
+		testStorage, err = storageFactory.NewTestStorage()
+		Expect(err).ToNot(HaveOccurred())
+
+		ctx := context.Background()
+		githubService := fixtures.GitHubService()
+		Expect(testStorage.Services().Create(ctx, githubService)).ToNot(HaveOccurred())
+		agent = fixtures.LocalAgent()
+		agent.RedirectURIs = []string{"http://localhost:9999/callback"}
+		Expect(testStorage.Agents().Create(ctx, agent)).ToNot(HaveOccurred())
+		grant := fixtures.ActiveGrant("test@example.com", agent.ID.String(), githubService.ID.String(), []string{"repo", "user"})
+		Expect(testStorage.UserGrants().Create(ctx, grant)).ToNot(HaveOccurred())
+
+		app, err := bootstrap.NewServerFactory(fixtures.LocalConfigWithCEL(`{"pemail": principal.email, "pname": principal.display_name}`), logger).BuildApp(testStorage)
+		Expect(err).ToNot(HaveOccurred())
+		adminServer, err = bootstrap.NewAdminTestServer(app, logger)
+		Expect(err).ToNot(HaveOccurred())
+		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(helpers.ProvisionSigningKey(adminServer.BaseURL())).ToNot(HaveOccurred())
+
+		resp, err := http.Post(adminServer.BaseURL()+"/api/agents/"+agent.ID.String()+"/client-credentials", "application/json", nil)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = resp.Body.Close() }()
+		Expect(resp.StatusCode).To(Equal(http.StatusCreated))
+		var credentials map[string]interface{}
+		Expect(json.NewDecoder(resp.Body).Decode(&credentials)).ToNot(HaveOccurred())
+		clientSecret = credentials["client_secret"].(string)
+	})
+
+	AfterEach(func() {
+		if adminServer != nil {
+			adminServer.Close()
+		}
+		if enduserServer != nil {
+			enduserServer.Close()
+		}
+		if testStorage != nil {
+			_ = storageFactory.CloseStorage(testStorage)
+		}
+	})
+
+	// Scenario 4.5 from specs/025-oauth2-server/spec.md
+	It("should include the authenticated profile in locally issued token claims", func() {
+		verifier := helpers.PKCEVerifier()
+		challenge := helpers.GenerateCodeChallenge(verifier)
+		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		authorizeURL := enduserServer.BaseURL() + "/oauth2/authorize?" + url.Values{
+			"response_type":         {"code"},
+			"client_id":             {agent.ID.String()},
+			"redirect_uri":          {"http://localhost:9999/callback"},
+			"scope":                 {"read offline_access"},
+			"code_challenge":        {challenge},
+			"code_challenge_method": {"S256"},
+		}.Encode()
+		authorizeRequest, err := http.NewRequest(http.MethodGet, authorizeURL, nil)
+		Expect(err).ToNot(HaveOccurred())
+		authorizeRequest.Header.Set("X-Remote-User", "test@example.com")
+		authorizeResponse, err := client.Do(authorizeRequest)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = authorizeResponse.Body.Close() }()
+		Expect(authorizeResponse.StatusCode).To(Equal(http.StatusFound))
+		location, err := url.Parse(authorizeResponse.Header.Get("Location"))
+		Expect(err).ToNot(HaveOccurred())
+		code := location.Query().Get("code")
+		Expect(code).ToNot(BeEmpty())
+
+		tokenResponse, err := http.Post(enduserServer.BaseURL()+"/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(url.Values{
+			"grant_type":    {"authorization_code"},
+			"client_id":     {agent.ID.String()},
+			"client_secret": {clientSecret},
+			"code":          {code},
+			"redirect_uri":  {"http://localhost:9999/callback"},
+			"code_verifier": {verifier},
+		}.Encode()))
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = tokenResponse.Body.Close() }()
+		Expect(tokenResponse.StatusCode).To(Equal(http.StatusOK))
+		var tokenBody map[string]interface{}
+		Expect(json.NewDecoder(tokenResponse.Body).Decode(&tokenBody)).ToNot(HaveOccurred())
+		accessToken := tokenBody["access_token"].(string)
+		parts := strings.Split(accessToken, ".")
+		Expect(parts).To(HaveLen(3))
+		payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+		Expect(err).ToNot(HaveOccurred())
+		var claims map[string]interface{}
+		Expect(json.Unmarshal(payload, &claims)).To(Succeed())
+		Expect(claims["pname"]).To(Equal("test@example.com"))
+		Expect(claims["pemail"]).To(Equal(""))
+
+		refreshToken, ok := tokenBody["refresh_token"].(string)
+		Expect(ok).To(BeTrue())
+		Expect(refreshToken).ToNot(BeEmpty())
+
+		refreshResponse, err := http.Post(enduserServer.BaseURL()+"/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(url.Values{
+			"grant_type":    {"refresh_token"},
+			"client_id":     {agent.ID.String()},
+			"client_secret": {clientSecret},
+			"refresh_token": {refreshToken},
+		}.Encode()))
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = refreshResponse.Body.Close() }()
+		Expect(refreshResponse.StatusCode).To(Equal(http.StatusOK))
+
+		var refreshedBody map[string]interface{}
+		Expect(json.NewDecoder(refreshResponse.Body).Decode(&refreshedBody)).ToNot(HaveOccurred())
+		refreshedAccessToken := refreshedBody["access_token"].(string)
+		refreshedParts := strings.Split(refreshedAccessToken, ".")
+		Expect(refreshedParts).To(HaveLen(3))
+		refreshedPayload, err := base64.RawURLEncoding.DecodeString(refreshedParts[1])
+		Expect(err).ToNot(HaveOccurred())
+		var refreshedClaims map[string]interface{}
+		Expect(json.Unmarshal(refreshedPayload, &refreshedClaims)).To(Succeed())
+		Expect(refreshedClaims["pname"]).To(Equal("test@example.com"))
+		Expect(refreshedClaims["pemail"]).To(Equal(""))
 	})
 })

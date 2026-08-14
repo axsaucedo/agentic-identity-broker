@@ -81,14 +81,16 @@ func (e *TokenClaimsEvaluator) Evaluate(_ context.Context, requester fosite.Requ
 		}
 	}
 
-	// Build principal context: id=subject (principal string).
-	// email and display_name are not available from the session alone and are left empty;
-	// they may be populated in a future extension when profile attributes are persisted.
 	subject := requester.GetSession().GetSubject()
+	email, displayName := sessionProfile(requester.GetSession())
+	emailClaim := ""
+	if email != nil {
+		emailClaim = *email
+	}
 	principalCtx := map[string]interface{}{
 		"id":           subject,
-		"email":        "",
-		"display_name": "",
+		"email":        emailClaim,
+		"display_name": displayName,
 	}
 
 	// Build request context: grant_type from the access request (if available), scopes from the requester.

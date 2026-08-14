@@ -10,6 +10,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,14 +31,16 @@ func TestRefreshTokenSessionRepo(t *testing.T) {
 		t.Helper()
 		agent := createTestAgent(t, adapter)
 		return &storage.RefreshTokenSession{
-			Signature: signature,
-			RequestID: requestID,
-			AgentID:   agent.ID,
-			ClientID:  id.NewClientID("client-" + signature),
-			Principal: id.NewPrincipal("user@example.com"),
-			Scope:     "offline_access read",
-			ExpiresAt: expiresAt,
-			CreatedAt: time.Now().UTC(),
+			Signature:   signature,
+			RequestID:   requestID,
+			AgentID:     agent.ID,
+			ClientID:    id.NewClientID("client-" + signature),
+			Principal:   id.NewPrincipal("user@example.com"),
+			Email:       ptr.To("u@example.com"),
+			DisplayName: "Jane Doe",
+			Scope:       "offline_access read",
+			ExpiresAt:   expiresAt,
+			CreatedAt:   time.Now().UTC(),
 		}
 	}
 
@@ -50,6 +53,18 @@ func TestRefreshTokenSessionRepo(t *testing.T) {
 		assert.Equal(t, session.RequestID, got.RequestID)
 		assert.Equal(t, session.Scope, got.Scope)
 		assert.Nil(t, got.UsedAt)
+		assert.Equal(t, "u@example.com", *got.Email)
+		assert.Equal(t, "Jane Doe", got.DisplayName)
+	})
+
+	t.Run("Create and FindBySignature preserves nil email", func(t *testing.T) {
+		session := newSession(t, "sig-nil-email", "req-nil-email", time.Now().Add(time.Hour).UTC())
+		session.Email = nil
+		require.NoError(t, repo.Create(ctx, session))
+
+		got, err := repo.FindBySignature(ctx, session.Signature)
+		require.NoError(t, err)
+		assert.Nil(t, got.Email)
 	})
 
 	t.Run("MarkUsed makes token inactive", func(t *testing.T) {

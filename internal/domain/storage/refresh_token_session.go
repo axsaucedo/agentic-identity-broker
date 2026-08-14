@@ -9,15 +9,17 @@ import (
 // RefreshTokenSession stores an issued refresh token by signature for single-use rotation.
 // The signature is the SHA-256 hash of the opaque refresh token value.
 type RefreshTokenSession struct {
-	Signature string       `db:"signature"`
-	RequestID string       `db:"request_id"`
-	AgentID   id.AgentID   `db:"agent_id"`
-	ClientID  id.ClientID  `db:"client_id"`
-	Principal id.Principal `db:"principal"`
-	Scope     string       `db:"scope"`
-	ExpiresAt time.Time    `db:"expires_at"`
-	UsedAt    *time.Time   `db:"used_at"`
-	CreatedAt time.Time    `db:"created_at"`
+	Signature   string       `db:"signature"`
+	RequestID   string       `db:"request_id"`
+	AgentID     id.AgentID   `db:"agent_id"`
+	ClientID    id.ClientID  `db:"client_id"`
+	Principal   id.Principal `db:"principal"`
+	Email       *string      `db:"email"`
+	DisplayName string       `db:"display_name"`
+	Scope       string       `db:"scope"`
+	ExpiresAt   time.Time    `db:"expires_at"`
+	UsedAt      *time.Time   `db:"used_at"`
+	CreatedAt   time.Time    `db:"created_at"`
 }
 
 // Validate checks that all required fields are present.

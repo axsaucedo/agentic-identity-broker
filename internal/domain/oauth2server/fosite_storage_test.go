@@ -12,6 +12,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	dstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
@@ -231,6 +232,34 @@ func TestFositeStorage_AuthorizeCodeSessions(t *testing.T) {
 	})
 }
 
+func TestFositeStorage_AuthorizeCode_ProfileRoundTrip(t *testing.T) {
+	store, _, agentRepo, credRepo := newTestFositeStorage()
+	agent := testAgent()
+	require.NoError(t, agentRepo.Create(context.Background(), agent))
+	cred := &dstorage.ClientCredential{ID: id.NewCredentialID(), AgentID: agent.ID, SecretHash: "hash"}
+	require.NoError(t, credRepo.Create(context.Background(), cred))
+
+	email := "u@example.com"
+	ctx := principal.WithProfile(context.Background(), principal.NewProfile("u@example.com").WithEmail(&email).WithDisplayName("Jane Doe"))
+	req := &fosite.Request{
+		ID:      "profile-auth-code-request",
+		Client:  &confidentialClient{clientID: agent.ID.String(), agent: agent, credential: cred},
+		Session: &fosite.DefaultSession{Subject: "u@example.com", ExpiresAt: map[fosite.TokenType]time.Time{fosite.AuthorizeCode: time.Now().Add(time.Minute)}},
+		Form: url.Values{
+			"client_id":      {agent.ID.String()},
+			"redirect_uri":   {"http://localhost:8080/callback"},
+			"code_challenge": {"challenge"},
+		},
+	}
+	require.NoError(t, store.CreateAuthorizeCodeSession(ctx, "profile-code", req))
+
+	got, err := store.GetAuthorizeCodeSession(context.Background(), "profile-code", nil)
+	require.NoError(t, err)
+	extra := got.GetSession().(fosite.ExtraClaimsSession).GetExtraClaims()
+	assert.Equal(t, "u@example.com", extra[claimEmail])
+	assert.Equal(t, "Jane Doe", extra[claimDisplayName])
+}
+
 func TestFositeStorage_AccessTokenSessions(t *testing.T) {
 	t.Run("create access token session is no-op for stateless JWT", func(t *testing.T) {
 		store, _, _, _ := newTestFositeStorage()
@@ -322,6 +351,30 @@ func TestFositeStorage_RefreshTokenSessions(t *testing.T) {
 			require.NotNil(t, got)
 		}
 	})
+}
+
+func TestFositeStorage_RefreshToken_ProfileRoundTrip(t *testing.T) {
+	store, _, agentRepo, credRepo := newTestFositeStorage()
+	agent := testAgent()
+	require.NoError(t, agentRepo.Create(context.Background(), agent))
+	cred := &dstorage.ClientCredential{ID: id.NewCredentialID(), AgentID: agent.ID, SecretHash: "hash"}
+	require.NoError(t, credRepo.Create(context.Background(), cred))
+
+	session := &fosite.DefaultSession{Subject: "u@example.com", ExpiresAt: map[fosite.TokenType]time.Time{fosite.RefreshToken: time.Now().Add(time.Hour)}}
+	setSessionProfile(session, ptr.To("u@example.com"), "Jane Doe")
+	req := &fosite.Request{
+		ID:           "profile-refresh-request",
+		Client:       &confidentialClient{clientID: agent.ID.String(), agent: agent, credential: cred},
+		Session:      session,
+		GrantedScope: fosite.Arguments{"offline_access", "read"},
+	}
+	require.NoError(t, store.CreateRefreshTokenSession(context.Background(), "profile-refresh", "", req))
+
+	got, err := store.GetRefreshTokenSession(context.Background(), "profile-refresh", nil)
+	require.NoError(t, err)
+	extra := got.GetSession().(fosite.ExtraClaimsSession).GetExtraClaims()
+	assert.Equal(t, "u@example.com", extra[claimEmail])
+	assert.Equal(t, "Jane Doe", extra[claimDisplayName])
 }
 
 func TestFositeStorage_PKCESessions(t *testing.T) {
