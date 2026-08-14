@@ -162,7 +162,7 @@ func (m *mockServiceRepo) Get(ctx context.Context, serviceID id.ServiceID) (*mod
 	return entity.Copy(), nil
 }
 
-func (m *mockServiceRepo) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
+func (m *mockServiceRepo) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, expectedVersion *int64) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -211,6 +211,22 @@ func (m *mockServiceRepo) FindByProtectedResource(ctx context.Context, resourceU
 		}
 	}
 	return nil, ports.ErrNotFound
+}
+
+func (m *mockServiceRepo) AddProtectedResource(_ context.Context, _ id.ServiceID, _ string) (ports.ProtectedResourceMutationResult, error) {
+	return ports.ProtectedResourceMutationResult{}, m.err
+}
+
+func (m *mockServiceRepo) RemoveProtectedResource(_ context.Context, _ id.ServiceID, _ string) (ports.ProtectedResourceMutationResult, error) {
+	return ports.ProtectedResourceMutationResult{}, m.err
+}
+
+func (m *mockServiceRepo) RenameProtectedResource(_ context.Context, _ id.ServiceID, _, _ string) (ports.ProtectedResourceMutationResult, error) {
+	return ports.ProtectedResourceMutationResult{}, m.err
+}
+
+func (m *mockServiceRepo) ListProtectedResources(_ context.Context, _ id.ServiceID) ([]string, int64, error) {
+	return nil, 0, m.err
 }
 
 type mockPermissionSetService struct {

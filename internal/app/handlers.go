@@ -20,6 +20,9 @@ type AdminHandlers struct {
 	// Services handler for admin API - manages OAuth2 service CRUD operations
 	Services *admin.ServicesHandler
 
+	// ProtectedResources handler manages a service's protected-resource set.
+	ProtectedResources *admin.ProtectedResourcesHandler
+
 	// PermissionSets handler for admin API - manages permission set CRUD operations
 	PermissionSets *admin.PermissionSetsHandler
 

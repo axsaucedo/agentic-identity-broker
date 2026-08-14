@@ -2,11 +2,14 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -247,6 +250,7 @@ func (h *ServicesHandler) GetService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return service with redacted secret
+	w.Header().Set("ETag", strongETag(entity.Version))
 	resp := h.toResponse(entity.RedactedCopy())
 	h.writeJSON(w, http.StatusOK, resp)
 }
@@ -261,12 +265,24 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
 	var req ServiceRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&req); err != nil {
 		h.logger.Warn("failed to decode request body", "error", err)
 		h.writeError(w, http.StatusBadRequest, "invalid request body", err.Error())
 		return
 	}
+	var rawRequest map[string]json.RawMessage
+	if err := json.Unmarshal(body, &rawRequest); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	protectedResources, protectedResourcesPresent := rawRequest["protected_resources"]
+	protectedResourcesProvided := protectedResourcesPresent && !isJSONNull(protectedResources)
 
 	if req.ClientSecret == "" {
 		h.writeError(w, http.StatusBadRequest, "validation failed", "client_secret is required")
@@ -355,24 +371,31 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Defense-in-depth: normalize and validate protected_resources here so the duplicate
-	// check below operates on canonical URIs. The domain service repeats this
-	// authoritatively before persistence.
-	entity.NormalizeProtectedResources()
-	if err := entity.ValidateProtectedResources(); err != nil {
-		h.logger.Warn("protected_resources validation failed",
-			"service_id", entity.ID,
-			"error", err)
-		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
-		return
+	var expectedVersion *int64
+	if protectedResourcesProvided {
+		parsedVersion, err := parseStrongETag(r.Header.Get("If-Match"))
+		if err != nil {
+			h.writeError(w, http.StatusPreconditionRequired, "precondition required", "If-Match with a strong ETag is required when replacing protected_resources")
+			return
+		}
+		expectedVersion = &parsedVersion
+		entity.NormalizeProtectedResources()
+		if err := entity.ValidateProtectedResources(); err != nil {
+			h.logger.Warn("protected_resources validation failed", "service_id", entity.ID, "error", err)
+			h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
+			return
+		}
+		if !h.checkProtectedResourceConflicts(ctx, w, r, entity, entity.ID, "UpdateService") {
+			return
+		}
 	}
 
-	if !h.checkProtectedResourceConflicts(ctx, w, r, entity, entity.ID, "UpdateService") {
-		return
-	}
-
-	// Update in domain service (handles encryption if secret changed)
-	if err := h.providerService.Update(ctx, entity); err != nil {
+	if err := h.providerService.Update(ctx, entity, expectedVersion); err != nil {
+		var storageErr *storage.StorageError
+		if expectedVersion != nil && errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindConflict && strings.Contains(storageErr.Message, "version") {
+			h.writeError(w, http.StatusPreconditionFailed, "precondition failed", storageErr.Message)
+			return
+		}
 		h.handleStorageError(w, r, "UpdateService", err)
 		return
 	}
@@ -381,9 +404,28 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		"service_id", entity.ID,
 		"client_id", entity.ClientID)
 
-	// Return updated service with redacted secret
 	resp := h.toResponse(entity.RedactedCopy())
+	w.Header().Set("ETag", strongETag(entity.Version))
 	h.writeJSON(w, http.StatusOK, resp)
+}
+
+func parseStrongETag(value string) (int64, error) {
+	if len(value) < 3 || strings.HasPrefix(value, "W/") || value[0] != '"' || value[len(value)-1] != '"' {
+		return 0, errors.New("strong ETag required")
+	}
+	version, err := strconv.ParseInt(value[1:len(value)-1], 10, 64)
+	if err != nil || version < 1 {
+		return 0, errors.New("invalid ETag")
+	}
+	return version, nil
+}
+
+func strongETag(version int64) string {
+	return `"` + strconv.FormatInt(version, 10) + `"`
+}
+
+func isJSONNull(value json.RawMessage) bool {
+	return bytes.Equal(bytes.TrimSpace(value), []byte("null"))
 }
 
 func (h *ServicesHandler) checkProtectedResourceConflicts(

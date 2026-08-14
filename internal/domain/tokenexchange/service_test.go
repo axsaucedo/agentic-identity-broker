@@ -264,7 +264,7 @@ func (m *MockServiceRepository) Get(ctx context.Context, serviceID id.ServiceID)
 	return nil, nil
 }
 
-func (m *MockServiceRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
+func (m *MockServiceRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, expectedVersion *int64) error {
 	return nil
 }
 
@@ -278,6 +278,22 @@ func (m *MockServiceRepository) CountGrantsReferencingService(ctx context.Contex
 
 func (m *MockServiceRepository) List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
+}
+
+func (m *MockServiceRepository) AddProtectedResource(_ context.Context, _ id.ServiceID, _ string) (ports.ProtectedResourceMutationResult, error) {
+	return ports.ProtectedResourceMutationResult{}, nil
+}
+
+func (m *MockServiceRepository) RemoveProtectedResource(_ context.Context, _ id.ServiceID, _ string) (ports.ProtectedResourceMutationResult, error) {
+	return ports.ProtectedResourceMutationResult{}, nil
+}
+
+func (m *MockServiceRepository) RenameProtectedResource(_ context.Context, _ id.ServiceID, _, _ string) (ports.ProtectedResourceMutationResult, error) {
+	return ports.ProtectedResourceMutationResult{}, nil
+}
+
+func (m *MockServiceRepository) ListProtectedResources(_ context.Context, _ id.ServiceID) ([]string, int64, error) {
+	return nil, 0, nil
 }
 
 type MockGrantRepository struct {

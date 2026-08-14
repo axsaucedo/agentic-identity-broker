@@ -70,6 +70,15 @@ func SetupAdminRoutes(r chi.Router, h *app.AdminHandlers, cfg AdminRouteConfig) 
 			r.Get("/{service-id}", h.Services.GetService)       // GET /api/services/:service-id
 			r.Put("/{service-id}", h.Services.UpdateService)    // PUT /api/services/:service-id
 			r.Delete("/{service-id}", h.Services.DeleteService) // DELETE /api/services/:service-id
+			// Protected-resource member routes use a catch-all matcher so encoded slashes
+			// remain addressable as one escaped URI segment; the handler validates it.
+			r.Route("/{service-id}/protected-resources", func(r chi.Router) {
+				r.Get("/", h.ProtectedResources.List)
+				r.Post("/", h.ProtectedResources.Create)
+				r.Put("/{resource:.*}", h.ProtectedResources.Add)
+				r.Patch("/{resource:.*}", h.ProtectedResources.Rename)
+				r.Delete("/{resource:.*}", h.ProtectedResources.Remove)
+			})
 		})
 
 		// Permission sets management routes

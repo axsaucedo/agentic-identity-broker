@@ -15,6 +15,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -276,7 +277,7 @@ func (m *mockServiceRepoForAgents) Get(ctx context.Context, serviceID id.Service
 	return nil, nil
 }
 
-func (m *mockServiceRepoForAgents) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
+func (m *mockServiceRepoForAgents) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, expectedVersion *int64) error {
 	return nil
 }
 
@@ -294,6 +295,22 @@ func (m *mockServiceRepoForAgents) CountGrantsReferencingService(ctx context.Con
 
 func (m *mockServiceRepoForAgents) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
+}
+
+func (m *mockServiceRepoForAgents) AddProtectedResource(_ context.Context, _ id.ServiceID, _ string) (ports.ProtectedResourceMutationResult, error) {
+	return ports.ProtectedResourceMutationResult{}, nil
+}
+
+func (m *mockServiceRepoForAgents) RemoveProtectedResource(_ context.Context, _ id.ServiceID, _ string) (ports.ProtectedResourceMutationResult, error) {
+	return ports.ProtectedResourceMutationResult{}, nil
+}
+
+func (m *mockServiceRepoForAgents) RenameProtectedResource(_ context.Context, _ id.ServiceID, _, _ string) (ports.ProtectedResourceMutationResult, error) {
+	return ports.ProtectedResourceMutationResult{}, nil
+}
+
+func (m *mockServiceRepoForAgents) ListProtectedResources(_ context.Context, _ id.ServiceID) ([]string, int64, error) {
+	return nil, 0, nil
 }
 
 type mockGrantRepoForAgents struct {

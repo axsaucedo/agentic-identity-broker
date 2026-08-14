@@ -610,6 +610,11 @@ paths:
       responses:
         '200':
           description: Service retrieved successfully
+          headers:
+            ETag:
+              description: Current strong service ETag.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -664,11 +669,16 @@ paths:
         - Useful for services that change endpoint URLs
 
         **Security**: `client_secret` is redacted in response
+        - `protected_resources` omitted or `null`: preserves the current protected-resource set
+        - `protected_resources` present (including `[]`): replaces the entire set and requires `If-Match`
+
       operationId: updateService
       tags:
         - Services
       parameters:
         - $ref: '#/components/parameters/ServiceId'
+        - $ref: '#/components/parameters/IfMatch'
+
       requestBody:
         required: true
         content:
@@ -709,6 +719,12 @@ paths:
       responses:
         '200':
           description: Service updated successfully
+          headers:
+            ETag:
+              description: Current strong service ETag.
+              schema:
+                type: string
+
           content:
             application/json:
               schema:
@@ -737,6 +753,12 @@ paths:
           $ref: '#/components/responses/BadRequestError'
         '404':
           $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -781,6 +803,190 @@ paths:
                   value:
                     error: conflict
                     message: Cannot delete service 'GitHub Production' - 15 user grants reference it. Revoke grants first.
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/services/{service-id}/protected-resources:
+    parameters:
+      - $ref: '#/components/parameters/ServiceId'
+    get:
+      summary: List a service's protected resources
+      operationId: listProtectedResources
+      tags:
+        - Services
+      responses:
+        '200':
+          description: The service's normalized protected resource URIs.
+          headers:
+            ETag:
+              description: Strong service ETag (version). Use as If-Match on protected-resource replacement PUTs.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceSet'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      summary: Add one protected resource from the collection
+      description: |
+        Adds the body `resource_uri` after server-side validation and normalization. A newly added URI
+        returns 201. A URI already owned by this service returns 200 with the set unchanged; a URI owned
+        by another service returns 409 Conflict.
+      operationId: createProtectedResource
+      tags:
+        - Services
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProtectedResourceCreateRequest'
+            examples:
+              add:
+                value:
+                  resource_uri: https://api.example.com/v2
+      responses:
+        '201':
+          description: Resource added.
+          headers:
+            ETag:
+              description: New strong service ETag.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMutationResult'
+        '200':
+          description: The service already owned the normalized URI; set unchanged.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMutationResult'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ProtectedResourceConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/services/{service-id}/protected-resources/{resource}:
+    parameters:
+      - $ref: '#/components/parameters/ServiceId'
+      - $ref: '#/components/parameters/ResourcePathSegment'
+    put:
+      summary: Add one protected resource
+      description: |
+        Idempotently adds the resource URI identified by the fully percent-encoded final path segment.
+        The server decodes the segment exactly once, then validates and normalizes it. Adding a URI this
+        service already owns returns 200 with the set unchanged; a URI owned by another service returns 409.
+      operationId: addProtectedResource
+      tags:
+        - Services
+      responses:
+        '201':
+          description: Resource added.
+          headers:
+            ETag:
+              description: New strong service ETag.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMutationResult'
+        '200':
+          description: The service already owned the normalized URI; set unchanged.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMutationResult'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ProtectedResourceConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      summary: Rename a protected resource in place
+      description: |
+        Atomically changes the percent-encoded source URI in `{resource}` to the target URI in the body.
+        A source equal to the normalized target succeeds as a no-op. A target already owned by any service
+        returns 409; a source not owned by this service returns 404.
+      operationId: renameProtectedResource
+      tags:
+        - Services
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProtectedResourceRenameTarget'
+            examples:
+              rename:
+                value:
+                  to: https://api.example.com/v2
+      responses:
+        '200':
+          description: Resource renamed, or unchanged when source and target are equal.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMutationResult'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ProtectedResourceConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Remove one protected resource
+      description: |
+        Removes the resource identified by the fully percent-encoded path segment after decoding exactly
+        once and normalizing it. A resource not owned by this service returns 404.
+      operationId: removeProtectedResource
+      tags:
+        - Services
+      responses:
+        '200':
+          description: Resource removed. Returns the removed normalized URI and the resulting set (FR-016).
+          headers:
+            ETag:
+              description: New strong service ETag.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMutationResult'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1324,6 +1530,30 @@ components:
         type: string
         format: uuid
         example: 770e8400-e29b-41d4-a716-446655440002
+
+    ResourcePathSegment:
+      name: resource
+      in: path
+      required: true
+      description: |
+        Normalized protected resource URI, fully RFC 3986 percent-encoded as one path segment (`:` to
+        `%3A`, `/` to `%2F`, `?` to `%3F`, and `#` to `%23`). The server preserves the escaped segment,
+        decodes it exactly once, then validates it as an absolute URI and normalizes its trailing slash.
+      schema:
+        type: string
+      example: https%3A%2F%2Fapi.example.com%2Fv2
+
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: |
+        Required when a service update request includes `protected_resources`, because that field replaces
+        the complete set. Supply the current strong service ETag from a prior GET or protected-resource
+        collection GET. Omit it only when `protected_resources` is omitted or `null`; a missing required
+        header returns 428 and a stale value returns 412.
+      schema:
+        type: string
 
     PermissionSetId:
       name: permission-set-id
@@ -2134,10 +2364,12 @@ components:
             $ref: '#/components/schemas/OAuth2ScopeRequest'
         protected_resources:
           type: array
+          nullable: true
           description: |
-            List of protected resource URIs for RFC 8693 token exchange (optional).
-            These URIs identify which resources this service can provide tokens for.
-            URIs are normalized (trailing slashes removed) for consistent matching.
+            Optional protected resource URIs for RFC 8693 token exchange. Omit or set to `null` to preserve
+            the current set. When present, including an empty array, this field authoritatively replaces the
+            entire set and requires the `If-Match` header with the service's current strong ETag. URIs are
+            normalized by trailing-slash trim before matching; an empty array clears the set.
           items:
             type: string
             format: uri
@@ -2151,6 +2383,59 @@ components:
             type: string
           example:
             business_partner_id: "12345"
+
+    ProtectedResourceSet:
+      type: object
+      required:
+        - protected_resources
+      properties:
+        protected_resources:
+          type: array
+          items:
+            type: string
+            format: uri
+          example:
+            - https://api.github.com
+            - https://github.com/api/v3
+
+    ProtectedResourceCreateRequest:
+      type: object
+      required:
+        - resource_uri
+      properties:
+        resource_uri:
+          type: string
+          format: uri
+          description: Absolute resource URI (scheme and host required), normalized by trailing-slash trim.
+          example: https://api.example.com/v2
+
+    ProtectedResourceRenameTarget:
+      type: object
+      required:
+        - to
+      properties:
+        to:
+          type: string
+          format: uri
+          description: Absolute target URI (scheme and host required), normalized by trailing-slash trim.
+          example: https://api.example.com/v2
+
+    ProtectedResourceMutationResult:
+      type: object
+      required:
+        - resource
+        - protected_resources
+      properties:
+        resource:
+          type: string
+          format: uri
+          description: Normalized URI affected by the operation.
+        protected_resources:
+          type: array
+          description: The service's resulting protected-resource set.
+          items:
+            type: string
+            format: uri
 
     DiscoveryConfig:
       type: object
@@ -2576,6 +2861,27 @@ components:
               value:
                 error: conflict
                 message: Service with client_id 'Iv1.1234567890abcdef' already exists
+
+    ProtectedResourceConflict:
+      description: Protected resource URI is already owned by another service, or a rename target already exists.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    PreconditionFailed:
+      description: The supplied If-Match value does not equal the service's current strong ETag. Re-fetch and retry.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    PreconditionRequired:
+      description: The request includes protected_resources but omits the required If-Match header.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
 
     InternalServerError:
       description: Internal server error

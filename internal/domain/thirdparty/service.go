@@ -192,6 +192,7 @@ func (s *ThirdpartyOAuth2ProviderService) Get(
 func (s *ThirdpartyOAuth2ProviderService) Update(
 	ctx context.Context,
 	entity *model.ThirdpartyOAuth2ProviderEntity,
+	expectedVersion *int64,
 ) error {
 	// Validate before any side effects to prevent wasted KMS calls on invalid input.
 	if err := entity.ValidateForUpdate(s.skipHTTPSValidation); err != nil {
@@ -238,7 +239,7 @@ func (s *ThirdpartyOAuth2ProviderService) Update(
 		"operation", "update",
 		"service_id", entity.ID)
 
-	return s.repo.Update(ctx, entity)
+	return s.repo.Update(ctx, entity, expectedVersion)
 }
 
 // List retrieves all providers and decrypts their secrets.
@@ -325,6 +326,42 @@ func (s *ThirdpartyOAuth2ProviderService) FindByProtectedResource(
 		return entity, nil
 	}
 	return dec, nil
+}
+
+// AddProtectedResource validates and atomically adds one protected resource.
+func (s *ThirdpartyOAuth2ProviderService) AddProtectedResource(ctx context.Context, serviceID id.ServiceID, resourceURI string) (ports.ProtectedResourceMutationResult, error) {
+	normalized, err := model.NormalizeAndValidateProtectedResource(resourceURI)
+	if err != nil {
+		return ports.ProtectedResourceMutationResult{}, storage.NewStorageError("AddProtectedResource", storage.ErrorKindValidation, err, err.Error())
+	}
+	return s.repo.AddProtectedResource(ctx, serviceID, normalized)
+}
+
+// RemoveProtectedResource validates and atomically removes one protected resource.
+func (s *ThirdpartyOAuth2ProviderService) RemoveProtectedResource(ctx context.Context, serviceID id.ServiceID, resourceURI string) (ports.ProtectedResourceMutationResult, error) {
+	normalized, err := model.NormalizeAndValidateProtectedResource(resourceURI)
+	if err != nil {
+		return ports.ProtectedResourceMutationResult{}, storage.NewStorageError("RemoveProtectedResource", storage.ErrorKindValidation, err, err.Error())
+	}
+	return s.repo.RemoveProtectedResource(ctx, serviceID, normalized)
+}
+
+// RenameProtectedResource validates and atomically renames one protected resource.
+func (s *ThirdpartyOAuth2ProviderService) RenameProtectedResource(ctx context.Context, serviceID id.ServiceID, fromURI, toURI string) (ports.ProtectedResourceMutationResult, error) {
+	from, err := model.NormalizeAndValidateProtectedResource(fromURI)
+	if err != nil {
+		return ports.ProtectedResourceMutationResult{}, storage.NewStorageError("RenameProtectedResource", storage.ErrorKindValidation, err, err.Error())
+	}
+	to, err := model.NormalizeAndValidateProtectedResource(toURI)
+	if err != nil {
+		return ports.ProtectedResourceMutationResult{}, storage.NewStorageError("RenameProtectedResource", storage.ErrorKindValidation, err, err.Error())
+	}
+	return s.repo.RenameProtectedResource(ctx, serviceID, from, to)
+}
+
+// ListProtectedResources returns the normalized resource set and current version.
+func (s *ThirdpartyOAuth2ProviderService) ListProtectedResources(ctx context.Context, serviceID id.ServiceID) ([]string, int64, error) {
+	return s.repo.ListProtectedResources(ctx, serviceID)
 }
 
 // CountGrantsReferencingService returns the number of grants referencing this provider.

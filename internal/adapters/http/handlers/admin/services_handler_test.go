@@ -53,8 +53,8 @@ func (m *MockProviderRepository) Get(ctx context.Context, serviceID id.ServiceID
 	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
-func (m *MockProviderRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
-	args := m.Called(ctx, entity)
+func (m *MockProviderRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, expectedVersion *int64) error {
+	args := m.Called(ctx, entity, expectedVersion)
 	return args.Error(0)
 }
 
@@ -82,6 +82,29 @@ func (m *MockProviderRepository) FindByProtectedResource(ctx context.Context, re
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
+}
+
+func (m *MockProviderRepository) AddProtectedResource(ctx context.Context, serviceID id.ServiceID, resourceURI string) (ports.ProtectedResourceMutationResult, error) {
+	args := m.Called(ctx, serviceID, resourceURI)
+	return args.Get(0).(ports.ProtectedResourceMutationResult), args.Error(1)
+}
+
+func (m *MockProviderRepository) RemoveProtectedResource(ctx context.Context, serviceID id.ServiceID, resourceURI string) (ports.ProtectedResourceMutationResult, error) {
+	args := m.Called(ctx, serviceID, resourceURI)
+	return args.Get(0).(ports.ProtectedResourceMutationResult), args.Error(1)
+}
+
+func (m *MockProviderRepository) RenameProtectedResource(ctx context.Context, serviceID id.ServiceID, fromURI, toURI string) (ports.ProtectedResourceMutationResult, error) {
+	args := m.Called(ctx, serviceID, fromURI, toURI)
+	return args.Get(0).(ports.ProtectedResourceMutationResult), args.Error(1)
+}
+
+func (m *MockProviderRepository) ListProtectedResources(ctx context.Context, serviceID id.ServiceID) ([]string, int64, error) {
+	args := m.Called(ctx, serviceID)
+	if args.Get(0) == nil {
+		return nil, args.Get(1).(int64), args.Error(2)
+	}
+	return args.Get(0).([]string), args.Get(1).(int64), args.Error(2)
 }
 
 // newTestEncryption returns a real encryption adapter backed by the shared deterministic test key.
@@ -449,6 +472,7 @@ func TestServicesHandler_GetService(t *testing.T) {
 		serviceID := id.NewServiceID()
 		entity := encryptedEntity(serviceID, "GitHub", "github-client-id", "secret", "https://github.com",
 			[]model.OAuthScope{{ScopeValue: "repo", Description: "Repository access"}})
+		entity.Version = 12
 		mockRepo.On("Get", mock.Anything, serviceID).Return(entity, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/third-party/oauth2/clients/"+serviceID.String(), nil)
@@ -461,6 +485,7 @@ func TestServicesHandler_GetService(t *testing.T) {
 		handler.GetService(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, `"12"`, w.Header().Get("ETag"))
 
 		var resp ServiceResponse
 		err := json.NewDecoder(w.Body).Decode(&resp)
@@ -496,6 +521,25 @@ func TestServicesHandler_GetService(t *testing.T) {
 	})
 }
 
+func TestServicesHandler_GetServiceETag(t *testing.T) {
+	mockRepo := new(MockProviderRepository)
+	handler := setupHandler(t, mockRepo)
+	serviceID := id.NewServiceID()
+	entity := encryptedEntity(serviceID, "GitHub", "github-client-id", "secret", "https://github.com", nil)
+	entity.Version = 5
+	mockRepo.On("Get", mock.Anything, serviceID).Return(entity, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/services/"+serviceID.String(), nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("service-id", serviceID.String())
+	w := httptest.NewRecorder()
+	handler.GetService(w, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, `"5"`, w.Header().Get("ETag"))
+	mockRepo.AssertExpectations(t)
+}
+
 func TestServicesHandler_UpdateService(t *testing.T) {
 	t.Run("successful update with new secret", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
@@ -522,7 +566,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 
 		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
 			return e.ID == serviceID && e.DisplayName == "GitHub Updated" && e.Secret.IsEncrypted()
-		})).Return(nil)
+		}), (*int64)(nil)).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/"+serviceID.String(), bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
@@ -562,7 +606,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		require.NoError(t, err)
 		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(entity *model.ThirdpartyOAuth2ProviderEntity) bool {
 			return entity.ID == serviceID && len(entity.Scopes) == 0
-		})).Return(nil)
+		}), (*int64)(nil)).Return(nil)
 		req := httptest.NewRequest(http.MethodPut, "/api/services/"+serviceID.String(), bytes.NewReader(body))
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("service-id", serviceID.String())
@@ -664,7 +708,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 
 		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
 			return e.ID == nonexistentID && e.Secret.IsEncrypted()
-		})).Return(storage.NewStorageError("UpdateService", storage.ErrorKindNotFound, nil, "service not found"))
+		}), (*int64)(nil)).Return(storage.NewStorageError("UpdateService", storage.ErrorKindNotFound, nil, "service not found"))
 
 		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/"+nonexistentID.String(), bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
@@ -766,10 +810,11 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 				e.ProtectedResources[0] == "https://api.example.com" &&
 				e.ProtectedResources[1] == "https://api.example.com/v2" &&
 				e.Secret.IsEncrypted()
-		})).Return(nil)
+		}), mock.MatchedBy(func(version *int64) bool { return version != nil && *version == 1 })).Run(func(args mock.Arguments) { args.Get(1).(*model.ThirdpartyOAuth2ProviderEntity).Version = 2 }).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/"+serviceID.String(), bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("If-Match", `"1"`)
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
@@ -817,6 +862,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/"+serviceID.String(), bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("If-Match", `"1"`)
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
@@ -862,6 +908,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/"+serviceID.String(), bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("If-Match", `"1"`)
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
@@ -1040,4 +1087,117 @@ func TestServicesHandler_SecretRedaction(t *testing.T) {
 		assert.Equal(t, "REDACTED", resp.ClientSecret)
 		assert.NotEqual(t, "super-secret-value", resp.ClientSecret)
 	})
+}
+
+func TestServicesHandler_UpdateServiceProtectedResourcesETag(t *testing.T) {
+	serviceID := id.NewServiceID()
+	request := ServiceRequest{
+		DisplayName: "API Service", ClientID: "api-client-id", ClientSecret: "api-client-secret", IssuerURI: "https://api.example.com",
+		Discovery:          modelDiscoveryDisabled(),
+		Endpoints:          &OAuth2EndpointsRequest{TokenEndpoint: "https://api.example.com/token", AuthorizeEndpoint: "https://api.example.com/authorize"},
+		Scopes:             []OAuthScopeRequest{{ScopeValue: "read", Description: "Read access"}},
+		ProtectedResources: []string{"https://api.example.com/resource/"},
+	}
+	body, err := json.Marshal(request)
+	require.NoError(t, err)
+
+	newRequest := func(body []byte, ifMatch string) (*http.Request, *httptest.ResponseRecorder) {
+		req := httptest.NewRequest(http.MethodPut, "/api/services/"+serviceID.String(), bytes.NewReader(body))
+		if ifMatch != "" {
+			req.Header.Set("If-Match", ifMatch)
+		}
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("service-id", serviceID.String())
+		return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)), httptest.NewRecorder()
+	}
+
+	t.Run("requires If-Match when replacing resources", func(t *testing.T) {
+		handler := setupHandler(t, new(MockProviderRepository))
+		req, recorder := newRequest(body, "")
+		handler.UpdateService(recorder, req)
+		assert.Equal(t, http.StatusPreconditionRequired, recorder.Code)
+	})
+
+	t.Run("uses strong ETag and emits replacement version", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+		mockRepo.On("FindByProtectedResource", mock.Anything, "https://api.example.com/resource").Return(nil, tokenexchange.NewInvalidTargetErrorWithDetails("not found", "resource_not_found"))
+		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(entity *model.ThirdpartyOAuth2ProviderEntity) bool {
+			return entity.ProtectedResources[0] == "https://api.example.com/resource" && entity.Secret.IsEncrypted()
+		}), mock.MatchedBy(func(version *int64) bool { return version != nil && *version == 7 })).Run(func(args mock.Arguments) { args.Get(1).(*model.ThirdpartyOAuth2ProviderEntity).Version = 8 }).Return(nil)
+		req, recorder := newRequest(body, `"7"`)
+		handler.UpdateService(recorder, req)
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, `"8"`, recorder.Header().Get("ETag"))
+		var response ServiceResponse
+		require.NoError(t, json.NewDecoder(recorder.Body).Decode(&response))
+		assert.Equal(t, "REDACTED", response.ClientSecret)
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("maps a stale resource replacement to 412", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+		mockRepo.On("FindByProtectedResource", mock.Anything, "https://api.example.com/resource").Return(nil, tokenexchange.NewInvalidTargetErrorWithDetails("not found", "resource_not_found"))
+		mockRepo.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(storage.NewStorageError("Update", storage.ErrorKindConflict, nil, "provider version is stale"))
+		req, recorder := newRequest(body, `"7"`)
+		handler.UpdateService(recorder, req)
+		assert.Equal(t, http.StatusPreconditionFailed, recorder.Code)
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("omitted resources preserve without If-Match", func(t *testing.T) {
+		omittedRequest := request
+		omittedRequest.ProtectedResources = nil
+		omittedBody, err := json.Marshal(omittedRequest)
+		require.NoError(t, err)
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(entity *model.ThirdpartyOAuth2ProviderEntity) bool { return entity.ProtectedResources == nil }), (*int64)(nil)).Run(func(args mock.Arguments) { args.Get(1).(*model.ThirdpartyOAuth2ProviderEntity).Version = 9 }).Return(nil)
+		req, recorder := newRequest(omittedBody, "")
+		handler.UpdateService(recorder, req)
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, `"9"`, recorder.Header().Get("ETag"))
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("null resources preserve without If-Match", func(t *testing.T) {
+		nullBody := bytes.Replace(body, []byte(`"protected_resources":["https://api.example.com/resource/"]`), []byte(`"protected_resources":null`), 1)
+		require.NotEqual(t, body, nullBody)
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(entity *model.ThirdpartyOAuth2ProviderEntity) bool { return entity.ProtectedResources == nil }), (*int64)(nil)).Run(func(args mock.Arguments) { args.Get(1).(*model.ThirdpartyOAuth2ProviderEntity).Version = 10 }).Return(nil)
+		req, recorder := newRequest(nullBody, "")
+		handler.UpdateService(recorder, req)
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, `"10"`, recorder.Header().Get("ETag"))
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("empty resource list requires If-Match", func(t *testing.T) {
+		emptyBody := bytes.Replace(body, []byte(`"protected_resources":["https://api.example.com/resource/"]`), []byte(`"protected_resources":[]`), 1)
+		require.NotEqual(t, body, emptyBody)
+		handler := setupHandler(t, new(MockProviderRepository))
+		req, recorder := newRequest(emptyBody, "")
+		handler.UpdateService(recorder, req)
+		assert.Equal(t, http.StatusPreconditionRequired, recorder.Code)
+	})
+	t.Run("empty resource list replaces with If-Match", func(t *testing.T) {
+		emptyBody := bytes.Replace(body, []byte(`"protected_resources":["https://api.example.com/resource/"]`), []byte(`"protected_resources":[]`), 1)
+		require.NotEqual(t, body, emptyBody)
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(entity *model.ThirdpartyOAuth2ProviderEntity) bool {
+			return entity.ProtectedResources != nil && len(entity.ProtectedResources) == 0
+		}), mock.MatchedBy(func(version *int64) bool { return version != nil && *version == 7 })).Run(func(args mock.Arguments) { args.Get(1).(*model.ThirdpartyOAuth2ProviderEntity).Version = 11 }).Return(nil)
+		req, recorder := newRequest(emptyBody, `"7"`)
+		handler.UpdateService(recorder, req)
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, `"11"`, recorder.Header().Get("ETag"))
+		mockRepo.AssertExpectations(t)
+	})
+}
+
+func modelDiscoveryDisabled() DiscoveryConfigRequest {
+	return DiscoveryConfigRequest{EnableDiscovery: false}
 }

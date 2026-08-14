@@ -82,6 +82,7 @@ type ThirdpartyOAuth2ProviderEntity struct {
 	Scopes              []OAuthScope
 	AuthorizationParams map[string]string
 	ProtectedResources  []string
+	Version             int64
 	ServiceRequirements []ServiceRequirement
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
@@ -92,6 +93,9 @@ type ThirdpartyOAuth2ProviderEntity struct {
 func (e *ThirdpartyOAuth2ProviderEntity) Validate() error {
 	if e.ID.IsZero() {
 		return errors.New("provider ID cannot be empty")
+	}
+	if e.Version < 0 {
+		return errors.New("version cannot be negative")
 	}
 	if e.DisplayName == "" {
 		return errors.New("display_name is required")
@@ -195,6 +199,9 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForCreate(skipHTTPSValidation b
 		}
 	}
 
+	if err := e.ValidateProtectedResources(); err != nil {
+		return err
+	}
 	if err := validateAuthorizationParams(e.AuthorizationParams); err != nil {
 		return err
 	}
@@ -281,6 +288,9 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForUpdate(skipHTTPSValidation b
 		}
 	}
 
+	if err := e.ValidateProtectedResources(); err != nil {
+		return err
+	}
 	if err := validateAuthorizationParams(e.AuthorizationParams); err != nil {
 		return err
 	}
@@ -356,20 +366,37 @@ func (e *ThirdpartyOAuth2ProviderEntity) NormalizeProtectedResources() {
 	}
 }
 
+// NormalizeAndValidateProtectedResource canonicalizes resourceURI and verifies it is an absolute URI.
+func NormalizeAndValidateProtectedResource(resourceURI string) (string, error) {
+	normalized := urivalidation.NormalizeResourceURI(resourceURI)
+	if normalized == "" {
+		return "", errors.New("cannot be empty")
+	}
+
+	parsed, err := url.Parse(normalized)
+	if err != nil {
+		return "", fmt.Errorf("invalid URI: %w", err)
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", errors.New("must be an absolute URL with scheme and host")
+	}
+
+	return normalized, nil
+}
+
 // ValidateProtectedResources validates all protected resource URIs are valid absolute URLs.
 // Protected resources are optional; an empty slice is valid.
 func (e *ThirdpartyOAuth2ProviderEntity) ValidateProtectedResources() error {
+	resources := make(map[string]struct{}, len(e.ProtectedResources))
 	for i, resourceURI := range e.ProtectedResources {
-		if resourceURI == "" {
-			return fmt.Errorf("protected_resources[%d]: cannot be empty", i)
-		}
-		parsed, err := url.Parse(resourceURI)
+		normalized, err := NormalizeAndValidateProtectedResource(resourceURI)
 		if err != nil {
-			return fmt.Errorf("protected_resources[%d]: invalid URI: %w", i, err)
+			return fmt.Errorf("protected_resources[%d]: %w", i, err)
 		}
-		if parsed.Scheme == "" || parsed.Host == "" {
-			return fmt.Errorf("protected_resources[%d]: must be an absolute URL with scheme and host", i)
+		if _, exists := resources[normalized]; exists {
+			return fmt.Errorf("protected_resources[%d]: duplicate resource %q", i, normalized)
 		}
+		resources[normalized] = struct{}{}
 	}
 	return nil
 }
@@ -408,6 +435,7 @@ func (e *ThirdpartyOAuth2ProviderEntity) Copy() *ThirdpartyOAuth2ProviderEntity 
 		},
 		CreatedAt: e.CreatedAt,
 		UpdatedAt: e.UpdatedAt,
+		Version:   e.Version,
 	}
 
 	// Deep copy optional MetadataURL pointer

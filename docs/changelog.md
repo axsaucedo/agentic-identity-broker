@@ -7,6 +7,12 @@ description: Notable changes, breaking changes, and migration guidance for the A
 
 ## [NEXT VERSION] — Breaking Changes
 
+### Protected Resource Subresources (035)
+
+- **BREAKING**: Full-service `PUT /api/services/{id}` preserves protected resources when `protected_resources` is omitted. Supplying the field, including an empty set, replaces the set only with a current strong `If-Match` ETag; requests without it receive `428`, and stale ETags receive `412` without changing the set.
+- **NEW**: Administrators can add protected resources through `POST /api/services/{id}/protected-resources` with a `resource_uri` body field or the retained idempotent member-addressed `PUT`; they can remove, rename, and list resources through dedicated service subresource endpoints.
+- **Confirmation**: Stakeholder approved these API changes, including the body-based POST add operation, in this conversation before implementation.
+
 ### Multi-Agent OAuth2 Client Delegation (021)
 
 - **BREAKING**: The `client_id` parameter in OAuth2 authorize/token requests now resolves to `agent.id` (UUID), not `agent.client_id` (upstream client ID). Clients must update their `client_id` values from the upstream OAuth2 client ID string to the broker-internal agent UUID.

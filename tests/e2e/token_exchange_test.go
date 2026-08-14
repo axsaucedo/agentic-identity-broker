@@ -378,7 +378,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 				http.MethodPut,
 				"/api/services/"+githubServiceID,
 				principal,
-				map[string]string{"Content-Type": "application/json"},
+				map[string]string{"Content-Type": "application/json", "If-Match": `"1"`},
 				strings.NewReader(string(updateBodyJSON)),
 			)
 			Expect(err).NotTo(HaveOccurred())
@@ -462,10 +462,10 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		})
 
 		// Spec Reference: US2-S5 from specs/013-token-exchange/spec.md
-		It("[US2-S5] should return 400 invalid_target for ambiguous resource", func() {
-			// Given: Multiple services configured with same protected_resource (creates ambiguous mapping)
+		// Global protected-resource ownership makes ambiguous resource resolution
+		// impossible: the second claim must fail before token exchange.
+		It("[US2-S5] should reject a duplicate protected resource claim", func() {
 			ctx := context.Background()
-			// Create a second service with the same protected_resource as GitHub
 			ambiguousServiceID := id.NewServiceID()
 			ambiguousService := &model.ThirdpartyOAuth2ProviderEntity{
 				ID:          ambiguousServiceID,
@@ -483,34 +483,12 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 				Scopes: []model.OAuthScope{
 					{ScopeValue: "read", Description: "Read access"},
 				},
-				ProtectedResources: []string{"https://api.github.com"}, // Same resource as GitHub service!
+				ProtectedResources: []string{"https://api.github.com"},
 				CreatedAt:          time.Now(),
 				UpdatedAt:          time.Now(),
 			}
-			err := testStorage.Services().Create(ctx, ambiguousService)
-			Expect(err).NotTo(HaveOccurred())
 
-			data := url.Values{
-				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {tokenFixtures.SubjectToken},
-				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
-				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {tokenFixtures.ClientAssertion},
-				"resource":              {"https://api.github.com"},
-			}
-
-			// When: Token exchange requests ambiguous resource
-			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
-			Expect(err).NotTo(HaveOccurred())
-			defer func() { _ = resp.Body.Close() }()
-
-			// Then: Returns 400 invalid_target (ambiguous)
-			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
-
-			var errorResponse map[string]interface{}
-			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(errorResponse["error"]).To(Equal("invalid_target"))
+			Expect(testStorage.Services().Create(ctx, ambiguousService)).To(HaveOccurred())
 		})
 	})
 
@@ -1042,8 +1020,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			body, err := json.Marshal(updateData)
 			Expect(err).NotTo(HaveOccurred())
 
+			resourcesResp, err := adminServer.AuthenticatedGET("/api/services/"+fixtures.GitHubService().ID.String()+"/protected-resources", principal)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = resourcesResp.Body.Close() }()
+			Expect(resourcesResp).To(matchers.HaveStatusCode(http.StatusOK))
+			etag := resourcesResp.Header.Get("ETag")
+			Expect(etag).To(MatchRegexp(`^"[1-9][0-9]*"$`))
+
 			// When: Admin updates service with new protected_resources via PUT
-			resp, err := adminServer.DirectRequest("PUT", "/api/services/"+fixtures.GitHubService().ID.String(), principal, map[string]string{"Content-Type": "application/json"}, strings.NewReader(string(body)))
+			resp, err := adminServer.DirectRequest("PUT", "/api/services/"+fixtures.GitHubService().ID.String(), principal, map[string]string{"Content-Type": "application/json", "If-Match": etag}, strings.NewReader(string(body)))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 

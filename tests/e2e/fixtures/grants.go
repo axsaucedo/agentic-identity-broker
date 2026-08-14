@@ -43,6 +43,7 @@ func SeedPlaceholderGrantData(ctx context.Context, store *storageadapter.Adapter
 	svc := ServiceWithID(PlaceholderServiceID.String())
 	// Override scopes to match what the placeholder permission set declares.
 	svc.Scopes = []model.OAuthScope{{ScopeValue: "read", Description: "Read access"}}
+	svc.ProtectedResources = nil
 	if err := store.Services().Create(ctx, svc); err != nil {
 		return err
 	}
@@ -62,6 +63,7 @@ func SeedPlaceholderGrantData(ctx context.Context, store *storageadapter.Adapter
 	// Seed secondary service+PS for multi-service fixtures (GrantWithMultipleServices).
 	svc2 := ServiceWithID(SecondaryPlaceholderServiceID.String())
 	svc2.Scopes = []model.OAuthScope{{ScopeValue: "write", Description: "Write access"}}
+	svc2.ProtectedResources = nil
 	if err := store.Services().Create(ctx, svc2); err != nil {
 		return err
 	}

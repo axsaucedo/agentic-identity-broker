@@ -1253,7 +1253,7 @@ Define any project-specific terms or acronyms.)
 
 **CEL Authorization**: Common Expression Language policy evaluation for privileged client authorization. Expression evaluated against client_assertion claims and request context. Expression must return boolean; defaults to "true" (allow all valid privileged clients). Enables flexible authorization policies beyond basic JWT validation.
 
-**Protected Resources**: Array of normalized resource URIs on ThirdpartyOAuth2Provider that identify which resources map to that provider for RFC 8693 token exchange. Used to discover correct service when processing token exchange requests. URIs are normalized (trailing slashes removed) for consistent matching. Stored as TEXT[] column in PostgreSQL with GIN index for efficient lookups.
+**Protected Resources (Feature 035)**: An unordered set of normalized resource URIs owned by a `ThirdpartyOAuth2Provider` that identifies which resources map to that provider for RFC 8693 token exchange. Migration `027` replaces the provider's `TEXT[]` column and GIN index with `service_protected_resources`, a child table whose `resource_uri` is the global primary key and whose `service_id` references the owning provider. This makes one normalized URI claimable by at most one service. The provider has a monotonic `version` counter, exposed as a strong ETag: every resource-set mutation increments it; a full-service update that supplies `protected_resources` must use the current ETag to replace the set, while an update that omits or sets the field to `null` preserves it. Single-resource add, remove, and rename operations are atomic deltas and do not require `If-Match`.
 
 ### ExtProc (Envoy External Processor) Domain
 

@@ -38,6 +38,7 @@ type ThirdpartyOAuth2ProviderRecord struct {
 	AuthorizationParams providerAuthorizationParams `db:"authorization_params"`
 	CreatedAt           time.Time                   `db:"created_at"`
 	UpdatedAt           time.Time                   `db:"updated_at"`
+	Version             int64                       `db:"version"`
 }
 
 // providerScopeArray handles JSONB serialization of model.OAuthScope slices for PostgreSQL.
@@ -193,6 +194,7 @@ func recordToEntity(record *ThirdpartyOAuth2ProviderRecord) (*model.ThirdpartyOA
 		CreatedAt:           record.CreatedAt,
 		AuthorizationParams: maps.Clone(map[string]string(record.AuthorizationParams)),
 		UpdatedAt:           record.UpdatedAt,
+		Version:             record.Version,
 	}
 
 	if record.MetadataURL != nil {

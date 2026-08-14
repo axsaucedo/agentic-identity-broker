@@ -16,6 +16,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // MockRepository mocks ports.ThirdpartyOAuth2ProviderRepository
@@ -36,8 +37,8 @@ func (m *MockRepository) Get(ctx context.Context, serviceID id.ServiceID) (*mode
 	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
-func (m *MockRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
-	args := m.Called(ctx, entity)
+func (m *MockRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, expectedVersion *int64) error {
+	args := m.Called(ctx, entity, expectedVersion)
 	return args.Error(0)
 }
 
@@ -65,6 +66,29 @@ func (m *MockRepository) FindByProtectedResource(ctx context.Context, resourceUR
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
+}
+
+func (m *MockRepository) AddProtectedResource(ctx context.Context, serviceID id.ServiceID, resourceURI string) (ports.ProtectedResourceMutationResult, error) {
+	args := m.Called(ctx, serviceID, resourceURI)
+	return args.Get(0).(ports.ProtectedResourceMutationResult), args.Error(1)
+}
+
+func (m *MockRepository) RemoveProtectedResource(ctx context.Context, serviceID id.ServiceID, resourceURI string) (ports.ProtectedResourceMutationResult, error) {
+	args := m.Called(ctx, serviceID, resourceURI)
+	return args.Get(0).(ports.ProtectedResourceMutationResult), args.Error(1)
+}
+
+func (m *MockRepository) RenameProtectedResource(ctx context.Context, serviceID id.ServiceID, fromURI, toURI string) (ports.ProtectedResourceMutationResult, error) {
+	args := m.Called(ctx, serviceID, fromURI, toURI)
+	return args.Get(0).(ports.ProtectedResourceMutationResult), args.Error(1)
+}
+
+func (m *MockRepository) ListProtectedResources(ctx context.Context, serviceID id.ServiceID) ([]string, int64, error) {
+	args := m.Called(ctx, serviceID)
+	if args.Get(0) == nil {
+		return nil, args.Get(1).(int64), args.Error(2)
+	}
+	return args.Get(0).([]string), args.Get(1).(int64), args.Error(2)
 }
 
 // MockEncryption mocks ports.EncryptionPort
@@ -253,7 +277,7 @@ func TestThirdpartyOAuth2ProviderService_Update_ValidationRejectsBeforeEncryptio
 		Secret: model.NewPlaintextSecret("new-secret"),
 	}
 
-	err := svc.Update(ctx, entity)
+	err := svc.Update(ctx, entity, nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "provider validation failed")
@@ -565,9 +589,9 @@ func TestThirdpartyOAuth2ProviderService_Update_WithNewSecret(t *testing.T) {
 		Return([]byte("new-encrypted"), nil)
 	mockRepo.On("Update", ctx, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
 		return e.Secret.IsEncrypted()
-	})).Return(nil)
+	}), (*int64)(nil)).Return(nil)
 
-	err := svc.Update(ctx, entity)
+	err := svc.Update(ctx, entity, nil)
 
 	require.NoError(t, err)
 	assert.True(t, entity.Secret.IsEncrypted(), "secret must be encrypted after update")
@@ -596,9 +620,9 @@ func TestThirdpartyOAuth2ProviderService_Update_NormalizesProtectedResourcesBefo
 				"https://api.example.com",
 				"https://api.example.com/v1",
 			}, e.ProtectedResources)
-	})).Return(nil)
+	}), (*int64)(nil)).Return(nil)
 
-	err := svc.Update(ctx, entity)
+	err := svc.Update(ctx, entity, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{
@@ -642,9 +666,9 @@ func TestThirdpartyOAuth2ProviderService_Update_ProvisionsBranchKey(t *testing.T
 
 	mockRepo.On("Update", ctx, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
 		return e.Secret.IsEncrypted()
-	})).Return(nil)
+	}), (*int64)(nil)).Return(nil)
 
-	err := svc.Update(ctx, entity)
+	err := svc.Update(ctx, entity, nil)
 
 	require.NoError(t, err)
 	assert.True(t, entity.Secret.IsEncrypted(), "secret must be encrypted after update")
@@ -668,7 +692,7 @@ func TestThirdpartyOAuth2ProviderService_Update_BranchKeyProvisioningFailure_Abo
 
 	mockBKM.On("Create", ctx, serviceSubject(svcID)).Return("", fmt.Errorf("DynamoDB unavailable"))
 
-	err := svc.Update(ctx, entity)
+	err := svc.Update(ctx, entity, nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "branch key provisioning failed")
@@ -687,7 +711,7 @@ func TestThirdpartyOAuth2ProviderService_Update_EncryptedSecretFails(t *testing.
 	// plaintext so re-encryption always runs (prevents silent bypass during key rotation).
 	entity := minimalValidEntity(id.NewServiceID(), model.NewEncryptedSecret([]byte("existing-ciphertext")))
 
-	err := svc.Update(ctx, entity)
+	err := svc.Update(ctx, entity, nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "provider validation failed")
@@ -1084,4 +1108,224 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_CaseSensiti
 	assert.Equal(t, storage.ErrorKindValidation, storageErr.Kind)
 	assert.Contains(t, storageErr.Message, "REPO")
 	mockRepo.AssertExpectations(t)
+}
+
+func TestThirdpartyOAuth2ProviderService_ProtectedResourceMutations_NormalizeAndRejectInvalidInput(t *testing.T) {
+	ctx := context.Background()
+	serviceID := id.NewServiceID()
+	tests := []struct {
+		name      string
+		call      func(*ThirdpartyOAuth2ProviderService) (ports.ProtectedResourceMutationResult, error)
+		configure func(*MockRepository)
+		wantErr   bool
+	}{
+		{
+			name: "adds normalized URI",
+			call: func(s *ThirdpartyOAuth2ProviderService) (ports.ProtectedResourceMutationResult, error) {
+				return s.AddProtectedResource(ctx, serviceID, "https://api.example.com/resource/")
+			},
+			configure: func(repo *MockRepository) {
+				repo.On("AddProtectedResource", ctx, serviceID, "https://api.example.com/resource").Return(ports.ProtectedResourceMutationResult{Resource: "https://api.example.com/resource", ProtectedResources: []string{"https://api.example.com/resource"}, Version: 4, Changed: true}, nil)
+			},
+		},
+		{
+			name: "removes normalized URI",
+			call: func(s *ThirdpartyOAuth2ProviderService) (ports.ProtectedResourceMutationResult, error) {
+				return s.RemoveProtectedResource(ctx, serviceID, "https://api.example.com/resource/")
+			},
+			configure: func(repo *MockRepository) {
+				repo.On("RemoveProtectedResource", ctx, serviceID, "https://api.example.com/resource").Return(ports.ProtectedResourceMutationResult{Resource: "https://api.example.com/resource", ProtectedResources: []string{}, Version: 5, Changed: true}, nil)
+			},
+		},
+		{
+			name: "renames independently normalized URIs",
+			call: func(s *ThirdpartyOAuth2ProviderService) (ports.ProtectedResourceMutationResult, error) {
+				return s.RenameProtectedResource(ctx, serviceID, "https://api.example.com/from/", "https://api.example.com/to/")
+			},
+			configure: func(repo *MockRepository) {
+				repo.On("RenameProtectedResource", ctx, serviceID, "https://api.example.com/from", "https://api.example.com/to").Return(ports.ProtectedResourceMutationResult{Resource: "https://api.example.com/to", ProtectedResources: []string{"https://api.example.com/to"}, Version: 6, Changed: true}, nil)
+			},
+		},
+		{
+			name: "rejects malformed add before repository",
+			call: func(s *ThirdpartyOAuth2ProviderService) (ports.ProtectedResourceMutationResult, error) {
+				return s.AddProtectedResource(ctx, serviceID, "://not-a-uri")
+			},
+			configure: func(_ *MockRepository) {},
+			wantErr:   true,
+		},
+		{
+			name: "rejects malformed rename target before repository",
+			call: func(s *ThirdpartyOAuth2ProviderService) (ports.ProtectedResourceMutationResult, error) {
+				return s.RenameProtectedResource(ctx, serviceID, "https://api.example.com/from", "://not-a-uri")
+			},
+			configure: func(_ *MockRepository) {},
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := new(MockRepository)
+			tt.configure(repo)
+			service := NewThirdpartyOAuth2ProviderService(repo, new(MockEncryption), newNoopBranchKeyManager(), nil, false, slog.Default())
+
+			result, err := tt.call(service)
+			if tt.wantErr {
+				require.Error(t, err)
+				var storageErr *storage.StorageError
+				require.ErrorAs(t, err, &storageErr)
+				assert.Equal(t, storage.ErrorKindValidation, storageErr.Kind)
+				repo.AssertNotCalled(t, "AddProtectedResource", mock.Anything, mock.Anything, mock.Anything)
+				repo.AssertNotCalled(t, "RenameProtectedResource", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+				return
+			}
+			require.NoError(t, err)
+			assert.NotEmpty(t, result.Resource)
+			assert.NotZero(t, result.Version)
+			assert.NotNil(t, result.ProtectedResources)
+			repo.AssertExpectations(t)
+		})
+	}
+}
+
+func TestThirdpartyOAuth2ProviderService_ProtectedResourceMutationErrorsAndList(t *testing.T) {
+	ctx := context.Background()
+	serviceID := id.NewServiceID()
+	notFound := storage.NewStorageError("resource", storage.ErrorKindNotFound, errors.New("missing"), "missing")
+	conflict := storage.NewStorageError("resource", storage.ErrorKindConflict, errors.New("owned"), "owned")
+
+	tests := []struct {
+		name      string
+		configure func(*MockRepository)
+		call      func(*ThirdpartyOAuth2ProviderService) error
+		want      error
+	}{
+		{
+			name: "remove missing resource preserves not found",
+			configure: func(repo *MockRepository) {
+				repo.On("RemoveProtectedResource", ctx, serviceID, "https://api.example.com/missing").Return(ports.ProtectedResourceMutationResult{}, notFound)
+			},
+			call: func(s *ThirdpartyOAuth2ProviderService) error {
+				_, err := s.RemoveProtectedResource(ctx, serviceID, "https://api.example.com/missing")
+				return err
+			},
+			want: notFound,
+		},
+		{
+			name: "add missing service preserves not found",
+			configure: func(repo *MockRepository) {
+				repo.On("AddProtectedResource", ctx, serviceID, "https://api.example.com/new").Return(ports.ProtectedResourceMutationResult{}, notFound)
+			},
+			call: func(s *ThirdpartyOAuth2ProviderService) error {
+				_, err := s.AddProtectedResource(ctx, serviceID, "https://api.example.com/new")
+				return err
+			},
+			want: notFound,
+		},
+		{
+			name: "add cross-service owner conflict is preserved",
+			configure: func(repo *MockRepository) {
+				repo.On("AddProtectedResource", ctx, serviceID, "https://api.example.com/owned").Return(ports.ProtectedResourceMutationResult{}, conflict)
+			},
+			call: func(s *ThirdpartyOAuth2ProviderService) error {
+				_, err := s.AddProtectedResource(ctx, serviceID, "https://api.example.com/owned")
+				return err
+			},
+			want: conflict,
+		},
+		{
+			name: "remove missing service preserves not found",
+			configure: func(repo *MockRepository) {
+				repo.On("RemoveProtectedResource", ctx, serviceID, "https://api.example.com/present").Return(ports.ProtectedResourceMutationResult{}, notFound)
+			},
+			call: func(s *ThirdpartyOAuth2ProviderService) error {
+				_, err := s.RemoveProtectedResource(ctx, serviceID, "https://api.example.com/present")
+				return err
+			},
+			want: notFound,
+		},
+		{
+			name: "rename owned target preserves conflict",
+			configure: func(repo *MockRepository) {
+				repo.On("RenameProtectedResource", ctx, serviceID, "https://api.example.com/from", "https://api.example.com/owned").Return(ports.ProtectedResourceMutationResult{}, conflict)
+			},
+			call: func(s *ThirdpartyOAuth2ProviderService) error {
+				_, err := s.RenameProtectedResource(ctx, serviceID, "https://api.example.com/from", "https://api.example.com/owned")
+				return err
+			},
+			want: conflict,
+		},
+		{
+			name: "rename missing source preserves not found",
+			configure: func(repo *MockRepository) {
+				repo.On("RenameProtectedResource", ctx, serviceID, "https://api.example.com/missing", "https://api.example.com/to").Return(ports.ProtectedResourceMutationResult{}, notFound)
+			},
+			call: func(s *ThirdpartyOAuth2ProviderService) error {
+				_, err := s.RenameProtectedResource(ctx, serviceID, "https://api.example.com/missing", "https://api.example.com/to")
+				return err
+			},
+			want: notFound,
+		},
+		{
+			name: "list returns normalized state and current version",
+			configure: func(repo *MockRepository) {
+				repo.On("ListProtectedResources", ctx, serviceID).Return([]string{"https://api.example.com/a", "https://api.example.com/b"}, int64(9), nil)
+			},
+			call: func(s *ThirdpartyOAuth2ProviderService) error {
+				resources, version, err := s.ListProtectedResources(ctx, serviceID)
+				require.NoError(t, err)
+				assert.Equal(t, []string{"https://api.example.com/a", "https://api.example.com/b"}, resources)
+				assert.EqualValues(t, 9, version)
+				return nil
+			},
+		},
+		{
+			name: "list missing service preserves not found",
+			configure: func(repo *MockRepository) {
+				repo.On("ListProtectedResources", ctx, serviceID).Return([]string(nil), int64(0), notFound)
+			},
+			call: func(s *ThirdpartyOAuth2ProviderService) error {
+				_, _, err := s.ListProtectedResources(ctx, serviceID)
+				return err
+			},
+			want: notFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := new(MockRepository)
+			tt.configure(repo)
+			service := NewThirdpartyOAuth2ProviderService(repo, new(MockEncryption), newNoopBranchKeyManager(), nil, false, slog.Default())
+			err := tt.call(service)
+			if tt.want != nil {
+				require.ErrorIs(t, err, tt.want)
+			} else {
+				require.NoError(t, err)
+			}
+			repo.AssertExpectations(t)
+		})
+	}
+}
+
+func TestThirdpartyOAuth2ProviderService_RenameProtectedResource_SameURINoOp(t *testing.T) {
+	ctx := context.Background()
+	serviceID := id.NewServiceID()
+	repo := new(MockRepository)
+	repo.On("RenameProtectedResource", ctx, serviceID, "https://api.example.com/resource", "https://api.example.com/resource").Return(ports.ProtectedResourceMutationResult{
+		Resource:           "https://api.example.com/resource",
+		ProtectedResources: []string{"https://api.example.com/resource"},
+		Version:            10,
+		Changed:            false,
+	}, nil)
+	service := NewThirdpartyOAuth2ProviderService(repo, new(MockEncryption), newNoopBranchKeyManager(), nil, false, slog.Default())
+
+	result, err := service.RenameProtectedResource(ctx, serviceID, "https://api.example.com/resource/", "https://api.example.com/resource")
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.example.com/resource", result.Resource)
+	assert.Equal(t, []string{"https://api.example.com/resource"}, result.ProtectedResources)
+	assert.EqualValues(t, 10, result.Version)
+	assert.False(t, result.Changed)
+	repo.AssertExpectations(t)
 }

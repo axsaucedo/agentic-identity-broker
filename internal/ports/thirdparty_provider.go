@@ -18,6 +18,16 @@ import (
 //   - The repository is unaware of encryption mechanics; it treats Secret as opaque ciphertext
 //
 // All third-party OAuth2 provider storage operations use ThirdpartyOAuth2ProviderEntity.
+
+// ProtectedResourceMutationResult is the atomic post-mutation resource state.
+// Version is the strong ETag value for the provider after the operation. Changed
+// is false only for successful idempotent or no-op mutations.
+type ProtectedResourceMutationResult struct {
+	Resource           string
+	ProtectedResources []string
+	Version            int64
+	Changed            bool
+}
 type ThirdpartyOAuth2ProviderRepository interface {
 	// Create stores a new provider entity.
 	// Entity.Secret must be in encrypted state before calling.
@@ -32,11 +42,13 @@ type ThirdpartyOAuth2ProviderRepository interface {
 	// Returns StorageError with Kind=NotFound if provider not found.
 	Get(ctx context.Context, id id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error)
 
-	// Update updates an existing provider entity.
-	// Entity.Secret must be in encrypted state before calling.
-	// On success, entity.CreatedAt is populated with the value from storage (no extra round-trip).
-	// Returns StorageError with Kind=NotFound if provider not found.
-	Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error
+	// Update updates an existing provider entity. expectedVersion is required only
+	// when entity.ProtectedResources replaces the complete resource set.
+	// Entity.Secret must be in encrypted state before calling. On success, entity
+	// contains its stored CreatedAt and new Version values.
+	// Returns StorageError with Kind=NotFound if provider not found and Conflict for
+	// a stale expectedVersion.
+	Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, expectedVersion *int64) error
 
 	// Delete removes a provider entity by ID.
 	// Idempotent: returns nil if provider doesn't exist.
@@ -57,4 +69,24 @@ type ThirdpartyOAuth2ProviderRepository interface {
 	// Returns entity with Secret in encrypted state.
 	// Returns InvalidTargetError if no provider matches or if multiple providers match.
 	FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error)
+
+	// AddProtectedResource atomically claims resourceURI for serviceID. A successful
+	// replay owned by the same service returns Changed=false.
+	// Returns StorageError with Kind=Conflict if another service owns the URI, or
+	// Kind=NotFound if serviceID does not exist.
+	AddProtectedResource(ctx context.Context, serviceID id.ServiceID, resourceURI string) (ProtectedResourceMutationResult, error)
+
+	// RemoveProtectedResource atomically releases resourceURI from serviceID.
+	// Returns StorageError with Kind=NotFound if the service or resource is absent.
+	RemoveProtectedResource(ctx context.Context, serviceID id.ServiceID, resourceURI string) (ProtectedResourceMutationResult, error)
+
+	// RenameProtectedResource atomically replaces fromURI with toURI on serviceID.
+	// Returns StorageError with Kind=Conflict if toURI is owned and Kind=NotFound
+	// if the service or fromURI is absent.
+	RenameProtectedResource(ctx context.Context, serviceID id.ServiceID, fromURI, toURI string) (ProtectedResourceMutationResult, error)
+
+	// ListProtectedResources returns the normalized resource URIs and current strong
+	// ETag version for serviceID.
+	// Returns StorageError with Kind=NotFound if serviceID does not exist.
+	ListProtectedResources(ctx context.Context, serviceID id.ServiceID) ([]string, int64, error)
 }

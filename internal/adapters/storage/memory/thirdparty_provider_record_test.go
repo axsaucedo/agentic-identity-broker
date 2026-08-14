@@ -84,3 +84,34 @@ func TestProviderEntityCopy_IsolatesFromOriginal(t *testing.T) {
 	original.AuthorizationParams["business_partner_id"] = "changed"
 	assert.Equal(t, "12345", copied.AuthorizationParams["business_partner_id"])
 }
+
+func TestProviderRecordConversion_MaterializesVersionedChildResources(t *testing.T) {
+	original := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:                 id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440001"),
+		DisplayName:        "Provider",
+		ClientID:           id.ClientID("client-1"),
+		Secret:             model.NewEncryptedSecret([]byte("ct")),
+		IssuerURI:          "https://issuer.example.com",
+		ProtectedResources: []string{"https://stale.example.com"},
+		Version:            7,
+	}
+
+	record, err := providerEntityToRecord(original)
+	require.NoError(t, err)
+	assert.Nil(t, record.entity.ProtectedResources)
+
+	materialized := providerRecordToEntity(record, map[string]struct{}{
+		"https://z.example.com": {},
+		"https://a.example.com": {},
+	})
+	require.NotNil(t, materialized)
+	assert.EqualValues(t, 7, materialized.Version)
+	assert.Equal(t, []string{"https://a.example.com", "https://z.example.com"}, materialized.ProtectedResources)
+	assert.True(t, materialized.Secret.IsEncrypted())
+}
+
+func TestResourceSetSlice_EmptyReturnsNonNilSlice(t *testing.T) {
+	resources := resourceSetSlice(map[string]struct{}{})
+	assert.NotNil(t, resources)
+	assert.Empty(t, resources)
+}

@@ -3,21 +3,21 @@ package memory
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 )
 
-// The memory adapter stores ThirdpartyOAuth2ProviderEntity values directly in a map,
-// using deep copies to prevent external mutation. There is no intermediate record struct
-// because memory storage requires no serialization — entities are held in process memory.
-//
-// Invariant: entities stored in the map always have their Secret in encrypted state.
-// The domain service (ThirdpartyOAuth2ProviderService) encrypts before storing and
-// decrypts after retrieving. The memory adapter is unaware of encryption mechanics.
+// thirdpartyOAuth2ProviderRecord holds provider data independently from its
+// protected-resource children. The child set is authoritative; this record never
+// retains a ProtectedResources slice.
+type thirdpartyOAuth2ProviderRecord struct {
+	entity *model.ThirdpartyOAuth2ProviderEntity
+}
 
-// providerEntityCopy creates a deep copy of a ThirdpartyOAuth2ProviderEntity for
-// internal storage. The entity's Secret must be in encrypted state before storing.
-// Returns an error if the entity is nil or the secret is not encrypted.
+// providerEntityCopy creates a deep copy for internal storage and verifies that
+// the client secret is encrypted before it is retained by the repository.
 func providerEntityCopy(entity *model.ThirdpartyOAuth2ProviderEntity) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	if entity == nil {
 		return nil, errors.New("entity cannot be nil")
@@ -28,4 +28,31 @@ func providerEntityCopy(entity *model.ThirdpartyOAuth2ProviderEntity) (*model.Th
 	}
 
 	return entity.Copy(), nil
+}
+
+func providerEntityToRecord(entity *model.ThirdpartyOAuth2ProviderEntity) (*thirdpartyOAuth2ProviderRecord, error) {
+	copy, err := providerEntityCopy(entity)
+	if err != nil {
+		return nil, err
+	}
+	copy.ProtectedResources = nil
+	return &thirdpartyOAuth2ProviderRecord{entity: copy}, nil
+}
+
+func providerRecordToEntity(record *thirdpartyOAuth2ProviderRecord, resourceSet map[string]struct{}) *model.ThirdpartyOAuth2ProviderEntity {
+	if record == nil || record.entity == nil {
+		return nil
+	}
+
+	entity := record.entity.Copy()
+	entity.ProtectedResources = resourceSetSlice(resourceSet)
+	return entity
+}
+
+func resourceSetSlice(resourceSet map[string]struct{}) []string {
+	resources := slices.Sorted(maps.Keys(resourceSet))
+	if resources == nil {
+		return []string{}
+	}
+	return resources
 }

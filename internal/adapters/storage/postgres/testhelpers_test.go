@@ -320,6 +320,7 @@ func applyMigrationsUpToDatabase(t *testing.T, container testcontainers.Containe
 		{"025_create_approval_sync_state.up.sql", 25},
 		{"026_sync_approval_mutations.up.sql", 26},
 		{"027_add_profile_to_oauth2_codes.up.sql", 27},
+		{"028_normalize_service_protected_resources.up.sql", 28},
 	}
 
 	for _, migration := range migrations {

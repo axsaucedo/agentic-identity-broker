@@ -83,10 +83,12 @@ var _ = Describe("Consent Flow", func() {
 			// Create two optional services using fixtures; customize only the IDs to avoid
 			// conflicts with the service created in the outer BeforeEach (…440000).
 			githubService := fixtures.ServiceWithID("550e8400-e29b-41d4-a716-446655440001")
+			githubService.ProtectedResources = []string{"https://api.github.example.com/consent-flow-optional"}
 			err := GetTestStorage().Services().Create(ctx, githubService)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create optional GitHub service")
 
 			gitlabService := fixtures.ServiceWithID("550e8400-e29b-41d4-a716-446655440002")
+			gitlabService.ProtectedResources = []string{"https://api.gitlab.example.com/consent-flow-optional"}
 			err = GetTestStorage().Services().Create(ctx, gitlabService)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create optional GitLab service")
 

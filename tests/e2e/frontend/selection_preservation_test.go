@@ -45,6 +45,7 @@ func selPreservationService(svcID id.ServiceID, displayName, clientID, issuerURI
 		TokenEndpoint:     GetMockUpstream().URL() + "/oauth/token",
 	}
 	svc.Scopes = scopes
+	svc.ProtectedResources = []string{issuerURI + "/api"}
 	svc.CreatedAt = now
 	svc.UpdatedAt = now
 	return svc

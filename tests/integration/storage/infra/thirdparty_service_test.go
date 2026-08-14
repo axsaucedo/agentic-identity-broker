@@ -38,6 +38,7 @@ var thirdpartyProviderMigrations = []bootstrap.SQLMigration{
 	{File: "006_add_service_protected_resources.up.sql", Version: 6},
 	{File: "007_add_oauth2_flavor.up.sql", Version: 7},
 	{File: "022_add_service_authorization_params.up.sql", Version: 22},
+	{File: "028_normalize_service_protected_resources.up.sql", Version: 28},
 }
 
 func TestAuthorizationParamsPersistence(t *testing.T) {
@@ -54,7 +55,7 @@ func TestAuthorizationParamsPersistence(t *testing.T) {
 
 	stored.AuthorizationParams = map[string]string{}
 	stored.Secret = model.NewPlaintextSecret("test-secret")
-	require.NoError(t, providerService.Update(ctx, stored))
+	require.NoError(t, providerService.Update(ctx, stored, nil))
 	updated, err := repo.Get(ctx, entity.ID)
 	require.NoError(t, err)
 	assert.Empty(t, updated.AuthorizationParams)
@@ -75,7 +76,7 @@ func TestAuthorizationParamsOmittedUpdatePreservesResponseAndStorage(t *testing.
 
 	updated := createTestService(entity.ID.String(), "Updated Authorization Params", nil)
 	updated.AuthorizationParams = nil
-	require.NoError(t, providerService.Update(ctx, updated))
+	require.NoError(t, providerService.Update(ctx, updated, nil))
 	assert.Equal(t, map[string]string{"business_partner_id": "12345"}, updated.AuthorizationParams)
 
 	stored, err := repo.Get(ctx, entity.ID)
@@ -97,8 +98,8 @@ func setupThirdpartyProviderTestHarness(
 	t.Helper()
 
 	sharedPostgres := bootstrap.RequireSharedPostgres(t)
-	_, connStr, cleanupDB := sharedPostgres.SetupDatabaseFromTemplate(t, "thirdparty_provider_migrations_022", func(t *testing.T, dbName string) {
-		sharedPostgres.ApplyMigrationsUpTo(t, dbName, thirdpartyProviderMigrations, 22)
+	_, connStr, cleanupDB := sharedPostgres.SetupDatabaseFromTemplate(t, "thirdparty_provider_migrations_028", func(t *testing.T, dbName string) {
+		sharedPostgres.ApplyMigrationsUpTo(t, dbName, thirdpartyProviderMigrations, 28)
 	})
 
 	config := &ports.StorageConfig{
@@ -211,39 +212,24 @@ func TestFindByProtectedResource_NoMatch(t *testing.T) {
 	require.Equal(t, "no service configured for the requested resource", txErr.Description())
 }
 
-// TestFindByProtectedResource_AmbiguousMatch tests error case: multiple services match same resource
-func TestFindByProtectedResource_AmbiguousMatch(t *testing.T) {
-	ctx, repo, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
+// TestFindByProtectedResource_DuplicateClaimRejected verifies global URI ownership.
+func TestFindByProtectedResource_DuplicateClaimRejected(t *testing.T) {
+	ctx, _, providerService, cleanup := setupThirdpartyProviderTestHarness(t)
 	defer cleanup()
-	var err error
 
-	// Create two services with overlapping resources (misconfiguration)
 	service1 := createTestService(
 		"service-1",
 		"Service 1",
 		[]string{"https://api.example.com"},
 	)
-	err = providerService.Create(ctx, service1)
-	require.NoError(t, err)
+	require.NoError(t, providerService.Create(ctx, service1))
 
 	service2 := createTestService(
 		"service-2",
 		"Service 2",
 		[]string{"https://api.example.com"},
 	)
-	err = providerService.Create(ctx, service2)
-	require.NoError(t, err)
-
-	// Try to find ambiguous resource
-	found, err := repo.FindByProtectedResource(ctx, "https://api.example.com")
-	require.Error(t, err)
-	require.Nil(t, found)
-
-	// Verify error is InvalidTargetError with ambiguity message
-	txErr, ok := err.(*tokenexchange.TokenExchangeError)
-	require.True(t, ok, "expected TokenExchangeError")
-	require.Equal(t, "invalid_target", txErr.Code())
-	require.Equal(t, "multiple services configured for the same resource", txErr.Description())
+	require.ErrorContains(t, providerService.Create(ctx, service2), "protected resource is already owned")
 }
 
 // TestFindByProtectedResource_URINormalization tests URI normalization (trailing slash removal)

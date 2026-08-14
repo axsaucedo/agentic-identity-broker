@@ -393,3 +393,128 @@ func TestThirdpartyOAuth2ProviderEntity_CopyAuthorizationParams(t *testing.T) {
 	entity.AuthorizationParams["business_partner_id"] = "changed"
 	assert.Equal(t, "12345", copy.AuthorizationParams["business_partner_id"])
 }
+
+func TestThirdpartyOAuth2ProviderEntity_ValidateForCreate_ValidatesProtectedResources(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name      string
+		resources []string
+		wantErr   string
+	}{
+		{name: "empty URI", resources: []string{""}, wantErr: "protected_resources[0]: cannot be empty"},
+		{name: "whitespace URI", resources: []string{" \t"}, wantErr: "protected_resources[0]: invalid URI"},
+		{name: "relative URI", resources: []string{"/v1/orders"}, wantErr: "protected_resources[0]: must be an absolute URL with scheme and host"},
+		{name: "malformed URI", resources: []string{"://invalid"}, wantErr: "protected_resources[0]: invalid URI"},
+		{name: "absolute URI", resources: []string{"https://api.example.com/v1"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			entity := &ThirdpartyOAuth2ProviderEntity{
+				DisplayName:        "Provider",
+				ClientID:           "client-id",
+				Secret:             NewPlaintextSecret("secret"),
+				IssuerURI:          "https://issuer.example.com",
+				Discovery:          DiscoveryConfig{EnableDiscovery: true},
+				ProtectedResources: tt.resources,
+			}
+
+			err := entity.ValidateForCreate(false)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestThirdpartyOAuth2ProviderEntity_ValidateForCreate_RejectsDuplicateProtectedResources(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name      string
+		resources []string
+		wantErr   string
+	}{
+		{name: "rejects exact duplicates", resources: []string{"https://api.example.com/v1", "https://api.example.com/v1"}, wantErr: "protected_resources[1]: duplicate resource \"https://api.example.com/v1\""},
+		{name: "rejects normalized duplicates", resources: []string{"https://api.example.com/v1", "https://api.example.com/v1/"}, wantErr: "protected_resources[1]: duplicate resource \"https://api.example.com/v1\""},
+		{name: "allows distinct resources", resources: []string{"https://api.example.com/v1", "https://api.example.com/v2"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			entity := &ThirdpartyOAuth2ProviderEntity{
+				DisplayName:        "Provider",
+				ClientID:           "client-id",
+				Secret:             NewPlaintextSecret("secret"),
+				IssuerURI:          "https://issuer.example.com",
+				Discovery:          DiscoveryConfig{EnableDiscovery: true},
+				ProtectedResources: tt.resources,
+			}
+
+			err := entity.ValidateForCreate(false)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestThirdpartyOAuth2ProviderEntity_ValidateForUpdate_ValidatesProtectedResources(t *testing.T) {
+	entity := &ThirdpartyOAuth2ProviderEntity{
+		ID:                 id.NewServiceID(),
+		DisplayName:        "Provider",
+		ClientID:           "client-id",
+		Secret:             NewPlaintextSecret("secret"),
+		IssuerURI:          "https://issuer.example.com",
+		Discovery:          DiscoveryConfig{EnableDiscovery: true},
+		ProtectedResources: []string{"relative/path"},
+	}
+
+	require.ErrorContains(t, entity.ValidateForUpdate(false), "protected_resources[0]: must be an absolute URL with scheme and host")
+}
+
+func TestNormalizeAndValidateProtectedResource(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name        string
+		resourceURI string
+		want        string
+		wantErr     string
+	}{
+		{name: "normalizes trailing slashes", resourceURI: "https://api.example.com/v1///", want: "https://api.example.com/v1"},
+		{name: "preserves query and fragment", resourceURI: "https://api.example.com/v1/?page=1#section", want: "https://api.example.com/v1?page=1#section"},
+		{name: "rejects empty URI", wantErr: "cannot be empty"},
+		{name: "rejects relative URI", resourceURI: "/v1", wantErr: "must be an absolute URL with scheme and host"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			actual, err := NormalizeAndValidateProtectedResource(tt.resourceURI)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, actual)
+		})
+	}
+}
+
+func TestThirdpartyOAuth2ProviderEntity_ValidateVersion(t *testing.T) {
+	entity := &ThirdpartyOAuth2ProviderEntity{
+		ID:          id.NewServiceID(),
+		DisplayName: "Provider",
+		ClientID:    "client-id",
+		Secret:      NewPlaintextSecret("secret"),
+		IssuerURI:   "https://issuer.example.com",
+		Version:     -1,
+	}
+
+	require.ErrorContains(t, entity.Validate(), "version cannot be negative")
+}
+
+func TestThirdpartyOAuth2ProviderEntity_CopyPreservesVersion(t *testing.T) {
+	entity := &ThirdpartyOAuth2ProviderEntity{Version: 1}
+
+	assert.Equal(t, int64(1), entity.Copy().Version)
+}

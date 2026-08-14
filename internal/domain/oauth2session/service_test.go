@@ -182,7 +182,7 @@ func TestLegacyAuthorizationParamsCannotOverrideBrokerFields(t *testing.T) {
 		"refresh_token":       "attacker-refresh-token",
 		"business_partner_id": "12345",
 	}
-	require.NoError(t, repo.Update(ctx, persisted))
+	require.NoError(t, repo.Update(ctx, persisted, nil))
 
 	flow, err := service.InitiateOAuth2Flow(ctx, id.Principal("user@example.com"), serviceID, "https://example.com/sessions")
 	require.NoError(t, err)
@@ -717,7 +717,7 @@ func TestHandleCallback_RetryExhausted(t *testing.T) {
 	// Reset secret to plaintext — Update() always requires plaintext state.
 	thirdPartyService.Secret = model.NewPlaintextSecret("test-client-secret")
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
-	err = providerService.Update(ctx, thirdPartyService)
+	err = providerService.Update(ctx, thirdPartyService, nil)
 	require.NoError(t, err)
 
 	// Call HandleCallback - should fail after exhausting retries
@@ -770,7 +770,7 @@ func TestHandleCallback_ContextCancellationDuringRetry(t *testing.T) {
 	// Reset secret to plaintext — Update() always requires plaintext state.
 	thirdPartyService.Secret = model.NewPlaintextSecret("test-client-secret")
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
-	err = providerService.Update(context.Background(), thirdPartyService)
+	err = providerService.Update(context.Background(), thirdPartyService, nil)
 	require.NoError(t, err)
 
 	// Create a context that expires after the initial setup work but before the
@@ -823,7 +823,7 @@ func TestHandleCallback_TokenEncryptionFailure(t *testing.T) {
 	// Reset secret to plaintext — Update() always requires plaintext state.
 	thirdPartyService.Secret = model.NewPlaintextSecret("test-client-secret")
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
-	err = providerService.Update(ctx, thirdPartyService)
+	err = providerService.Update(ctx, thirdPartyService, nil)
 	require.NoError(t, err)
 
 	// Test with mock token endpoint working but encryption would fail
@@ -947,7 +947,7 @@ func TestHandleCallback_PKCEValidationFailure(t *testing.T) {
 	// Reset secret to plaintext — Update() always requires plaintext state.
 	thirdPartyService.Secret = model.NewPlaintextSecret("test-client-secret")
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
-	err = providerService.Update(ctx, thirdPartyService)
+	err = providerService.Update(ctx, thirdPartyService, nil)
 	require.NoError(t, err)
 
 	// Call HandleCallback - should fail due to PKCE validation
@@ -1422,7 +1422,7 @@ func TestTerminateSession_SuccessfullyTerminatesExistingSession(t *testing.T) {
 	// Reset secret to plaintext — Update() always requires plaintext state.
 	thirdPartyService.Secret = model.NewPlaintextSecret("test-client-secret")
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
-	err = providerService.Update(ctx, thirdPartyService)
+	err = providerService.Update(ctx, thirdPartyService, nil)
 	require.NoError(t, err)
 
 	// Complete OAuth2 callback to create session
