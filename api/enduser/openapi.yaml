@@ -1427,38 +1427,38 @@ paths:
         - BearerSubjectToken: []
           ClientAssertion: []
       parameters:
-        - $ref: '#/components/parameters/TraceparentHeader'
+        - $ref: "#/components/parameters/TraceparentHeader"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateApprovalRequest'
+              $ref: "#/components/schemas/CreateApprovalRequest"
       responses:
-        '201':
+        "201":
           description: New pending approval created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateApprovalResponse'
-        '200':
+                $ref: "#/components/schemas/CreateApprovalResponse"
+        "200":
           description: Existing pending approval returned (idempotent)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateApprovalResponse'
-        '401':
+                $ref: "#/components/schemas/CreateApprovalResponse"
+        "401":
           description: Missing or invalid subject token or client assertion
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '429':
+                $ref: "#/components/schemas/ApprovalError"
+        "429":
           description: Rate limit exceeded for (principal, agent_id) pair
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
+                $ref: "#/components/schemas/ApprovalError"
     get:
       operationId: syncApprovals
       summary: Sync approval state (long-poll)
@@ -1494,7 +1494,7 @@ paths:
             type: string
           explode: true
       responses:
-        '200':
+        "200":
           description: Current approval state with ETag
           headers:
             ETag:
@@ -1503,15 +1503,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalSyncResponse'
-        '304':
+                $ref: "#/components/schemas/ApprovalSyncResponse"
+        "304":
           description: No changes within long-poll timeout
-        '401':
+        "401":
           description: Missing or invalid client assertion
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
+                $ref: "#/components/schemas/ApprovalError"
 
   /api/approvals/pending:
     get:
@@ -1526,7 +1526,7 @@ paths:
       security:
         - PrincipalHeader: []
       responses:
-        '200':
+        "200":
           description: List of pending approvals
           content:
             application/json:
@@ -1536,13 +1536,13 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/ToolApprovalDetail'
-        '401':
+                      $ref: "#/components/schemas/ToolApprovalDetail"
+        "401":
           description: Missing principal header
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
+                $ref: "#/components/schemas/ApprovalError"
 
   /api/approvals/permanent:
     get:
@@ -1557,7 +1557,7 @@ paths:
       security:
         - PrincipalHeader: []
       responses:
-        '200':
+        "200":
           description: List of permanent approvals
           content:
             application/json:
@@ -1567,13 +1567,13 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/ToolApprovalDetail'
-        '401':
+                      $ref: "#/components/schemas/ToolApprovalDetail"
+        "401":
           description: Missing principal header
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
+                $ref: "#/components/schemas/ApprovalError"
 
   /api/approvals/{id}:
     get:
@@ -1594,42 +1594,42 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Approval record
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalDetailResponse'
-        '400':
+                $ref: "#/components/schemas/ApprovalDetailResponse"
+        "400":
           description: Invalid UUID format
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '401':
+                $ref: "#/components/schemas/ApprovalError"
+        "401":
           description: Missing principal header
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '403':
+                $ref: "#/components/schemas/ApprovalError"
+        "403":
           description: Principal does not match approval owner
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '404':
+                $ref: "#/components/schemas/ApprovalError"
+        "404":
           description: Approval not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '410':
+                $ref: "#/components/schemas/ApprovalError"
+        "410":
           description: Approval has expired
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
+                $ref: "#/components/schemas/ApprovalError"
 
   /api/approvals/{id}/approve:
     post:
@@ -1654,44 +1654,44 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ApproveRequest'
+              $ref: "#/components/schemas/ApproveRequest"
       responses:
-        '200':
+        "200":
           description: Approval accepted
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApproveResponse'
-        '400':
+                $ref: "#/components/schemas/ApproveResponse"
+        "400":
           description: Invalid UUID or missing persistence field
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '401':
+                $ref: "#/components/schemas/ApprovalError"
+        "401":
           description: Missing principal header
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '403':
+                $ref: "#/components/schemas/ApprovalError"
+        "403":
           description: Acting user does not match approval principal
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '404':
+                $ref: "#/components/schemas/ApprovalError"
+        "404":
           description: Approval not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '410':
+                $ref: "#/components/schemas/ApprovalError"
+        "410":
           description: Approval expired or already actioned
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
+                $ref: "#/components/schemas/ApprovalError"
 
   /api/approvals/{id}/deny:
     post:
@@ -1716,44 +1716,44 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DenyRequest'
+              $ref: "#/components/schemas/DenyRequest"
       responses:
-        '200':
+        "200":
           description: Denial recorded
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DenyResponse'
-        '400':
+                $ref: "#/components/schemas/DenyResponse"
+        "400":
           description: Invalid UUID
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '401':
+                $ref: "#/components/schemas/ApprovalError"
+        "401":
           description: Missing principal header
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '403':
+                $ref: "#/components/schemas/ApprovalError"
+        "403":
           description: Acting user does not match approval principal
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '404':
+                $ref: "#/components/schemas/ApprovalError"
+        "404":
           description: Approval not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '410':
+                $ref: "#/components/schemas/ApprovalError"
+        "410":
           description: Approval expired or already actioned
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
+                $ref: "#/components/schemas/ApprovalError"
 
   /api/approvals/{id}/consume:
     post:
@@ -1776,42 +1776,42 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Approval consumed (or already consumed)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ConsumeResponse'
-        '400':
+                $ref: "#/components/schemas/ConsumeResponse"
+        "400":
           description: Invalid UUID
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '401':
+                $ref: "#/components/schemas/ApprovalError"
+        "401":
           description: Missing or invalid subject token
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '403':
+                $ref: "#/components/schemas/ApprovalError"
+        "403":
           description: Subject token principal does not match approval owner
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '404':
+                $ref: "#/components/schemas/ApprovalError"
+        "404":
           description: Approval not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '422':
+                $ref: "#/components/schemas/ApprovalError"
+        "422":
           description: Approval is not once-persistence or not approved
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
+                $ref: "#/components/schemas/ApprovalError"
 
   /api/approvals/{id}/revoke:
     post:
@@ -1832,30 +1832,30 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Permanent approval revoked
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DenyResponse'
-        '401':
+                $ref: "#/components/schemas/DenyResponse"
+        "401":
           description: Missing principal header
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '403':
+                $ref: "#/components/schemas/ApprovalError"
+        "403":
           description: Acting user does not match approval principal
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
-        '404':
+                $ref: "#/components/schemas/ApprovalError"
+        "404":
           description: Approval not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalError'
+                $ref: "#/components/schemas/ApprovalError"
 
   /oauth2/jwks.json:
     get:
@@ -3271,155 +3271,8 @@ components:
           format: uri
           description: URI pointing to human-readable error documentation.
           example: "https://docs.example.com/errors/access_denied"
-  responses:
-    Unauthorized:
-      description: |
-        Authentication required or session expired.
-
-        **Common Causes**:
-
-        - No `X-Remote-User` header (authentication proxy not configured)
-        - Invalid or expired session cookie
-        - Principal not found in request context
-
-        **Resolution**:
-
-        - Ensure upstream authentication proxy is properly configured
-        - Re-authenticate through login flow
-        - Check session cookie validity
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorResponse"
-          example:
-            error: unauthorized
-            message: authentication required
-    BadRequest:
-      description: |
-        Invalid request parameters or format.
-
-        **Common Causes**:
-
-        - Missing required path parameters
-        - Invalid UUID format for agent-id
-        - Malformed request body
-
-        **Resolution**:
-
-        - Check API documentation for required parameters
-        - Validate UUIDs match format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
-        - Ensure request body is valid JSON
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorResponse"
-          examples:
-            missingAgentId:
-              summary: Missing agent ID
-              value:
-                error: bad request
-                message: agent ID is required
-            invalidJson:
-              summary: Invalid JSON
-              value:
-                error: invalid request
-                message: request body must be valid JSON
-    ValidationError:
-      description: |
-        Request validation failed.
-
-        **Common Causes**:
-
-        - Invalid service IDs (service doesn't exist or not available to agent)
-        - Invalid scopes (scope doesn't exist for the specified service)
-        - Invalid date format or past date for valid_until
-        - Empty scopes array for a service
-
-        **Resolution**:
-
-        - Use GET `/api/consent/agents/{agent-id}` to see available services and scopes
-
-        - Ensure valid_until is in ISO 8601 format and in the future
-        - Provide at least one scope per service
-        - Verify service IDs match available services
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorResponse"
-          examples:
-            invalidScopes:
-              summary: Invalid scopes for service
-              value:
-                error: invalid scopes
-                message: One or more requested scopes do not exist for the specified service
-            pastDate:
-              summary: Past date for valid_until
-              value:
-                error: invalid request
-                message: valid_until must be in the future
-            serviceNotFound:
-              summary: Service not found
-              value:
-                error: service not found
-                message: Service with specified ID does not exist or is not available to this agent
-    AgentNotFound:
-      description: |
-        Agent with specified ID does not exist.
-
-        **Common Causes**:
-
-        - Invalid agent ID (typo or incorrect UUID)
-        - Agent has been deleted
-        - Agent is not registered in the system
-
-        **Resolution**:
-
-        - Verify agent ID from GET `/api/consent/agents` endpoint
-        - Check if agent still exists in the system
-        - Contact administrator if agent should exist
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorResponse"
-          example:
-            error: not found
-            message: agent not found
-    InternalServerError:
-      description: |
-        Internal server error occurred.
-
-        **Common Causes**:
-
-        - Database connection failure
-        - Unexpected service error
-        - Resource temporarily unavailable
-
-        **Resolution**:
-
-        - Retry the request after a short delay
-        - Check server health via GET `/health` endpoint
-        - Contact administrator if error persists
-        - Check server logs for detailed error information
-
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorResponse"
-          example:
-            error: internal server error
-            message: ""
-    InternalError:
-      description: Internal server error
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
-          example:
-            error: internal_error
-            message: An unexpected error occurred
 
     # ---- Tool Approval Schemas ----
-
     ApprovalError:
       type: object
       required:
@@ -3492,7 +3345,7 @@ components:
         - data
       properties:
         data:
-          $ref: '#/components/schemas/ToolApprovalDetail'
+          $ref: "#/components/schemas/ToolApprovalDetail"
 
     ToolApprovalDetail:
       type: object
@@ -3669,7 +3522,7 @@ components:
             pairs:
               type: array
               items:
-                $ref: '#/components/schemas/ApprovalPair'
+                $ref: "#/components/schemas/ApprovalPair"
 
     ApprovalPair:
       type: object
@@ -3687,7 +3540,7 @@ components:
         approvals:
           type: array
           items:
-            $ref: '#/components/schemas/ToolApprovalSummary'
+            $ref: "#/components/schemas/ToolApprovalSummary"
         granted_permission_sets:
           type: object
           additionalProperties: true
@@ -3720,3 +3573,148 @@ components:
         agent_session_id:
           type: string
           nullable: true
+  responses:
+    Unauthorized:
+      description: |
+        Authentication required or session expired.
+
+        **Common Causes**:
+
+        - No `X-Remote-User` header (authentication proxy not configured)
+        - Invalid or expired session cookie
+        - Principal not found in request context
+
+        **Resolution**:
+
+        - Ensure upstream authentication proxy is properly configured
+        - Re-authenticate through login flow
+        - Check session cookie validity
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: unauthorized
+            message: authentication required
+    BadRequest:
+      description: |
+        Invalid request parameters or format.
+
+        **Common Causes**:
+
+        - Missing required path parameters
+        - Invalid UUID format for agent-id
+        - Malformed request body
+
+        **Resolution**:
+
+        - Check API documentation for required parameters
+        - Validate UUIDs match format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+        - Ensure request body is valid JSON
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            missingAgentId:
+              summary: Missing agent ID
+              value:
+                error: bad request
+                message: agent ID is required
+            invalidJson:
+              summary: Invalid JSON
+              value:
+                error: invalid request
+                message: request body must be valid JSON
+    ValidationError:
+      description: |
+        Request validation failed.
+
+        **Common Causes**:
+
+        - Invalid service IDs (service doesn't exist or not available to agent)
+        - Invalid scopes (scope doesn't exist for the specified service)
+        - Invalid date format or past date for valid_until
+        - Empty scopes array for a service
+
+        **Resolution**:
+
+        - Use GET `/api/consent/agents/{agent-id}` to see available services and scopes
+
+        - Ensure valid_until is in ISO 8601 format and in the future
+        - Provide at least one scope per service
+        - Verify service IDs match available services
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            invalidScopes:
+              summary: Invalid scopes for service
+              value:
+                error: invalid scopes
+                message: One or more requested scopes do not exist for the specified service
+            pastDate:
+              summary: Past date for valid_until
+              value:
+                error: invalid request
+                message: valid_until must be in the future
+            serviceNotFound:
+              summary: Service not found
+              value:
+                error: service not found
+                message: Service with specified ID does not exist or is not available to this agent
+    AgentNotFound:
+      description: |
+        Agent with specified ID does not exist.
+
+        **Common Causes**:
+
+        - Invalid agent ID (typo or incorrect UUID)
+        - Agent has been deleted
+        - Agent is not registered in the system
+
+        **Resolution**:
+
+        - Verify agent ID from GET `/api/consent/agents` endpoint
+        - Check if agent still exists in the system
+        - Contact administrator if agent should exist
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: not found
+            message: agent not found
+    InternalServerError:
+      description: |
+        Internal server error occurred.
+
+        **Common Causes**:
+
+        - Database connection failure
+        - Unexpected service error
+        - Resource temporarily unavailable
+
+        **Resolution**:
+
+        - Retry the request after a short delay
+        - Check server health via GET `/health` endpoint
+        - Contact administrator if error persists
+        - Check server logs for detailed error information
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: internal server error
+            message: ""
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: internal_error
+            message: An unexpected error occurred
