@@ -98,7 +98,7 @@ aws cloudformation describe-stacks \
 ```bash
 helm install broker ./charts/agentic-identity-broker \
   --set serviceAccount.irsa.enabled=true \
-  --set serviceAccount.irsa.roleArn="arn:aws:iam::123456789012:role/IdentityBrokerEncryptionRole-prod"
+  --set serviceAccount.irsa.role="arn:aws:iam::123456789012:role/IdentityBrokerEncryptionRole-prod"
 ```
 
 The ServiceAccount will be automatically annotated with `iam.amazonaws.com/role`, enabling the broker pods to assume the IAM role and access KMS/DynamoDB without credentials.
@@ -118,7 +118,7 @@ See [values.yaml](values.yaml) for the complete list of configuration options.
 | `migration.image.tag` | Migration image tag | Chart appVersion |
 | `storage.type` | Storage backend (`memory` or `postgres`) | `memory` |
 | `serviceAccount.irsa.enabled` | Enable AWS IRSA annotation | `false` |
-| `serviceAccount.irsa.roleArn` | IAM role ARN for IRSA | `""` |
+| `serviceAccount.irsa.role` | IAM role ARN for IRSA | `""` |
 | `ingress.enduser.enabled` | Enable Ingress for end-user API | `false` |
 | `ingress.admin.enabled` | Enable Ingress for admin API | `false` |
 | `resources.requests.cpu` | CPU request | `100m` |
@@ -504,6 +504,6 @@ broker:
 
 ## Links
 
-- [Project Repository](https://github.com/zalando-infosec/agentic-identity-broker)
-- [Documentation](https://github.com/zalando-infosec/agentic-identity-broker/tree/main/docs)
-- [Issue Tracker](https://github.com/zalando-infosec/agentic-identity-broker/issues)
+- [Project Repository](https://github.com/zalando-incubator/agentic-identity-broker)
+- [Documentation](https://github.com/zalando-incubator/agentic-identity-broker/tree/main/docs)
+- [Issue Tracker](https://github.com/zalando-incubator/agentic-identity-broker/issues)
