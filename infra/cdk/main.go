@@ -7,11 +7,17 @@
 // Usage:
 //
 //	cdk synth -c env=test \
-//	  -c serviceAccountSubject=system:serviceaccount:agentic-identity-broker:agentic-identity-broker
+//	  -c serviceAccountSubject=system:serviceaccount:agentic-identity-broker:agentic-identity-broker \
+//	  -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE \
+//	  -c oidcSubjectKey=oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE:sub
 //	cdk synth -c env=sandbox \
-//	  -c serviceAccountSubject=system:serviceaccount:agentic-identity-broker-sandbox:agentic-identity-broker
+//	  -c serviceAccountSubject=system:serviceaccount:agentic-identity-broker-sandbox:agentic-identity-broker \
+//	  -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE \
+//	  -c oidcSubjectKey=oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE:sub
 //	cdk synth -c env=prod \
-//	  -c serviceAccountSubject=system:serviceaccount:agentic-identity-broker:agentic-identity-broker
+//	  -c serviceAccountSubject=system:serviceaccount:agentic-identity-broker:agentic-identity-broker \
+//	  -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE \
+//	  -c oidcSubjectKey=oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE:sub
 //
 // Custom Tags (optional):
 //
@@ -50,12 +56,26 @@ func main() {
 		env = "prod"
 	}
 
-	// Read the OIDC subject claim for the CDP trust relationship.
-	// NewEncryptionStack panics if this is empty.
+	// Read the OIDC subject claim for the IAM OIDC trust relationship.
+	// NewEncryptionStack panics if this or the OIDC provider fields are empty.
 	serviceAccountSubject := ""
 	if v := app.Node().TryGetContext(jsii.String("serviceAccountSubject")); v != nil {
 		if s, ok := v.(string); ok {
 			serviceAccountSubject = s
+		}
+	}
+
+	oidcProviderArn := ""
+	if v := app.Node().TryGetContext(jsii.String("oidcProviderArn")); v != nil {
+		if s, ok := v.(string); ok {
+			oidcProviderArn = s
+		}
+	}
+
+	oidcSubjectKey := ""
+	if v := app.Node().TryGetContext(jsii.String("oidcSubjectKey")); v != nil {
+		if s, ok := v.(string); ok {
+			oidcSubjectKey = s
 		}
 	}
 
@@ -85,6 +105,8 @@ func main() {
 		},
 		Environment:           env,
 		ServiceAccountSubject: serviceAccountSubject,
+		OIDCProviderArn:       oidcProviderArn,
+		OIDCSubjectKey:        oidcSubjectKey,
 		Tags:                  customTags,
 	})
 

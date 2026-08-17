@@ -12,25 +12,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testOIDCProviderArn          = "arn:aws:iam::123456789012:oidc-provider/oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE"
+	testOIDCSubjectKey           = "oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE:sub"
+	defaultServiceAccountSubject = "system:serviceaccount:agentic-identity-broker:agentic-identity-broker"
+)
+
 // helper to create a stack for testing.
 // An empty subject defaults to the canonical test service account.
 func createTestStack(t *testing.T, env, subject string) (awscdk.Stack, assertions.Template) {
 	t.Helper()
-	if subject == "" {
-		subject = "system:serviceaccount:agentic-identity-broker:agentic-identity-broker"
-	}
 	app := awscdk.NewApp(nil)
 
-	stack := NewEncryptionStack(app, "TestStack", &EncryptionStackProps{
-		StackProps: awscdk.StackProps{
-			Env: &awscdk.Environment{
-				Account: jsii.String("123456789012"),
-				Region:  jsii.String("eu-central-1"),
-			},
-		},
-		Environment:           env,
-		ServiceAccountSubject: subject,
-	})
+	stack := NewEncryptionStack(app, "TestStack", newTestStackProps(env, subject))
 
 	template := assertions.Template_FromStack(stack, nil)
 	return stack, template
@@ -170,7 +164,7 @@ func TestIAMRoleCreated(t *testing.T) {
 	})
 }
 
-func TestIAMRoleTrustPolicyCDPForTest(t *testing.T) {
+func TestIAMRoleTrustPolicyOIDCForTest(t *testing.T) {
 	_, template := createTestStack(t, "test", "")
 
 	templateJSON := template.ToJSON()
@@ -181,12 +175,12 @@ func TestIAMRoleTrustPolicyCDPForTest(t *testing.T) {
 		stmt := extractTrustStatement(t, role)
 		principal, ok := stmt["Principal"].(map[string]interface{})
 		require.True(t, ok)
-		assert.Equal(t, "{{{CDP_OIDC_PROVIDER_ARN}}}", principal["Federated"])
+		assert.Equal(t, testOIDCProviderArn, principal["Federated"])
 		assert.Equal(t, "sts:AssumeRoleWithWebIdentity", stmt["Action"])
 	}
 }
 
-func TestIAMRoleTrustPolicyCDP(t *testing.T) {
+func TestIAMRoleTrustPolicyOIDC(t *testing.T) {
 	subject := "system:serviceaccount:identity-broker:agentic-identity-broker"
 
 	_, template := createTestStack(t, "prod", subject)
@@ -199,12 +193,12 @@ func TestIAMRoleTrustPolicyCDP(t *testing.T) {
 		stmt := extractTrustStatement(t, role)
 		principal, ok := stmt["Principal"].(map[string]interface{})
 		require.True(t, ok)
-		assert.Equal(t, "{{{CDP_OIDC_PROVIDER_ARN}}}", principal["Federated"])
+		assert.Equal(t, testOIDCProviderArn, principal["Federated"])
 		condition, ok := stmt["Condition"].(map[string]interface{})
 		require.True(t, ok)
 		stringEquals, ok := condition["StringEquals"].(map[string]interface{})
 		require.True(t, ok)
-		assert.Equal(t, subject, stringEquals["{{{CDP_OIDC_SUBJECT_KEY}}}"])
+		assert.Equal(t, subject, stringEquals[testOIDCSubjectKey])
 	}
 }
 
@@ -421,17 +415,9 @@ func TestAllResourcesTagged(t *testing.T) {
 
 func TestEnvironmentTagCannotBeOverriddenByCustomTags(t *testing.T) {
 	app := awscdk.NewApp(nil)
-	stack := NewEncryptionStack(app, "TestStack", &EncryptionStackProps{
-		StackProps: awscdk.StackProps{
-			Env: &awscdk.Environment{
-				Account: jsii.String("123456789012"),
-				Region:  jsii.String("eu-central-1"),
-			},
-		},
-		Environment:           "prod",
-		ServiceAccountSubject: "system:serviceaccount:ns:sa",
-		Tags:                  map[string]string{"environment": "staging"},
-	})
+	props := newTestStackProps("prod", "system:serviceaccount:ns:sa")
+	props.Tags = map[string]string{"environment": "staging"}
+	stack := NewEncryptionStack(app, "TestStack", props)
 	template := assertions.Template_FromStack(stack, nil)
 
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
@@ -539,51 +525,56 @@ func TestKMSAlarmsOutputsExist(t *testing.T) {
 // --- Production Security Tests ---
 
 func TestProductionRequiresServiceAccountSubject(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("Expected panic for production without serviceAccountSubject")
-		}
-	}()
-
 	app := awscdk.NewApp(nil)
-	NewEncryptionStack(app, "test", &EncryptionStackProps{
-		Environment:           "prod",
-		ServiceAccountSubject: "", // Missing!
+	props := newTestStackProps("prod", defaultServiceAccountSubject)
+	props.ServiceAccountSubject = ""
+
+	assert.Panics(t, func() {
+		NewEncryptionStack(app, "test", props)
 	})
 }
 
 func TestProductionWithServiceAccountSucceeds(t *testing.T) {
 	app := awscdk.NewApp(nil)
-	stack := NewEncryptionStack(app, "test", &EncryptionStackProps{
-		StackProps: awscdk.StackProps{
-			Env: &awscdk.Environment{
-				Account: jsii.String("123456789012"),
-				Region:  jsii.String("eu-central-1"),
-			},
-		},
-		Environment:           "prod",
-		ServiceAccountSubject: "system:serviceaccount:agentic-identity-broker:agentic-identity-broker",
-	})
+	stack := NewEncryptionStack(app, "test", newTestStackProps("prod", defaultServiceAccountSubject))
 	assert.NotNil(t, stack)
 }
 
 func TestNonProductionRequiresServiceAccountSubject(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("Expected panic for test env without serviceAccountSubject")
-		}
-	}()
-
 	app := awscdk.NewApp(nil)
-	NewEncryptionStack(app, "test", &EncryptionStackProps{
-		Environment:           "test",
-		ServiceAccountSubject: "", // Missing!
+	props := newTestStackProps("test", defaultServiceAccountSubject)
+	props.ServiceAccountSubject = ""
+
+	assert.Panics(t, func() {
+		NewEncryptionStack(app, "test", props)
 	})
 }
 
-// --- CDP Trust Policy Tests ---
+func TestRequiresOIDCTrustParameters(t *testing.T) {
+	t.Run("missing provider arn", func(t *testing.T) {
+		app := awscdk.NewApp(nil)
+		props := newTestStackProps("prod", defaultServiceAccountSubject)
+		props.OIDCProviderArn = ""
 
-func TestCDPTrustPolicyServiceAccount(t *testing.T) {
+		assert.Panics(t, func() {
+			NewEncryptionStack(app, "test", props)
+		})
+	})
+
+	t.Run("missing subject key", func(t *testing.T) {
+		app := awscdk.NewApp(nil)
+		props := newTestStackProps("prod", defaultServiceAccountSubject)
+		props.OIDCSubjectKey = ""
+
+		assert.Panics(t, func() {
+			NewEncryptionStack(app, "test", props)
+		})
+	})
+}
+
+// --- OIDC Trust Policy Tests ---
+
+func TestOIDCTrustPolicyServiceAccount(t *testing.T) {
 	subject := "system:serviceaccount:my-namespace:my-service-account"
 
 	_, template := createTestStack(t, "prod", subject)
@@ -598,7 +589,7 @@ func TestCDPTrustPolicyServiceAccount(t *testing.T) {
 		require.True(t, ok)
 		stringEquals, ok := condition["StringEquals"].(map[string]interface{})
 		require.True(t, ok)
-		assert.Equal(t, subject, stringEquals["{{{CDP_OIDC_SUBJECT_KEY}}}"])
+		assert.Equal(t, subject, stringEquals[testOIDCSubjectKey])
 	}
 }
 
@@ -674,16 +665,7 @@ func TestEnvironmentParameterizationProd(t *testing.T) {
 
 func TestEnvironmentParameterizationProductionNormalized(t *testing.T) {
 	subject := "system:serviceaccount:default:test-sa"
-	originalProps := &EncryptionStackProps{
-		StackProps: awscdk.StackProps{
-			Env: &awscdk.Environment{
-				Account: jsii.String("123456789012"),
-				Region:  jsii.String("eu-central-1"),
-			},
-		},
-		Environment:           "production",
-		ServiceAccountSubject: subject,
-	}
+	originalProps := newTestStackProps("production", subject)
 	app := awscdk.NewApp(nil)
 	stack := NewEncryptionStack(app, "TestStack", originalProps)
 	template := assertions.Template_FromStack(stack, nil)
@@ -752,11 +734,29 @@ func TestSandboxTrustPolicy(t *testing.T) {
 		require.True(t, ok)
 		stringEquals, ok := condition["StringEquals"].(map[string]interface{})
 		require.True(t, ok)
-		assert.Equal(t, subject, stringEquals["{{{CDP_OIDC_SUBJECT_KEY}}}"])
+		assert.Equal(t, subject, stringEquals[testOIDCSubjectKey])
 	}
 }
 
 // --- Helpers ---
+func newTestStackProps(env, subject string) *EncryptionStackProps {
+	if subject == "" {
+		subject = defaultServiceAccountSubject
+	}
+
+	return &EncryptionStackProps{
+		StackProps: awscdk.StackProps{
+			Env: &awscdk.Environment{
+				Account: jsii.String("123456789012"),
+				Region:  jsii.String("eu-central-1"),
+			},
+		},
+		Environment:           env,
+		ServiceAccountSubject: subject,
+		OIDCProviderArn:       testOIDCProviderArn,
+		OIDCSubjectKey:        testOIDCSubjectKey,
+	}
+}
 
 // extractTrustStatement returns Statement[0] from the AssumeRolePolicyDocument of a role resource map.
 func extractTrustStatement(t *testing.T, role interface{}) map[string]interface{} {

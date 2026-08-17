@@ -85,9 +85,9 @@ eksctl utils associate-iam-oidc-provider \
   --approve
 ```
 
-### 2. Get OIDC Provider ARN
+### 2. Get OIDC Provider ARN and Subject Key
 
-Extract the OIDC provider ARN for CDK deployment:
+Extract the OIDC provider ARN and subject condition key for CDK deployment:
 
 ```bash
 # Get cluster OIDC issuer
@@ -96,17 +96,21 @@ OIDC_ISSUER=$(aws eks describe-cluster \
   --query 'cluster.identity.oidc.issuer' \
   --output text)
 
-# Extract OIDC provider ID (last segment of URL)
-OIDC_ID=$(echo $OIDC_ISSUER | awk -F'/' '{print $NF}')
+# Derive provider host from the issuer URL
+OIDC_PROVIDER_HOST=${OIDC_ISSUER#https://}
 
 # Get AWS account ID
 ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
 
-# Construct OIDC provider ARN
-OIDC_PROVIDER_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/${OIDC_ID}"
+# Construct deploy-time context values
+OIDC_PROVIDER_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/${OIDC_PROVIDER_HOST}"
+OIDC_SUBJECT_KEY="${OIDC_PROVIDER_HOST}:sub"
 
 echo "OIDC Provider ARN: $OIDC_PROVIDER_ARN"
+echo "OIDC Subject Key: $OIDC_SUBJECT_KEY"
 ```
+
+These values are required alongside `serviceAccountSubject` for every `cdk synth`, `cdk diff`, and `cdk deploy` invocation.
 
 ### 3. Define Service Account Details
 
@@ -165,6 +169,8 @@ The AWS CDK CLI will invoke the Go code to generate a CloudFormation template:
 ```bash
 npx cdk synth \
   -c env=prod \
+  -c oidcProviderArn="$OIDC_PROVIDER_ARN" \
+  -c oidcSubjectKey="$OIDC_SUBJECT_KEY" \
   -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 ```
 
@@ -179,6 +185,8 @@ Review the synthesized template: `cdk.out/AgenticIdentityBrokerEncryptionVault-p
 ```bash
 npx cdk diff \
   -c env=prod \
+  -c oidcProviderArn="$OIDC_PROVIDER_ARN" \
+  -c oidcSubjectKey="$OIDC_SUBJECT_KEY" \
   -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 ```
 
@@ -187,6 +195,8 @@ npx cdk diff \
 ```bash
 npx cdk deploy \
   -c env=prod \
+  -c oidcProviderArn="$OIDC_PROVIDER_ARN" \
+  -c oidcSubjectKey="$OIDC_SUBJECT_KEY" \
   -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 ```
 
@@ -704,8 +714,9 @@ Compare actual vs expected:
 kubectl get pod $POD_NAME -n ${K8S_NAMESPACE} -o jsonpath='{.spec.serviceAccountName}'
 kubectl get pod $POD_NAME -n ${K8S_NAMESPACE} -o jsonpath='{.metadata.namespace}'
 
-# Expected subject used at deploy time (serviceAccountSubject parameter)
+# Expected subject used at deploy time (serviceAccountSubject)
 # Format: system:serviceaccount:<namespace>:<service-account-name>
+# Expected condition key: <oidc-provider-host>:sub (oidcSubjectKey)
 ```
 
 **Solutions**:
@@ -831,6 +842,8 @@ jobs:
           npm install -g aws-cdk
           npx cdk deploy \
             -c env=prod \
+            -c oidcProviderArn="${{ secrets.EKS_OIDC_PROVIDER_ARN }}" \
+            -c oidcSubjectKey="${{ secrets.EKS_OIDC_SUBJECT_KEY }}" \
             -c serviceAccountSubject=system:serviceaccount:identity-broker:broker-sa \
             --require-approval never
 
