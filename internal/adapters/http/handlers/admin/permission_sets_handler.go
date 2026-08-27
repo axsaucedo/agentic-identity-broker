@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -50,6 +51,7 @@ type ServiceScopeRequest struct {
 
 // CreatePermissionSetRequest represents the request body for creating/updating a permission set.
 type CreatePermissionSetRequest struct {
+	CanonicalID   *string               `json:"canonical_id,omitempty"`
 	Name          string                `json:"name"`
 	Description   string                `json:"description"`
 	ServiceScopes []ServiceScopeRequest `json:"service_scopes"`
@@ -65,6 +67,7 @@ type ServiceScopeResponse struct {
 // PermissionSetResponse represents the response body for permission set operations.
 type PermissionSetResponse struct {
 	ID            string                 `json:"id"`
+	CanonicalID   *string                `json:"canonical_id"`
 	Name          string                 `json:"name"`
 	Description   string                 `json:"description"`
 	ServiceScopes []ServiceScopeResponse `json:"service_scopes"`
@@ -96,7 +99,7 @@ func (h *PermissionSetsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert request service scopes to domain model
-	serviceScopes, err := h.convertServiceScopes(req.ServiceScopes)
+	serviceScopes, err := h.convertServiceScopes(ctx, req.ServiceScopes)
 	if err != nil {
 		h.logger.Warn("invalid service scopes", "error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
@@ -107,6 +110,7 @@ func (h *PermissionSetsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	ps := &storage.PermissionSet{
 		ID:            id.NewPermissionSetID(),
+		CanonicalID:   req.CanonicalID,
 		Name:          req.Name,
 		Description:   req.Description,
 		ServiceScopes: serviceScopes,
@@ -129,6 +133,7 @@ func (h *PermissionSetsHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // Get handles GET /api/permission-sets/:id
 func (h *PermissionSetsHandler) Get(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Vary", "Prefer")
 	ctx := r.Context()
 	psIDStr := chi.URLParam(r, "id")
 
@@ -137,9 +142,9 @@ func (h *PermissionSetsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	psID, err := id.ParsePermissionSetID(psIDStr)
+	psID, err := h.svc.ResolveID(ctx, psIDStr)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid permission set ID", err.Error())
+		h.handleStorageError(w, r, "Get", err)
 		return
 	}
 
@@ -150,11 +155,22 @@ func (h *PermissionSetsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := h.toResponse(ps)
+	if requestsCanonicalReferences(r.Header.Get("Prefer")) {
+		honored, err := h.applyCanonicalServiceScopes(ctx, []*storage.PermissionSet{ps}, []*PermissionSetResponse{&resp})
+		if err != nil {
+			h.handleStorageError(w, r, "Get", err)
+			return
+		}
+		if honored {
+			w.Header().Set("Preference-Applied", "reference-id=canonical")
+		}
+	}
 	h.writeJSON(w, http.StatusOK, resp)
 }
 
 // List handles GET /api/permission-sets
 func (h *PermissionSetsHandler) List(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Vary", "Prefer")
 	ctx := r.Context()
 
 	// Parse optional service_id filter
@@ -162,7 +178,17 @@ func (h *PermissionSetsHandler) List(w http.ResponseWriter, r *http.Request) {
 	var serviceID id.ServiceID
 
 	if serviceIDStr != "" {
-		parsedServiceID, err := id.ParseServiceID(serviceIDStr)
+		var (
+			parsedServiceID id.ServiceID
+			err             error
+		)
+		if resolver, ok := h.providerScopeValidator.(interface {
+			ResolveID(context.Context, string) (id.ServiceID, error)
+		}); ok {
+			parsedServiceID, err = resolver.ResolveID(ctx, serviceIDStr)
+		} else {
+			parsedServiceID, err = id.ParseServiceID(serviceIDStr)
+		}
 		if err != nil {
 			h.writeError(w, http.StatusBadRequest, "invalid service_id", err.Error())
 			return
@@ -176,12 +202,25 @@ func (h *PermissionSetsHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert to response format
 	items := make([]PermissionSetResponse, 0)
 	if permissionSets != nil {
 		items = make([]PermissionSetResponse, len(permissionSets))
 		for i, ps := range permissionSets {
 			items[i] = h.toResponse(ps)
+		}
+	}
+	if requestsCanonicalReferences(r.Header.Get("Prefer")) {
+		responsePointers := make([]*PermissionSetResponse, len(items))
+		for i := range items {
+			responsePointers[i] = &items[i]
+		}
+		honored, err := h.applyCanonicalServiceScopes(ctx, permissionSets, responsePointers)
+		if err != nil {
+			h.handleStorageError(w, r, "List", err)
+			return
+		}
+		if honored {
+			w.Header().Set("Preference-Applied", "reference-id=canonical")
 		}
 	}
 
@@ -199,18 +238,29 @@ func (h *PermissionSetsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	psID, err := id.ParsePermissionSetID(psIDStr)
+	psID, err := h.svc.ResolveID(ctx, psIDStr)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid permission set ID", err.Error())
+		h.handleStorageError(w, r, "Update", err)
 		return
 	}
 
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
 	var req CreatePermissionSetRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		h.logger.Warn("failed to decode request body", "error", err)
 		h.writeError(w, http.StatusBadRequest, "invalid request body", err.Error())
 		return
 	}
+	var rawFields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &rawFields); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	_, canonicalIDPresent := rawFields["canonical_id"]
 
 	// Validate request
 	if err := h.validateCreateRequest(ctx, &req); err != nil {
@@ -220,7 +270,7 @@ func (h *PermissionSetsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert request service scopes to domain model
-	serviceScopes, err := h.convertServiceScopes(req.ServiceScopes)
+	serviceScopes, err := h.convertServiceScopes(ctx, req.ServiceScopes)
 	if err != nil {
 		h.logger.Warn("invalid service scopes", "error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
@@ -236,12 +286,18 @@ func (h *PermissionSetsHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	// Update permission set entity
 	ps := &storage.PermissionSet{
-		ID:            psID,
-		Name:          req.Name,
-		Description:   req.Description,
-		ServiceScopes: serviceScopes,
-		CreatedAt:     existing.CreatedAt,
-		UpdatedAt:     time.Now().UTC(),
+		CanonicalID:      req.CanonicalID,
+		ClearCanonicalID: req.CanonicalID == nil && canonicalIDPresent,
+		ID:               psID,
+		Name:             req.Name,
+		Description:      req.Description,
+		ServiceScopes:    serviceScopes,
+		CreatedAt:        existing.CreatedAt,
+		UpdatedAt:        time.Now().UTC(),
+	}
+
+	if !canonicalIDPresent {
+		ps.CanonicalID = existing.CanonicalID
 	}
 
 	// Update in service
@@ -267,9 +323,9 @@ func (h *PermissionSetsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	psID, err := id.ParsePermissionSetID(psIDStr)
+	psID, err := h.svc.ResolveID(ctx, psIDStr)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid permission set ID", err.Error())
+		h.handleStorageError(w, r, "Delete", err)
 		return
 	}
 
@@ -322,7 +378,7 @@ func (h *PermissionSetsHandler) validateCreateRequest(ctx context.Context, req *
 			}
 		}
 		if h.providerScopeValidator != nil {
-			serviceID, err := id.ParseServiceID(ss.ServiceID)
+			serviceID, err := h.resolveServiceID(ctx, ss.ServiceID)
 			if err != nil {
 				return fmt.Errorf("service_scope[%d]: invalid service_id: %w", i, err)
 			}
@@ -339,15 +395,14 @@ func (h *PermissionSetsHandler) validateCreateRequest(ctx context.Context, req *
 	return nil
 }
 
-// convertServiceScopes converts request DTOs to domain models.
-func (h *PermissionSetsHandler) convertServiceScopes(reqScopes []ServiceScopeRequest) ([]storage.ServiceScope, error) {
+func (h *PermissionSetsHandler) convertServiceScopes(ctx context.Context, reqScopes []ServiceScopeRequest) ([]storage.ServiceScope, error) {
 	if len(reqScopes) == 0 {
 		return nil, errors.New("service_scopes must contain at least one entry")
 	}
 
 	result := make([]storage.ServiceScope, len(reqScopes))
 	for i, req := range reqScopes {
-		parsedServiceID, err := id.ParseServiceID(req.ServiceID)
+		parsedServiceID, err := h.resolveServiceID(ctx, req.ServiceID)
 		if err != nil {
 			return nil, fmt.Errorf("service_scope[%d]: invalid service_id", i)
 		}
@@ -367,10 +422,20 @@ func (h *PermissionSetsHandler) convertServiceScopes(reqScopes []ServiceScopeReq
 	return result, nil
 }
 
+func (h *PermissionSetsHandler) resolveServiceID(ctx context.Context, value string) (id.ServiceID, error) {
+	if resolver, ok := h.providerScopeValidator.(interface {
+		ResolveID(context.Context, string) (id.ServiceID, error)
+	}); ok {
+		return resolver.ResolveID(ctx, value)
+	}
+	return id.ParseServiceID(value)
+}
+
 // toResponse converts a PermissionSet domain entity to PermissionSetResponse.
 func (h *PermissionSetsHandler) toResponse(ps *storage.PermissionSet) PermissionSetResponse {
 	resp := PermissionSetResponse{
 		ID:          ps.ID.String(),
+		CanonicalID: ps.CanonicalID,
 		Name:        ps.Name,
 		Description: ps.Description,
 		CreatedAt:   ps.CreatedAt.Format(time.RFC3339),
@@ -387,6 +452,37 @@ func (h *PermissionSetsHandler) toResponse(ps *storage.PermissionSet) Permission
 	}
 
 	return resp
+}
+
+func (h *PermissionSetsHandler) applyCanonicalServiceScopes(ctx context.Context, permissionSets []*storage.PermissionSet, responses []*PermissionSetResponse) (bool, error) {
+	canonicalLookup, ok := h.providerScopeValidator.(interface {
+		CanonicalIDs(context.Context, []id.ServiceID) (map[id.ServiceID]string, error)
+	})
+	if !ok {
+		return false, nil
+	}
+	serviceIDs := make([]id.ServiceID, 0)
+	seen := make(map[id.ServiceID]struct{})
+	for _, permissionSet := range permissionSets {
+		for _, scope := range permissionSet.ServiceScopes {
+			if _, exists := seen[scope.ServiceID]; !exists {
+				seen[scope.ServiceID] = struct{}{}
+				serviceIDs = append(serviceIDs, scope.ServiceID)
+			}
+		}
+	}
+	canonicalIDs, err := canonicalLookup.CanonicalIDs(ctx, serviceIDs)
+	if err != nil {
+		return false, err
+	}
+	for i, permissionSet := range permissionSets {
+		for j, scope := range permissionSet.ServiceScopes {
+			if canonicalID, exists := canonicalIDs[scope.ServiceID]; exists {
+				responses[i].ServiceScopes[j].ServiceID = canonicalID
+			}
+		}
+	}
+	return true, nil
 }
 
 // handleStorageError converts storage errors to HTTP responses.

@@ -16,18 +16,20 @@ import (
 // (multiple agents sharing the same upstream OAuth2 client_id).
 // The byClientURI index enforces global uniqueness of Client ID Metadata Document URLs.
 type AgentRepository struct {
-	mu          sync.RWMutex
-	agents      map[id.AgentID]*storage.Agent // ID -> Agent
-	byClientID  map[id.ClientID][]id.AgentID  // ClientID -> []ID (1:many for multi-agent support)
-	byClientURI map[string]id.AgentID         // clientURI -> AgentID (global uniqueness)
+	mu            sync.RWMutex
+	agents        map[id.AgentID]*storage.Agent // ID -> Agent
+	byCanonicalID map[string]id.AgentID         // canonical ID -> AgentID
+	byClientID    map[id.ClientID][]id.AgentID  // ClientID -> []ID (1:many for multi-agent support)
+	byClientURI   map[string]id.AgentID         // clientURI -> AgentID (global uniqueness)
 }
 
 // NewAgentRepository creates a new in-memory agent repository.
 func NewAgentRepository() *AgentRepository {
 	return &AgentRepository{
-		agents:      make(map[id.AgentID]*storage.Agent),
-		byClientID:  make(map[id.ClientID][]id.AgentID),
-		byClientURI: make(map[string]id.AgentID),
+		agents:        make(map[id.AgentID]*storage.Agent),
+		byCanonicalID: make(map[string]id.AgentID),
+		byClientID:    make(map[id.ClientID][]id.AgentID),
+		byClientURI:   make(map[string]id.AgentID),
 	}
 }
 
@@ -64,6 +66,12 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		)
 	}
 
+	if agent.CanonicalID != nil {
+		if _, exists := r.byCanonicalID[*agent.CanonicalID]; exists {
+			return storage.NewStorageError("CreateAgent", storage.ErrorKindConflict, nil, "agent canonical_id already exists")
+		}
+	}
+
 	// Enforce global uniqueness of client URIs
 	for _, uri := range agent.ClientURIs {
 		if existingID, exists := r.byClientURI[uri]; exists && existingID != agent.ID {
@@ -78,6 +86,9 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 
 	// Store deep copy to prevent external mutation
 	r.agents[agent.ID] = agent.Copy()
+	if agent.CanonicalID != nil {
+		r.byCanonicalID[*agent.CanonicalID] = agent.ID
+	}
 	if agent.ClientID != nil {
 		r.byClientID[*agent.ClientID] = append(r.byClientID[*agent.ClientID], agent.ID)
 	}
@@ -106,6 +117,16 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 
 	// Return deep copy to prevent external mutation
 	return agent.Copy(), nil
+}
+
+func (r *AgentRepository) GetByCanonicalID(_ context.Context, canonicalID string) (*storage.Agent, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	agentID, exists := r.byCanonicalID[canonicalID]
+	if !exists {
+		return nil, storage.NewStorageError("GetAgentByCanonicalID", storage.ErrorKindNotFound, ports.ErrNotFound, "agent not found")
+	}
+	return r.agents[agentID].Copy(), nil
 }
 
 // Update updates an existing agent entity.
@@ -147,6 +168,12 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		)
 	}
 
+	if agent.CanonicalID != nil {
+		if existingID, exists := r.byCanonicalID[*agent.CanonicalID]; exists && existingID != agent.ID {
+			return storage.NewStorageError("UpdateAgent", storage.ErrorKindConflict, nil, "agent canonical_id already exists")
+		}
+	}
+
 	// All checks passed — update indexes and stored entity atomically
 	oldClientID := existing.ClientID
 	newClientID := agent.ClientID
@@ -159,6 +186,12 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		}
 	}
 
+	if existing.CanonicalID != nil {
+		delete(r.byCanonicalID, *existing.CanonicalID)
+	}
+	if agent.CanonicalID != nil {
+		r.byCanonicalID[*agent.CanonicalID] = agent.ID
+	}
 	// Rebuild client URI index: remove old URIs, add new ones
 	for _, uri := range existing.ClientURIs {
 		delete(r.byClientURI, uri)
@@ -188,6 +221,9 @@ func (r *AgentRepository) Delete(ctx context.Context, agentID id.AgentID) error 
 			delete(r.byClientURI, uri)
 		}
 		delete(r.agents, agentID)
+		if agent.CanonicalID != nil {
+			delete(r.byCanonicalID, *agent.CanonicalID)
+		}
 	}
 
 	return nil

@@ -10,5 +10,7 @@
 - 032-aggregated-jwks: Added Go 1.25.6 + chi v5 (HTTP router), lestrrat-go/jwx/v3 (JWK caching + key sets), Viper/Cobra (config)
 
 <!-- SPECKIT START -->
-For implementation details, read [specs/035-protected-resource-subresources/plan.md](specs/035-protected-resource-subresources/plan.md).
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+at specs/036-canonical-resource-ids/plan.md
 <!-- SPECKIT END -->

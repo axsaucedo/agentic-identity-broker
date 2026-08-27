@@ -20,15 +20,15 @@ coverage.*
 *.coverprofile
 profile.cov
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
+# Dependency directories
+vendor/
 
 # Go workspace file
 go.work
 go.work.sum
 
-# env file
-.env
+# Environment files
+.env*
 
 # Editor/IDE
 # .idea/
@@ -52,6 +52,7 @@ assets/docusaurus/.cache-loader/
 *.swp
 *.swo
 *~
+*.tmp
 .DS_Store
 Thumbs.db
 

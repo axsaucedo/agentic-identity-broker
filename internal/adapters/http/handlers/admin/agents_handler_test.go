@@ -44,6 +44,14 @@ func (m *MockAgentRepository) Get(ctx context.Context, agentID id.AgentID) (*sto
 	return args.Get(0).(*storage.Agent), args.Error(1)
 }
 
+func (m *MockAgentRepository) GetByCanonicalID(ctx context.Context, canonicalID string) (*storage.Agent, error) {
+	args := m.Called(ctx, canonicalID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.Agent), args.Error(1)
+}
+
 func (m *MockAgentRepository) Update(ctx context.Context, agent *storage.Agent) error {
 	args := m.Called(ctx, agent)
 	return args.Error(0)
@@ -1191,6 +1199,14 @@ func (m *MockPermissionSetValidator) GetByIDs(ctx context.Context, ids []id.Perm
 	return args.Get(0).([]*storage.PermissionSet), args.Error(1)
 }
 
+func (m *MockPermissionSetValidator) ResolveID(_ context.Context, value string) (id.PermissionSetID, error) {
+	return id.ParsePermissionSetID(value)
+}
+
+func (m *MockPermissionSetValidator) CanonicalIDs(_ context.Context, _ []id.PermissionSetID) (map[id.PermissionSetID]string, error) {
+	return map[id.PermissionSetID]string{}, nil
+}
+
 // newAgentsHandlerForFR019Test creates an AgentsHandler with a real domain service
 // and a non-nil MockPermissionSetValidator so FR-019 coverage checks are exercised.
 func newAgentsHandlerForFR019Test(
@@ -1492,4 +1508,255 @@ func TestAgentsHandler_FR019_CoverageInvariant(t *testing.T) {
 		// Create should NOT be called
 		mockRepo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
 	})
+}
+
+func TestAgentsHandler_CanonicalIDPresentation(t *testing.T) {
+	mockRepo := new(MockAgentRepository)
+	mockServiceRepo := new(MockProviderRepository)
+	handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, slog.Default())
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
+	canonicalID := "canonical-agent"
+	serviceCanonicalID := "canonical-service"
+	agent := &storage.Agent{ID: agentID, CanonicalID: &canonicalID, DisplayName: "Canonical Agent", Description: "Agent", ServiceRequirements: []storage.ServiceRequirement{{ServiceID: serviceID, RequirementType: storage.RequirementTypeMandatory}}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	service := encryptedEntity(serviceID, "Canonical Service", "canonical-service-client", "secret", "https://service.example.com", nil)
+	service.CanonicalID = &serviceCanonicalID
+	mockRepo.On("GetByCanonicalID", mock.Anything, canonicalID).Return(agent, nil)
+	mockRepo.On("Get", mock.Anything, agentID).Return(agent, nil)
+	mockServiceRepo.On("Get", mock.Anything, serviceID).Return(service, nil)
+	mockServiceRepo.On("GetCanonicalIDs", mock.Anything, []id.ServiceID{serviceID}).Return(map[id.ServiceID]string{serviceID: serviceCanonicalID}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/agents/"+canonicalID, nil)
+	req.Header.Set("Prefer", "reference-id=canonical")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", canonicalID)
+	w := httptest.NewRecorder()
+	handler.GetAgent(w, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
+	require.Equal(t, http.StatusOK, w.Code)
+	var response AgentResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+	assert.Equal(t, agentID.String(), response.ID)
+	require.NotNil(t, response.CanonicalID)
+	assert.Equal(t, canonicalID, *response.CanonicalID)
+	assert.Equal(t, serviceCanonicalID, response.ServiceRequirements[0].ServiceID)
+	assert.Equal(t, "reference-id=canonical", w.Header().Get("Preference-Applied"))
+	assert.Contains(t, w.Header().Get("Vary"), "Prefer")
+	mockRepo.AssertExpectations(t)
+	mockServiceRepo.AssertExpectations(t)
+}
+
+func TestAgentsHandler_CanonicalCreateValidationAndReferenceResolution(t *testing.T) {
+	logger := slog.Default()
+	t.Run("creates with canonical metadata and a canonical service reference", func(t *testing.T) {
+		agentRepo := new(MockAgentRepository)
+		serviceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(agentRepo, serviceRepo, logger)
+		serviceID := id.NewServiceID()
+		canonicalID := "canonical-agent"
+		serviceCanonicalID := "canonical-service"
+		service := &model.ThirdpartyOAuth2ProviderEntity{ID: serviceID, DisplayName: "Service"}
+		serviceRepo.On("GetByCanonicalID", mock.Anything, serviceCanonicalID).Return(service, nil)
+		serviceRepo.On("Get", mock.Anything, serviceID).Return(service, nil)
+		agentRepo.On("Create", mock.Anything, mock.MatchedBy(func(agent *storage.Agent) bool {
+			return agent.CanonicalID != nil && *agent.CanonicalID == canonicalID && len(agent.ServiceRequirements) == 1 && agent.ServiceRequirements[0].ServiceID == serviceID
+		})).Return(nil)
+		body, err := json.Marshal(AgentRequest{CanonicalID: &canonicalID, ClientID: ptr.To("canonical-agent-client"), DisplayName: "Canonical Agent", Description: "Agent", ServiceRequirements: []ServiceRequirementRequest{{ServiceID: serviceCanonicalID, RequirementType: "mandatory"}}})
+		require.NoError(t, err)
+		w := httptest.NewRecorder()
+		handler.CreateAgent(w, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(body)))
+		require.Equal(t, http.StatusCreated, w.Code)
+		var response AgentResponse
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+		require.NotNil(t, response.CanonicalID)
+		assert.Equal(t, canonicalID, *response.CanonicalID)
+		assert.Equal(t, serviceID.String(), response.ServiceRequirements[0].ServiceID)
+		agentRepo.AssertExpectations(t)
+		serviceRepo.AssertExpectations(t)
+	})
+
+	t.Run("rejects a UUID-shaped canonical ID before mutation", func(t *testing.T) {
+		agentRepo := new(MockAgentRepository)
+		handler := newAgentsHandlerForTest(agentRepo, new(MockProviderRepository), logger)
+		invalidCanonicalID := id.NewAgentID().String()
+		body, err := json.Marshal(AgentRequest{CanonicalID: &invalidCanonicalID, ClientID: ptr.To("invalid-canonical-client"), DisplayName: "Invalid", Description: "Agent"})
+		require.NoError(t, err)
+		w := httptest.NewRecorder()
+		handler.CreateAgent(w, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(body)))
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		agentRepo.AssertNotCalled(t, "Create")
+	})
+}
+
+func TestAgentsHandler_CanonicalListDefaultRepresentation(t *testing.T) {
+	repo := new(MockAgentRepository)
+	handler := newAgentsHandlerForTest(repo, new(MockProviderRepository), slog.Default())
+	agent := &storage.Agent{ID: id.NewAgentID(), DisplayName: "UUID Agent", Description: "Agent", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	repo.On("List", mock.Anything).Return([]*storage.Agent{agent}, nil)
+	w := httptest.NewRecorder()
+	handler.ListAgents(w, httptest.NewRequest(http.MethodGet, "/api/agents", nil))
+	require.Equal(t, http.StatusOK, w.Code)
+	var response []AgentResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+	require.Len(t, response, 1)
+	assert.Equal(t, agent.ID.String(), response[0].ID)
+	assert.Nil(t, response[0].CanonicalID)
+	assert.Contains(t, w.Header().Get("Vary"), "Prefer")
+	repo.AssertExpectations(t)
+}
+
+func TestAgentsHandler_CanonicalPreferenceFallback(t *testing.T) {
+	repo := new(MockAgentRepository)
+	serviceRepo := new(MockProviderRepository)
+	handler := newAgentsHandlerForTest(repo, serviceRepo, slog.Default())
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
+	canonicalID := "fallback-agent"
+	agent := &storage.Agent{ID: agentID, CanonicalID: &canonicalID, DisplayName: "Fallback Agent", Description: "Agent", ServiceRequirements: []storage.ServiceRequirement{{ServiceID: serviceID, RequirementType: storage.RequirementTypeMandatory}}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	serviceRepo.On("Get", mock.Anything, serviceID).Return(&model.ThirdpartyOAuth2ProviderEntity{ID: serviceID, DisplayName: "Service"}, nil)
+	repo.On("GetByCanonicalID", mock.Anything, canonicalID).Return(agent, nil)
+	repo.On("Get", mock.Anything, agentID).Return(agent, nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/agents/"+canonicalID, nil)
+	request.Header.Set("Prefer", "reference-id=uuid")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", canonicalID)
+	w := httptest.NewRecorder()
+	handler.GetAgent(w, request.WithContext(context.WithValue(request.Context(), chi.RouteCtxKey, rctx)))
+	require.Equal(t, http.StatusOK, w.Code)
+	var response AgentResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+	assert.Equal(t, serviceID.String(), response.ServiceRequirements[0].ServiceID)
+	assert.Empty(t, w.Header().Get("Preference-Applied"))
+	assert.Contains(t, w.Header().Get("Vary"), "Prefer")
+	repo.AssertExpectations(t)
+	serviceRepo.AssertExpectations(t)
+}
+
+type canonicalPermissionSetValidator struct {
+	ids          map[string]id.PermissionSetID
+	sets         map[id.PermissionSetID]*storage.PermissionSet
+	canonicalIDs map[id.PermissionSetID]string
+}
+
+func (v canonicalPermissionSetValidator) ResolveID(_ context.Context, value string) (id.PermissionSetID, error) {
+	if resolved, ok := v.ids[value]; ok {
+		return resolved, nil
+	}
+	return id.ParsePermissionSetID(value)
+}
+
+func (v canonicalPermissionSetValidator) ValidateIDs(_ context.Context, ids []id.PermissionSetID) error {
+	for _, permissionSetID := range ids {
+		if _, ok := v.sets[permissionSetID]; !ok {
+			return storage.NewStorageError("ValidateIDs", storage.ErrorKindNotFound, nil, "permission set not found")
+		}
+	}
+	return nil
+}
+
+func (v canonicalPermissionSetValidator) GetByIDs(_ context.Context, ids []id.PermissionSetID) ([]*storage.PermissionSet, error) {
+	result := make([]*storage.PermissionSet, 0, len(ids))
+	for _, permissionSetID := range ids {
+		permissionSet, ok := v.sets[permissionSetID]
+		if !ok {
+			return nil, storage.NewStorageError("GetByIDs", storage.ErrorKindNotFound, nil, "permission set not found")
+		}
+		result = append(result, permissionSet)
+	}
+	return result, nil
+}
+
+func (v canonicalPermissionSetValidator) CanonicalIDs(_ context.Context, _ []id.PermissionSetID) (map[id.PermissionSetID]string, error) {
+	return v.canonicalIDs, nil
+}
+
+func newAgentsHandlerWithCanonicalPermissionSets(agentRepo *MockAgentRepository, serviceRepo *MockProviderRepository, permissionSets PermissionSetValidator) *AgentsHandler {
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), &encryptionnoop.BranchKeyManager{}, nil, false, slog.Default())
+	agentService := agents.NewService(agentRepo, providerService, slog.Default(), true)
+	return NewAgentsHandler(agentService, providerService, permissionSets, slog.Default())
+}
+
+func TestAgentsHandler_ResolvesCanonicalReferencesBeforeCreate(t *testing.T) {
+	serviceID := id.NewServiceID()
+	permissionSetID := id.NewPermissionSetID()
+	serviceCanonicalID := "canonical-service"
+	permissionSetCanonicalID := "canonical-permission-set"
+	service := &model.ThirdpartyOAuth2ProviderEntity{ID: serviceID, DisplayName: "Service"}
+	permissionSet := &storage.PermissionSet{ID: permissionSetID, ServiceScopes: []storage.ServiceScope{{ServiceID: serviceID}}}
+
+	for _, tc := range []struct {
+		name       string
+		serviceRef string
+		psRef      string
+	}{
+		{name: "canonical references", serviceRef: serviceCanonicalID, psRef: permissionSetCanonicalID},
+		{name: "UUID references", serviceRef: serviceID.String(), psRef: permissionSetID.String()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			agentRepo := new(MockAgentRepository)
+			serviceRepo := new(MockProviderRepository)
+			validator := canonicalPermissionSetValidator{ids: map[string]id.PermissionSetID{permissionSetCanonicalID: permissionSetID}, sets: map[id.PermissionSetID]*storage.PermissionSet{permissionSetID: permissionSet}}
+			handler := newAgentsHandlerWithCanonicalPermissionSets(agentRepo, serviceRepo, validator)
+			if tc.serviceRef == serviceCanonicalID {
+				serviceRepo.On("GetByCanonicalID", mock.Anything, serviceCanonicalID).Return(service, nil)
+			}
+			serviceRepo.On("Get", mock.Anything, serviceID).Return(service, nil)
+			agentRepo.On("Create", mock.Anything, mock.MatchedBy(func(agent *storage.Agent) bool {
+				return len(agent.ServiceRequirements) == 1 && agent.ServiceRequirements[0].ServiceID == serviceID && len(agent.PermissionSets) == 1 && agent.PermissionSets[0].PermissionSetID == permissionSetID
+			})).Return(nil)
+			body, err := json.Marshal(AgentRequest{ClientID: ptr.To("reference-agent"), DisplayName: "Reference Agent", Description: "Resolves references", ServiceRequirements: []ServiceRequirementRequest{{ServiceID: tc.serviceRef, RequirementType: "mandatory"}}, PermissionSets: []PermissionSetRequest{{PermissionSetID: tc.psRef, RequirementType: "mandatory"}}})
+			require.NoError(t, err)
+			writer := httptest.NewRecorder()
+			handler.CreateAgent(writer, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(body)))
+			require.Equal(t, http.StatusCreated, writer.Code)
+			agentRepo.AssertExpectations(t)
+			serviceRepo.AssertExpectations(t)
+		})
+	}
+
+	t.Run("rejects wrong-type references without creating an agent", func(t *testing.T) {
+		agentRepo := new(MockAgentRepository)
+		serviceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(agentRepo, serviceRepo, slog.Default())
+		serviceRepo.On("GetByCanonicalID", mock.Anything, "permission-set-id").Return(nil, storage.NewStorageError("GetByCanonicalID", storage.ErrorKindNotFound, nil, "service not found"))
+		body, err := json.Marshal(AgentRequest{ClientID: ptr.To("invalid-reference-agent"), DisplayName: "Invalid Reference Agent", Description: "Rejects references", ServiceRequirements: []ServiceRequirementRequest{{ServiceID: "permission-set-id", RequirementType: "mandatory"}}})
+		require.NoError(t, err)
+		writer := httptest.NewRecorder()
+		handler.CreateAgent(writer, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(body)))
+		assert.Equal(t, http.StatusBadRequest, writer.Code)
+		agentRepo.AssertNotCalled(t, "Create")
+		serviceRepo.AssertExpectations(t)
+	})
+}
+
+func TestAgentsHandler_CanonicalPresentationRendersNestedReferencesSelectively(t *testing.T) {
+	agentRepo := new(MockAgentRepository)
+	serviceRepo := new(MockProviderRepository)
+	canonicalServiceID, fallbackServiceID := id.NewServiceID(), id.NewServiceID()
+	canonicalPermissionSetID, fallbackPermissionSetID := id.NewPermissionSetID(), id.NewPermissionSetID()
+	agentCanonicalID := "canonical-agent"
+	agent := &storage.Agent{ID: id.NewAgentID(), CanonicalID: &agentCanonicalID, DisplayName: "Canonical Agent", Description: "Presentation", ServiceRequirements: []storage.ServiceRequirement{{ServiceID: canonicalServiceID}, {ServiceID: fallbackServiceID}}, PermissionSets: []storage.AgentPermissionSetEntry{{PermissionSetID: canonicalPermissionSetID}, {PermissionSetID: fallbackPermissionSetID}}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	validator := canonicalPermissionSetValidator{canonicalIDs: map[id.PermissionSetID]string{canonicalPermissionSetID: "canonical-permission-set"}}
+	handler := newAgentsHandlerWithCanonicalPermissionSets(agentRepo, serviceRepo, validator)
+	agentRepo.On("GetByCanonicalID", mock.Anything, agentCanonicalID).Return(agent, nil)
+	agentRepo.On("Get", mock.Anything, agent.ID).Return(agent, nil)
+	serviceRepo.On("Get", mock.Anything, canonicalServiceID).Return(&model.ThirdpartyOAuth2ProviderEntity{ID: canonicalServiceID}, nil)
+	serviceRepo.On("Get", mock.Anything, fallbackServiceID).Return(&model.ThirdpartyOAuth2ProviderEntity{ID: fallbackServiceID}, nil)
+	serviceRepo.On("GetCanonicalIDs", mock.Anything, mock.Anything).Return(map[id.ServiceID]string{canonicalServiceID: "canonical-service"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/agents/"+agentCanonicalID, nil)
+	req.Header.Set("Prefer", "reference-id=canonical")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentCanonicalID)
+	writer := httptest.NewRecorder()
+	handler.GetAgent(writer, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
+	require.Equal(t, http.StatusOK, writer.Code)
+	var response AgentResponse
+	require.NoError(t, json.NewDecoder(writer.Body).Decode(&response))
+	assert.Equal(t, agent.ID.String(), response.ID)
+	assert.Equal(t, "canonical-service", response.ServiceRequirements[0].ServiceID)
+	assert.Equal(t, fallbackServiceID.String(), response.ServiceRequirements[1].ServiceID)
+	assert.Equal(t, "canonical-permission-set", response.PermissionSets[0].PermissionSetID)
+	assert.Equal(t, fallbackPermissionSetID.String(), response.PermissionSets[1].PermissionSetID)
+	assert.Equal(t, "reference-id=canonical", writer.Header().Get("Preference-Applied"))
+	assert.Contains(t, writer.Header().Get("Vary"), "Prefer")
+	agentRepo.AssertExpectations(t)
+	serviceRepo.AssertExpectations(t)
 }

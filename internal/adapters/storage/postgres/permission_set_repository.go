@@ -44,11 +44,9 @@ func (r *PermissionSetRepository) Create(ctx context.Context, ps *storage.Permis
 	defer func() { _ = tx.Rollback() }()
 
 	// Insert into permission_sets
-	query := `
-		INSERT INTO permission_sets (id, name, description, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5)
-	`
-	_, err = tx.ExecContext(ctxTimeout, query, ps.ID, ps.Name, ps.Description, ps.CreatedAt, ps.UpdatedAt)
+	query := `INSERT INTO permission_sets (id, canonical_id, name, description, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err = tx.ExecContext(ctxTimeout, query, ps.ID, ps.CanonicalID, ps.Name, ps.Description, ps.CreatedAt, ps.UpdatedAt)
 	if err != nil {
 		return r.handlePostgresError("CreatePermissionSet", err)
 	}
@@ -70,15 +68,10 @@ func (r *PermissionSetRepository) Get(ctx context.Context, psID id.PermissionSet
 	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
 	defer cancel()
 
-	query := `
-		SELECT id, name, description, created_at, updated_at
-		FROM permission_sets
-		WHERE id = $1
-	`
-
+	query := `SELECT id, canonical_id, name, description, created_at, updated_at FROM permission_sets WHERE id = $1`
 	var ps storage.PermissionSet
 	err := r.adapter.db.QueryRowContext(ctxTimeout, query, psID).Scan(
-		&ps.ID, &ps.Name, &ps.Description, &ps.CreatedAt, &ps.UpdatedAt,
+		&ps.ID, &ps.CanonicalID, &ps.Name, &ps.Description, &ps.CreatedAt, &ps.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -94,6 +87,50 @@ func (r *PermissionSetRepository) Get(ctx context.Context, psID id.PermissionSet
 	ps.ServiceScopes = scopes
 
 	return ps.Copy(), nil
+}
+
+func (r *PermissionSetRepository) GetByCanonicalID(ctx context.Context, canonicalID string) (*storage.PermissionSet, error) {
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+	var permissionSetID id.PermissionSetID
+	if err := r.adapter.db.QueryRowContext(ctxTimeout, `SELECT id FROM permission_sets WHERE canonical_id = $1`, canonicalID).Scan(&permissionSetID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, storage.NewStorageError("GetPermissionSetByCanonicalID", storage.ErrorKindNotFound, ports.ErrNotFound, "permission set not found")
+		}
+		return nil, r.handlePostgresError("GetPermissionSetByCanonicalID", err)
+	}
+	return r.Get(ctx, permissionSetID)
+}
+
+func (r *PermissionSetRepository) GetCanonicalIDs(ctx context.Context, ids []id.PermissionSetID) (map[id.PermissionSetID]string, error) {
+	if r.adapter.db == nil {
+		return nil, storage.NewStorageError("GetCanonicalIDsPermissionSet", storage.ErrorKindConnection, nil, "database not initialized")
+	}
+	if len(ids) == 0 {
+		return map[id.PermissionSetID]string{}, nil
+	}
+
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+	rows, err := r.adapter.db.QueryContext(ctxTimeout, `SELECT id, canonical_id FROM permission_sets WHERE id = ANY($1::uuid[]) AND canonical_id IS NOT NULL`, pq.Array(ids))
+	if err != nil {
+		return nil, r.handlePostgresError("GetCanonicalIDsPermissionSet", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	canonicalIDs := make(map[id.PermissionSetID]string, len(ids))
+	for rows.Next() {
+		var permissionSetID id.PermissionSetID
+		var canonicalID string
+		if err := rows.Scan(&permissionSetID, &canonicalID); err != nil {
+			return nil, storage.NewStorageError("GetCanonicalIDsPermissionSet", storage.ErrorKindUnknown, err, "failed to scan canonical ID")
+		}
+		canonicalIDs[permissionSetID] = canonicalID
+	}
+	if err := rows.Err(); err != nil {
+		return nil, storage.NewStorageError("GetCanonicalIDsPermissionSet", storage.ErrorKindUnknown, err, "failed to read canonical IDs")
+	}
+	return canonicalIDs, nil
 }
 
 // GetByIDs retrieves multiple permission sets by IDs.
@@ -115,12 +152,7 @@ func (r *PermissionSetRepository) GetByIDs(ctx context.Context, ids []id.Permiss
 		idStrings[i] = psID.String()
 	}
 
-	query := `
-		SELECT id, name, description, created_at, updated_at
-		FROM permission_sets
-		WHERE id = ANY($1::uuid[])
-	`
-
+	query := `SELECT id, canonical_id, name, description, created_at, updated_at FROM permission_sets WHERE id = ANY($1::uuid[])`
 	rows, err := r.adapter.db.QueryContext(ctxTimeout, query, pq.Array(idStrings))
 	if err != nil {
 		return nil, r.handlePostgresError("GetByIDsPermissionSet", err)
@@ -130,7 +162,7 @@ func (r *PermissionSetRepository) GetByIDs(ctx context.Context, ids []id.Permiss
 	var results []*storage.PermissionSet
 	for rows.Next() {
 		var ps storage.PermissionSet
-		if err := rows.Scan(&ps.ID, &ps.Name, &ps.Description, &ps.CreatedAt, &ps.UpdatedAt); err != nil {
+		if err := rows.Scan(&ps.ID, &ps.CanonicalID, &ps.Name, &ps.Description, &ps.CreatedAt, &ps.UpdatedAt); err != nil {
 			return nil, storage.NewStorageError("GetByIDsPermissionSet", storage.ErrorKindUnknown, err, "failed to scan row")
 		}
 		results = append(results, &ps)
@@ -180,12 +212,14 @@ func (r *PermissionSetRepository) Update(ctx context.Context, ps *storage.Permis
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	canonicalIDOmitted := !ps.ClearCanonicalID && ps.CanonicalID == nil
 	query := `
 		UPDATE permission_sets
-		SET name = $2, description = $3, updated_at = $4
+		SET canonical_id = CASE WHEN $2 THEN NULL WHEN $3 THEN canonical_id ELSE $4 END,
+		    name = $5, description = $6, updated_at = $7
 		WHERE id = $1
 	`
-	result, err := tx.ExecContext(ctxTimeout, query, ps.ID, ps.Name, ps.Description, ps.UpdatedAt)
+	result, err := tx.ExecContext(ctxTimeout, query, ps.ID, ps.ClearCanonicalID, canonicalIDOmitted, ps.CanonicalID, ps.Name, ps.Description, ps.UpdatedAt)
 	if err != nil {
 		return r.handlePostgresError("UpdatePermissionSet", err)
 	}
@@ -298,11 +332,11 @@ func (r *PermissionSetRepository) List(ctx context.Context, serviceID id.Service
 	var err error
 
 	if serviceID.IsZero() {
-		query := `SELECT id, name, description, created_at, updated_at FROM permission_sets ORDER BY name`
+		query := `SELECT id, canonical_id, name, description, created_at, updated_at FROM permission_sets ORDER BY name`
 		rows, err = r.adapter.db.QueryContext(ctxTimeout, query)
 	} else {
 		query := `
-			SELECT DISTINCT ps.id, ps.name, ps.description, ps.created_at, ps.updated_at
+			SELECT DISTINCT ps.id, ps.canonical_id, ps.name, ps.description, ps.created_at, ps.updated_at
 			FROM permission_sets ps
 			JOIN permission_set_service_scopes psss ON psss.permission_set_id = ps.id
 			WHERE psss.service_id = $1
@@ -318,7 +352,7 @@ func (r *PermissionSetRepository) List(ctx context.Context, serviceID id.Service
 	var results []*storage.PermissionSet
 	for rows.Next() {
 		var ps storage.PermissionSet
-		if err := rows.Scan(&ps.ID, &ps.Name, &ps.Description, &ps.CreatedAt, &ps.UpdatedAt); err != nil {
+		if err := rows.Scan(&ps.ID, &ps.CanonicalID, &ps.Name, &ps.Description, &ps.CreatedAt, &ps.UpdatedAt); err != nil {
 			return nil, storage.NewStorageError("ListPermissionSets", storage.ErrorKindUnknown, err, "failed to scan row")
 		}
 		results = append(results, &ps)

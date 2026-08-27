@@ -24,6 +24,7 @@ import (
 // domain code. Conversion to/from domain entities uses entityToRecord and recordToEntity.
 type ThirdpartyOAuth2ProviderRecord struct {
 	ID                  string                      `db:"id"`
+	CanonicalID         *string                     `db:"canonical_id"`
 	DisplayName         string                      `db:"display_name"`
 	ClientID            string                      `db:"client_id"`
 	SecretCiphertext    []byte                      `db:"client_secret_encrypted"`
@@ -131,6 +132,7 @@ func entityToRecord(entity *model.ThirdpartyOAuth2ProviderEntity) (*ThirdpartyOA
 
 	record := &ThirdpartyOAuth2ProviderRecord{
 		ID:                  entity.ID.String(),
+		CanonicalID:         entity.CanonicalID,
 		DisplayName:         entity.DisplayName,
 		ClientID:            entity.ClientID.String(),
 		SecretCiphertext:    ciphertext,
@@ -179,6 +181,7 @@ func recordToEntity(record *ThirdpartyOAuth2ProviderRecord) (*model.ThirdpartyOA
 
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
 		ID:          serviceID,
+		CanonicalID: record.CanonicalID,
 		DisplayName: record.DisplayName,
 		ClientID:    id.ClientID(record.ClientID),
 		Secret:      model.NewEncryptedSecret(record.SecretCiphertext),

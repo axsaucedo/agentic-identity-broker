@@ -39,6 +39,8 @@ type AgentPermissionSetEntry struct {
 // An agent can request delegated permissions from users to access third-party services.
 type Agent struct {
 	ID                   id.AgentID                `json:"id" db:"id"`
+	CanonicalID          *string                   `json:"canonical_id,omitempty" db:"canonical_id"`
+	ClearCanonicalID     bool                      `json:"-" db:"-"`
 	ClientID             *id.ClientID              `json:"client_id,omitempty" db:"client_id"`
 	ExternalID           *id.ExternalID            `json:"external_id,omitempty" db:"external_id"`
 	DisplayName          string                    `json:"display_name" db:"display_name"`
@@ -60,6 +62,10 @@ type Agent struct {
 // Validate performs validation on the Agent entity.
 // Returns an error if any validation rules are violated.
 func (a *Agent) validateFields() error {
+	if err := ValidateCanonicalID(a.CanonicalID); err != nil {
+		return err
+	}
+
 	if a.ClientID != nil && strings.TrimSpace(string(*a.ClientID)) == "" {
 		return errors.New("client_id cannot be empty when provided")
 	}
@@ -184,6 +190,11 @@ func (a *Agent) Copy() *Agent {
 		Description: a.Description,
 		CreatedAt:   a.CreatedAt,
 		UpdatedAt:   a.UpdatedAt,
+	}
+
+	if a.CanonicalID != nil {
+		canonicalID := *a.CanonicalID
+		copy.CanonicalID = &canonicalID
 	}
 
 	if a.ClientID != nil {

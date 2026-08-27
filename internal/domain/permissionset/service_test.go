@@ -18,6 +18,7 @@ import (
 type mockPermissionSetRepository struct {
 	createFunc                        func(ctx context.Context, ps *storage.PermissionSet) error
 	getFunc                           func(ctx context.Context, id id.PermissionSetID) (*storage.PermissionSet, error)
+	getByCanonicalIDFunc              func(ctx context.Context, canonicalID string) (*storage.PermissionSet, error)
 	getByIDsFunc                      func(ctx context.Context, ids []id.PermissionSetID) ([]*storage.PermissionSet, error)
 	updateFunc                        func(ctx context.Context, ps *storage.PermissionSet) error
 	deleteFunc                        func(ctx context.Context, id id.PermissionSetID) error
@@ -40,11 +41,22 @@ func (m *mockPermissionSetRepository) Get(ctx context.Context, id id.PermissionS
 	return nil, ports.ErrNotFound
 }
 
+func (m *mockPermissionSetRepository) GetByCanonicalID(ctx context.Context, canonicalID string) (*storage.PermissionSet, error) {
+	if m.getByCanonicalIDFunc != nil {
+		return m.getByCanonicalIDFunc(ctx, canonicalID)
+	}
+	return nil, ports.ErrNotFound
+}
+
 func (m *mockPermissionSetRepository) GetByIDs(ctx context.Context, ids []id.PermissionSetID) ([]*storage.PermissionSet, error) {
 	if m.getByIDsFunc != nil {
 		return m.getByIDsFunc(ctx, ids)
 	}
 	return []*storage.PermissionSet{}, nil
+}
+
+func (m *mockPermissionSetRepository) GetCanonicalIDs(_ context.Context, _ []id.PermissionSetID) (map[id.PermissionSetID]string, error) {
+	return map[id.PermissionSetID]string{}, nil
 }
 
 func (m *mockPermissionSetRepository) Update(ctx context.Context, ps *storage.PermissionSet) error {
@@ -389,4 +401,24 @@ func TestDeleteEmitsAuditLog(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, callCount)
+}
+
+func TestResolveIDAcceptsUUIDCanonicalAndRejectsUnknown(t *testing.T) {
+	permissionSetID := id.NewPermissionSetID()
+	canonicalID := "repository-read"
+	repo := &mockPermissionSetRepository{getByCanonicalIDFunc: func(_ context.Context, value string) (*storage.PermissionSet, error) {
+		if value == canonicalID {
+			return &storage.PermissionSet{ID: permissionSetID}, nil
+		}
+		return nil, ports.ErrNotFound
+	}}
+	service := NewPermissionSetService(repo, &stubGrantRepository{}, slog.Default())
+	defer service.Close()
+	for _, value := range []string{permissionSetID.String(), canonicalID} {
+		resolved, err := service.ResolveID(context.Background(), value)
+		require.NoError(t, err)
+		assert.Equal(t, permissionSetID, resolved)
+	}
+	_, err := service.ResolveID(context.Background(), "unknown-permission-set")
+	require.Error(t, err)
 }

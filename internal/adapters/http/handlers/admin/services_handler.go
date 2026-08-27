@@ -44,6 +44,7 @@ func NewServicesHandler(providerService *thirdparty.ThirdpartyOAuth2ProviderServ
 
 // ServiceRequest represents the request body for creating/updating a service.
 type ServiceRequest struct {
+	CanonicalID         *string                 `json:"canonical_id,omitempty"`
 	DisplayName         string                  `json:"display_name"`
 	ClientID            string                  `json:"client_id"`
 	ClientSecret        string                  `json:"client_secret"`
@@ -78,6 +79,7 @@ type OAuthScopeRequest struct {
 // Client secret is always redacted in responses per SR-003.
 type ServiceResponse struct {
 	ID                  string                  `json:"id"`
+	CanonicalID         *string                 `json:"canonical_id"`
 	DisplayName         string                  `json:"display_name"`
 	ClientID            string                  `json:"client_id"`
 	ClientSecret        string                  `json:"client_secret"` // Always "REDACTED"
@@ -141,6 +143,7 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 	now := time.Now().UTC()
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
 		ID:                  id.NewServiceID(),
+		CanonicalID:         req.CanonicalID,
 		DisplayName:         req.DisplayName,
 		ClientID:            id.ClientID(req.ClientID),
 		Secret:              model.NewPlaintextSecret(req.ClientSecret),
@@ -229,6 +232,7 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 
 // GetService handles GET /api/services/{service-id}
 func (h *ServicesHandler) GetService(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Vary", "Prefer")
 	ctx := r.Context()
 	serviceID := chi.URLParam(r, "service-id")
 
@@ -237,9 +241,9 @@ func (h *ServicesHandler) GetService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parsedSvcID, parseErr := id.ParseServiceID(serviceID)
-	if parseErr != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid service ID", parseErr.Error())
+	parsedSvcID, err := h.providerService.ResolveID(ctx, serviceID)
+	if err != nil {
+		h.handleStorageError(w, r, "GetService", err)
 		return
 	}
 
@@ -282,6 +286,7 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	protectedResources, protectedResourcesPresent := rawRequest["protected_resources"]
+	canonicalID, canonicalIDPresent := rawRequest["canonical_id"]
 	protectedResourcesProvided := protectedResourcesPresent && !isJSONNull(protectedResources)
 
 	if req.ClientSecret == "" {
@@ -294,9 +299,9 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		skipHTTPSValidation = h.config.Security.SkipThirdpartyHTTPSValidation
 	}
 
-	parsedSvcID, parseErr := id.ParseServiceID(serviceID)
-	if parseErr != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid service ID", parseErr.Error())
+	parsedSvcID, err := h.providerService.ResolveID(ctx, serviceID)
+	if err != nil {
+		h.handleStorageError(w, r, "UpdateService", err)
 		return
 	}
 
@@ -314,7 +319,9 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 	// created_at is not set here; repo.Update() populates it from storage (no KMS decrypt needed).
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
 		ID:                  parsedSvcID,
+		CanonicalID:         req.CanonicalID,
 		DisplayName:         req.DisplayName,
+		ClearCanonicalID:    canonicalIDPresent && isJSONNull(canonicalID),
 		ClientID:            id.ClientID(req.ClientID),
 		Secret:              model.NewPlaintextSecret(req.ClientSecret),
 		Flavor:              flavor,
@@ -485,9 +492,9 @@ func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Delete via domain service
-	parsedSvcID, parseErr := id.ParseServiceID(serviceID)
-	if parseErr != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid service ID", parseErr.Error())
+	parsedSvcID, err := h.providerService.ResolveID(ctx, serviceID)
+	if err != nil {
+		h.handleStorageError(w, r, "DeleteService", err)
 		return
 	}
 
@@ -515,6 +522,7 @@ func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) 
 
 // ListServices handles GET /api/third-party/oauth2/clients
 func (h *ServicesHandler) ListServices(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Vary", "Prefer")
 	ctx := r.Context()
 
 	entities, err := h.providerService.List(ctx)
@@ -550,6 +558,7 @@ func (h *ServicesHandler) toResponse(entity *model.ThirdpartyOAuth2ProviderEntit
 
 	return ServiceResponse{
 		ID:           entity.ID.String(),
+		CanonicalID:  entity.CanonicalID,
 		DisplayName:  entity.DisplayName,
 		ClientID:     entity.ClientID.String(),
 		ClientSecret: entity.Secret.Redacted(),

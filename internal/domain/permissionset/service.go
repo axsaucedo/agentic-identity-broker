@@ -86,6 +86,30 @@ func (s *Service) Close() {
 	s.closeOnce.Do(func() { close(s.stopChan) })
 }
 
+// ResolveID accepts a UUID or a type-scoped canonical ID.
+func (s *Service) ResolveID(ctx context.Context, value string) (id.PermissionSetID, error) {
+	if parsed, err := id.ParsePermissionSetID(value); err == nil {
+		return parsed, nil
+	}
+	repo, ok := s.repo.(ports.PermissionSetCanonicalIDRepository)
+	if !ok {
+		return id.PermissionSetID{}, storage.NewStorageError("ResolvePermissionSetID", storage.ErrorKindNotFound, nil, "permission set not found")
+	}
+	permissionSet, err := repo.GetByCanonicalID(ctx, value)
+	if err != nil {
+		return id.PermissionSetID{}, err
+	}
+	return permissionSet.ID, nil
+}
+
+// CanonicalIDs returns canonical IDs for the requested permission sets.
+func (s *Service) CanonicalIDs(ctx context.Context, ids []id.PermissionSetID) (map[id.PermissionSetID]string, error) {
+	if repo, ok := s.repo.(ports.PermissionSetCanonicalIDRepository); ok {
+		return repo.GetCanonicalIDs(ctx, ids)
+	}
+	return map[id.PermissionSetID]string{}, nil
+}
+
 // Create stores a new permission set.
 // Emits a structured audit log entry on success.
 func (s *Service) Create(ctx context.Context, ps *storage.PermissionSet) error {

@@ -184,3 +184,45 @@ func TestMigration015AgentCIMDFields(t *testing.T) {
 
 	t.Log("Migration 015 lifecycle test complete")
 }
+
+func TestMigration029CanonicalIDs(t *testing.T) {
+	f := NewMigrationTestFramework(t)
+	defer f.Cleanup(t)
+	require.NoError(t, f.Up(t, 28))
+
+	for _, table := range []string{"agents", "thirdparty_oauth2_services", "permission_sets"} {
+		exists, err := f.ColumnExists(t, table, "canonical_id")
+		require.NoError(t, err)
+		assert.False(t, exists)
+	}
+
+	require.NoError(t, f.UpAll(t))
+	for _, table := range []string{"agents", "thirdparty_oauth2_services", "permission_sets"} {
+		exists, err := f.ColumnExists(t, table, "canonical_id")
+		require.NoError(t, err)
+		assert.True(t, exists)
+	}
+	for _, index := range []string{"uq_agents_canonical_id", "uq_thirdparty_oauth2_services_canonical_id", "uq_permission_sets_canonical_id"} {
+		exists, err := f.IndexExists(t, index)
+		require.NoError(t, err)
+		assert.True(t, exists)
+	}
+
+	require.NoError(t, f.ExecuteSQL(t, `
+		INSERT INTO agents (id, display_name, description) VALUES
+		('10000000-0000-0000-0000-000000000001', 'agent one', 'first'),
+		('10000000-0000-0000-0000-000000000002', 'agent two', 'second');
+		UPDATE agents SET canonical_id = 'shared' WHERE id = '10000000-0000-0000-0000-000000000001';
+		INSERT INTO permission_sets (id, name, description, canonical_id) VALUES
+		('20000000-0000-0000-0000-000000000001', 'set one', 'first', 'shared');
+	`))
+	err := f.ExecuteSQL(t, `UPDATE agents SET canonical_id = 'shared' WHERE id = '10000000-0000-0000-0000-000000000002'`)
+	require.Error(t, err)
+
+	require.NoError(t, f.Down(t, 28))
+	for _, table := range []string{"agents", "thirdparty_oauth2_services", "permission_sets"} {
+		exists, err := f.ColumnExists(t, table, "canonical_id")
+		require.NoError(t, err)
+		assert.False(t, exists)
+	}
+}

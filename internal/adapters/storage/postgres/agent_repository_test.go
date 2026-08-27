@@ -865,6 +865,8 @@ func TestAgentRepository_ServiceRequirements_RoundTrip(t *testing.T) {
 		githubID := id.MustParseServiceID("c1234567-1111-1111-1111-111111111111")
 		gitlabID := id.MustParseServiceID("c1234567-2222-2222-2222-222222222222")
 		clientID := id.ClientID("sr-roundtrip-client")
+		insertTestService(t, adapter, githubID)
+		insertTestService(t, adapter, gitlabID)
 		agent := &storage.Agent{
 			ClientID:    &clientID,
 			DisplayName: "Service Requirements Round-trip",
@@ -905,6 +907,8 @@ func TestAgentRepository_ServiceRequirements_RoundTrip(t *testing.T) {
 		githubID := id.MustParseServiceID("c1234567-3333-3333-3333-333333333333")
 		slackID := id.MustParseServiceID("c1234567-4444-4444-4444-444444444444")
 		clientID := id.ClientID("sr-update-client")
+		insertTestService(t, adapter, githubID)
+		insertTestService(t, adapter, slackID)
 		agent := &storage.Agent{
 			ClientID:    &clientID,
 			DisplayName: "Service Requirements Update",
@@ -939,6 +943,33 @@ func TestAgentRepository_ServiceRequirements_RoundTrip(t *testing.T) {
 		retrieved, err := repo.Get(ctx, agent.ID)
 		require.NoError(t, err)
 		assert.Equal(t, updated.ServiceRequirements, retrieved.ServiceRequirements)
+	})
+
+	t.Run("create rejects a missing service without persisting the agent", func(t *testing.T) {
+		now := time.Now().UTC()
+		clientID := id.ClientID("sr-missing-service-client")
+		agent := &storage.Agent{
+			ID:          id.NewAgentID(),
+			ClientID:    &clientID,
+			DisplayName: "Missing Service Requirement",
+			Description: "Must not persist when its service is missing",
+			ServiceRequirements: []storage.ServiceRequirement{{
+				ServiceID: id.NewServiceID(), RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"read"},
+			}},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+
+		err := repo.Create(ctx, agent)
+		require.Error(t, err)
+		var storageErr *storage.StorageError
+		require.ErrorAs(t, err, &storageErr)
+		assert.Equal(t, storage.ErrorKindConflict, storageErr.Kind)
+
+		_, err = repo.Get(ctx, agent.ID)
+		require.Error(t, err)
+		require.ErrorAs(t, err, &storageErr)
+		assert.Equal(t, storage.ErrorKindNotFound, storageErr.Kind)
 	})
 
 	t.Run("nil service requirements remain nil", func(t *testing.T) {

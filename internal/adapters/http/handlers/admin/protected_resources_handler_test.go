@@ -19,6 +19,7 @@ import (
 
 	encryptionnoop "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -336,54 +337,66 @@ func TestProtectedResourcesHandler_Rename_EncodedRoutesMappingsAndAudit(t *testi
 }
 
 func TestProtectedResourcesHandler_RejectedMutationsAuditRawRoutedServiceID(t *testing.T) {
-	const invalidServiceID = "invalid-routed-service-id"
+	const unresolvedServiceID = "unresolved-service-id"
+	validServiceID := id.NewServiceID().String()
 	resource := "https://api.example.com/resource"
 	escaped := url.PathEscape(resource)
+	notFound := storage.NewStorageError("GetByCanonicalID", storage.ErrorKindNotFound, errors.New("missing"), "missing")
 	tests := []struct {
-		name       string
-		handle     func(*ProtectedResourcesHandler, http.ResponseWriter, *http.Request)
-		request    *http.Request
-		wantAudit  []string
-		mustNotLog []string
+		name             string
+		handle           func(*ProtectedResourcesHandler, http.ResponseWriter, *http.Request)
+		request          *http.Request
+		resolveServiceID bool
+		wantStatus       int
+		wantAudit        []string
+		mustNotLog       []string
 	}{
 		{
-			name:    "add malformed JSON includes routed service ID",
-			handle:  (*ProtectedResourcesHandler).Create,
-			request: protectedResourceCollectionRequest(http.MethodPost, invalidServiceID, `{"resource_uri":`),
+			name:       "add malformed JSON includes routed service ID",
+			handle:     (*ProtectedResourcesHandler).Create,
+			request:    protectedResourceCollectionRequest(http.MethodPost, unresolvedServiceID, `{"resource_uri":`),
+			wantStatus: http.StatusBadRequest,
 			wantAudit: []string{
-				`"action":"add"`, `"service_id":"` + invalidServiceID + `"`, `"outcome":"rejected"`, `"resource_uri":null`,
+				`"action":"add"`, `"service_id":"` + unresolvedServiceID + `"`, `"outcome":"rejected"`, `"resource_uri":null`,
 			},
 		},
 		{
-			name:    "add invalid service ID retains only normalized resource",
-			handle:  (*ProtectedResourcesHandler).Add,
-			request: protectedResourceRequest(http.MethodPut, invalidServiceID, escaped, ""),
+			name:             "add unresolved service ID retains only normalized resource",
+			handle:           (*ProtectedResourcesHandler).Add,
+			request:          protectedResourceRequest(http.MethodPut, unresolvedServiceID, escaped, ""),
+			resolveServiceID: true,
+			wantStatus:       http.StatusNotFound,
 			wantAudit: []string{
-				`"action":"add"`, `"service_id":"` + invalidServiceID + `"`, `"resource_uri":"` + resource + `"`,
+				`"action":"add"`, `"service_id":"` + unresolvedServiceID + `"`, `"resource_uri":"` + resource + `"`,
 			},
 		},
 		{
-			name:    "remove invalid service ID retains only normalized resource",
-			handle:  (*ProtectedResourcesHandler).Remove,
-			request: protectedResourceRequest(http.MethodDelete, invalidServiceID, escaped, ""),
+			name:             "remove unresolved service ID retains only normalized resource",
+			handle:           (*ProtectedResourcesHandler).Remove,
+			request:          protectedResourceRequest(http.MethodDelete, unresolvedServiceID, escaped, ""),
+			resolveServiceID: true,
+			wantStatus:       http.StatusNotFound,
 			wantAudit: []string{
-				`"action":"remove"`, `"service_id":"` + invalidServiceID + `"`, `"resource_uri":"` + resource + `"`,
+				`"action":"remove"`, `"service_id":"` + unresolvedServiceID + `"`, `"resource_uri":"` + resource + `"`,
 			},
 		},
 		{
-			name:    "rename invalid service ID retains independently normalized URIs",
-			handle:  (*ProtectedResourcesHandler).Rename,
-			request: protectedResourceRequest(http.MethodPatch, invalidServiceID, escaped, `{"to":"https://api.example.com/renamed/"}`),
+			name:             "rename unresolved service ID retains independently normalized URIs",
+			handle:           (*ProtectedResourcesHandler).Rename,
+			request:          protectedResourceRequest(http.MethodPatch, unresolvedServiceID, escaped, `{"to":"https://api.example.com/renamed/"}`),
+			resolveServiceID: true,
+			wantStatus:       http.StatusNotFound,
 			wantAudit: []string{
-				`"action":"rename"`, `"service_id":"` + invalidServiceID + `"`, `"source_resource_uri":"` + resource + `"`, `"target_resource_uri":"https://api.example.com/renamed"`,
+				`"action":"rename"`, `"service_id":"` + unresolvedServiceID + `"`, `"source_resource_uri":"` + resource + `"`, `"target_resource_uri":"https://api.example.com/renamed"`,
 			},
 		},
 		{
-			name:    "rename malformed target does not leak raw URI",
-			handle:  (*ProtectedResourcesHandler).Rename,
-			request: protectedResourceRequest(http.MethodPatch, invalidServiceID, escaped, `{"to":"://raw-secret-target"}`),
+			name:       "rename malformed target does not leak raw URI",
+			handle:     (*ProtectedResourcesHandler).Rename,
+			request:    protectedResourceRequest(http.MethodPatch, validServiceID, escaped, `{"to":"://raw-secret-target"}`),
+			wantStatus: http.StatusBadRequest,
 			wantAudit: []string{
-				`"action":"rename"`, `"service_id":"` + invalidServiceID + `"`, `"source_resource_uri":"` + resource + `"`, `"target_resource_uri":null`,
+				`"action":"rename"`, `"service_id":"` + validServiceID + `"`, `"source_resource_uri":"` + resource + `"`, `"target_resource_uri":null`,
 			},
 			mustNotLog: []string{"raw-secret-target"},
 		},
@@ -392,17 +405,22 @@ func TestProtectedResourcesHandler_RejectedMutationsAuditRawRoutedServiceID(t *t
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var audit bytes.Buffer
-			handler := newProtectedResourcesHandler(new(MockProviderRepository), slog.New(slog.NewJSONHandler(&audit, nil)))
+			repo := new(MockProviderRepository)
+			if tt.resolveServiceID {
+				repo.On("GetByCanonicalID", mock.Anything, unresolvedServiceID).Return(nil, notFound)
+			}
+			handler := newProtectedResourcesHandler(repo, slog.New(slog.NewJSONHandler(&audit, nil)))
 			w := httptest.NewRecorder()
 			tt.handle(handler, w, tt.request)
 
-			require.Equal(t, http.StatusBadRequest, w.Code)
+			require.Equal(t, tt.wantStatus, w.Code)
 			for _, expected := range tt.wantAudit {
 				assert.Contains(t, audit.String(), expected)
 			}
 			for _, forbidden := range tt.mustNotLog {
 				assert.NotContains(t, audit.String(), forbidden)
 			}
+			repo.AssertExpectations(t)
 		})
 	}
 }
@@ -450,4 +468,104 @@ func TestProtectedResourcesHandler_List_ResponseAndMissingService(t *testing.T) 
 			repo.AssertExpectations(t)
 		})
 	}
+}
+
+func TestProtectedResourcesHandler_ResolvesCanonicalServiceIDForAllOperations(t *testing.T) {
+	canonicalID := "canonical-service"
+	serviceID := id.NewServiceID()
+	entity := &model.ThirdpartyOAuth2ProviderEntity{ID: serviceID}
+	resource := "https://api.example.com/resource"
+	escapedResource := url.PathEscape(resource)
+
+	tests := []struct {
+		name       string
+		wantStatus int
+		handle     func(*ProtectedResourcesHandler, http.ResponseWriter, *http.Request)
+		request    func() *http.Request
+		configure  func(*MockProviderRepository)
+	}{
+		{
+			name:       "lists protected resources",
+			wantStatus: http.StatusOK,
+			handle:     (*ProtectedResourcesHandler).List,
+			request: func() *http.Request {
+				return protectedResourceCollectionRequest(http.MethodGet, canonicalID, "")
+			},
+			configure: func(repo *MockProviderRepository) {
+				repo.On("ListProtectedResources", mock.Anything, serviceID).Return([]string{resource}, int64(1), nil)
+			},
+		},
+		{
+			name:       "creates a protected resource",
+			wantStatus: http.StatusCreated,
+			handle:     (*ProtectedResourcesHandler).Create,
+			request: func() *http.Request {
+				return protectedResourceCollectionRequest(http.MethodPost, canonicalID, `{"resource_uri":"`+resource+`"}`)
+			},
+			configure: func(repo *MockProviderRepository) {
+				repo.On("AddProtectedResource", mock.Anything, serviceID, resource).Return(ports.ProtectedResourceMutationResult{Resource: resource, Version: 1, Changed: true}, nil)
+			},
+		},
+		{
+			name:       "adds a protected resource",
+			wantStatus: http.StatusCreated,
+			handle:     (*ProtectedResourcesHandler).Add,
+			request: func() *http.Request {
+				return protectedResourceRequest(http.MethodPut, canonicalID, escapedResource, "")
+			},
+			configure: func(repo *MockProviderRepository) {
+				repo.On("AddProtectedResource", mock.Anything, serviceID, resource).Return(ports.ProtectedResourceMutationResult{Resource: resource, Version: 1, Changed: true}, nil)
+			},
+		},
+		{
+			name:       "renames a protected resource",
+			wantStatus: http.StatusOK,
+			handle:     (*ProtectedResourcesHandler).Rename,
+			request: func() *http.Request {
+				return protectedResourceRequest(http.MethodPatch, canonicalID, escapedResource, `{"to":"https://api.example.com/renamed"}`)
+			},
+			configure: func(repo *MockProviderRepository) {
+				repo.On("RenameProtectedResource", mock.Anything, serviceID, resource, "https://api.example.com/renamed").Return(ports.ProtectedResourceMutationResult{Resource: "https://api.example.com/renamed", Version: 1, Changed: true}, nil)
+			},
+		},
+		{
+			name:       "removes a protected resource",
+			wantStatus: http.StatusOK,
+			handle:     (*ProtectedResourcesHandler).Remove,
+			request: func() *http.Request {
+				return protectedResourceRequest(http.MethodDelete, canonicalID, escapedResource, "")
+			},
+			configure: func(repo *MockProviderRepository) {
+				repo.On("RemoveProtectedResource", mock.Anything, serviceID, resource).Return(ports.ProtectedResourceMutationResult{Resource: resource, Version: 1, Changed: true}, nil)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := new(MockProviderRepository)
+			repo.On("GetByCanonicalID", mock.Anything, canonicalID).Return(entity, nil).Once()
+			tt.configure(repo)
+			handler := newProtectedResourcesHandler(repo, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+			w := httptest.NewRecorder()
+
+			tt.handle(handler, w, tt.request())
+
+			require.Equal(t, tt.wantStatus, w.Code)
+			repo.AssertExpectations(t)
+		})
+	}
+}
+
+func TestProtectedResourcesHandler_RejectsUnresolvedCanonicalServiceID(t *testing.T) {
+	const canonicalID = "missing-service"
+	repo := new(MockProviderRepository)
+	repo.On("GetByCanonicalID", mock.Anything, canonicalID).Return(nil, storage.NewStorageError("GetByCanonicalID", storage.ErrorKindNotFound, errors.New("missing"), "missing")).Once()
+	handler := newProtectedResourcesHandler(repo, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+	w := httptest.NewRecorder()
+
+	handler.List(w, protectedResourceCollectionRequest(http.MethodGet, canonicalID, ""))
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	repo.AssertExpectations(t)
 }

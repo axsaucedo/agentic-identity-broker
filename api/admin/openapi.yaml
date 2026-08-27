@@ -153,9 +153,16 @@ paths:
       operationId: listAgents
       tags:
         - Agents
+      parameters:
+        - $ref: '#/components/parameters/PreferCanonicalReferences'
       responses:
         '200':
           description: List of agents retrieved successfully
+          headers:
+            Preference-Applied:
+              $ref: '#/components/headers/PreferenceApplied'
+            Vary:
+              $ref: '#/components/headers/VaryPrefer'
           content:
             application/json:
               schema:
@@ -288,9 +295,15 @@ paths:
         - Agents
       parameters:
         - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/PreferCanonicalReferences'
       responses:
         '200':
           description: Agent retrieved successfully
+          headers:
+            Preference-Applied:
+              $ref: '#/components/headers/PreferenceApplied'
+            Vary:
+              $ref: '#/components/headers/VaryPrefer'
           content:
             application/json:
               schema:
@@ -439,9 +452,16 @@ paths:
       operationId: listServices
       tags:
         - Services
+      parameters:
+        - $ref: '#/components/parameters/PreferCanonicalReferences'
       responses:
         '200':
           description: List of services retrieved successfully
+          headers:
+            Preference-Applied:
+              $ref: '#/components/headers/PreferenceApplied'
+            Vary:
+              $ref: '#/components/headers/VaryPrefer'
           content:
             application/json:
               schema:
@@ -607,6 +627,7 @@ paths:
         - Services
       parameters:
         - $ref: '#/components/parameters/ServiceId'
+        - $ref: '#/components/parameters/PreferCanonicalReferences'
       responses:
         '200':
           description: Service retrieved successfully
@@ -615,6 +636,10 @@ paths:
               description: Current strong service ETag.
               schema:
                 type: string
+            Preference-Applied:
+              $ref: '#/components/headers/PreferenceApplied'
+            Vary:
+              $ref: '#/components/headers/VaryPrefer'
           content:
             application/json:
               schema:
@@ -1053,13 +1078,18 @@ paths:
         - name: service_id
           in: query
           required: false
-          description: Filter permission sets to those containing a ServiceScope for this service
+          description: UUID or canonical identifier of the service used to filter permission sets
           schema:
             type: string
-            format: uuid
+        - $ref: '#/components/parameters/PreferCanonicalReferences'
       responses:
         '200':
           description: List of permission sets
+          headers:
+            Preference-Applied:
+              $ref: '#/components/headers/PreferenceApplied'
+            Vary:
+              $ref: '#/components/headers/VaryPrefer'
           content:
             application/json:
               schema:
@@ -1086,9 +1116,15 @@ paths:
         - PermissionSets
       parameters:
         - $ref: '#/components/parameters/PermissionSetId'
+        - $ref: '#/components/parameters/PreferCanonicalReferences'
       responses:
         '200':
           description: Permission set found
+          headers:
+            Preference-Applied:
+              $ref: '#/components/headers/PreferenceApplied'
+            Vary:
+              $ref: '#/components/headers/VaryPrefer'
           content:
             application/json:
               schema:
@@ -1515,21 +1551,34 @@ components:
       name: agent-id
       in: path
       required: true
-      description: Unique identifier of the agent (UUID format)
+      description: UUID or canonical identifier of the agent
       schema:
         type: string
-        format: uuid
-        example: 550e8400-e29b-41d4-a716-446655440000
+      examples:
+        uuid: { value: 550e8400-e29b-41d4-a716-446655440000 }
+        canonical: { value: research-agent }
 
+    PreferCanonicalReferences:
+      name: Prefer
+      in: header
+      required: false
+      description: |
+        Request canonical rendering of nested service and permission-set references. The default
+        representation uses UUIDs. May be combined with other Prefer preferences (e.g.
+        `return=minimal, reference-id=canonical`); unrecognized preferences are ignored.
+      schema:
+        type: string
+      example: reference-id=canonical
     ServiceId:
       name: service-id
       in: path
       required: true
-      description: Unique identifier of the OAuth2 service (UUID format)
+      description: UUID or canonical identifier of the OAuth2 service
       schema:
         type: string
-        format: uuid
-        example: 770e8400-e29b-41d4-a716-446655440002
+      examples:
+        uuid: { value: 770e8400-e29b-41d4-a716-446655440002 }
+        canonical: { value: github-prod }
 
     ResourcePathSegment:
       name: resource
@@ -1559,11 +1608,12 @@ components:
       name: permission-set-id
       in: path
       required: true
-      description: Unique identifier of the permission set (UUID format)
+      description: UUID or canonical identifier of the permission set
       schema:
         type: string
-        format: uuid
-        example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+      examples:
+        uuid: { value: a1b2c3d4-e5f6-7890-abcd-ef1234567890 }
+        canonical: { value: github-read }
     SigningKeyId:
       name: kid
       in: path
@@ -1573,6 +1623,17 @@ components:
         type: string
         example: key-2025-12-19-001
 
+  headers:
+    PreferenceApplied:
+      description: "Sent only when Prefer: reference-id=canonical was honored."
+      schema:
+        type: string
+        enum: [reference-id=canonical]
+    VaryPrefer:
+      description: Indicates that the read representation varies by the `Prefer` request header.
+      schema:
+        type: string
+        enum: [Prefer]
   schemas:
     HealthResponse:
       type: object
@@ -1621,6 +1682,12 @@ components:
           description: Unique identifier for the agent (system-generated UUID)
           example: 550e8400-e29b-41d4-a716-446655440000
           readOnly: true
+        canonical_id:
+          type: string
+          nullable: true
+          readOnly: true
+          description: Optional canonical administrative identifier
+          example: research-agent
         client_id:
           type: string
           nullable: true
@@ -1754,6 +1821,13 @@ components:
         - description
         - permission_sets
       properties:
+        canonical_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._-]+$'
+          example: research-agent
         client_id:
           type: string
           description: |
@@ -1870,6 +1944,14 @@ components:
         - description
         - permission_sets
       properties:
+        canonical_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._-]+$'
+          description: Omitted preserves the current canonical ID; null removes it; a string replaces it.
+          example: research-agent
         client_id:
           type: string
           nullable: true
@@ -2038,9 +2120,10 @@ components:
       properties:
         service_id:
           type: string
-          format: uuid
-          description: UUID of the third-party OAuth2 service this requirement references
-          example: 550e8400-e29b-41d4-a716-446655440001
+          description: UUID or canonical identifier of the third-party OAuth2 service
+          examples:
+            uuid: { value: 550e8400-e29b-41d4-a716-446655440001 }
+            canonical: { value: github-prod }
         requirement_type:
           type: string
           enum:
@@ -2089,6 +2172,12 @@ components:
           description: Unique identifier for the service (system-generated UUID)
           example: 770e8400-e29b-41d4-a716-446655440002
           readOnly: true
+        canonical_id:
+          type: string
+          nullable: true
+          readOnly: true
+          description: Optional canonical administrative identifier
+          example: github-prod
         display_name:
           type: string
           description: Human-readable name for the service displayed to end users
@@ -2197,6 +2286,13 @@ components:
         - client_secret
         - discovery
       properties:
+        canonical_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._-]+$'
+          example: github-prod
         display_name:
           type: string
           description: Human-readable name for the service
@@ -2298,6 +2394,14 @@ components:
         - client_secret
         - discovery
       properties:
+        canonical_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._-]+$'
+          description: Omitted preserves the current canonical ID; null removes it; a string replaces it.
+          example: github-prod
         display_name:
           type: string
           description: Human-readable name for the service
@@ -2685,9 +2789,10 @@ components:
       properties:
         service_id:
           type: string
-          format: uuid
-          description: UUID of the third-party OAuth2 service
-          example: 550e8400-e29b-41d4-a716-446655440001
+          description: UUID on responses; UUID or canonical service identifier on writes
+          examples:
+            uuid: { value: 550e8400-e29b-41d4-a716-446655440001 }
+            canonical: { value: github-prod }
         scopes:
           type: array
           items:
@@ -2714,9 +2819,10 @@ components:
       properties:
         permission_set_id:
           type: string
-          format: uuid
-          description: UUID of the permission set to associate with this agent
-          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+          description: UUID on responses; UUID or canonical permission-set identifier on writes
+          examples:
+            uuid: { value: a1b2c3d4-e5f6-7890-abcd-ef1234567890 }
+            canonical: { value: github-read }
         requirement_type:
           type: string
           enum:
@@ -2734,6 +2840,13 @@ components:
         - description
         - service_scopes
       properties:
+        canonical_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._-]+$'
+          example: github-read
         name:
           type: string
           maxLength: 255
@@ -2766,6 +2879,12 @@ components:
           description: Stable UUID assigned on creation
           example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
           readOnly: true
+        canonical_id:
+          type: string
+          nullable: true
+          readOnly: true
+          description: Optional canonical administrative identifier
+          example: github-read
         name:
           type: string
           description: Unique human-readable name for the permission set

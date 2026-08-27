@@ -108,6 +108,15 @@ func (m *mockAgentRepo) GetByClientURI(ctx context.Context, uri string) (*storag
 	return nil, storage.NewStorageError("GetByClientURI", storage.ErrorKindNotFound, ports.ErrNotFound, "not found")
 }
 
+func (m *mockAgentRepo) GetByCanonicalID(_ context.Context, canonicalID string) (*storage.Agent, error) {
+	for _, agent := range m.agents {
+		if agent.CanonicalID != nil && *agent.CanonicalID == canonicalID {
+			return agent.Copy(), nil
+		}
+	}
+	return nil, storage.NewStorageError("GetByCanonicalID", storage.ErrorKindNotFound, ports.ErrNotFound, "agent not found")
+}
+
 type mockServiceReqValidator struct {
 	err error
 }
@@ -245,6 +254,30 @@ func TestUpdate_PreservesExistingClientID(t *testing.T) {
 	assert.Equal(t, existing.CreatedAt, update.CreatedAt, "CreatedAt should be preserved")
 }
 
+func TestUpdate_ClearsCanonicalID(t *testing.T) {
+	repo := newMockAgentRepo()
+	svc := newTestService(repo, true)
+	agentID := id.NewAgentID()
+	canonicalID := "research-agent"
+	repo.agents[agentID] = &storage.Agent{
+		ID:          agentID,
+		CanonicalID: &canonicalID,
+		DisplayName: "Original",
+		Description: "Original description",
+		CreatedAt:   time.Now().UTC(),
+	}
+
+	update := &storage.Agent{
+		ClearCanonicalID: true,
+		DisplayName:      "Updated",
+		Description:      "Updated description",
+		UpdatedAt:        time.Now().UTC(),
+	}
+
+	require.NoError(t, svc.Update(context.Background(), agentID, update, false))
+	assert.Nil(t, update.CanonicalID)
+}
+
 func TestUpdate_EnforcesUniquenessOnClientIDChange(t *testing.T) {
 	repo := newMockAgentRepo()
 	svc := newTestService(repo, false)
@@ -327,5 +360,21 @@ func TestResolveUniqueByClientID_NotFound(t *testing.T) {
 	svc := newTestService(repo, false)
 
 	_, err := svc.ResolveUniqueByClientID(context.Background(), "nonexistent")
+	require.Error(t, err)
+}
+
+func TestResolveIDAcceptsUUIDCanonicalAndRejectsUnknown(t *testing.T) {
+	repo := newMockAgentRepo()
+	service := newTestService(repo, true)
+	canonicalID := "research-agent"
+	agent := &storage.Agent{ID: id.NewAgentID(), CanonicalID: &canonicalID, DisplayName: "Research", Description: "Research agent"}
+	repo.agents[agent.ID] = agent
+
+	for _, value := range []string{agent.ID.String(), canonicalID} {
+		resolved, err := service.ResolveID(context.Background(), value)
+		require.NoError(t, err)
+		assert.Equal(t, agent.ID, resolved)
+	}
+	_, err := service.ResolveID(context.Background(), "unknown-agent")
 	require.Error(t, err)
 }

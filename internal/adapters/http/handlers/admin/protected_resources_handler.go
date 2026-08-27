@@ -156,12 +156,12 @@ func (h *ProtectedResourcesHandler) List(w http.ResponseWriter, r *http.Request)
 	h.json(w, http.StatusOK, protectedResourceSetResponse{resources})
 }
 func (h *ProtectedResourcesHandler) serviceID(w http.ResponseWriter, r *http.Request) (id.ServiceID, bool) {
-	parsed, err := id.ParseServiceID(chi.URLParam(r, "service-id"))
+	serviceID, err := h.providerService.ResolveID(r.Context(), chi.URLParam(r, "service-id"))
 	if err != nil {
-		h.error(w, http.StatusBadRequest, "invalid service ID", "")
+		h.storageError(w, err)
 		return id.ServiceID{}, false
 	}
-	return parsed, true
+	return serviceID, true
 }
 func (h *ProtectedResourcesHandler) memberResource(r *http.Request) (string, error) {
 	prefix := "/api/services/" + chi.URLParam(r, "service-id") + "/protected-resources/"

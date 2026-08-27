@@ -1,21 +1,25 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/agents"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // ClientCredentialsHandler handles admin API requests for broker client credentials.
 type ClientCredentialsHandler struct {
 	credentialRepo ports.ClientCredentialRepository
-	agentRepo      ports.AgentRepository
+	agentService   *agents.Service
 	clientAuth     ports.CredentialGenerator
 	logger         *slog.Logger
 }
@@ -23,16 +27,33 @@ type ClientCredentialsHandler struct {
 // NewClientCredentialsHandler creates a new ClientCredentialsHandler.
 func NewClientCredentialsHandler(
 	credentialRepo ports.ClientCredentialRepository,
-	agentRepo ports.AgentRepository,
+	agentService *agents.Service,
 	clientAuth ports.CredentialGenerator,
 	logger *slog.Logger,
 ) *ClientCredentialsHandler {
 	return &ClientCredentialsHandler{
 		credentialRepo: credentialRepo,
-		agentRepo:      agentRepo,
+		agentService:   agentService,
 		clientAuth:     clientAuth,
 		logger:         logger,
 	}
+}
+
+func (h *ClientCredentialsHandler) resolveAgentID(ctx context.Context, value string) (id.AgentID, error) {
+	return h.agentService.ResolveID(ctx, value)
+}
+func (h *ClientCredentialsHandler) handleAgentResolutionError(w http.ResponseWriter, err error) {
+	if ports.IsNotFoundErr(err) {
+		h.writeError(w, http.StatusNotFound, "agent not found", "")
+		return
+	}
+	var storageErr *storage.StorageError
+	if errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindTimeout {
+		h.writeError(w, http.StatusGatewayTimeout, "operation timed out", "")
+		return
+	}
+	h.logger.Error("failed to resolve agent", "error", err)
+	h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 }
 
 // credentialGenerateResponse is the JSON response for POST (generate/rotate).
@@ -61,14 +82,13 @@ func (h *ClientCredentialsHandler) Generate(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	agentID, err := id.ParseAgentID(agentIDStr)
+	agentID, err := h.resolveAgentID(r.Context(), agentIDStr)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid agent ID", err.Error())
+		h.handleAgentResolutionError(w, err)
 		return
 	}
 
-	// Verify agent exists
-	_, err = h.agentRepo.Get(r.Context(), agentID)
+	_, err = h.agentService.Get(r.Context(), agentID)
 	if err != nil {
 		h.writeError(w, http.StatusNotFound, "agent not found", "")
 		return
@@ -142,9 +162,9 @@ func (h *ClientCredentialsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agentID, err := id.ParseAgentID(agentIDStr)
+	agentID, err := h.resolveAgentID(r.Context(), agentIDStr)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid agent ID", err.Error())
+		h.handleAgentResolutionError(w, err)
 		return
 	}
 
@@ -185,9 +205,9 @@ func (h *ClientCredentialsHandler) Revoke(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	agentID, err := id.ParseAgentID(agentIDStr)
+	agentID, err := h.resolveAgentID(r.Context(), agentIDStr)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid agent ID", err.Error())
+		h.handleAgentResolutionError(w, err)
 		return
 	}
 

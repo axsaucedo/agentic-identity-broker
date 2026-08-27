@@ -18,6 +18,7 @@ import (
 type InMemoryThirdpartyOAuth2ProviderRepository struct {
 	mu             sync.RWMutex
 	providers      map[id.ServiceID]*thirdpartyOAuth2ProviderRecord
+	canonicalIndex map[string]id.ServiceID
 	resources      map[id.ServiceID]map[string]struct{}
 	resourceOwners map[string]id.ServiceID
 }
@@ -28,6 +29,7 @@ var _ ports.ThirdpartyOAuth2ProviderRepository = (*InMemoryThirdpartyOAuth2Provi
 func NewInMemoryThirdpartyOAuth2ProviderRepository() *InMemoryThirdpartyOAuth2ProviderRepository {
 	return &InMemoryThirdpartyOAuth2ProviderRepository{
 		providers:      make(map[id.ServiceID]*thirdpartyOAuth2ProviderRecord),
+		canonicalIndex: make(map[string]id.ServiceID),
 		resources:      make(map[id.ServiceID]map[string]struct{}),
 		resourceOwners: make(map[string]id.ServiceID),
 	}
@@ -52,6 +54,12 @@ func (r *InMemoryThirdpartyOAuth2ProviderRepository) Create(_ context.Context, e
 	if _, exists := r.providers[entity.ID]; exists {
 		return providerStorageError("CreateThirdpartyOAuth2Provider", storage.ErrorKindConflict, nil, "provider with this ID already exists")
 	}
+	if entity.CanonicalID != nil {
+		if _, exists := r.canonicalIndex[*entity.CanonicalID]; exists {
+			return providerStorageError("CreateThirdpartyOAuth2Provider", storage.ErrorKindConflict, nil, "provider canonical_id already exists")
+		}
+	}
+
 	for resource := range resources {
 		if owner, claimed := r.resourceOwners[resource]; claimed && owner != entity.ID {
 			return providerStorageError("CreateThirdpartyOAuth2Provider", storage.ErrorKindConflict, nil, "protected resource is already owned")
@@ -66,6 +74,9 @@ func (r *InMemoryThirdpartyOAuth2ProviderRepository) Create(_ context.Context, e
 	}
 	r.providers[entity.ID] = record
 	r.resources[entity.ID] = resources
+	if entity.CanonicalID != nil {
+		r.canonicalIndex[*entity.CanonicalID] = entity.ID
+	}
 	for resource := range resources {
 		r.resourceOwners[resource] = entity.ID
 	}
@@ -83,6 +94,29 @@ func (r *InMemoryThirdpartyOAuth2ProviderRepository) Get(_ context.Context, serv
 	return providerRecordToEntity(record, r.resources[serviceID]), nil
 }
 
+func (r *InMemoryThirdpartyOAuth2ProviderRepository) GetByCanonicalID(_ context.Context, canonicalID string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	serviceID, exists := r.canonicalIndex[canonicalID]
+	if !exists {
+		return nil, providerStorageError("GetThirdpartyOAuth2ProviderByCanonicalID", storage.ErrorKindNotFound, ports.ErrNotFound, "provider not found")
+	}
+	return providerRecordToEntity(r.providers[serviceID], r.resources[serviceID]), nil
+}
+
+func (r *InMemoryThirdpartyOAuth2ProviderRepository) GetCanonicalIDs(_ context.Context, ids []id.ServiceID) (map[id.ServiceID]string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	canonicalIDs := make(map[id.ServiceID]string, len(ids))
+	for _, serviceID := range ids {
+		if record, exists := r.providers[serviceID]; exists && record.entity.CanonicalID != nil {
+			canonicalIDs[serviceID] = *record.entity.CanonicalID
+		}
+	}
+	return canonicalIDs, nil
+}
+
 // Update changes provider fields and increments its version. A nil expectedVersion
 // preserves the current child resource set; a non-nil value replaces it atomically.
 func (r *InMemoryThirdpartyOAuth2ProviderRepository) Update(_ context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, expectedVersion *int64) error {
@@ -98,6 +132,17 @@ func (r *InMemoryThirdpartyOAuth2ProviderRepository) Update(_ context.Context, e
 	}
 	if expectedVersion != nil && existing.entity.Version != *expectedVersion {
 		return providerStorageError("UpdateThirdpartyOAuth2Provider", storage.ErrorKindConflict, nil, "provider version does not match")
+	}
+	if entity.ClearCanonicalID {
+		entity.CanonicalID = nil
+	} else if entity.CanonicalID == nil {
+		entity.CanonicalID = existing.entity.CanonicalID
+	}
+
+	if entity.CanonicalID != nil {
+		if existingID, exists := r.canonicalIndex[*entity.CanonicalID]; exists && existingID != entity.ID {
+			return providerStorageError("UpdateThirdpartyOAuth2Provider", storage.ErrorKindConflict, nil, "provider canonical_id already exists")
+		}
 	}
 
 	resourceSet := r.resources[entity.ID]
@@ -135,6 +180,12 @@ func (r *InMemoryThirdpartyOAuth2ProviderRepository) Update(_ context.Context, e
 		}
 	}
 	r.providers[entity.ID] = record
+	if existing.entity.CanonicalID != nil {
+		delete(r.canonicalIndex, *existing.entity.CanonicalID)
+	}
+	if entity.CanonicalID != nil {
+		r.canonicalIndex[*entity.CanonicalID] = entity.ID
+	}
 	return nil
 }
 
@@ -144,6 +195,9 @@ func (r *InMemoryThirdpartyOAuth2ProviderRepository) Delete(_ context.Context, s
 	defer r.mu.Unlock()
 	for resource := range r.resources[serviceID] {
 		delete(r.resourceOwners, resource)
+	}
+	if record, exists := r.providers[serviceID]; exists && record.entity.CanonicalID != nil {
+		delete(r.canonicalIndex, *record.entity.CanonicalID)
 	}
 	delete(r.resources, serviceID)
 	delete(r.providers, serviceID)

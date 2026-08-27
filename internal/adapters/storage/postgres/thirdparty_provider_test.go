@@ -6,13 +6,13 @@ package postgres
 import (
 	"context"
 	"errors"
-	"testing"
-
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"testing"
+	"time"
 )
 
 func TestPostgresThirdpartyOAuth2ProviderRepository_ProtectedResources(t *testing.T) {
@@ -164,4 +164,29 @@ func TestPostgresThirdpartyOAuth2ProviderRepository_ChildResourceResolverLifecyc
 	_, err = repo.FindByProtectedResource(ctx, resource)
 	require.Error(t, err)
 	assert.True(t, tokenexchange.IsResourceNotConfigured(err))
+}
+
+func TestPostgresThirdpartyOAuth2ProviderRepository_UpdatePreservesCanonicalID(t *testing.T) {
+	adapter, cleanup := setupMigratedAdapter(t)
+	defer cleanup()
+	repo := NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	ctx := context.Background()
+	canonicalID := "preserved-canonical-service"
+	provider := newTestEntity()
+	provider.ID = id.NewServiceID()
+	provider.CanonicalID = &canonicalID
+	require.NoError(t, repo.Create(ctx, provider))
+
+	updated := *provider
+	updated.CanonicalID = nil
+	updated.DisplayName = "Updated Provider"
+	updated.UpdatedAt = time.Now().UTC()
+	require.NoError(t, repo.Update(ctx, &updated, nil))
+	require.NotNil(t, updated.CanonicalID)
+	assert.Equal(t, canonicalID, *updated.CanonicalID)
+
+	stored, err := repo.Get(ctx, provider.ID)
+	require.NoError(t, err)
+	require.NotNil(t, stored.CanonicalID)
+	assert.Equal(t, canonicalID, *stored.CanonicalID)
 }

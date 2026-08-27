@@ -178,27 +178,27 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		}
 	}
 
+	if len(agent.ServiceRequirements) > 0 {
+		serviceIDs := make([]id.ServiceID, len(agent.ServiceRequirements))
+		for i, requirement := range agent.ServiceRequirements {
+			serviceIDs[i] = requirement.ServiceID
+		}
+		if err = verifyServiceExistenceInTx(execCtx, tx, serviceIDs); err != nil {
+			return err
+		}
+	}
+
 	_, err = tx.ExecContext(
 		execCtx,
 		`INSERT INTO agents (
-			id, client_id, external_id, display_name, description,
+			id, canonical_id, client_id, external_id, display_name, description,
 			governance_url, user_documentation_url, agent_interface_url,
 			service_requirements, permission_sets, redirect_uris, allowed_scopes, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-		agent.ID,
-		agent.ClientID,
-		agent.ExternalID,
-		agent.DisplayName,
-		agent.Description,
-		agent.GovernanceURL,
-		agent.UserDocumentationURL,
-		agent.AgentInterfaceURL,
-		serviceReqsJSON,
-		permissionSetsJSON,
-		pq.Array(emptyIfNil(agent.RedirectURIs)),
-		pq.Array(emptyIfNil(agent.AllowedScopes)),
-		agent.CreatedAt,
-		agent.UpdatedAt,
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+		agent.ID, agent.CanonicalID, agent.ClientID, agent.ExternalID, agent.DisplayName, agent.Description,
+		agent.GovernanceURL, agent.UserDocumentationURL, agent.AgentInterfaceURL,
+		serviceReqsJSON, permissionSetsJSON, pq.Array(emptyIfNil(agent.RedirectURIs)),
+		pq.Array(emptyIfNil(agent.AllowedScopes)), agent.CreatedAt, agent.UpdatedAt,
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "context deadline exceeded") {
@@ -210,6 +210,9 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 			}
 			if strings.Contains(pgErr.ConstraintName, "client_id") {
 				return storage.NewStorageError("CreateAgent", storage.ErrorKindConflict, err, "agent with this client_id already exists")
+			}
+			if pgErr.ConstraintName == "uq_agents_canonical_id" {
+				return storage.NewStorageError("CreateAgent", storage.ErrorKindConflict, err, "agent canonical_id already exists")
 			}
 		}
 		return storage.NewStorageError("CreateAgent", storage.ErrorKindConnection, err, "failed to create agent")
@@ -261,30 +264,22 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 	agent := &storage.Agent{}
 	err := r.adapter.db.QueryRowContext(
 		queryCtx,
-		`SELECT id, client_id, external_id, display_name, description,
+		`SELECT id, canonical_id, client_id, external_id, display_name, description,
 		        governance_url, user_documentation_url, agent_interface_url,
 		        service_requirements, permission_sets, redirect_uris, allowed_scopes, created_at, updated_at
-		 FROM agents
-		 WHERE id = $1`,
+	 FROM agents
+	 WHERE id = $1`,
 		agentID,
 	).Scan(
-		&agent.ID,
-		&agent.ClientID,
-		&agent.ExternalID,
-		&agent.DisplayName,
-		&agent.Description,
-		&agent.GovernanceURL,
-		&agent.UserDocumentationURL,
-		&agent.AgentInterfaceURL,
-		&serviceReqsJSON,
-		&permissionSetsJSON,
-		pq.Array(&agent.RedirectURIs),
-		pq.Array(&agent.AllowedScopes),
-		&agent.CreatedAt,
-		&agent.UpdatedAt,
+		&agent.ID, &agent.CanonicalID, &agent.ClientID, &agent.ExternalID,
+		&agent.DisplayName, &agent.Description,
+		&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
+		&serviceReqsJSON, &permissionSetsJSON,
+		pq.Array(&agent.RedirectURIs), pq.Array(&agent.AllowedScopes),
+		&agent.CreatedAt, &agent.UpdatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.NewStorageError("GetAgent", storage.ErrorKindNotFound, ports.ErrNotFound, "agent not found")
 		}
 		if strings.Contains(err.Error(), "context deadline exceeded") {
@@ -292,7 +287,6 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 		}
 		return nil, storage.NewStorageError("GetAgent", storage.ErrorKindConnection, err, "failed to get agent")
 	}
-
 	if len(serviceReqsJSON) > 0 {
 		if err := json.Unmarshal(serviceReqsJSON, &agent.ServiceRequirements); err != nil {
 			return nil, storage.NewStorageError(
@@ -322,6 +316,19 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 	agent.ClientURIs = uris
 
 	return agent.Copy(), nil
+}
+
+func (r *AgentRepository) GetByCanonicalID(ctx context.Context, canonicalID string) (*storage.Agent, error) {
+	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+	var agentID id.AgentID
+	if err := r.adapter.db.QueryRowContext(queryCtx, `SELECT id FROM agents WHERE canonical_id = $1`, canonicalID).Scan(&agentID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, storage.NewStorageError("GetAgentByCanonicalID", storage.ErrorKindNotFound, ports.ErrNotFound, "agent not found")
+		}
+		return nil, storage.NewStorageError("GetAgentByCanonicalID", storage.ErrorKindConnection, err, "failed to get agent")
+	}
+	return r.Get(ctx, agentID)
 }
 
 // Update updates an existing agent entity in PostgreSQL.
@@ -393,33 +400,13 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 
 	result, err := tx.ExecContext(
 		execCtx,
-		`UPDATE agents
-		 SET client_id = $2,
-		     external_id = $3,
-		     display_name = $4,
-		     description = $5,
-		     governance_url = $6,
-		     user_documentation_url = $7,
-		     agent_interface_url = $8,
-		     service_requirements = $9,
-		     permission_sets = $10,
-		     redirect_uris = $11,
-		     allowed_scopes = $12,
-		     updated_at = $13
-		 WHERE id = $1`,
-		agent.ID,
-		agent.ClientID,
-		agent.ExternalID,
-		agent.DisplayName,
-		agent.Description,
-		agent.GovernanceURL,
-		agent.UserDocumentationURL,
-		agent.AgentInterfaceURL,
-		serviceReqsJSON,
-		permissionSetsJSON,
-		pq.Array(emptyIfNil(agent.RedirectURIs)),
-		pq.Array(emptyIfNil(agent.AllowedScopes)),
-		agent.UpdatedAt,
+		`UPDATE agents SET canonical_id=$2, client_id=$3, external_id=$4, display_name=$5,
+		 description=$6, governance_url=$7, user_documentation_url=$8, agent_interface_url=$9,
+		 service_requirements=$10, permission_sets=$11, redirect_uris=$12, allowed_scopes=$13, updated_at=$14
+		 WHERE id=$1`,
+		agent.ID, agent.CanonicalID, agent.ClientID, agent.ExternalID, agent.DisplayName, agent.Description,
+		agent.GovernanceURL, agent.UserDocumentationURL, agent.AgentInterfaceURL, serviceReqsJSON, permissionSetsJSON,
+		pq.Array(emptyIfNil(agent.RedirectURIs)), pq.Array(emptyIfNil(agent.AllowedScopes)), agent.UpdatedAt,
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "context deadline exceeded") {
@@ -428,6 +415,9 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == "23505" {
 			if strings.Contains(pgErr.ConstraintName, "client_id") {
 				return storage.NewStorageError("UpdateAgent", storage.ErrorKindConflict, err, "agent with this client_id already exists")
+			}
+			if pgErr.ConstraintName == "uq_agents_canonical_id" {
+				return storage.NewStorageError("UpdateAgent", storage.ErrorKindConflict, err, "agent canonical_id already exists")
 			}
 		}
 		return storage.NewStorageError("UpdateAgent", storage.ErrorKindConnection, err, "failed to update agent")
@@ -456,6 +446,16 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 			psIDs[i] = aps.PermissionSetID
 		}
 		if err = verifyPermissionSetExistenceInTx(execCtx, tx, psIDs); err != nil {
+			return err
+		}
+	}
+
+	if len(agent.ServiceRequirements) > 0 {
+		serviceIDs := make([]id.ServiceID, len(agent.ServiceRequirements))
+		for i, requirement := range agent.ServiceRequirements {
+			serviceIDs[i] = requirement.ServiceID
+		}
+		if err = verifyServiceExistenceInTx(execCtx, tx, serviceIDs); err != nil {
 			return err
 		}
 	}
@@ -519,11 +519,10 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 
 	rows, err := r.adapter.db.QueryContext(
 		queryCtx,
-		`SELECT id, client_id, external_id, display_name, description,
+		`SELECT id, canonical_id, client_id, external_id, display_name, description,
 		        governance_url, user_documentation_url, agent_interface_url,
 		        service_requirements, permission_sets, redirect_uris, allowed_scopes, created_at, updated_at
-		 FROM agents
-		 ORDER BY created_at DESC`,
+	 FROM agents ORDER BY created_at DESC`,
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "context deadline exceeded") {
@@ -538,7 +537,7 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 		agent := &storage.Agent{}
 		var serviceReqsJSON, permissionSetsJSON []byte
 		if err := rows.Scan(
-			&agent.ID, &agent.ClientID, &agent.ExternalID,
+			&agent.ID, &agent.CanonicalID, &agent.ClientID, &agent.ExternalID,
 			&agent.DisplayName, &agent.Description,
 			&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
 			&serviceReqsJSON, &permissionSetsJSON,

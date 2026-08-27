@@ -100,52 +100,19 @@ type UserRepository interface {
 // Agents represent AI agents registered in the identity broker.
 // Following Interface Segregation Principle: focused interface for agent operations.
 type AgentRepository interface {
-	// Create creates a new agent entity in storage.
-	// The agent ID should be generated before calling this method.
-	// Returns error if:
-	// - Agent ID already exists (StorageError with Kind=Conflict)
-	// - Agent client_id already exists (StorageError with Kind=Conflict)
-	// - Storage connection fails (StorageError with Kind=Connection)
-	// - Operation timeout (StorageError with Kind=Timeout)
 	Create(ctx context.Context, agent *storage.Agent) error
-
-	// Get retrieves an agent entity by ID.
-	// Returns StorageError with Kind=NotFound if agent not found.
-	// Returns StorageError for connection/timeout issues.
 	Get(ctx context.Context, id id.AgentID) (*storage.Agent, error)
-
-	// Update updates an existing agent entity.
-	// Returns error if:
-	// - Agent ID not found (StorageError with Kind=NotFound)
-	// - Storage connection fails (StorageError with Kind=Connection)
-	// - Operation timeout (StorageError with Kind=Timeout)
 	Update(ctx context.Context, agent *storage.Agent) error
-
-	// Delete deletes an agent entity by ID.
-	// Associated grants are CASCADE deleted per FR-021.
-	// Returns error if storage operation fails.
-	// It is safe to delete non-existent agents (idempotent).
 	Delete(ctx context.Context, id id.AgentID) error
-
-	// List retrieves all agent entities.
-	// Returns empty slice if no agents exist (not an error).
-	// Returns StorageError for connection/timeout issues.
 	List(ctx context.Context) ([]*storage.Agent, error)
-
-	// GetByClientID retrieves an agent entity by client_id.
-	// Returns StorageError with Kind=NotFound if agent not found.
-	// Returns StorageError for connection/timeout issues.
 	GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error)
-
-	// ExistsOtherWithClientID reports whether any agent other than excludeAgentID has the
-	// given client_id. When excludeAgentID is nil all agents are considered (create path).
-	// Returns StorageError for connection/timeout issues.
 	ExistsOtherWithClientID(ctx context.Context, clientID id.ClientID, excludeAgentID *id.AgentID) (bool, error)
-
-	// GetByClientURI retrieves an agent entity by a pre-registered Client ID Metadata Document URL.
-	// Returns StorageError with Kind=NotFound if no agent has this URI registered.
-	// Returns StorageError for connection/timeout issues.
 	GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error)
+}
+
+// AgentCanonicalIDRepository resolves type-scoped canonical agent IDs.
+type AgentCanonicalIDRepository interface {
+	GetByCanonicalID(ctx context.Context, canonicalID string) (*storage.Agent, error)
 }
 
 // UserGrantRepository defines storage operations for user grant entities.
@@ -289,52 +256,20 @@ type UserSessionRepository interface {
 // Permission sets are admin-defined bundles of OAuth2 scopes spanning one or more third-party services.
 // Following Interface Segregation Principle: focused interface for permission set operations.
 type PermissionSetRepository interface {
-	// Create stores a new permission set.
-	// Returns error if:
-	// - Permission set name already exists (StorageError with Kind=Conflict)
-	// - Storage connection fails (StorageError with Kind=Connection)
-	// - Operation timeout (StorageError with Kind=Timeout)
 	Create(ctx context.Context, ps *storage.PermissionSet) error
-
-	// Get retrieves a permission set by ID.
-	// Returns StorageError with Kind=NotFound if permission set not found.
-	// Returns StorageError for connection/timeout issues.
 	Get(ctx context.Context, id id.PermissionSetID) (*storage.PermissionSet, error)
-
-	// GetByIDs retrieves multiple permission sets by IDs in one round-trip.
-	// Returns all found sets; IDs not found are silently absent (caller validates).
-	// Returns StorageError for connection/timeout issues.
 	GetByIDs(ctx context.Context, ids []id.PermissionSetID) ([]*storage.PermissionSet, error)
-
-	// Update replaces a permission set's name, description, and service scopes.
-	// Returns NotFound if absent.
-	// Returns StorageError for connection/timeout issues.
 	Update(ctx context.Context, ps *storage.PermissionSet) error
-
-	// Delete removes a permission set by ID.
-	// Returns error if storage operation fails.
-	// Caller MUST check CountAgentsReferencingPermissionSet and
-	// UserGrantRepository.CountGrantsReferencingPermissionSet before calling Delete.
-	// It is safe to delete non-existent permission sets (idempotent).
 	Delete(ctx context.Context, id id.PermissionSetID) error
-
-	// List returns all permission sets, optionally filtered by service ID.
-	// If serviceID is zero-value, returns all permission sets.
-	// Returns empty slice if no permission sets match (not an error).
-	// Returns StorageError for connection/timeout issues.
 	List(ctx context.Context, serviceID id.ServiceID) ([]*storage.PermissionSet, error)
-
-	// CountAgentsReferencingPermissionSet counts agents whose permission_sets JSONB
-	// list contains the given permission set ID.
-	// Used for deletion protection — blocks deletion if count > 0.
-	// Returns the count of agents referencing this permission set.
 	CountAgentsReferencingPermissionSet(ctx context.Context, id id.PermissionSetID) (int, error)
-
-	// CountPermissionSetsForService counts permission sets that contain a ServiceScope
-	// for the given service ID.
-	// Used to block ThirdpartyOAuth2Service deletion via application-layer check.
-	// Returns the count of permission sets referencing this service.
 	CountPermissionSetsForService(ctx context.Context, serviceID id.ServiceID) (int, error)
+}
+
+// PermissionSetCanonicalIDRepository resolves and batch-loads type-scoped canonical permission-set IDs.
+type PermissionSetCanonicalIDRepository interface {
+	GetByCanonicalID(ctx context.Context, canonicalID string) (*storage.PermissionSet, error)
+	GetCanonicalIDs(ctx context.Context, ids []id.PermissionSetID) (map[id.PermissionSetID]string, error)
 }
 
 // ToolApprovalRepository defines core CRUD operations for tool approval entities.

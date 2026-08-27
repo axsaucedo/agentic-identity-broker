@@ -544,3 +544,15 @@ func TestValidateClientURIsForWrite(t *testing.T) {
 	})
 
 }
+
+func TestAgentCanonicalIDValidationAndCopy(t *testing.T) {
+	canonicalID := "research-agent"
+	agent := &Agent{ID: id.NewAgentID(), CanonicalID: &canonicalID, DisplayName: "Research", Description: "Research agent"}
+	require.NoError(t, agent.Validate())
+
+	copy := agent.Copy()
+	require.NotNil(t, copy.CanonicalID)
+	assert.Equal(t, canonicalID, *copy.CanonicalID)
+	*copy.CanonicalID = "other-agent"
+	assert.Equal(t, canonicalID, *agent.CanonicalID)
+}

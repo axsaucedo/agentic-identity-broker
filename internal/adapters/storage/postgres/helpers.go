@@ -56,6 +56,38 @@ func verifyPermissionSetExistenceInTx(ctx context.Context, tx *sql.Tx, psIDs []i
 	return nil
 }
 
+func verifyServiceExistenceInTx(ctx context.Context, tx *sql.Tx, serviceIDs []id.ServiceID) error {
+	if len(serviceIDs) == 0 {
+		return nil
+	}
+	idStrings := make([]string, len(serviceIDs))
+	for i, serviceID := range serviceIDs {
+		idStrings[i] = serviceID.String()
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM thirdparty_oauth2_services WHERE id = ANY($1::uuid[]) FOR SHARE`, pq.Array(idStrings))
+	if err != nil {
+		return storage.NewStorageError("verifyServiceExistence", storage.ErrorKindUnknown, err, "failed to lock service rows")
+	}
+	defer func() { _ = rows.Close() }()
+	found := make(map[string]struct{}, len(serviceIDs))
+	for rows.Next() {
+		var serviceID string
+		if err := rows.Scan(&serviceID); err != nil {
+			return storage.NewStorageError("verifyServiceExistence", storage.ErrorKindUnknown, err, "failed to scan service row")
+		}
+		found[serviceID] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return storage.NewStorageError("verifyServiceExistence", storage.ErrorKindUnknown, err, "error iterating service rows")
+	}
+	for _, serviceID := range serviceIDs {
+		if _, exists := found[serviceID.String()]; !exists {
+			return storage.NewStorageError("verifyServiceExistence", storage.ErrorKindConflict, fmt.Errorf("service %s not found", serviceID), fmt.Sprintf("service %s was deleted concurrently", serviceID))
+		}
+	}
+	return nil
+}
+
 // checkRowsAffected verifies that a SQL result affected at least one row.
 // Returns ErrorKindUnknown if the driver reports an error from RowsAffected(),
 // ErrorKindNotFound if zero rows were affected, and nil otherwise.

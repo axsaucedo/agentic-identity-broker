@@ -14,6 +14,7 @@ import (
 type PermissionSetRepository struct {
 	mu             sync.RWMutex
 	permissionSets map[id.PermissionSetID]*storage.PermissionSet
+	canonicalIndex map[string]id.PermissionSetID
 	nameIndex      map[string]id.PermissionSetID // Name -> ID for uniqueness check
 	agentRepo      ports.AgentRepository         // used for CountAgentsReferencingPermissionSet
 }
@@ -22,6 +23,7 @@ type PermissionSetRepository struct {
 func NewPermissionSetRepository() *PermissionSetRepository {
 	return &PermissionSetRepository{
 		permissionSets: make(map[id.PermissionSetID]*storage.PermissionSet),
+		canonicalIndex: make(map[string]id.PermissionSetID),
 		nameIndex:      make(map[string]id.PermissionSetID),
 	}
 }
@@ -64,9 +66,18 @@ func (r *PermissionSetRepository) Create(ctx context.Context, ps *storage.Permis
 		)
 	}
 
+	if ps.CanonicalID != nil {
+		if _, exists := r.canonicalIndex[*ps.CanonicalID]; exists {
+			return storage.NewStorageError("CreatePermissionSet", storage.ErrorKindConflict, nil, "permission set canonical_id already exists")
+		}
+	}
+
 	// Store the permission set
 	r.permissionSets[ps.ID] = ps.Copy()
 	r.nameIndex[ps.Name] = ps.ID
+	if ps.CanonicalID != nil {
+		r.canonicalIndex[*ps.CanonicalID] = ps.ID
+	}
 
 	return nil
 }
@@ -87,6 +98,29 @@ func (r *PermissionSetRepository) Get(ctx context.Context, id id.PermissionSetID
 	}
 
 	return ps.Copy(), nil
+}
+
+func (r *PermissionSetRepository) GetByCanonicalID(_ context.Context, canonicalID string) (*storage.PermissionSet, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	psID, exists := r.canonicalIndex[canonicalID]
+	if !exists {
+		return nil, storage.NewStorageError("GetPermissionSetByCanonicalID", storage.ErrorKindNotFound, ports.ErrNotFound, "permission set not found")
+	}
+	return r.permissionSets[psID].Copy(), nil
+}
+
+func (r *PermissionSetRepository) GetCanonicalIDs(_ context.Context, ids []id.PermissionSetID) (map[id.PermissionSetID]string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	canonicalIDs := make(map[id.PermissionSetID]string, len(ids))
+	for _, permissionSetID := range ids {
+		if permissionSet, exists := r.permissionSets[permissionSetID]; exists && permissionSet.CanonicalID != nil {
+			canonicalIDs[permissionSetID] = *permissionSet.CanonicalID
+		}
+	}
+	return canonicalIDs, nil
 }
 
 // GetByIDs retrieves multiple permission sets by IDs.
@@ -119,6 +153,12 @@ func (r *PermissionSetRepository) Update(ctx context.Context, ps *storage.Permis
 		)
 	}
 
+	if ps.CanonicalID != nil {
+		if existingID, exists := r.canonicalIndex[*ps.CanonicalID]; exists && existingID != ps.ID {
+			return storage.NewStorageError("UpdatePermissionSet", storage.ErrorKindConflict, nil, "permission set canonical_id already exists")
+		}
+	}
+
 	// Check for duplicate name (if name changed)
 	if ps.Name != existing.Name {
 		if _, exists := r.nameIndex[ps.Name]; exists {
@@ -132,6 +172,12 @@ func (r *PermissionSetRepository) Update(ctx context.Context, ps *storage.Permis
 		// Update name index
 		delete(r.nameIndex, existing.Name)
 		r.nameIndex[ps.Name] = ps.ID
+	}
+	if existing.CanonicalID != nil {
+		delete(r.canonicalIndex, *existing.CanonicalID)
+	}
+	if ps.CanonicalID != nil {
+		r.canonicalIndex[*ps.CanonicalID] = ps.ID
 	}
 
 	// Store the updated permission set
@@ -153,6 +199,9 @@ func (r *PermissionSetRepository) Delete(ctx context.Context, id id.PermissionSe
 
 	delete(r.permissionSets, id)
 	delete(r.nameIndex, ps.Name)
+	if ps.CanonicalID != nil {
+		delete(r.canonicalIndex, *ps.CanonicalID)
+	}
 
 	return nil
 }

@@ -518,3 +518,21 @@ func TestThirdpartyOAuth2ProviderEntity_CopyPreservesVersion(t *testing.T) {
 
 	assert.Equal(t, int64(1), entity.Copy().Version)
 }
+
+func TestThirdpartyOAuth2ProviderCanonicalIDValidationAndCopy(t *testing.T) {
+	canonicalID := "github-service"
+	entity := &ThirdpartyOAuth2ProviderEntity{
+		ID:          id.NewServiceID(),
+		CanonicalID: &canonicalID,
+		DisplayName: "GitHub",
+		ClientID:    id.ClientID("github-client"),
+		Secret:      NewPlaintextSecret("secret"),
+		IssuerURI:   "https://github.com",
+	}
+	require.NoError(t, entity.Validate())
+
+	copy := entity.Copy()
+	require.NotNil(t, copy.CanonicalID)
+	*copy.CanonicalID = "other-service"
+	assert.Equal(t, canonicalID, *entity.CanonicalID)
+}

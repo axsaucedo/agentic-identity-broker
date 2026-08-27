@@ -41,3 +41,23 @@ func TestPermissionSet_ValidateForCreate_RejectsBlankSuppliedScope(t *testing.T)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "scope cannot be empty")
 }
+
+func TestPermissionSetCanonicalIDValidationAndCopy(t *testing.T) {
+	canonicalID := "repository-read"
+	permissionSet := &PermissionSet{
+		ID:          id.NewPermissionSetID(),
+		CanonicalID: &canonicalID,
+		Name:        "Repository Read",
+		Description: "Read repository data",
+		ServiceScopes: []ServiceScope{{
+			ServiceID:       id.NewServiceID(),
+			RequirementType: RequirementTypeOptional,
+		}},
+	}
+	require.NoError(t, permissionSet.Validate())
+
+	copy := permissionSet.Copy()
+	require.NotNil(t, copy.CanonicalID)
+	*copy.CanonicalID = "other-permission-set"
+	assert.Equal(t, canonicalID, *permissionSet.CanonicalID)
+}

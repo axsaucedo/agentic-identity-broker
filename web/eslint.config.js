@@ -8,6 +8,11 @@ import globals from 'globals';
 export default tseslint.config(
   {
     ignores: [
+      'node_modules/**',
+      'dist/**',
+      'build/**',
+      'coverage/**',
+      '**/*.min.js',
       'storybook-static/**',
       'src/**/*.stories.*',
       'src/**/*.mdx',

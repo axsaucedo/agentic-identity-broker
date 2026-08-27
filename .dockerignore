@@ -8,6 +8,7 @@
 .env
 .env.local
 .env.*.local
+.env*
 
 # Node.js / NPM
 node_modules/
@@ -72,5 +73,5 @@ k8s/
 helm/
 
 # Logs
-*.log
+*.log*
 logs/

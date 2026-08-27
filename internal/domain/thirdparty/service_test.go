@@ -37,6 +37,22 @@ func (m *MockRepository) Get(ctx context.Context, serviceID id.ServiceID) (*mode
 	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
+func (m *MockRepository) GetByCanonicalID(ctx context.Context, canonicalID string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	args := m.Called(ctx, canonicalID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
+}
+
+func (m *MockRepository) GetCanonicalIDs(ctx context.Context, ids []id.ServiceID) (map[id.ServiceID]string, error) {
+	args := m.Called(ctx, ids)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[id.ServiceID]string), args.Error(1)
+}
+
 func (m *MockRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, expectedVersion *int64) error {
 	args := m.Called(ctx, entity, expectedVersion)
 	return args.Error(0)
@@ -1327,5 +1343,22 @@ func TestThirdpartyOAuth2ProviderService_RenameProtectedResource_SameURINoOp(t *
 	assert.Equal(t, []string{"https://api.example.com/resource"}, result.ProtectedResources)
 	assert.EqualValues(t, 10, result.Version)
 	assert.False(t, result.Changed)
+	repo.AssertExpectations(t)
+}
+
+func TestResolveIDAcceptsUUIDCanonicalAndRejectsUnknown(t *testing.T) {
+	serviceID := id.NewServiceID()
+	canonicalID := "github-service"
+	repo := new(MockRepository)
+	repo.On("GetByCanonicalID", mock.Anything, canonicalID).Return(&model.ThirdpartyOAuth2ProviderEntity{ID: serviceID}, nil)
+	repo.On("GetByCanonicalID", mock.Anything, "unknown-service").Return(nil, ports.ErrNotFound)
+	service := NewThirdpartyOAuth2ProviderService(repo, new(MockEncryption), newNoopBranchKeyManager(), nil, false, slog.Default())
+	for _, value := range []string{serviceID.String(), canonicalID} {
+		resolved, err := service.ResolveID(context.Background(), value)
+		require.NoError(t, err)
+		assert.Equal(t, serviceID, resolved)
+	}
+	_, err := service.ResolveID(context.Background(), "unknown-service")
+	require.Error(t, err)
 	repo.AssertExpectations(t)
 }

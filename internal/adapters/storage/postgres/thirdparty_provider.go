@@ -19,7 +19,7 @@ import (
 )
 
 const providerColumns = `
-	s.id, s.display_name, s.client_id, s.client_secret_encrypted, s.oauth2_flavor, s.issuer_uri,
+	s.id, s.canonical_id, s.display_name, s.client_id, s.client_secret_encrypted, s.oauth2_flavor, s.issuer_uri,
 	s.enable_discovery, s.metadata_url, s.token_endpoint, s.authorize_endpoint, s.scopes,
 	COALESCE((SELECT array_agg(pr.resource_uri ORDER BY pr.resource_uri)
 	          FROM service_protected_resources pr WHERE pr.service_id = s.id), ARRAY[]::text[]),
@@ -50,11 +50,11 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Create(ctx context.Context,
 	}
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(execCtx, `INSERT INTO thirdparty_oauth2_services (
-		id, display_name, client_id, client_secret_encrypted, oauth2_flavor, issuer_uri,
+		id, canonical_id, display_name, client_id, client_secret_encrypted, oauth2_flavor, issuer_uri,
 		enable_discovery, metadata_url, token_endpoint, authorize_endpoint, scopes,
 		authorization_params, created_at, updated_at, version
-	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,1)`,
-		record.ID, record.DisplayName, record.ClientID, record.SecretCiphertext, record.Flavor, record.IssuerURI,
+	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,1)`,
+		record.ID, record.CanonicalID, record.DisplayName, record.ClientID, record.SecretCiphertext, record.Flavor, record.IssuerURI,
 		record.EnableDiscovery, record.MetadataURL, record.TokenEndpoint, record.AuthorizeEndpoint, record.Scopes,
 		record.AuthorizationParams, record.CreatedAt, record.UpdatedAt)
 	if err != nil {
@@ -89,6 +89,53 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, se
 	return recordToEntity(record)
 }
 
+func (r *PostgresThirdpartyOAuth2ProviderRepository) GetByCanonicalID(ctx context.Context, canonicalID string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	if err := r.requireDB("GetThirdpartyOAuth2ProviderByCanonicalID"); err != nil {
+		return nil, err
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+	var serviceID id.ServiceID
+	if err := r.adapter.db.QueryRowContext(queryCtx, `SELECT id FROM thirdparty_oauth2_services WHERE canonical_id = $1`, canonicalID).Scan(&serviceID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, storage.NewStorageError("GetThirdpartyOAuth2ProviderByCanonicalID", storage.ErrorKindNotFound, ports.ErrNotFound, "provider not found")
+		}
+		return nil, providerStorageError("GetThirdpartyOAuth2ProviderByCanonicalID", err, "failed to get provider")
+	}
+	return r.Get(ctx, serviceID)
+}
+
+func (r *PostgresThirdpartyOAuth2ProviderRepository) GetCanonicalIDs(ctx context.Context, ids []id.ServiceID) (map[id.ServiceID]string, error) {
+	if err := r.requireDB("GetCanonicalIDsThirdpartyOAuth2Provider"); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return map[id.ServiceID]string{}, nil
+	}
+
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+	rows, err := r.adapter.db.QueryContext(ctxTimeout, `SELECT id, canonical_id FROM thirdparty_oauth2_services WHERE id = ANY($1::uuid[]) AND canonical_id IS NOT NULL`, pq.Array(ids))
+	if err != nil {
+		return nil, providerStorageError("GetCanonicalIDsThirdpartyOAuth2Provider", err, "failed to get canonical IDs")
+	}
+	defer func() { _ = rows.Close() }()
+
+	canonicalIDs := make(map[id.ServiceID]string, len(ids))
+	for rows.Next() {
+		var serviceID id.ServiceID
+		var canonicalID string
+		if err := rows.Scan(&serviceID, &canonicalID); err != nil {
+			return nil, providerStorageError("GetCanonicalIDsThirdpartyOAuth2Provider", err, "failed to scan canonical ID")
+		}
+		canonicalIDs[serviceID] = canonicalID
+	}
+	if err := rows.Err(); err != nil {
+		return nil, providerStorageError("GetCanonicalIDsThirdpartyOAuth2Provider", err, "failed to read canonical IDs")
+	}
+	return canonicalIDs, nil
+}
+
 func (r *PostgresThirdpartyOAuth2ProviderRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, expectedVersion *int64) error {
 	if err := r.requireDB("UpdateThirdpartyOAuth2Provider"); err != nil {
 		return err
@@ -108,22 +155,25 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Update(ctx context.Context,
 	}
 	defer func() { _ = tx.Rollback() }()
 	paramsOmitted := entity.AuthorizationParams == nil
+	canonicalIDOmitted := !entity.ClearCanonicalID && record.CanonicalID == nil
 	query := `UPDATE thirdparty_oauth2_services SET display_name=$2, client_id=$3, client_secret_encrypted=$4,
 		oauth2_flavor=$5, issuer_uri=$6, enable_discovery=$7, metadata_url=$8, token_endpoint=$9,
 		authorize_endpoint=$10, scopes=$11, authorization_params=CASE WHEN $12 THEN authorization_params ELSE $13 END,
-		updated_at=$14, version=version+1 WHERE id=$1`
+		canonical_id=CASE WHEN $14 THEN NULL WHEN $15 THEN canonical_id ELSE $16 END,
+		updated_at=$17, version=version+1 WHERE id=$1`
 	args := []any{record.ID, record.DisplayName, record.ClientID, record.SecretCiphertext, record.Flavor, record.IssuerURI,
 		record.EnableDiscovery, record.MetadataURL, record.TokenEndpoint, record.AuthorizeEndpoint, record.Scopes,
-		paramsOmitted, record.AuthorizationParams, record.UpdatedAt}
+		paramsOmitted, record.AuthorizationParams, entity.ClearCanonicalID, canonicalIDOmitted, record.CanonicalID, record.UpdatedAt}
 	if expectedVersion != nil {
-		query += ` AND version=$15`
+		query += ` AND version=$18`
 		args = append(args, *expectedVersion)
 	}
-	query += ` RETURNING created_at, authorization_params, version`
+	query += ` RETURNING created_at, authorization_params, version, canonical_id`
 	var createdAt time.Time
 	var authorizationParams providerAuthorizationParams
 	var version int64
-	err = tx.QueryRowContext(execCtx, query, args...).Scan(&createdAt, &authorizationParams, &version)
+	var canonicalID *string
+	err = tx.QueryRowContext(execCtx, query, args...).Scan(&createdAt, &authorizationParams, &version, &canonicalID)
 	if errors.Is(err, sql.ErrNoRows) {
 		if expectedVersion != nil {
 			var exists bool
@@ -151,6 +201,7 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Update(ctx context.Context,
 		return providerStorageError("UpdateThirdpartyOAuth2Provider", err, "failed to commit transaction")
 	}
 	entity.CreatedAt, entity.UpdatedAt, entity.Version = createdAt, record.UpdatedAt, version
+	entity.CanonicalID = canonicalID
 	entity.AuthorizationParams = maps.Clone(map[string]string(authorizationParams))
 	return nil
 }
@@ -171,9 +222,32 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Delete(ctx context.Context,
 	}
 	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
 	defer cancel()
-	_, err = r.adapter.db.ExecContext(execCtx, `DELETE FROM thirdparty_oauth2_services WHERE id=$1`, serviceID)
+	tx, err := r.adapter.db.BeginTx(execCtx, nil)
 	if err != nil {
+		return providerStorageError("DeleteThirdpartyOAuth2Provider", err, "failed to begin transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var lockedServiceID id.ServiceID
+	if err := tx.QueryRowContext(execCtx, `SELECT id FROM thirdparty_oauth2_services WHERE id = $1 FOR UPDATE`, serviceID).Scan(&lockedServiceID); errors.Is(err, sql.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return providerStorageError("DeleteThirdpartyOAuth2Provider", err, "failed to lock provider")
+	}
+
+	referenceFilter := fmt.Sprintf(`[{"service_id":%q}]`, serviceID.String())
+	var referenced bool
+	if err := tx.QueryRowContext(execCtx, `SELECT EXISTS(SELECT 1 FROM agents WHERE service_requirements @> $1::jsonb)`, referenceFilter).Scan(&referenced); err != nil {
+		return providerStorageError("DeleteThirdpartyOAuth2Provider", err, "failed to check agent references")
+	}
+	if referenced {
+		return storage.NewStorageError("DeleteThirdpartyOAuth2Provider", storage.ErrorKindConflict, nil, "cannot delete provider: agent service requirements reference it")
+	}
+	if _, err := tx.ExecContext(execCtx, `DELETE FROM thirdparty_oauth2_services WHERE id = $1`, serviceID); err != nil {
 		return providerStorageError("DeleteThirdpartyOAuth2Provider", err, "failed to delete provider")
+	}
+	if err := tx.Commit(); err != nil {
+		return providerStorageError("DeleteThirdpartyOAuth2Provider", err, "failed to commit transaction")
 	}
 	return nil
 }
@@ -380,7 +454,7 @@ type providerResourceQuerier interface {
 
 func scanProvider(scanner providerRowScanner) (*ThirdpartyOAuth2ProviderRecord, error) {
 	var record ThirdpartyOAuth2ProviderRecord
-	err := scanner.Scan(&record.ID, &record.DisplayName, &record.ClientID, &record.SecretCiphertext, &record.Flavor, &record.IssuerURI, &record.EnableDiscovery, &record.MetadataURL, &record.TokenEndpoint, &record.AuthorizeEndpoint, &record.Scopes, pq.Array(&record.ProtectedResources), &record.AuthorizationParams, &record.CreatedAt, &record.UpdatedAt, &record.Version)
+	err := scanner.Scan(&record.ID, &record.CanonicalID, &record.DisplayName, &record.ClientID, &record.SecretCiphertext, &record.Flavor, &record.IssuerURI, &record.EnableDiscovery, &record.MetadataURL, &record.TokenEndpoint, &record.AuthorizeEndpoint, &record.Scopes, pq.Array(&record.ProtectedResources), &record.AuthorizationParams, &record.CreatedAt, &record.UpdatedAt, &record.Version)
 	return &record, err
 }
 func protectedResources(ctx context.Context, db providerResourceQuerier, serviceID id.ServiceID) ([]string, error) {

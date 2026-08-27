@@ -72,6 +72,30 @@ func NewThirdpartyOAuth2ProviderService(
 	}
 }
 
+// ResolveID accepts a UUID or a type-scoped canonical ID.
+func (s *ThirdpartyOAuth2ProviderService) ResolveID(ctx context.Context, value string) (id.ServiceID, error) {
+	if parsed, err := id.ParseServiceID(value); err == nil {
+		return parsed, nil
+	}
+	repo, ok := s.repo.(ports.ThirdpartyOAuth2ProviderCanonicalIDRepository)
+	if !ok {
+		return id.ServiceID{}, storage.NewStorageError("ResolveServiceID", storage.ErrorKindNotFound, nil, "provider not found")
+	}
+	entity, err := repo.GetByCanonicalID(ctx, value)
+	if err != nil {
+		return id.ServiceID{}, err
+	}
+	return entity.ID, nil
+}
+
+// CanonicalIDs returns canonical IDs for the requested providers.
+func (s *ThirdpartyOAuth2ProviderService) CanonicalIDs(ctx context.Context, ids []id.ServiceID) (map[id.ServiceID]string, error) {
+	if repo, ok := s.repo.(ports.ThirdpartyOAuth2ProviderCanonicalIDRepository); ok {
+		return repo.GetCanonicalIDs(ctx, ids)
+	}
+	return map[id.ServiceID]string{}, nil
+}
+
 // Create validates, optionally provisions a branch key, encrypts the secret, and stores the entity.
 // entity.Secret must be in plaintext state on entry.
 // On success, entity.Secret is in encrypted state.

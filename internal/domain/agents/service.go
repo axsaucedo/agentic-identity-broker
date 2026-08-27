@@ -44,6 +44,22 @@ func NewService(
 	}
 }
 
+// ResolveID accepts a UUID or a type-scoped canonical ID.
+func (s *Service) ResolveID(ctx context.Context, value string) (id.AgentID, error) {
+	if parsed, err := id.ParseAgentID(value); err == nil {
+		return parsed, nil
+	}
+	repo, ok := s.repo.(ports.AgentCanonicalIDRepository)
+	if !ok {
+		return id.AgentID{}, storage.NewStorageError("ResolveAgentID", storage.ErrorKindNotFound, nil, "agent not found")
+	}
+	agent, err := repo.GetByCanonicalID(ctx, value)
+	if err != nil {
+		return id.AgentID{}, err
+	}
+	return agent.ID, nil
+}
+
 // Create validates and persists a new agent. When clientID is nil, the agent has no
 // upstream client_id (local-minting or CIMD agents). When multiAgentEnabled is false,
 // client_id uniqueness is enforced for agents that have one.
@@ -85,6 +101,11 @@ func (s *Service) Update(ctx context.Context, agentID id.AgentID, agent *storage
 	}
 
 	agent.ID = agentID
+	if agent.ClearCanonicalID {
+		agent.CanonicalID = nil
+	} else if agent.CanonicalID == nil {
+		agent.CanonicalID = existing.CanonicalID
+	}
 	agent.CreatedAt = existing.CreatedAt
 
 	if agent.ClientID == nil && !clearClientID {

@@ -53,6 +53,22 @@ func (m *MockProviderRepository) Get(ctx context.Context, serviceID id.ServiceID
 	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
+func (m *MockProviderRepository) GetByCanonicalID(ctx context.Context, canonicalID string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	args := m.Called(ctx, canonicalID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
+}
+
+func (m *MockProviderRepository) GetCanonicalIDs(ctx context.Context, ids []id.ServiceID) (map[id.ServiceID]string, error) {
+	args := m.Called(ctx, ids)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[id.ServiceID]string), args.Error(1)
+}
+
 func (m *MockProviderRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, expectedVersion *int64) error {
 	args := m.Called(ctx, entity, expectedVersion)
 	return args.Error(0)
@@ -1200,4 +1216,110 @@ func TestServicesHandler_UpdateServiceProtectedResourcesETag(t *testing.T) {
 
 func modelDiscoveryDisabled() DiscoveryConfigRequest {
 	return DiscoveryConfigRequest{EnableDiscovery: false}
+}
+
+func TestServicesHandler_GetServiceByCanonicalID(t *testing.T) {
+	mockRepo := new(MockProviderRepository)
+	handler := setupHandler(t, mockRepo)
+	serviceID := id.NewServiceID()
+	canonicalID := "canonical-service"
+	entity := encryptedEntity(serviceID, "Canonical Service", "canonical-service-client", "secret", "https://service.example.com", nil)
+	entity.CanonicalID = &canonicalID
+	mockRepo.On("GetByCanonicalID", mock.Anything, canonicalID).Return(entity, nil)
+	mockRepo.On("Get", mock.Anything, serviceID).Return(entity, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/services/"+canonicalID, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("service-id", canonicalID)
+	w := httptest.NewRecorder()
+	handler.GetService(w, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
+	require.Equal(t, http.StatusOK, w.Code)
+	var response ServiceResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+	assert.Equal(t, serviceID.String(), response.ID)
+	require.NotNil(t, response.CanonicalID)
+	assert.Equal(t, canonicalID, *response.CanonicalID)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestServicesHandler_CanonicalCreateValidationAndConflict(t *testing.T) {
+	canonicalID := "canonical-service"
+	request := ServiceRequest{CanonicalID: &canonicalID, DisplayName: "Canonical Service", ClientID: "canonical-service-client", ClientSecret: "secret", IssuerURI: "https://service.example.com", Discovery: DiscoveryConfigRequest{}, Endpoints: &OAuth2EndpointsRequest{TokenEndpoint: "https://service.example.com/token", AuthorizeEndpoint: "https://service.example.com/authorize"}, Scopes: []OAuthScopeRequest{{ScopeValue: "read", Description: "Read"}}}
+	t.Run("creates a service with canonical metadata", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(entity *model.ThirdpartyOAuth2ProviderEntity) bool {
+			return entity.CanonicalID != nil && *entity.CanonicalID == canonicalID
+		})).Return(nil)
+		body, err := json.Marshal(request)
+		require.NoError(t, err)
+		w := httptest.NewRecorder()
+		handler.CreateService(w, httptest.NewRequest(http.MethodPost, "/api/services", bytes.NewReader(body)))
+		require.Equal(t, http.StatusCreated, w.Code)
+		var response ServiceResponse
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+		require.NotNil(t, response.CanonicalID)
+		assert.Equal(t, canonicalID, *response.CanonicalID)
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("maps a canonical ID conflict to 409", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+		mockRepo.On("Create", mock.Anything, mock.Anything).Return(storage.NewStorageError("Create", storage.ErrorKindConflict, nil, "canonical_id already exists"))
+		body, err := json.Marshal(request)
+		require.NoError(t, err)
+		w := httptest.NewRecorder()
+		handler.CreateService(w, httptest.NewRequest(http.MethodPost, "/api/services", bytes.NewReader(body)))
+		assert.Equal(t, http.StatusConflict, w.Code)
+		mockRepo.AssertExpectations(t)
+	})
+}
+
+func TestServicesHandler_CanonicalListRepresentation(t *testing.T) {
+	repo := new(MockProviderRepository)
+	handler := setupHandler(t, repo)
+	serviceID := id.NewServiceID()
+	canonicalID := "listed-service"
+	entity := encryptedEntity(serviceID, "Listed Service", "listed-service-client", "secret", "https://service.example.com", nil)
+	entity.CanonicalID = &canonicalID
+	repo.On("List", mock.Anything).Return([]*model.ThirdpartyOAuth2ProviderEntity{entity}, nil)
+	w := httptest.NewRecorder()
+	handler.ListServices(w, httptest.NewRequest(http.MethodGet, "/api/services", nil))
+	require.Equal(t, http.StatusOK, w.Code)
+	var response []ServiceResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+	require.Len(t, response, 1)
+	assert.Equal(t, serviceID.String(), response[0].ID)
+	require.NotNil(t, response[0].CanonicalID)
+	assert.Equal(t, canonicalID, *response[0].CanonicalID)
+	assert.Contains(t, w.Header().Get("Vary"), "Prefer")
+	repo.AssertExpectations(t)
+}
+
+func TestServicesHandler_UpdateReturnsCanonicalIDFromRepository(t *testing.T) {
+	repo := new(MockProviderRepository)
+	handler := setupHandler(t, repo)
+	serviceID := id.NewServiceID()
+	canonicalID := "preserved-service"
+	request := ServiceRequest{DisplayName: "Updated Service", ClientID: "preserved-service-client", ClientSecret: "secret", IssuerURI: "https://service.example.com", Discovery: DiscoveryConfigRequest{}, Endpoints: &OAuth2EndpointsRequest{TokenEndpoint: "https://service.example.com/token", AuthorizeEndpoint: "https://service.example.com/authorize"}, Scopes: []OAuthScopeRequest{{ScopeValue: "read", Description: "Read"}}}
+	body, err := json.Marshal(request)
+	require.NoError(t, err)
+	repo.On("Update", mock.Anything, mock.MatchedBy(func(entity *model.ThirdpartyOAuth2ProviderEntity) bool {
+		return entity.ID == serviceID && entity.CanonicalID == nil && !entity.ClearCanonicalID
+	}), (*int64)(nil)).Run(func(args mock.Arguments) {
+		entity := args.Get(1).(*model.ThirdpartyOAuth2ProviderEntity)
+		entity.CanonicalID = &canonicalID
+		entity.Version = 2
+	}).Return(nil)
+	req := httptest.NewRequest(http.MethodPut, "/api/services/"+serviceID.String(), bytes.NewReader(body))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("service-id", serviceID.String())
+	w := httptest.NewRecorder()
+	handler.UpdateService(w, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
+	require.Equal(t, http.StatusOK, w.Code)
+	var response ServiceResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+	require.NotNil(t, response.CanonicalID)
+	assert.Equal(t, canonicalID, *response.CanonicalID)
+	repo.AssertExpectations(t)
 }

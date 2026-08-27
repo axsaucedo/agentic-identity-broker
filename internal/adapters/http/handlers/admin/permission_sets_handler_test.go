@@ -38,12 +38,28 @@ func (m *MockPermissionSetRepository) Get(ctx context.Context, id id.PermissionS
 	return args.Get(0).(*storage.PermissionSet), args.Error(1)
 }
 
+func (m *MockPermissionSetRepository) GetByCanonicalID(ctx context.Context, canonicalID string) (*storage.PermissionSet, error) {
+	args := m.Called(ctx, canonicalID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.PermissionSet), args.Error(1)
+}
+
 func (m *MockPermissionSetRepository) GetByIDs(ctx context.Context, ids []id.PermissionSetID) ([]*storage.PermissionSet, error) {
 	args := m.Called(ctx, ids)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]*storage.PermissionSet), args.Error(1)
+}
+
+func (m *MockPermissionSetRepository) GetCanonicalIDs(ctx context.Context, ids []id.PermissionSetID) (map[id.PermissionSetID]string, error) {
+	args := m.Called(ctx, ids)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[id.PermissionSetID]string), args.Error(1)
 }
 
 func (m *MockPermissionSetRepository) Update(ctx context.Context, ps *storage.PermissionSet) error {
@@ -672,4 +688,170 @@ func TestPermissionSetsHandler_Delete(t *testing.T) {
 		mockRepo.AssertExpectations(t)
 	})
 
+}
+
+type canonicalProviderScopeValidator struct {
+	service      *model.ThirdpartyOAuth2ProviderEntity
+	canonicalIDs map[id.ServiceID]string
+}
+
+func (v canonicalProviderScopeValidator) Get(_ context.Context, _ id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	return v.service, nil
+}
+
+func (v canonicalProviderScopeValidator) CanonicalIDs(_ context.Context, _ []id.ServiceID) (map[id.ServiceID]string, error) {
+	return v.canonicalIDs, nil
+}
+
+func TestPermissionSetsHandler_CanonicalIDPresentation(t *testing.T) {
+	mockRepo := new(MockPermissionSetRepository)
+	permissionSetID := id.NewPermissionSetID()
+	serviceID := id.NewServiceID()
+	canonicalID := "canonical-permission-set"
+	serviceCanonicalID := "canonical-service"
+	permissionSet := &storage.PermissionSet{ID: permissionSetID, CanonicalID: &canonicalID, Name: "Canonical Permission Set", Description: "Permission set", ServiceScopes: []storage.ServiceScope{{ServiceID: serviceID, RequirementType: storage.RequirementTypeMandatory}}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	mockRepo.On("GetByCanonicalID", mock.Anything, canonicalID).Return(permissionSet, nil)
+	mockRepo.On("Get", mock.Anything, permissionSetID).Return(permissionSet, nil)
+	handler := newPermissionSetsHandlerWithProviderForTest(mockRepo, canonicalProviderScopeValidator{canonicalIDs: map[id.ServiceID]string{serviceID: serviceCanonicalID}}, slog.Default())
+	req := httptest.NewRequest(http.MethodGet, "/api/permission-sets/"+canonicalID, nil)
+	req.Header.Set("Prefer", "reference-id=canonical")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", canonicalID)
+	w := httptest.NewRecorder()
+	handler.Get(w, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
+	require.Equal(t, http.StatusOK, w.Code)
+	var response PermissionSetResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+	assert.Equal(t, permissionSetID.String(), response.ID)
+	require.NotNil(t, response.CanonicalID)
+	assert.Equal(t, canonicalID, *response.CanonicalID)
+	assert.Equal(t, serviceCanonicalID, response.ServiceScopes[0].ServiceID)
+	assert.Equal(t, "reference-id=canonical", w.Header().Get("Preference-Applied"))
+	assert.Contains(t, w.Header().Get("Vary"), "Prefer")
+	mockRepo.AssertExpectations(t)
+}
+
+func (v canonicalProviderScopeValidator) ResolveID(_ context.Context, value string) (id.ServiceID, error) {
+	if value == "canonical-service" && v.service != nil {
+		return v.service.ID, nil
+	}
+	return id.ParseServiceID(value)
+}
+
+func TestPermissionSetsHandler_CanonicalServiceScopeInput(t *testing.T) {
+	permissionSetRepo := new(MockPermissionSetRepository)
+	serviceID := id.NewServiceID()
+	service := &model.ThirdpartyOAuth2ProviderEntity{ID: serviceID, Scopes: []model.OAuthScope{{ScopeValue: "read"}}}
+	handler := newPermissionSetsHandlerWithProviderForTest(permissionSetRepo, canonicalProviderScopeValidator{service: service}, slog.Default())
+	permissionSetRepo.On("Create", mock.Anything, mock.MatchedBy(func(permissionSet *storage.PermissionSet) bool {
+		return len(permissionSet.ServiceScopes) == 1 && permissionSet.ServiceScopes[0].ServiceID == serviceID
+	})).Return(nil)
+	body, err := json.Marshal(CreatePermissionSetRequest{Name: "Canonical Scope", Description: "Resolves service canonical ID", ServiceScopes: []ServiceScopeRequest{{ServiceID: "canonical-service", Scopes: []string{"read"}, RequirementType: "mandatory"}}})
+	require.NoError(t, err)
+	w := httptest.NewRecorder()
+	handler.Create(w, httptest.NewRequest(http.MethodPost, "/api/permission-sets", bytes.NewReader(body)))
+	require.Equal(t, http.StatusCreated, w.Code)
+	permissionSetRepo.AssertExpectations(t)
+
+	invalidRepo := new(MockPermissionSetRepository)
+	invalidHandler := newPermissionSetsHandlerWithProviderForTest(invalidRepo, canonicalProviderScopeValidator{service: service}, slog.Default())
+	invalidBody, err := json.Marshal(CreatePermissionSetRequest{Name: "Invalid Scope", Description: "Unknown service", ServiceScopes: []ServiceScopeRequest{{ServiceID: "missing-service", Scopes: []string{"read"}}}})
+	require.NoError(t, err)
+	invalidWriter := httptest.NewRecorder()
+	invalidHandler.Create(invalidWriter, httptest.NewRequest(http.MethodPost, "/api/permission-sets", bytes.NewReader(invalidBody)))
+	assert.Equal(t, http.StatusBadRequest, invalidWriter.Code)
+	invalidRepo.AssertNotCalled(t, "Create")
+}
+
+func TestPermissionSetsHandler_CanonicalListDefaultRepresentation(t *testing.T) {
+	repo := new(MockPermissionSetRepository)
+	canonicalID := "listed-permission-set"
+	permissionSet := &storage.PermissionSet{ID: id.NewPermissionSetID(), CanonicalID: &canonicalID, Name: "Listed Permission Set", Description: "Permission set", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	repo.On("List", mock.Anything, id.ServiceID{}).Return([]*storage.PermissionSet{permissionSet}, nil)
+	handler := newPermissionSetsHandlerForTest(repo, slog.Default())
+	w := httptest.NewRecorder()
+	handler.List(w, httptest.NewRequest(http.MethodGet, "/api/permission-sets", nil))
+	require.Equal(t, http.StatusOK, w.Code)
+	var response PermissionSetListResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&response))
+	require.Len(t, response.Items, 1)
+	assert.Equal(t, permissionSet.ID.String(), response.Items[0].ID)
+	require.NotNil(t, response.Items[0].CanonicalID)
+	assert.Equal(t, canonicalID, *response.Items[0].CanonicalID)
+	assert.Contains(t, w.Header().Get("Vary"), "Prefer")
+	repo.AssertExpectations(t)
+}
+
+func TestPermissionSetsHandler_ResolvesCanonicalAndUUIDServiceScopes(t *testing.T) {
+	serviceID := id.NewServiceID()
+	service := &model.ThirdpartyOAuth2ProviderEntity{ID: serviceID, Scopes: []model.OAuthScope{{ScopeValue: "read"}}}
+	for _, tc := range []struct {
+		name       string
+		serviceRef string
+	}{
+		{name: "canonical service ID", serviceRef: "canonical-service"},
+		{name: "UUID service ID", serviceRef: serviceID.String()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := new(MockPermissionSetRepository)
+			handler := newPermissionSetsHandlerWithProviderForTest(repo, canonicalProviderScopeValidator{service: service}, slog.Default())
+			repo.On("Create", mock.Anything, mock.MatchedBy(func(permissionSet *storage.PermissionSet) bool {
+				return len(permissionSet.ServiceScopes) == 1 && permissionSet.ServiceScopes[0].ServiceID == serviceID
+			})).Return(nil)
+			body, err := json.Marshal(CreatePermissionSetRequest{
+				Name:        "Resolved Scope",
+				Description: "Accepts either identifier",
+				ServiceScopes: []ServiceScopeRequest{{
+					ServiceID: tc.serviceRef,
+					Scopes:    []string{"read"},
+				}},
+			})
+			require.NoError(t, err)
+			writer := httptest.NewRecorder()
+			handler.Create(writer, httptest.NewRequest(http.MethodPost, "/api/permission-sets", bytes.NewReader(body)))
+			require.Equal(t, http.StatusCreated, writer.Code)
+			repo.AssertExpectations(t)
+		})
+	}
+
+	t.Run("rejects an unresolved service without persistence", func(t *testing.T) {
+		repo := new(MockPermissionSetRepository)
+		handler := newPermissionSetsHandlerWithProviderForTest(repo, canonicalProviderScopeValidator{service: service}, slog.Default())
+		body, err := json.Marshal(CreatePermissionSetRequest{
+			Name:        "Unresolved Scope",
+			Description: "Rejects missing service",
+			ServiceScopes: []ServiceScopeRequest{{
+				ServiceID: "missing-service",
+				Scopes:    []string{"read"},
+			}},
+		})
+		require.NoError(t, err)
+		writer := httptest.NewRecorder()
+		handler.Create(writer, httptest.NewRequest(http.MethodPost, "/api/permission-sets", bytes.NewReader(body)))
+		assert.Equal(t, http.StatusBadRequest, writer.Code)
+		repo.AssertNotCalled(t, "Create")
+	})
+}
+
+func TestPermissionSetsHandler_CanonicalPresentationFallsBackToUUID(t *testing.T) {
+	repo := new(MockPermissionSetRepository)
+	canonicalServiceID, fallbackServiceID := id.NewServiceID(), id.NewServiceID()
+	permissionSet := &storage.PermissionSet{ID: id.NewPermissionSetID(), Name: "Presentation", Description: "Canonical fallback", ServiceScopes: []storage.ServiceScope{{ServiceID: canonicalServiceID}, {ServiceID: fallbackServiceID}}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	handler := newPermissionSetsHandlerWithProviderForTest(repo, canonicalProviderScopeValidator{canonicalIDs: map[id.ServiceID]string{canonicalServiceID: "canonical-service"}}, slog.Default())
+	repo.On("List", mock.Anything, id.ServiceID{}).Return([]*storage.PermissionSet{permissionSet}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/permission-sets", nil)
+	req.Header.Set("Prefer", "reference-id=canonical")
+	writer := httptest.NewRecorder()
+	handler.List(writer, req)
+	require.Equal(t, http.StatusOK, writer.Code)
+	var response PermissionSetListResponse
+	require.NoError(t, json.NewDecoder(writer.Body).Decode(&response))
+	require.Len(t, response.Items, 1)
+	assert.Equal(t, permissionSet.ID.String(), response.Items[0].ID)
+	assert.Nil(t, response.Items[0].CanonicalID)
+	assert.Equal(t, "canonical-service", response.Items[0].ServiceScopes[0].ServiceID)
+	assert.Equal(t, fallbackServiceID.String(), response.Items[0].ServiceScopes[1].ServiceID)
+	assert.Equal(t, "reference-id=canonical", writer.Header().Get("Preference-Applied"))
+	assert.Contains(t, writer.Header().Get("Vary"), "Prefer")
+	repo.AssertExpectations(t)
 }

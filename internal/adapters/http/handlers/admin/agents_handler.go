@@ -26,6 +26,8 @@ import (
 type PermissionSetValidator interface {
 	ValidateIDs(ctx context.Context, ids []id.PermissionSetID) error
 	GetByIDs(ctx context.Context, ids []id.PermissionSetID) ([]*storage.PermissionSet, error)
+	ResolveID(ctx context.Context, value string) (id.PermissionSetID, error)
+	CanonicalIDs(ctx context.Context, ids []id.PermissionSetID) (map[id.PermissionSetID]string, error)
 }
 
 // AgentsHandler handles HTTP requests for agent CRUD operations.
@@ -65,6 +67,7 @@ type PermissionSetRequest struct {
 
 // AgentRequest represents the request body for creating/updating an agent.
 type AgentRequest struct {
+	CanonicalID          *string                     `json:"canonical_id,omitempty"`
 	ClientID             *string                     `json:"client_id,omitempty"`
 	ExternalID           *string                     `json:"external_id,omitempty"`
 	DisplayName          string                      `json:"display_name"`
@@ -97,6 +100,7 @@ type PermissionSetDeclarationResponse struct {
 // AgentResponse represents the response body for agent operations.
 type AgentResponse struct {
 	ID                   string                             `json:"id"`
+	CanonicalID          *string                            `json:"canonical_id"`
 	ClientID             *string                            `json:"client_id,omitempty"`
 	ExternalID           *string                            `json:"external_id,omitempty"`
 	DisplayName          string                             `json:"display_name"`
@@ -138,7 +142,7 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serviceReqs, err := h.convertServiceRequirements(req.ServiceRequirements)
+	serviceReqs, err := h.convertServiceRequirements(ctx, req.ServiceRequirements)
 	if err != nil {
 		h.logger.Warn("invalid service requirements", "error", err)
 		h.writeError(w, http.StatusBadRequest, "invalid service requirements", err.Error())
@@ -160,6 +164,7 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	agent := &storage.Agent{
+		CanonicalID:          req.CanonicalID,
 		ClientID:             clientIDFromRequest(req.ClientID),
 		ExternalID:           convertExternalID(req.ExternalID),
 		DisplayName:          req.DisplayName,
@@ -193,6 +198,7 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 
 // GetAgent handles GET /api/agents/:agent-id
 func (h *AgentsHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Vary", "Prefer")
 	ctx := r.Context()
 	agentID := chi.URLParam(r, "agent-id")
 
@@ -201,9 +207,9 @@ func (h *AgentsHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parsedAgentID, parseErr := id.ParseAgentID(agentID)
-	if parseErr != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid agent ID", parseErr.Error())
+	parsedAgentID, err := h.agentService.ResolveID(ctx, agentID)
+	if err != nil {
+		h.handleDomainError(w, r, "GetAgent", err)
 		return
 	}
 
@@ -220,6 +226,13 @@ func (h *AgentsHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return
 	}
+	if requestsCanonicalReferences(r.Header.Get("Prefer")) {
+		if err := h.applyCanonicalReferences(ctx, []*storage.Agent{agent}, []*AgentResponse{&resp}); err != nil {
+			h.handleDomainError(w, r, "GetAgent", err)
+			return
+		}
+		w.Header().Set("Preference-Applied", "reference-id=canonical")
+	}
 	h.writeJSON(w, http.StatusOK, resp)
 }
 
@@ -233,9 +246,9 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parsedAgentID, parseErr := id.ParseAgentID(agentID)
-	if parseErr != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid agent ID", parseErr.Error())
+	parsedAgentID, err := h.agentService.ResolveID(ctx, agentID)
+	if err != nil {
+		h.handleDomainError(w, r, "UpdateAgent", err)
 		return
 	}
 
@@ -258,8 +271,9 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	_ = json.Unmarshal(body, &rawFields) // cannot fail: same bytes already parsed above
 	rawClientID, clientIDPresent := rawFields["client_id"]
 	clearClientID := clientIDPresent && bytes.Equal(rawClientID, []byte("null"))
+	_, canonicalIDPresent := rawFields["canonical_id"]
 
-	serviceReqs, err := h.convertServiceRequirements(req.ServiceRequirements)
+	serviceReqs, err := h.convertServiceRequirements(ctx, req.ServiceRequirements)
 	if err != nil {
 		h.logger.Warn("invalid service requirements", "error", err)
 		h.writeError(w, http.StatusBadRequest, "invalid service requirements", err.Error())
@@ -291,6 +305,8 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agent := &storage.Agent{
+		CanonicalID:          req.CanonicalID,
+		ClearCanonicalID:     canonicalIDPresent && bytes.Equal(rawFields["canonical_id"], []byte("null")),
 		ClientID:             clientIDFromRequest(req.ClientID),
 		ExternalID:           convertExternalID(req.ExternalID),
 		DisplayName:          req.DisplayName,
@@ -304,6 +320,15 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		AllowedScopes:        req.AllowedScopes,
 		ClientURIs:           req.ClientURIs,
 		UpdatedAt:            time.Now().UTC(),
+	}
+
+	if !canonicalIDPresent {
+		existing, err := h.agentService.Get(ctx, parsedAgentID)
+		if err != nil {
+			h.handleDomainError(w, r, "GetAgent", err)
+			return
+		}
+		agent.CanonicalID = existing.CanonicalID
 	}
 
 	if err := h.agentService.Update(ctx, parsedAgentID, agent, clearClientID); err != nil {
@@ -331,9 +356,9 @@ func (h *AgentsHandler) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parsedID, parseErr := id.ParseAgentID(agentID)
-	if parseErr != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid agent ID", parseErr.Error())
+	parsedID, err := h.agentService.ResolveID(ctx, agentID)
+	if err != nil {
+		h.handleDomainError(w, r, "DeleteAgent", err)
 		return
 	}
 
@@ -348,6 +373,7 @@ func (h *AgentsHandler) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 
 // ListAgents handles GET /api/agents
 func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Vary", "Prefer")
 	ctx := r.Context()
 
 	agents, err := h.agentService.List(ctx)
@@ -365,6 +391,7 @@ func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("failed to convert agent to response", "agent_id", agent.ID, "error", err)
 			resp = AgentResponse{
 				ID:          agent.ID.String(),
+				CanonicalID: agent.CanonicalID,
 				ClientID:    clientIDToString(agent.ClientID),
 				DisplayName: agent.DisplayName,
 				Description: agent.Description,
@@ -374,7 +401,17 @@ func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 		}
 		responses[i] = resp
 	}
-
+	if requestsCanonicalReferences(r.Header.Get("Prefer")) {
+		responsePointers := make([]*AgentResponse, len(responses))
+		for i := range responses {
+			responsePointers[i] = &responses[i]
+		}
+		if err := h.applyCanonicalReferences(ctx, agents, responsePointers); err != nil {
+			h.handleDomainError(w, r, "ListAgents", err)
+			return
+		}
+		w.Header().Set("Preference-Applied", "reference-id=canonical")
+	}
 	h.writeJSON(w, http.StatusOK, responses)
 }
 
@@ -404,6 +441,7 @@ func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage
 func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMap map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity) (AgentResponse, error) {
 	resp := AgentResponse{
 		ID:                   agent.ID.String(),
+		CanonicalID:          agent.CanonicalID,
 		ClientID:             clientIDToString(agent.ClientID),
 		ExternalID:           convertExternalIDToString(agent.ExternalID),
 		DisplayName:          agent.DisplayName,
@@ -448,17 +486,62 @@ func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMa
 	return resp, nil
 }
 
+func (h *AgentsHandler) applyCanonicalReferences(ctx context.Context, agents []*storage.Agent, responses []*AgentResponse) error {
+	serviceIDs := make([]id.ServiceID, 0)
+	permissionSetIDs := make([]id.PermissionSetID, 0)
+	seenServices := make(map[id.ServiceID]struct{})
+	seenPermissionSets := make(map[id.PermissionSetID]struct{})
+	for _, agent := range agents {
+		for _, requirement := range agent.ServiceRequirements {
+			if _, seen := seenServices[requirement.ServiceID]; !seen {
+				seenServices[requirement.ServiceID] = struct{}{}
+				serviceIDs = append(serviceIDs, requirement.ServiceID)
+			}
+		}
+		for _, permissionSet := range agent.PermissionSets {
+			if _, seen := seenPermissionSets[permissionSet.PermissionSetID]; !seen {
+				seenPermissionSets[permissionSet.PermissionSetID] = struct{}{}
+				permissionSetIDs = append(permissionSetIDs, permissionSet.PermissionSetID)
+			}
+		}
+	}
+	serviceCanonicalIDs, err := h.providerService.CanonicalIDs(ctx, serviceIDs)
+	if err != nil {
+		return err
+	}
+	permissionSetCanonicalIDs := map[id.PermissionSetID]string{}
+	if h.psService != nil {
+		permissionSetCanonicalIDs, err = h.psService.CanonicalIDs(ctx, permissionSetIDs)
+		if err != nil {
+			return err
+		}
+	}
+	for i, agent := range agents {
+		for j, requirement := range agent.ServiceRequirements {
+			if canonicalID, ok := serviceCanonicalIDs[requirement.ServiceID]; ok {
+				responses[i].ServiceRequirements[j].ServiceID = canonicalID
+			}
+		}
+		for j, permissionSet := range agent.PermissionSets {
+			if canonicalID, ok := permissionSetCanonicalIDs[permissionSet.PermissionSetID]; ok {
+				responses[i].PermissionSets[j].PermissionSetID = canonicalID
+			}
+		}
+	}
+	return nil
+}
+
 // convertServiceRequirements converts request DTOs to domain models.
-func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRequest) ([]storage.ServiceRequirement, error) {
+func (h *AgentsHandler) convertServiceRequirements(ctx context.Context, reqSRs []ServiceRequirementRequest) ([]storage.ServiceRequirement, error) {
 	if len(reqSRs) == 0 {
 		return nil, nil
 	}
 
 	result := make([]storage.ServiceRequirement, len(reqSRs))
 	for i, req := range reqSRs {
-		parsedSvcID, parseErr := id.ParseServiceID(req.ServiceID)
-		if parseErr != nil {
-			return nil, fmt.Errorf("service_requirements[%d]: invalid service_id: %w", i, parseErr)
+		parsedSvcID, err := h.providerService.ResolveID(ctx, req.ServiceID)
+		if err != nil {
+			return nil, fmt.Errorf("service_requirements[%d]: invalid service_id: %w", i, err)
 		}
 
 		reqType := storage.RequirementType(req.RequirementType)
@@ -490,7 +573,15 @@ func (h *AgentsHandler) convertPermissionSetRequests(ctx context.Context, reqs [
 	}
 	entries := make([]storage.AgentPermissionSetEntry, len(reqs))
 	for i, ps := range reqs {
-		psID, err := id.ParsePermissionSetID(ps.PermissionSetID)
+		var (
+			psID id.PermissionSetID
+			err  error
+		)
+		if h.psService != nil {
+			psID, err = h.psService.ResolveID(ctx, ps.PermissionSetID)
+		} else {
+			psID, err = id.ParsePermissionSetID(ps.PermissionSetID)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("invalid permission_set_id at index %d: %s", i, err.Error())
 		}
