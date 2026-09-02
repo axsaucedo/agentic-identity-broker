@@ -12,7 +12,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/kms v1.57.1
 	github.com/aws/aws-sdk-go-v2/service/sts v1.47.1
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
-	github.com/go-chi/chi/v5 v5.3.0
+	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-chi/cors v1.2.2
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
@@ -21,8 +21,8 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
-	github.com/lestrrat-go/httprc/v3 v3.0.5
-	github.com/lestrrat-go/jwx/v3 v3.1.1
+	github.com/lestrrat-go/httprc/v3 v3.0.6
+	github.com/lestrrat-go/jwx/v3 v3.2.0
 	github.com/lib/pq v1.12.3
 	github.com/mark3labs/mcp-go v0.54.1
 	github.com/moby/moby/api v1.54.1
@@ -162,7 +162,7 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.4 // indirect
-	github.com/lestrrat-go/dsig v1.2.1 // indirect
+	github.com/lestrrat-go/dsig v1.3.0 // indirect
 	github.com/lestrrat-go/dsig-secp256k1 v1.0.0 // indirect
 	github.com/lestrrat-go/httpcc v1.0.1 // indirect
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
