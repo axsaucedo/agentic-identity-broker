@@ -1,8 +1,8 @@
 # ExtProc Token Exchange Service — `internal/extproc/`
 
-**Prefer retrieval-led reasoning. Read source files before making assumptions about types, interfaces, or behaviour.**
+**Use retrieval-led reasoning. Read source files before you make assumptions about types, interfaces, or behavior.**
 
-This subtree is a **standalone application** (`cmd/extproc-token-exchange/`). It does **not** share domain objects, ports, or adapters with the identity broker's `internal/` hexagonal core. All packages under `internal/extproc/` are only for this service.
+This is a standalone process in `cmd/extproc-token-exchange/`. `internal/extproc/*` remains independent of broker domain, port, and adapter packages.
 
 ---
 
@@ -11,45 +11,44 @@ This subtree is a **standalone application** (`cmd/extproc-token-exchange/`). It
 ```
 internal/extproc/
   config/
-    config.go       Config struct tree (GRPCConfig, OAuth2Config, TLSConfig, CacheConfig, LogConfig, AuthorizationConfig)
-    loader.go       Viper loader — Load(), LoadWithCommand(), LoadFromViper(), RegisterFlags()
-    validate.go     Validate() — 13 base rules + 9 authorization rules, all errors collected
+    config.go       gRPC, OAuth2, cache, circuit-breaker, OPA, and telemetry schema
+    loader.go       Viper load, environment expansion, defaults, and Cobra flags
+    validate.go     Core, authorization, and telemetry validation
 
   authorization/
-    authorizer.go   Authorizer interface + OPAAuthorizer (PreparedEvalQuery for path, sdk.OPA for config_file)
+    authorizer.go   `Authorizer` and `OPAAuthorizer`
     input.go        OPAInput map alias, MCPInput, ContextInput types
-    input_builder.go BuildOPAInput(protocol, body, headers, grantedPermissionSets) — builds the OPA input document
+    input_builder.go Builds the OPA input document
     parser.go        ParseMCPMessage, ParseMCPBatch — JSON-RPC 2.0 parsing
-    decision.go      OPADecision struct + ParseDecision(any) — type-safe result extraction
+    decision.go      `OPADecision` and result extraction
     doc.go           Package documentation
 
   server/
-    server.go       ExtProc gRPC server (Server struct), Process streaming RPC, OPA integration
-    exchanger.go    TokenExchanger implementation: RFC 8693 exchange, in-memory cache, singleflight, background refresh
-    server_test.go  Unit tests for the gRPC server (streaming, pass-through, OPA flow, error responses)
-    exchanger_test.go   Unit tests for TokenExchanger — cache, singleflight, client assertion, TTL
-    exchanger_cache_test.go  Focused cache & eviction tests
-    tls_test.go     Unit tests for buildHTTPClient — TLS config, CA bundle, InsecureSkipVerify
+    server.go       ExtProc gRPC request processing and OPA integration
+    exchanger.go    RFC 8693 exchange, cache, singleflight, stale fallback, and refresh
+    circuit_breaker.go  Broker-failure circuit breaker
+    *_test.go       Unit, cancellation, cache, security, circuit-breaker, and TLS coverage
 ```
 
-Entry point and wiring live **outside** this tree:
+The files outside this tree contain the entry point and wiring:
 
 ```
 cmd/extproc-token-exchange/
-  main.go       Cobra Execute call
-  root.go       Cobra root command — config load → logger → NewTokenExchanger → NewServer → gRPC lifecycle
+  main.go       Cobra `Execute` call
+  root.go       Configuration, telemetry bridge, logging, service wiring, and gRPC lifecycle
 ```
 
-E2E acceptance tests live in a **separate Ginkgo suite** (per spec FR-017):
+ExtProc E2E tests use a separate Ginkgo suite:
 
 ```
 tests/e2e/extproc/
-  extproc_suite_test.go
-  token_exchange_test.go   (12 scenarios, 1:1 mapping to spec.md)
-  bootstrap/
-  helpers/
-  fixtures/
+  extproc_suite_test.go  Separate suite entry point
+  bootstrap/             ExtProc startup wrappers
+  fixtures/, helpers/    Deterministic data and gRPC support
+  *_test.go              Token exchange, OPA, agentgateway, and telemetry scenarios
 ```
+
+Some agentgateway scenarios use Docker and `Ordered` to share the expensive container.
 
 ---
 
@@ -59,37 +58,40 @@ tests/e2e/extproc/
 
 | Type | Purpose |
 |---|---|
-| `Config` | Root config: `GRPC`, `OAuth2`, `Cache`, `Log`, `Authorization` |
-| `AuthorizationConfig` | `Enabled`, `Policy PolicyConfig`, `DefaultDecision` (deny-only), `EvaluationTimeout`, `MaxBodySize` |
-| `PolicyConfig` | `Path` (local .rego), `ConfigFile` (OPA YAML), `Package`, `Decision` — `Path` and `ConfigFile` are mutually exclusive |
+| `Config` | gRPC, OAuth2, cache, log, circuit breaker, OPA, and telemetry configuration |
+| `AuthorizationConfig` | OPA enabled flag, policy, default decision, timeout, and body limit |
+| `PolicyConfig` | Local Rego or OPA configuration file, package, and decision |
 | `GRPCConfig` | `Bind`, `Port`, `MaxConcurrentStreams` |
-| `OAuth2Config` | `TokenEndpoint`, `Issuer`, `ClientID`, `ClientSecret`, `ClientCredentialsEndpoint`, `ClientAssertionType`, `ExchangeTimeout`, `TLS` |
+| `OAuth2Config` | Token endpoint, issuer, client credentials, scopes, assertion type, timeout, and TLS |
 | `TLSConfig` | `InsecureSkipVerify`, `CaBundlePath`, `AllowHTTP` |
 | `CacheConfig` | `DefaultTTL`, `MaxTTL` |
+| `CircuitBreakerConfig` | `Enabled`, `MaxFailures`, `ResetTimeout` |
 | `LogConfig` | `Level`, `Format` |
+| `TelemetryConfig` | OpenTelemetry service, signals, and exporter configuration |
 
 **Loading pipeline** (in `loader.go`):
-1. Viper with `EXTPROC_` prefix + dot→underscore key replacer
-2. Optional YAML file via `EXTPROC_CONFIG_PATH`
-3. CLI flags via `RegisterFlags()` + `bindFlags()` (highest precedence)
-4. `${VAR}` expansion via `expandEnvVars()` (all string fields)
-5. `Validate()` (fail-fast, all errors collected)
+
+1. Viper uses the `EXTPROC_` prefix. It replaces dots in keys with underscores.
+2. The service can load an optional YAML file through `EXTPROC_CONFIG_PATH`.
+3. Explicit Cobra flags use `RegisterFlags()` and `bindFlags()`. They have the highest precedence.
+4. `expandEnvVars()` expands `${VAR}` in supported string fields and exporter header values.
+5. `Validate()` fails early. It collects all errors.
 
 ### `internal/extproc/authorization`
 
 | Type/Symbol | Purpose |
 |---|---|
 | `Authorizer` interface | Port: `Evaluate(ctx, input OPAInput) (*OPADecision, error)` + `Stop(ctx)` |
-| `OPAAuthorizer` struct | Production `Authorizer` — dual-backend: PreparedEvalQuery (path) or sdk.OPA (config_file) |
-| `NewOPAAuthorizer(cfg, logger)` | Constructor — path mode compiles Rego at startup (fail-fast); config_file mode reads the OPA config, starts non-blocking, and denies until the bundle is ready |
-| `OPAInput` map alias | OPA document built from the opa-envoy-plugin-compatible base plus top-level `type`, `mcp`, and `context` keys |
+| `OPAAuthorizer` struct | Production `Authorizer`. It has two backends: PreparedEvalQuery (path) or sdk.OPA (config_file) |
+| `NewOPAAuthorizer(cfg, logger)` | Path mode compiles Rego at startup. Config-file mode denies access until the bundle is ready. |
+| `OPAInput` map alias | OPA document from the opa-envoy-plugin-compatible base, with top-level `type`, `mcp`, and `context` keys |
 | `MCPInput` struct | MCP protocol fields: `JSONRPC`, `Method`, `ToolName`, `Arguments`, `SessionID` |
 | `ContextInput` struct | Authorization context fields, including `granted_permission_sets_available` and token-bound `granted_permission_sets` when present |
 | `OPADecision` struct | Policy output: `Action string` (`"allow"` or `"deny"`), `Reasons []string` |
-| `ParseDecision(any)` | Type-safe extraction of `action`/`reasons` from OPA result map |
-| `BuildOPAInput(protocol, body, headers, grantedPermissionSets)` | Constructs the OPA input document with protocol-specific parsing |
-| `ParseMCPMessage(body)` | Parses JSON-RPC 2.0 single message → `*MCPMessage` |
-| `ParseMCPBatch(body)` | Detects and parses JSON-RPC 2.0 batch messages (FR-023) |
+| `ParseDecision(any)` | Type-safe extraction of `action` and `reasons` from the OPA result map |
+| `BuildOPAInput(protocol, body, headers, grantedPermissionSets)` | Builds the OPA input document with protocol-specific parsing |
+| `ParseMCPMessage(body)` | Parses a JSON-RPC 2.0 single message → `*MCPMessage` |
+| `ParseMCPBatch(body)` | Finds and parses JSON-RPC 2.0 batch messages (FR-023) |
 
 ### `internal/extproc/server`
 
@@ -97,34 +99,42 @@ tests/e2e/extproc/
 |---|---|
 | `Exchanger` interface | Port: `Exchange(ctx, subjectToken, resourceURI string) (ExchangeResult, error)` + `Shutdown()` |
 | `Server` struct | Implements `ExternalProcessorServer`. Fields: `cfg`, `exchanger`, `authorizer`, `logger` |
-| `NewServer(cfg, exchanger, logger)` | Constructor — OPA disabled (authorizer=nil) |
-| `NewServerWithAuthorizer(cfg, exchanger, authorizer, logger)` | Constructor — OPA enabled |
-| `Server.Process(stream)` | Streaming gRPC RPC — dispatches on `req.Request` type |
+| `NewServer(cfg, exchanger, logger)` | Constructor with OPA disabled (`authorizer=nil`) |
+| `NewServerWithAuthorizer(cfg, exchanger, authorizer, logger)` | Constructor with OPA enabled |
+| `Server.Process(stream)` | Streaming gRPC RPC. It dispatches on the `req.Request` type. |
 | `TokenExchanger` struct | Concrete `Exchanger` implementation |
-| `NewTokenExchanger(cfg, logger)` | Constructor — acquires client assertion at startup (fail-fast), starts background goroutine |
-| `ErrAssertionExpired` | Sentinel error → caller returns 503 |
-| `tokenCacheKey` struct | Map key for token cache: `{subjectToken, resourceURI}` — struct avoids separator-injection |
+| `NewTokenExchanger(cfg, logger)` | At startup, it gets a client assertion. It fails early and creates a background goroutine. |
+| `ErrAssertionExpired` | Sentinel error. The caller returns 503. |
+| `tokenCacheKey` struct | Map key for the token cache: `{subjectToken, resourceURI}`. The struct prevents separator injection. |
 | `cachedToken` | `accessToken string`, `expiresAt time.Time` |
-| `assertionState` | `value`, `issuedAt`, `expiresAt` — atomically swapped via `atomic.Pointer[assertionState]` |
+| `assertionState` | `value`, `issuedAt`, `expiresAt`. The service atomically swaps it through `atomic.Pointer[assertionState]`. |
 
 ---
 
 ## Architecture Invariants
 
-### 1. Standalone — no identity broker imports
-`internal/extproc/` must **never** import from `internal/domain/`, `internal/ports/`, or `internal/adapters/`. It is a separate binary, not a plugin.
+### 1. Standalone process — isolated ExtProc packages
+
+Do not import `internal/domain/`, `internal/ports/`, or `internal/adapters/` from `internal/extproc/`.
+
+The `cmd/extproc-token-exchange/` composition layer can import `internal/ports`.
+It can also import `internal/adapters/telemetry` for OpenTelemetry (ADR 027).
+Keep `mapTelemetryConfig` in `cmd/extproc-token-exchange/root.go`.
 
 ### 2. Two port interfaces: Exchanger and Authorizer
-`Exchanger` (defined in `server/server.go`) and `authorization.Authorizer` (defined in `authorization/authorizer.go`) are the two hexagonal boundaries inside this service.
 
-- `Server` depends on both interfaces. `TokenExchanger` is the production `Exchanger` implementation. `OPAAuthorizer` is the production `Authorizer` implementation.
-- When ExtProc tests need startup/readiness visibility, use `_test.go` helpers or `tests/e2e/extproc/bootstrap/` around `NewOPAAuthorizer`; do not split the production API with alternate exported constructors.
-- The `authorizer` field on `Server` is typed as `authorization.Authorizer` — no adapter layer or `map[string]any` indirection.
-- When `authorizer == nil` (OPA disabled): token exchange runs in the `RequestHeaders` phase — no body buffering, zero overhead.
-- When `authorizer != nil` (OPA enabled): body-bearing requests exchange in `RequestHeaders` and evaluate OPA in `RequestBody`; header-only requests evaluate OPA first with `granted_permission_sets_available=false` and exchange only after allow.
-- Tests use mock/stub implementations of both interfaces.
+`Exchanger` in `server/server.go` and `authorization.Authorizer` in `authorization/authorizer.go` are the two hexagonal boundaries in this service.
+
+- `Server` depends on both interfaces. Use `TokenExchanger` as the production `Exchanger` implementation. Use `OPAAuthorizer` as the production `Authorizer` implementation.
+- Use `_test.go` helpers or `tests/e2e/extproc/bootstrap/` for ExtProc startup and readiness tests.
+- Keep the `authorizer` field on `Server` as `authorization.Authorizer`. Do not add an adapter layer or `map[string]any` indirection.
+- If `authorizer == nil` (OPA disabled), run token exchange during `RequestHeaders`. Do not buffer the body. This adds zero overhead.
+- If a request has a body and OPA is enabled, exchange tokens in `RequestHeaders`. Then evaluate OPA in `RequestBody`.
+- For header-only requests, evaluate first.
+- Use mock or stub implementations of both interfaces in tests.
 
 ### 2a. OPA Authorization Pipeline (when enabled)
+
 ```
 Body-bearing requests:
 RequestHeaders → extract Bearer + resource URI + agentgateway.protocol metadata
@@ -136,82 +146,89 @@ RequestBody    → BuildOPAInput(protocol, body, headers, grantedPermissionSets)
 
 Header-only requests:
 RequestHeaders(end_of_stream=true)
-               → BuildOPAInputHeadersOnly(protocol, headers)
+               → authorization.BuildOPAInputHeadersOnly(protocol, headers)
                → OPAAuthorizer.Evaluate(ctx, opaInput) → allow: Exchanger.Exchange(...) + Authorization header mutation
-                                                      → deny: 403 ImmediateResponse {"error":"access_denied","error_description":"...reasons..."}
+                                                      → deny: 403 ImmediateResponse `{"error":"access_denied","error_description":"...reasons..."}`
 ```
 
-`BuildOPAInput` dispatches on `protocol`:
-- `"mcp"`: `ParseMCPMessage` → `type="mcp_tool_call"` (for `tools/call`) or `type="mcp_method"` (other methods)
-- any other: `type="unknown"` with raw body in `input.attributes.request.http.body`
+`authorization.BuildOPAInput` selects a parser by `protocol`:
+
+- For `"mcp"`, `ParseMCPMessage` produces `type="mcp_tool_call"` for `tools/call`. It produces `type="mcp_method"` for other methods.
+- For all other values, `type="unknown"` contains the raw body in `input.attributes.request.http.body`.
 
 `OPAAuthorizer` has two backends:
-- `rego.PreparedEvalQuery` — when `authorization.policy.path` is set (local Rego file, compile-once)
-- `sdk.OPA` — when `authorization.policy.config_file` is set (OPA config YAML, bundle-aware)
 
-All error paths (evaluation error, timeout, undefined result) return `deny` (fail-closed per SR-001).
+- `rego.PreparedEvalQuery` runs when `authorization.policy.path` is set. This is a local Rego file that compiles once.
+- `sdk.OPA` runs when `authorization.policy.config_file` is set. This is an OPA configuration YAML file that is bundle-aware.
+
+All evaluation errors, timeouts, and undefined results return `deny`. This fails closed per SR-001.
+
+For MCP, GET is the only header-only transport. POST carries the JSON-RPC body. Reject unsupported methods with 405.
 
 ### 3. Config is loaded once at startup
-`LoadWithCommand()` is called in `cmd/extproc-token-exchange/root.go`. No ad-hoc config reading elsewhere. The loaded `*Config` is passed by pointer.
+
+Call `LoadWithCommand()` in `cmd/extproc-token-exchange/root.go`. Do not read configuration elsewhere. Pass the loaded `*Config` by pointer.
 
 ### 4. Fail-fast at startup
-- Config validation: 13 base rules + 9 authorization rules in `Validate()` — all errors are collected, not short-circuited.
-- Client assertion: `NewTokenExchanger()` calls `refreshClientAssertion()` synchronously and returns an error if it fails.
-- CA bundle: `buildHTTPClient()` reads and parses the bundle at construction time.
+
+- `Validate()` has 15 core rules, 9 authorization rules when enabled, and 4 telemetry rules when enabled. Its numbered comments run from 1 through 19.
+- `NewTokenExchanger()` calls `refreshClientAssertion()` synchronously. It returns an error if this call fails.
+- `buildHTTPClient()` reads and parses the CA bundle at construction time.
 
 ### 5. Token cache design
-- Map key: `tokenCacheKey{subjectToken, resourceURI}` — Go struct map key (no hash, no separator injection risk).
-- Lock: `sync.RWMutex cacheMu` with double-checked locking pattern inside `singleflight.Group.Do`.
-- TTL: use `expires_in` from exchange response → fall back to `cache.default_ttl` → cap at `cache.max_ttl`.
-- Cached `granted_permission_sets`, when present, are part of the same token-bound snapshot as the exchanged access token and therefore inherit the same `cache.max_ttl` revocation window. Broker omission is cached as `granted_permission_sets_available=false` for the same token/resource key.
-- Eviction: background goroutine in `runEviction()`, fires every `DefaultTTL/2` (floor: 1s).
+
+- Cache entries use `tokenCacheKey{subjectToken, resourceURI}` with `sync.RWMutex` and `singleflight`.
+- The TTL comes from `expires_in` or `cache.default_ttl`. It does not exceed `cache.max_ttl`.
+- Expired entries stay until their fixed `staleUntil` deadline. During transient broker errors, the exchanger can return this bounded stale token.
+- `granted_permission_sets` uses the same cache window as the access token.
 
 ### 6. Client assertion refresh
-- `assertionState` is stored via `atomic.Pointer[assertionState]` (lock-free reads).
-- Background ticker in `runEviction()` fires every `min(DefaultTTL/2, 30s)`.
-- Refresh triggers when remaining lifetime < `max(20% of total lifetime, 30s)`.
-- `ErrAssertionExpired` is returned by `Exchange()` if the assertion is nil or expired — signals 503 to Envoy.
+
+- The service stores `assertionState` through `atomic.Pointer[assertionState]` for lock-free reads.
+- The assertion refresh ticker runs every `min(max(DefaultTTL/2, 1s), 30s)`.
+  Cache eviction runs every `max(DefaultTTL/2, 1s)`.
+- The service refreshes the assertion when its remaining lifetime is less than `max(20% of total lifetime, 30s)`.
+- If scopes are empty or blank, the client-credentials grant requests `openid`.
+- A refresh error is logged. The prior assertion remains until it expires.
+- If the assertion is nil or expired, `Exchange()` returns `ErrAssertionExpired`. The error signals 503 to Envoy.
 
 ### 7. Body/trailer pass-through
-Envoy ExtProc requires a **phase-specific** response type for each message received. Use `StreamedBodyResponse` (not `BodyMutation_Body`) for request and response bodies — agentgateway discards body content otherwise.
+
+Envoy ExtProc needs a response type for each phase. Use `StreamedBodyResponse` for request and response bodies.
 
 ### 8. Resource URI construction
-agentgateway sends HTTP/2 pseudo-headers (`:path`, `:scheme`, `:authority`) separately. `buildResourceURI()` assembles `{scheme}://{authority}{path}`. If `:path` is already absolute (starts with `http://` or `https://`), it is used as-is. `validateResourceURI()` enforces non-empty, absolute URI with `http`/`https` scheme.
+
+agentgateway sends `:path`, `:scheme`, and `:authority` separately. `buildResourceURI()` preserves an absolute path. Otherwise it creates `{scheme}://{authority}{path}`. If the scheme is absent, it uses `https`. `validateResourceURI()` accepts only non-empty HTTP(S) absolute URIs.
 
 ---
 
-## Validation Rules Summary (13 rules)
+## Validation Rules
 
-| # | Rule |
-|---|---|
-| 1 | `grpc.port` 1–65535 |
-| 2 | `grpc.bind` non-empty |
-| 3 | `oauth2.token_endpoint` valid URL with http/https scheme |
-| 4 | `oauth2.issuer` valid URL with http/https scheme |
-| 5 | `oauth2.client_id` non-empty |
-| 6 | `oauth2.client_secret` non-empty (after env expansion) |
-| 7 | `cache.default_ttl` positive duration |
-| 8 | `token_endpoint` and `issuer` must use `https://` unless `oauth2.tls.allow_http: true` |
-| 9 | `cache.max_ttl` positive duration |
-| 10 | `oauth2.exchange_timeout` positive duration |
-| 11 | `log.level` one of: `debug`, `info`, `warn`, `error` (empty → `info`) |
-| 12 | `log.format` one of: `text`, `json` (empty → `text`) |
-| 13 | `oauth2.client_assertion_type` one of: `id_token`, `access_token` (default: `id_token`) |
+`Validate()` has 15 core rules, 9 authorization rules when enabled, and 4 telemetry rules when enabled. See `config/validate.go`.
 
 ---
 
 ## Testing Conventions (this subtree)
 
-- **Framework**: stdlib `testing` + `testify` (`require` for preconditions, `assert` for checks).
-- **Package**: tests use `package server_test` or `package config_test` (external/black-box style).
-- **Mocking**: hand-rolled mock `Exchanger` in server tests; `httptest.NewServer` for OAuth2 + token exchange endpoints in exchanger tests.
-- **Config helpers**: tests call `extprocconfig.LoadFromViper(v)` with a pre-configured `*viper.Viper` to avoid env pollution.
-- **No Ginkgo here**: unit tests use standard `t.Run` / table-driven subtests. Ginkgo/Gomega is reserved for `tests/e2e/extproc/`.
-- **Race detector**: all tests must pass with `go test -race`. The `atomic.Pointer` assertion state and `sync.RWMutex` cache are designed for this.
+- **Framework**: Use stdlib `testing` with `testify`.
+  Use `require` for preconditions and `assert` for checks.
+- **Package**: Prefer `package server_test` or `package config_test` for black-box tests.
+  Use the package under test only for unexported helpers or test exports.
+- **Mocking**: Use hand-written mock/stub implementations for `Exchanger` and `Authorizer`.
+  Use `httptest.NewServer` for token-exchange endpoints.
+- **Configuration helpers**: Call `extprocconfig.LoadFromViper(v)` with a configured `*viper.Viper`.
+  This prevents environment pollution.
+- **No Ginkgo here**: Use standard `t.Run` or table-driven subtests.
+  Use Ginkgo/Gomega only in `tests/e2e/extproc/`.
+- **Race detector**: Do `go test -race` for ExtProc changes.
+- **Commands**: Run `just extproc-test` for unit tests with the race detector.
+  Run `just test-e2e-extproc` for the ExtProc Ginkgo suite.
 
 ---
 
-## Configuration Reference (defaults)
+## Configuration Reference (selected defaults)
+
+Read `config/config.go` and `config/loader.go` for the complete schema and defaults.
 
 | Key | Default | Notes |
 |---|---|---|
@@ -219,21 +236,37 @@ agentgateway sends HTTP/2 pseudo-headers (`:path`, `:scheme`, `:authority`) sepa
 | `grpc.port` | `50051` | |
 | `grpc.max_concurrent_streams` | `100` | |
 | `oauth2.token_endpoint` | _(required)_ | RFC 8693 exchange endpoint |
-| `oauth2.issuer` | _(required)_ | Used to derive client_credentials URL if explicit endpoint not set |
+| `oauth2.issuer` | _(required)_ | Derives the client-credentials endpoint if no override exists |
 | `oauth2.client_id` | _(required)_ | |
-| `oauth2.client_secret` | _(required)_ | Never logged |
-| `oauth2.client_credentials_endpoint` | `{issuer}/oauth/token` | Optional override |
+| `oauth2.client_secret` | _(required)_ | The service never logs it |
+| `oauth2.client_credentials_scopes` | `[]` | Requests `openid` when empty or blank |
 | `oauth2.client_assertion_type` | `id_token` | `id_token` or `access_token` |
 | `oauth2.exchange_timeout` | `5s` | |
-| `oauth2.tls.insecure_skip_verify` | `false` | DEV ONLY |
-| `oauth2.tls.ca_bundle_path` | `` | |
-| `oauth2.tls.allow_http` | `false` | DEV ONLY — disables HTTPS enforcement |
+| `oauth2.tls.insecure_skip_verify` | `false` | Development only |
+| `oauth2.tls.allow_http` | `false` | Development only |
 | `cache.default_ttl` | `5m` | |
 | `cache.max_ttl` | `1h` | |
-| `log.level` | `info` | |
-| `log.format` | `text` | |
+| `circuit_breaker.enabled` | `true` | |
+| `circuit_breaker.max_failures` | `5` | |
+| `circuit_breaker.reset_timeout` | `30s` | |
+| `authorization.enabled` | `false` | Requires one policy source when enabled |
+| `authorization.default_decision` | `deny` | Must remain fail-closed |
+| `authorization.evaluation_timeout` | `100ms` | |
+| `authorization.max_body_size` | `1048576` | Bytes |
+| `telemetry.enabled` | `false` | |
+| `telemetry.service_name` | `extproc-token-exchange` | |
+| `telemetry.exporter.protocol` | `grpc` | |
+| `telemetry.exporter.endpoint` | _(required when enabled)_ | |
 
-Full example: `examples/config/extproc-token-exchange.yaml`
+Use `examples/config/extproc-token-exchange.yaml` for base token-exchange configuration.
+Use `examples/config/extproc-opa-authorization.yaml` for OPA.
+Use `examples/config/extproc-telemetry.yaml` for OpenTelemetry.
+
+## Docker Compose
+
+Docker Compose mounts `config.extproc.docker.yaml` at `/app/config.yaml`.
+It sets `EXTPROC_CONFIG_PATH=/app/config.yaml`.
+`agentgateway` connects to `extproc-token-exchange:50051` on the internal Compose network.
 
 ---
 

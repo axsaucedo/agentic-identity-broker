@@ -1,38 +1,46 @@
 # Adapters Layer (`internal/adapters/`)
 
-> **Prefer retrieval-led reasoning. Read the port interfaces in `internal/ports/*.go` before implementing any adapter.**
+> **Use retrieval-led reasoning. Read the port interfaces in `internal/ports/*.go` before you implement adapters.**
 
-Adapters implement port interfaces. Each adapter imports only from `ports/` and `domain/`. **Cross-adapter imports are forbidden.**
+Driven adapters import `ports/` and `domain/`. HTTP routing receives pre-wired handlers from `app/`. It can use routing middleware and configuration. Do not import one adapter from another adapter.
 
 ## Adapter Map
 
 ### Encryption (`encryption/`)
-Single `ports.EncryptionPort` implementation with base64-key mode for testing:
+
+`aws/` implements `ports.EncryptionPort` for AWS KMS and base64 AES-256 key modes.
 
 | Package | Purpose |
 |---|---|
-| `aws/` | `EncryptionPort` implementation — AWS KMS Hierarchical Keyring (production) or base64 AES-256 key mode (dev/test via `testutil.NewTestEncryptionAdapter()`). |
-| `branchkey/` | Shared `BranchKeyIdProvider` — deterministic ID: `service_{service_id}_branch_key`. |
+| `aws/` | `EncryptionPort` implementation for AWS KMS or base64 AES-256 keys |
+| `branchkey/` | `BranchKeyIdProvider` implementation |
+| `noop/` | No-op `BranchKeyManager` when no branch-key store is configured |
 
 Encryption rules: See `.claude/skills/aws-crypto-go/SKILL.md`.
 
 ### HTTP (`http/`)
-Dual-server (ADR 004): end-user `:8000` + admin `:14000`.
+
+[ADR 004: Dual-Server Isolation](../../adrs/004-dual-server-isolation.md) defines the
+end-user `:8000` server and the admin `:14000` server.
 
 | Package | Purpose |
 |---|---|
-| `routing/{admin,enduser}.go` | Route registration ONLY — receives pre-wired handler structs, never instantiates services |
-| `handlers/admin/` | `AgentsHandler`, `ServicesHandler` (CRUD) |
-| `handlers/consent/` | `UserInfoHandler`, `AgentsHandler`, `AgentDetailHandler`, `AgentInfoHandler`, `GrantsHandler` |
+| `routing/{admin,enduser}.go` | Route registration only. Receives pre-wired handlers |
+| `handlers/admin/` | Agent, service, protected-resource, permission-set, credential, and signing-key handlers |
+| `handlers/approval/` | Tool-approval create, lifecycle, sync, and list handlers |
+| `handlers/consent/` | User info, agent delegation, detail, and grant handlers |
 | `enduser/` | `OAuth2AuthorizeHandler`, `OAuth2TokenHandler`, `OAuth2MetadataHandler` |
-| `oauth2_sessions/` | Session initiate/callback/terminate |
+| `handlers/enduser/` | Broker JWKS handler |
+| `oauth2_sessions/` | Session initiation, callback, and termination |
 | `middleware/` | Auth (`RequirePrincipal`), CORS, CSRF, audit |
 | `upstream/` | Upstream OAuth2 proxy |
 
-**Handler rules**: HTTP-to-domain translation only. Parse request → call domain service → format response. Domain errors → HTTP status codes. New handlers → add to `app/handlers.go`, wire in `builder.go`, register in `routing/`.
+**Handler rules**: Parse the request. Call a domain service. Format the response. Map errors to HTTP status codes. Then update `app/handlers.go`, `builder.go`, and `routing/`.
 
 ### JWKS (`jwks/`)
-`lestrrat-go/jwx/v3` `jwk.Cache` for background refresh. Implements `ports.JWKSPort`.
+
+`lestrrat-go/jwx/v3` `jwk.Cache` refreshes data in the background. It implements `ports.JWKSPort`.
+`published_adapter.go` provides the broker aggregated JWKS to in-process consumers.
 
 ### Storage (`storage/`)
 
@@ -42,10 +50,10 @@ Dual-server (ADR 004): end-user `:8000` + admin `:14000`.
 | `memory/` | Maps + `sync.RWMutex`. All repository interfaces. Dev/testing. |
 | `postgres/` | `sqlx` + `pgx v5`. All repository interfaces. Production. |
 
-Both adapters implement identical interface contracts. Migrations in `/migrations/` (go-migrate naming).
+Both adapters implement the required storage contracts. The migrations are in `migrations/`. They use go-migrate names.
 
 ## Rules
 
-- **Cross-adapter ban**: `encryption/aws/` never imports `storage/postgres/`, etc.
-- **Adapter → domain boundary**: Adapters import `ports/` and `domain/`. Domain never imports adapters. Adapter-specific types (SQL models, AWS types) never leak into port interfaces.
-- **Testing**: `_test.go` same package. `testify/mock` with `.On()`/`.AssertExpectations()`. HTTP via `httptest`. `_integration_test.go` for real infra. Storage: both backends tested against same contracts.
+- **Cross-adapter ban**: Do not import `storage/postgres/` from `encryption/aws/`, or import between other adapters.
+- **Adapter boundary**: Driven adapters import ports and domain. HTTP routing can import app handlers, routing middleware, and configuration. Do not import adapters from domain.
+- **Testing**: Use same-package `_test.go`, `testify/mock`, and `httptest`. Use `_integration_test.go` for real infrastructure. Test storage backends against the same contracts.

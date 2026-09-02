@@ -1,88 +1,54 @@
 # `internal/domain/id` — Strongly Typed Entity ID Package
 
-> **Prefer retrieval-led reasoning. Read `gen_ids.go` and `uuid_ids_gen.go` before adding or modifying ID types.**
+> **Use retrieval-led reasoning. Read `gen_ids.go` and `uuid_ids_gen.go` before you add or change ID types.**
 
-Full reference: `internal/domain/AGENTS.md` (domain layer rules apply here too).
+Read `internal/domain/AGENTS.md` for the full reference. Its domain-layer rules apply here too.
 
 **ADR**: `adrs/013-strongly-typed-entity-ids.md` — binding decision for all typed ID usage.
 
 ## Purpose
 
-This package defines per-entity ID types that the compiler enforces. Without typed IDs, the compiler cannot distinguish passing a `ServiceID` where an `AgentID` is expected — both would be `string`. With typed IDs, such a mixup is a compile-time error.
+This package defines ID types for each entity. The types prevent incompatible IDs at compile time.
 
 ## Type Catalogue
 
-### UUID-backed types (backed by `uuid.UUID = [16]byte`)
+### UUID-backed types
 
-| Type | Entity | Database Column |
-|---|---|---|
-| `AgentID` | AI agent | `agents.id` |
-| `ApprovalID` | Tool approval | `tool_approvals.id` |
-| `AuthorizationCodeID` | OAuth2 authorization code | `authorization_codes.id` |
-| `CredentialID` | Broker client credential | `client_credentials.id` |
-| `GrantID` | User grant | `user_grants.id` |
-| `ServiceID` | Third-party OAuth2 service | `thirdparty_oauth2_services.id`, `service_requirements.service_id`, `delegated_tokens.service_id`, `user_sessions.service_id` |
-| `SessionID` | OAuth2 user session | `user_sessions.id` |
-| `SigningKeyID` | JWT signing key | `signing_keys.id` |
-| `UserID` | User account | `users.id` |
-| `PermissionSetID` | Admin-defined permission set | `permission_sets.id`, `permission_set_service_scopes.permission_set_id`, `agents.permission_sets[*].permission_set_id` (JSONB), `user_grants.granted_permission_set_ids` (UUID[]) |
+`AgentID`, `ApprovalID`, `AuthorizationCodeID`, `CredentialID`, `GrantID`, `PermissionSetID`, `ServiceID`, `SessionID`, `SigningKeyID`, and `UserID` wrap `uuid.UUID`.
 
-Each UUID type exposes:
+See `uuid_ids_gen.go` for methods and the current type catalogue.
 
-```go
-func NewXxxID() XxxID                          // random UUID
-func ParseXxxID(s string) (XxxID, error)       // safe parse, returns error
-func MustParseXxxID(s string) XxxID            // panics on invalid — test fixtures ONLY
-func (id XxxID) String() string
-func (id XxxID) IsZero() bool
-func (id XxxID) MarshalJSON() ([]byte, error)              // marshals as JSON string "xxxxxxxx-xxxx-..."
-func (id *XxxID) UnmarshalJSON(b []byte) error             // unmarshals JSON string → uuid.Parse
-func (id XxxID) Value() (driver.Value, error)              // for database/sql / sqlx
-func (id *XxxID) Scan(src interface{}) error               // for database/sql / sqlx (delegates to uuid.UUID.Scan)
-func (id XxxID) MarshalText() ([]byte, error)              // for encoding.TextMarshaler (delegates to uuid.UUID)
-func (id *XxxID) UnmarshalText(b []byte) error             // for encoding.TextUnmarshaler (delegates to uuid.UUID)
-```
+### String-backed types
 
-**Implementation note**: `MarshalJSON`/`UnmarshalJSON` use explicit JSON string encoding (`json.Marshal`/`json.Unmarshal` into `string`, then `uuid.Parse`) rather than the `(*uuid.UUID)(id)` pointer cast. This is because the standard `uuid.UUID` JSON methods encode as a quoted string and the explicit approach ensures correct JSON output. `Scan`, `MarshalText`, and `UnmarshalText` do use the identity cast `(*uuid.UUID)(id)`, which is safe because `XxxID` has identical memory layout to `uuid.UUID` (`[16]byte`).
-
-### String-backed types (backed by `string`)
-
-| Type | Purpose | Constraint |
-|---|---|---|
-| `ClientID` | Broker-issued OAuth2 client identifier | `broker_` prefix + 22 chars; `VARCHAR(255)`, not a UUID |
-| `ExternalID` | Optional external governance ID | `VARCHAR(255)`, not a UUID |
-| `KeyID` | JWT Key ID (`kid` claim) | UUID format |
-| `Principal` | Authenticated user identity (email, subject) | From `X-Remote-User` header |
-
-String types expose only `String()`, `IsZero()`, and a `New*()` constructor.
+`ClientID`, `ExternalID`, `KeyID`, and `Principal` wrap `string`. They expose `String()`, `IsZero()`, and `New*()`.
 
 ## Code Generation
 
-UUID type implementations are generated from a template — do not edit `uuid_ids_gen.go` by hand:
+The system generates UUID type implementations from a template. Do not edit `uuid_ids_gen.go` by hand:
 
 ```bash
 go generate ./internal/domain/id/
 ```
 
-The generator is `gen_ids.go` (build tag `ignore`). It produces `uuid_ids_gen.go`. To add a new UUID type, add an entry to `uuidTypes` in `gen_ids.go` and re-run `go generate`.
+`gen_ids.go` has the build tag `ignore`. It generates `uuid_ids_gen.go`. Add UUID types to `uuidTypes`. Then run `go generate ./internal/domain/id/`.
 
 ## Rules
 
-1. **`ParseXxxID` in production code** — never `MustParseXxxID` in handlers or domain services. Malformed UUIDs must return an error (HTTP 400), not a panic.
-2. **`MustParseXxxID` in tests only** — acceptable in test fixtures and table-driven test cases where the UUID string is a compile-time constant.
-3. **Handler ordering** — authentication (principal check) must happen *before* UUID format validation. Unauthenticated requests must receive 401, not 400.
-4. **No plain `string` for entity IDs** — whenever an entity ID is stored, passed, or returned, use the typed ID. Do not convert back to `string` unless calling an external API that requires it.
-5. **Service-scoped `EncryptionContext` uses `ServiceID.String()`** — the encryption context map `{"service_id": "<uuid-string>"}` must use the `.String()` form of `ServiceID` when the subject is a service. Signing-key contexts use `{"kid": "<key-id>"}` instead, and the two subject keys must never appear together.
+1. Use `ParseXxxID` in production. Do not use `MustParseXxxID` in handlers or services.
+2. Use `MustParseXxxID` only for test fixtures with constant valid UUIDs.
+3. Authenticate before validating UUID syntax. Unauthenticated requests return 401, not 400.
+4. Use typed IDs for entity values. Convert to string only when an external API requires it.
+5. Use `ServiceID.String()` for a service context. Signing key contexts use `KeyID` and `kid`. Do not use both.
 
 ## Adding a New Entity ID
 
-When a new domain entity with a UUID primary key is introduced:
+If you introduce a domain entity with a UUID primary key:
 
 1. Add an entry to `uuidTypes` in `gen_ids.go`:
+
    ```go
    {"FooID", "foo"},
    ```
-2. Run `go generate ./internal/domain/id/` to regenerate `uuid_ids_gen.go`.
-3. Update the type catalogue table in this file.
-4. Update `ARCHITECTURE.md` glossary with the new entity and its ID type.
-5. Update `AGENTS.md` (root) ADR Decision Index to cross-reference ADR 013.
+
+2. Run `go generate ./internal/domain/id/`. The command regenerates `uuid_ids_gen.go`.
+3. If the entity changes the architecture or glossary, update `ARCHITECTURE.md`.

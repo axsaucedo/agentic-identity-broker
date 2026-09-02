@@ -1,16 +1,18 @@
 # E2E Tests (`tests/e2e/`)
 
-**Prefer retrieval-led reasoning. Read test files and `tests/e2e/README.md` before writing new tests.**
+Read changed tests and adjacent READMEs before you write a test. Use `tests/e2e/README.md` for broker HTTP E2E patterns. It is historical. Use the current test tree for feature coverage.
 
-**ADR**: [007-e2e-testing-with-ginkgo.md](../../adrs/007-e2e-testing-with-ginkgo.md) — binding decision for E2E test architecture.
+Read [007-e2e-testing-with-ginkgo.md](../../adrs/007-e2e-testing-with-ginkgo.md). This ADR binds the E2E test architecture.
 
 ## Constitution Principle XIII — Mandatory Rules
 
-1. **1:1 spec-to-test mapping**: Every `It()` block maps to ONE acceptance scenario from `specs/[NNN-feature]/spec.md`.
-2. **Spec traceability**: Every `It()` block MUST have a comment linking to the specific scenario: `// Scenario X.Y from specs/NNN-feature/spec.md`
-3. **Production bootstrap**: Tests use `app.Builder` and production DI — no custom test implementations.
-
-4. **Observe production behavior**: startup/readiness assertions MUST use production constructors/bootstrap and externally visible behavior (`Eventually`, HTTP/gRPC responses, logs when required).
+1. **Spec-to-test mapping**: Map each `It()` to one acceptance scenario.
+   Read it from `specs/<feature>/spec.md`. A shared `Describe` comment can map one scenario when it clearly covers that block.
+2. **Spec traceability**: Add a nearby comment with the actual scenario identifier.
+   For example: `// US1-S1 from specs/024-approval-api-ui/spec.md`.
+   You can also use `// Scenario 1 from specs/036-canonical-resource-ids/spec.md`.
+3. **Production bootstrap**: Use `app.Builder` and production DI. Do not use custom test implementations.
+4. **Observe production behavior**: Use production constructors and externally visible behavior for startup and readiness assertions.
 
 ## Directory Layout
 
@@ -29,29 +31,32 @@ tests/e2e/
                                   encryption, and multi-agent fixtures
   helpers/                        Shared HTTP/JWT/upstream/JWKS/PKCE/signing-key utilities
   matchers/                       Custom Gomega matchers for OAuth2, telemetry, and claims
-  pages/                          Page objects for Playwright frontend tests
-    page.go                       Base Page struct — navigation, waiting
-    consent_page.go               ConsentPage — approve/deny interactions
-  extproc/                        ExtProc E2E suite and supporting specs
-  frontend/                       Frontend E2E tests (Playwright) — see frontend/AGENTS.md
-  *_test.go                       Backend E2E specs covering OAuth2 flows, CIMD, token exchange,
-                                  grants, sessions, permission sets, JWKS, telemetry, and mode boundaries
-  screenshots/                    Optional maintained screenshot artifacts
+  pages/                          Page objects for frontend E2E tests
+    page.go                        Base navigation and screenshot methods
+    approval_page.go               Tool-approval review interactions
+    consent_page.go                Consent interactions
+    tool_authorizations_page.go    Tool-authorization interactions
+  extproc/                        Separate ExtProc Ginkgo suite; read `internal/extproc/AGENTS.md`
+  frontend/                       Frontend E2E tests; read frontend/AGENTS.md
+  screenshots/                    Maintained screenshot artifacts
 ```
 
 ## Architecture: Stable vs Volatile Layers
 
 ### Performance-sensitive helpers
 
-- `bootstrap.TestLogger()` discards log output unless `E2E_VERBOSE=1`; use it for new suites to avoid I/O contention under parallel Ginkgo workers.
-- `e2e_suite_test.go` uses `SynchronizedBeforeSuite` to share the mock upstream across backend workers; prefer suite-level sharing like this over per-spec servers when the upstream is read-only.
-- Prefer `Eventually`/polling helpers over `time.Sleep(...)` in new specs. Fixed sleeps slow down the parallel backend suite and make CI noisier.
+- `bootstrap.TestLogger()` discards logs unless `E2E_VERBOSE=1`. To limit I/O during parallel runs, use it.
+- `e2e_suite_test.go` shares the read-only mock upstream across backend workers.
+- Use `Eventually` or polling helpers. Do not use `time.Sleep(...)` in new specs.
 
-**Stable layer** (test scenarios): HTTP contract tests. Use `server.AuthenticatedGET()`, `server.PublicGET()`. No knowledge of internal routing or DI. Rarely change during refactoring.
+**Broker HTTP suite**: Use HTTP contracts and `server.AuthenticatedGET()` or `server.PublicGET()`.
+Do not depend on routing or DI.
 
-**Volatile layer** (`bootstrap/`): Thin wrappers around production `app.Builder` and `httpAdapter.Server`. Update when production bootstrap changes. Isolated from test scenarios.
+**ExtProc suite**: Use `tests/e2e/extproc/` bootstrap, fixtures, and helpers. Some agentgateway scenarios require Docker and use `Ordered` to share a container.
 
-**Result**: Refactoring routing or DI requires updating only `bootstrap/` — test scenarios remain unchanged.
+**Volatile layer** (`bootstrap/`): On broker wiring changes, update the thin production-bootstrap wrappers.
+
+**Result**: Routing or DI changes affect `bootstrap/`, not the broker HTTP scenarios.
 
 ## Test Structure Pattern
 
@@ -79,7 +84,7 @@ var _ = Describe("Feature Name", func() {
             testStorage.Agents().Create(ctx, agent)
         })
 
-        // Scenario X.Y from specs/NNN-feature/spec.md
+        // Scenario identifier from specs/<feature>/spec.md
         It("should verify expected behavior", func() {
             resp, _ := server.AuthenticatedGET("/endpoint", principal)
             Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -90,27 +95,28 @@ var _ = Describe("Feature Name", func() {
 
 ## Anti-Patterns (Flag for Review)
 
-- **Missing spec reference**: `It()` without `// Scenario X.Y from specs/...` comment
-- **Setup in It()**: Heavy setup inside `It()` blocks (>15 lines = likely needs `BeforeEach`)
-- **Duplicate setup**: Same setup in multiple `It()` blocks instead of using `Context` blocks
-- **Direct DI**: Tests instantiating services directly instead of using `bootstrap/` wrappers
-- **Shared state**: Mutable state shared across `It()` blocks without `BeforeEach` reset
+- **Missing spec reference**: An `It()` has no nearby scenario reference or a clearly applicable shared `Describe` reference.
+- **Setup in It()**: More than 15 setup lines occur in an `It()` block. Use `BeforeEach` instead.
+- **Duplicate setup**: Put repeated setup in a `Context` block.
+- **Direct DI**: Tests create services instead of using `bootstrap/` wrappers.
+- **Shared state**: Mutable state crosses `It()` blocks without a `BeforeEach` reset.
 
 ## Dual Server Pattern
 
-Tests use separate servers matching production architecture:
-- `NewEndUserTestServer()` — OAuth2 endpoints, consent UI, public APIs (port 8000 in prod)
-- `NewAdminTestServer()` — Agent and service management APIs (port 14000 in prod)
+Use separate servers that match the production architecture:
 
-Tests needing both route types create both server instances.
+- `NewEndUserTestServer()` — OAuth2, consent UI, and public APIs (port 8000 in production)
+- `NewAdminTestServer()` — Agent and service APIs (port 14000 in production)
+
+Create both server instances for tests that need both route types.
 
 ## Fixtures Rules
 
-- Return **production domain types** (not test-specific objects)
-- **Deterministic** for principals/configs (same input = same output)
-- **Non-deterministic** for entities (fresh UUIDs each call for test isolation)
-- All data passes domain validation
-- No external dependencies (files, network)
+- Return production domain types. Do not return test-specific objects.
+- Use deterministic principals and configuration.
+- Generate new entity IDs for isolation.
+- Pass domain validation.
+- Do not use external files or network dependencies.
 
 ## Running E2E Tests
 
@@ -118,12 +124,14 @@ Tests needing both route types create both server instances.
 just test-e2e-backend          # Backend E2E suite only
 just test-e2e-backend-coverage # Backend E2E suite with coverage report
 just test-e2e-backend-watch    # Backend E2E watch mode for TDD
-just test-e2e                  # All backend, ExtProc, and frontend E2E suites
+just test-e2e                  # Run backend, ExtProc, and frontend suites
 ginkgo -v --focus="pattern" ./tests/e2e/    # Focused backend run
 ```
 
+Use `just test-e2e-extproc` for the ExtProc suite. Some agentgateway scenarios require Docker.
+
 ### Parallelism expectations
 
-- Backend E2E is expected to run with `GINKGO_PROCS` workers; keep specs isolated so parallel execution stays safe.
-- ExtProc E2E also uses Ginkgo parallelism, but some agentgateway container scenarios are `Ordered` by design — do not convert those casually.
-- Frontend E2E uses a separate suite and has additional screenshot rules in `frontend/AGENTS.md`.
+- Backend E2E runs with `GINKGO_PROCS`. To make parallel execution safe, keep specs isolated.
+- ExtProc E2E runs in parallel. Some agentgateway scenarios share a Docker container and use `Ordered`.
+- Frontend E2E uses a separate suite. Read `frontend/AGENTS.md` for its screenshot rules.

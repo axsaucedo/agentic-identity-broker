@@ -1,8 +1,9 @@
 # Backend — Hexagonal Architecture (`internal/`)
 
-> **Prefer retrieval-led reasoning. Read source files before making assumptions about types, interfaces, or patterns. Read the relevant child `AGENTS.md` for detailed rules per layer.**
+> **Use retrieval-led reasoning.** Read source files and the nearest child `AGENTS.md` before you select types, interfaces, or patterns.
 
 ## Child AGENTS.md Index
+
 `internal/domain/AGENTS.md` | Domain layer rules, data models, error types, zero-infra imports
 `internal/domain/id/AGENTS.md` | Strongly typed entity IDs, code generation, type catalogue
 `internal/ports/AGENTS.md` | Port interface catalogue (read `internal/ports/*.go` directly for contract)
@@ -15,54 +16,71 @@ Dependency arrows flow **inward only**: `app/` → `adapters/` → `ports/` ← 
 
 - **Domain** (`domain/`) — Pure business logic. ZERO infrastructure imports. Never imports `adapters/` or `app/`.
 - **Ports** (`ports/`) — Interfaces + minimal DTOs only. The hexagonal boundary definitions.
-- **Adapters** (`adapters/`) — Infrastructure implementations of ports. May import `ports/` and `domain/`, **never other adapters**.
-- **App** (`app/`) — DI wiring only. Composes adapters into domain services via Builder pattern.
+- **Driven adapters** (`adapters/`) — Infrastructure port implementations. Import `ports/` and `domain/`, never other adapters.
+- **HTTP routing** (`adapters/http/routing/`) — Receives handlers from `app/`.
+  It can use routing middleware and configuration. Do not create services or adapters there.
 
-Violations of inward-dependency flow break the architecture. When in doubt, read `ports/*.go` for available interfaces before creating new cross-layer dependencies.
+Inward-dependency violations break the architecture. If the dependency is unclear, read `ports/*.go` for available interfaces before you add cross-layer dependencies.
 
 ## Package Map
 
 ```
 domain/
-  config/          Config domain types + validation (LogLevel, LogFormat)
-  consent/         ConsentService — agent delegation & grant management
+  agents/          Agent lifecycle and canonical-ID resolution
+  approval/        Tool approval lifecycle, rate limiting, and sync
+  canonical/       Canonical identifier validation
+  config/          Configuration domain types and validation
+  consent/         Agent delegation and grant management
   encryption/      Encryption domain errors (not implementations)
-  oauth2/          OAuth2AuthorizationService — upstream SSO integration
-  oauth2session/   OAuth2SessionService — token vault, PKCE, JWE state tokens
-  principal/       Principal extraction from X-Remote-User header
-  server/          Server lifecycle config types
-  thirdparty/      ThirdpartyOAuth2ProviderService — provider CRUD + encryption (domain service)
-  storage/         Domain data models (Agent, UserGrant, UserSession) + endpoint discovery
-  tokenexchange/   TokenExchangeService + CEL policy evaluation (RFC 8693)
+  id/              Strongly typed entity IDs
+  jwe/             Encrypted token service
+  jwtauth/         JWT authentication and claim extraction
+  model/           Shared domain entities and value objects
+  oauth2/          OAuth2 authorization, CIMD, and JWKS publishing
+  oauth2server/    Broker OAuth2 authorization-server logic
+  oauth2session/   OAuth2 session lifecycle and token vault
+  permissionset/   Permission-set lifecycle and resolution
+  principal/       Principal context extraction
+  server/          Server lifecycle configuration
+  storage/         Domain data models and endpoint discovery
+  thirdparty/      Third-party OAuth2 provider management
+  tokenexchange/   RFC 8693 token exchange and CEL evaluation
+  urivalidation/   Redirect and resource URI validation
 
-ports/             7 interface files defining ALL hexagonal boundaries
-  cel.go           CELCompilerPort
-  config.go        ConfigPort + Config struct
-  encryption.go    EncryptionPort, BranchKeyRepository, BranchKeyIdProvider, BranchKeyManager
-  jwks.go          JWKSPort, JWKSHealthPort
-  oauth2.go        OAuth2Service interface
-  server.go        HealthState
-  storage.go       AgentRepository, UserGrantRepository, UserSessionRepository, HealthChecker
-  thirdparty_provider.go  ThirdpartyOAuth2ProviderRepository (uses model.ThirdpartyOAuth2ProviderEntity)
+ports/             Port contracts; read the `.go` files before editing
+  cel.go            CELCompilerPort
+  cimd.go           CIMD fetch and client-resolution contracts
+  config.go         ConfigPort and Config
+  encryption.go     EncryptionPort and branch-key contracts
+  jwks.go           JWKSPort and JWKSHealthPort
+  jwks_publisher.go JWKSPublisherPort and publisher health contracts
+  oauth2.go         OAuth2Service
+  oauth2_mode_config.go  Resolved proxy, local, and hybrid OAuth2 config
+  oauth2server.go   Signing-key and credential contracts
+  server.go         HealthState
+  storage.go        Repository and transaction contracts
+  thirdparty_provider.go  ThirdpartyOAuth2ProviderRepository
 
 adapters/
+  cimd/            CIMD HTTP fetcher
   encryption/
-    aws/           AWS KMS Hierarchical Keyring (production)
+    aws/           AWS KMS hierarchical keyring or base64 AES-256 mode
     branchkey/     BranchKeyIdProvider implementation
-    memory/        In-memory encryption (development/testing)
+    noop/          Branch-key manager for the memory encryption backend
   http/
-    enduser/       End-user OAuth2 handlers (authorize, token, metadata)
-    handlers/      SPA handler, admin/ and consent/ handler groups
-    middleware/     Authentication, logging, recovery middleware
+    enduser/       OAuth2 authorize, token, and metadata handlers
+    handlers/      SPA plus admin, approval, consent, and JWKS handlers
+    middleware/    Authentication, CORS, CSRF, and audit middleware
     oauth2_sessions/  OAuth2 session management handlers
-    routing/       SetupAdminRoutes(), SetupEnduserRoutes() — route registration ONLY
+    routing/       Route registration only
     upstream/      Upstream OAuth2 proxy integration
-  jwks/            JWKS fetching adapter (lestrrat-go/jwx jwk.Cache)
+  jwks/            JWKS fetcher and published-JWKS adapter
+  jwtauth/         JWT authenticator
   storage/
-    factory.go     Backend selection (memory vs postgres) from config
-    memory/        In-memory storage (maps + sync.RWMutex)
-    postgres/      PostgreSQL storage (sqlx + pgx v5)
-    (no noop — encryption is mandatory, no fallback)
+    factory.go     Backend selection from configuration
+    memory/        In-memory storage
+    postgres/      PostgreSQL storage with sqlx and pgx v5
+  telemetry/       OpenTelemetry provider and slog handler
 
 app/
   builder.go       Builder pattern — all DI wiring
@@ -71,51 +89,52 @@ app/
 
 ## Builder Pattern (DI Wiring)
 
-All service instantiation happens in `app/builder.go` via `NewBuilder().With*().Build()`. Three phases:
+`NewBuilder().With*().Build()` in `app/builder.go` creates dependencies in three phases:
 
-1. **Encryption** — Resolve encryption adapter (AWS KMS, memory, or no-op) + branch key manager
-2. **Domain services** — Create ConsentService, OAuth2Service, OAuth2SessionService, TokenExchangeService from port interfaces
-3. **Handlers** — Wire AdminHandlers and EnduserHandlers with pre-built services
+1. **Encryption** — Create the required encryption adapter and branch-key manager.
+2. **Domain services** — Create services from port contracts.
+3. **Handlers** — Wire `AdminHandlers` and `EnduserHandlers` with the services.
 
 **Rules**:
-- Routing functions (`SetupAdminRoutes`, `SetupEnduserRoutes`) receive pre-wired handler structs — they **never instantiate services**
-- New handlers must be added to `AdminHandlers` or `EnduserHandlers` in `app/handlers.go`, instantiated in `builder.go`, then registered in `routing/`
-- All adapters depend on ports (interfaces), not concrete implementations
+
+- Give routing pre-wired handler structs. Do not create services in routing.
+- Add new handlers to `app/handlers.go`. Create them in `builder.go`. Then register them in `routing/`.
+- Make driven adapters depend on port interfaces, not concrete infrastructure. Give HTTP routing pre-wired handlers.
 
 ### Handler Structs
 
-**AdminHandlers**: `Agents` (`*admin.AgentsHandler`), `Services` (`*admin.ServicesHandler`)
+**AdminHandlers**: `Agents`, `Services`, `ProtectedResources`, `PermissionSets`, `ClientCredentials`, `SigningKeys`.
 
-**EnduserHandlers**: `UserInfo`, `Agents`, `AgentDetail`, `Grants`, `OAuth2Sessions`, `OAuth2Authorize`, `OAuth2Token`, `OAuth2Metadata`, `SPA`
+**EnduserHandlers**: consent, session, OAuth2, JWKS, approval, and SPA handlers.
 
 ### Routing Signatures
 
 ```go
-func SetupAdminRoutes(r chi.Router, h *app.AdminHandlers)
+func SetupAdminRoutes(r chi.Router, h *app.AdminHandlers, cfg AdminRouteConfig)
 func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteConfig)
 ```
 
 ## Testing Conventions
 
-- **TDD**: Red-green-refactor. Tests written first, must compile and fail semantically before implementation.
-- **Files**: `_test.go` co-located in same package (white-box testing). Same package name (not `_test` suffix).
-- **Assertions**: `testify` — `require` for preconditions (fatal), `assert` for checks (soft).
-- **Subtests**: `t.Run("description", ...)` is the dominant pattern. Table-driven (`[]struct{...}` loop) used for validation/parameterized scenarios.
+- **TDD**: Write tests first. Make them compile and fail for the expected behavior before you implement it.
+- **Files**: Put `_test.go` beside the package. Most tests use the package name, not a `_test` suffix.
+- **Assertions**: Use `testify`. Use `require` for fatal preconditions. Use `assert` for soft checks.
+- **Subtests**: Use `t.Run("description", ...)`. Use table-driven tests for validation and parameter sets.
 - **Mocking**:
-  - **Adapters layer**: `testify/mock` with `.On()` / `.AssertExpectations()`. Mock helpers in `mocks_test.go`.
-  - **Domain layer**: Hand-rolled mocks — structs implementing port interfaces with configurable function fields.
-- **HTTP tests**: `httptest.NewRecorder()` + `httptest.NewRequest()` with chi router for URL param injection.
+  - **Adapters**: Use `testify/mock` with `.On()` and `.AssertExpectations()`. Keep helpers in `mocks_test.go`.
+  - **Domain**: Use hand-written port mocks with configurable function fields.
+- **HTTP**: Use `httptest.NewRecorder()` and `httptest.NewRequest()`. Use chi for URL parameters.
 
 ## Key Storage Types (domain/storage/)
 
-These are **domain data models**, NOT database models. Adapter-specific records (e.g., postgres row structs) stay in adapter packages.
+These are domain data models, not database models. Adapter records stay in adapter packages.
 
 | Type | Location | Key Fields |
 |---|---|---|
 | `Agent` | `domain/storage/` | ID, ClientID, DisplayName, Description, ServiceRequirements |
 | `ThirdpartyOAuth2ProviderEntity` | `domain/model/` | ID, DisplayName, ClientID, Secret (value object), Scopes, ProtectedResources |
-| `UserGrant` | `domain/storage/` | ID, Principal, AgentID, DelegatedTokens, ValidUntil |
-| `UserSession` | `domain/storage/` | ID, Principal, ServiceID, AccessToken (encrypted), RefreshToken (encrypted), ExpiresAt |
+| `UserGrant` | `domain/storage/` | ID, principal, agent ID, permission sets, validity |
+| `UserSession` | `domain/storage/` | ID, principal, service ID, encrypted tokens, expiry |
 
 ## Port Interfaces Quick Reference
 
@@ -124,9 +143,9 @@ These are **domain data models**, NOT database models. Adapter-specific records 
 | Encryption | `EncryptionPort` | `ports/encryption.go` |
 | Branch Key | `BranchKeyManager` (= `BranchKeyRepository`) | `ports/encryption.go` |
 | Config | `ConfigPort` | `ports/config.go` |
-| Storage | `AgentRepository`, `UserGrantRepository`, `UserSessionRepository` | `ports/storage.go` |
+| Storage | Repository and transaction interfaces | `ports/storage.go` |
 | Provider Storage | `ThirdpartyOAuth2ProviderRepository` | `ports/thirdparty_provider.go` |
-| JWKS | `JWKSPort`, `JWKSHealthPort` | `ports/jwks.go` |
-| OAuth2 | `OAuth2Service` | `ports/oauth2.go` |
+| JWKS | `JWKSPort`, `JWKSHealthPort`, `JWKSPublisherPort` | `ports/jwks*.go` |
+| OAuth2 | `OAuth2Service`, `OAuth2ModeConfig` | `ports/oauth2*.go` |
+| OAuth2 Server | Signing-key and credential contracts | `ports/oauth2server.go` |
 | CEL | `CELCompilerPort` | `ports/cel.go` |
-| Health | `HealthChecker` | `ports/storage.go` |

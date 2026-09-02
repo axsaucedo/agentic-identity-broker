@@ -1,40 +1,33 @@
 # Infrastructure — AWS CDK (`infra/`)
 
-**Prefer retrieval-led reasoning. Read `stack.go` and ADR 010 before making infrastructure changes.**
+**Use retrieval-led reasoning. Before you change infrastructure, read `stack.go` and ADR 010.**
 
 ## Overview
 
-AWS CDK (Go SDK) infrastructure-as-code for the encryption resources required by the Token Vault's three-layer envelope encryption (KEK → Branch Key → DEK). This is a **separate Go module** (`infra/cdk/go.mod`) within the monorepo.
+AWS CDK (Go SDK) provisions Token Vault encryption resources. `infra/cdk/` is a separate Go module.
 
-**ADR**: [010-cdk-encryption-infrastructure.md](../adrs/010-cdk-encryption-infrastructure.md) — binding decision for all infrastructure choices.
+**ADR**: [010-cdk-encryption-infrastructure.md](../adrs/010-cdk-encryption-infrastructure.md) is the binding decision for all infrastructure choices.
 
 ## Module Structure
 
-```
-infra/cdk/
-  cdk.json           CDK app config (default env: "test")
-  go.mod             Separate Go module (Go 1.25.6, aws-cdk-go/awscdk/v2)
-  main.go            CDK app entrypoint — env parsing, validation, stack instantiation
-  stack.go           EncryptionStack definition — all resources
-  stack_test.go      CDK assertions unit tests (22+ tests)
-  cdk.out/           Synthesized CloudFormation (gitignored)
-```
+`infra/cdk/` contains the CDK source and its tests.
 
 ## EncryptionStack Resources
 
-The single `NewEncryptionStack()` function provisions:
+Use the single `NewEncryptionStack()` function to provision:
 
 | Resource | Type | Purpose |
 |---|---|---|
 | **KMS CMK** | `AWS::KMS::Key` | Symmetric KEK for hierarchical keyring. Annual rotation enabled. Alias: `alias/agentic-identity-broker/{env}/token-vault-kek` |
-| **DynamoDB Table** | `AWS::DynamoDB::Table` | Branch key cache. Schema: `branch-key-id` (S, HASH) + `type` (S, RANGE). PAY_PER_REQUEST billing. Name: `AgenticIdentityBrokerBranchKeys-{env}` |
+| DynamoDB Table | `AWS::DynamoDB::Table` | Branch-key cache with `branch-key-id` and `type` keys |
 | **IAM Role** | `AWS::IAM::Role` | Least-privilege KMS + DynamoDB access via IRSA. Name: `AgenticIdentityBrokerEncryptionRole-{env}` |
 | **CloudWatch Alarms** | `AWS::CloudWatch::Alarm` | KMS throttle + error detection |
 | **CloudWatch Dashboard** | `AWS::CloudWatch::Dashboard` | KMS API ops + DynamoDB cache metrics |
 
 ### Environment Parameterization
 
-Two environments: `test`, `prod` (or `production`, normalized to `prod`).
+Use `test`, `sandbox`, or `prod` as environment values. `production` is an input alias.
+The CDK application changes it to `prod` before it names resources or chooses policies.
 
 | Aspect | Production | Non-Production |
 |---|---|---|
@@ -42,7 +35,7 @@ Two environments: `test`, `prod` (or `production`, normalized to `prod`).
 | KMS PendingDeletion | 30 days | 7 days |
 | DynamoDB PITR | Enabled | Disabled |
 | DynamoDB DeletionProtection | On | Off |
-| IRSA parameters | **Required** (`serviceAccountSubject`, `oidcProviderArn`, `oidcSubjectKey`) | **Required** (`serviceAccountSubject`, `oidcProviderArn`, `oidcSubjectKey`) |
+| IRSA parameters | Required | Required |
 
 ### Stack Outputs → Environment Variables
 
@@ -54,29 +47,40 @@ Two environments: `test`, `prod` (or `production`, normalized to `prod`).
 
 ### IRSA (IAM Roles for Service Accounts)
 
-All environments use federated web identity trust via an IAM OIDC provider. Props:
+Use federated web identity trust through an IAM OIDC provider in all environments. Set these props:
+
 - `ServiceAccountSubject` — Kubernetes service account subject claim (`system:serviceaccount:<namespace>:<sa-name>`)
 - `OIDCProviderArn` — full OIDC provider ARN
 - `OIDCSubjectKey` — IAM condition key for the subject claim (`<oidc-provider-host>:sub`)
 
 ## IAM Permissions (Least Privilege)
 
-**KMS**: Encrypt, Decrypt, GenerateDataKey, GenerateDataKeyWithoutPlaintext, ReEncryptFrom, ReEncryptTo, DescribeKey, CreateGrant (conditioned on `kms:GrantIsForAWSResource`)
+**KMS**: Encrypt, Decrypt, GenerateDataKey, GenerateDataKeyWithoutPlaintext, ReEncryptFrom, ReEncryptTo, DescribeKey, CreateGrant.
 
-**DynamoDB**: GetItem, PutItem, Query, UpdateItem, DeleteItem, DescribeTable — scoped to branch key table ARN only.
+**DynamoDB**: GetItem, PutItem, Query, UpdateItem, DeleteItem, and DescribeTable. Apply permissions only to the branch-key table.
 
 ## Development Commands
 
 ```bash
-just cdk-test           # Run CDK unit tests (assertions)
-just cdk-synth          # Synthesize CloudFormation template
-just cdk-deploy         # Deploy stack (default: test)
+just cdk-deps           # Install dependencies for the separate CDK module
+just cdk-test           # Run CDK unit tests
+just cdk-synth test \
+  '-c serviceAccountSubject=...' \
+  '-c oidcProviderArn=...' \
+  '-c oidcSubjectKey=...' # Synthesize CloudFormation
 ```
 
-Manual CDK commands:
+All synth, diff, deploy, and destroy commands require `serviceAccountSubject`, `oidcProviderArn`, and `oidcSubjectKey` (ADR 030).
+
+Use these manual CDK commands:
+
 ```bash
 cd infra/cdk
-cdk deploy -c env=test \
+cdk synth -c env=test \
+  -c serviceAccountSubject=system:serviceaccount:identity-broker:agentic-identity-broker \
+  -c oidcProviderArn=arn:aws:iam::ACCOUNT:oidc-provider/... \
+  -c oidcSubjectKey=oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE:sub
+cdk diff -c env=test \
   -c serviceAccountSubject=system:serviceaccount:identity-broker:agentic-identity-broker \
   -c oidcProviderArn=arn:aws:iam::ACCOUNT:oidc-provider/... \
   -c oidcSubjectKey=oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE:sub
@@ -84,24 +88,27 @@ cdk deploy -c env=prod \
   -c serviceAccountSubject=system:serviceaccount:identity-broker:agentic-identity-broker \
   -c oidcProviderArn=arn:aws:iam::ACCOUNT:oidc-provider/... \
   -c oidcSubjectKey=oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE:sub
-cdk diff                # Preview changes
-cdk destroy             # Tear down (non-prod only)
+cdk destroy -c env=test \
+  -c serviceAccountSubject=system:serviceaccount:identity-broker:agentic-identity-broker \
+  -c oidcProviderArn=arn:aws:iam::ACCOUNT:oidc-provider/... \
+  -c oidcSubjectKey=oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE:sub # Tear down a non-production stack
 ```
 
 ## Alignment Rules
 
-- Stack resources **must** match what the encryption adapter at `internal/adapters/encryption/aws/` expects. The adapter reads `EncryptionConfig` env vars that map to stack outputs.
-- DynamoDB table schema **must** match the AWS Encryption SDK KeyStore spec: `branch-key-id` (S) + `type` (S). Changing this breaks the hierarchical keyring.
-- All resources tagged with: `Project=agentic-identity-broker`, `Component=encryption-vault`, `Environment={env}`. Custom tags via `EncryptionStackProps.Tags`.
-- Keep documentation in sync: `docs/operations/deployment-checklist.md`, `docs/deployment/kubernetes-irsa.md`, and ADR 010.
+- Make stack resources match the `internal/adapters/encryption/aws/` configuration and stack outputs.
+- Make the DynamoDB schema match the AWS Encryption SDK KeyStore: `branch-key-id` (S) and `type` (S).
+- Use the `application`, `component`, and `environment` tags for resources. Use `EncryptionStackProps.Tags` to add or override the first two.
+- Keep `docs/operations/deployment-checklist.md`, `docs/deployment/kubernetes-irsa.md`, and ADR 010 current.
 
 ## Testing
 
-Tests use CDK `assertions.Template_FromStack()` to validate synthesized CloudFormation. Use `createTestStack()` helper for consistent test setup. Test categories:
-- KMS key properties (symmetric, rotation, removal policy, pending window)
-- DynamoDB schema, billing, PITR, deletion protection
-- IAM role trust policy (IRSA conditions), permission statements
-- Stack outputs and export names
-- Tag propagation
-- Environment parameterization (dev vs prod differences)
-- IRSA validation (production panics on missing params)
+Use CDK `assertions.Template_FromStack()` and `createTestStack()` to examine synthesized CloudFormation. Test:
+
+- KMS key properties (symmetric, rotation, removal policy, pending window).
+- DynamoDB schema, billing, PITR, and deletion protection.
+- IAM role trust policy (IRSA conditions) and permission statements.
+- Stack outputs and export names.
+- Tag propagation.
+- Environment behavior for sandbox and production.
+- Required IRSA configuration.

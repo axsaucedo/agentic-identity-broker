@@ -1,72 +1,90 @@
 # Domain Layer (`internal/domain/`)
 
-> **Prefer retrieval-led reasoning. Read source files before making assumptions about types, interfaces, or patterns.**
+> **Use retrieval-led reasoning. Read source files before you select types, interfaces, or patterns.**
 
-Innermost hexagonal ring. Zero infrastructure dependencies. Never import `adapters/`, `app/`, or external I/O libraries. Domain packages depend on `ports/` interfaces only.
+This is the innermost hexagonal ring. It has zero infrastructure dependencies. Do not import `adapters/`, `app/`, or external I/O libraries.
+Domain packages can depend on `ports/` interfaces. They can use other domain packages
+and declared domain libraries.
 
 ## Package Responsibilities
 
 | Package | Role | Key Types |
 |---|---|---|
-| `config/` | Config domain types + validation | `LogLevel`, `LogFormat` (validated enums) |
-| `consent/` | Consent management business logic | `Service` — orchestrates agent grants |
-| `encryption/` | Encryption domain errors (not implementations) | `EncryptionError` with `ErrorKind` |
-| `oauth2/` | OAuth2 authorization service (upstream SSO) | `OAuth2AuthorizationService` |
-| `oauth2session/` | OAuth2 session lifecycle + token vault | `OAuth2SessionService` (PKCE, JWE state, encrypted tokens) |
-| `principal/` | Authenticated user identity context | `WithPrincipal()` / `FromContext()` |
-| `server/` | Server lifecycle config types | `Config`, lifecycle helpers |
-| `thirdparty/` | Third-party OAuth2 provider management | `ThirdpartyOAuth2ProviderService` (CRUD + encryption) |
-| `storage/` | Domain data models (entities + value objects) | `Agent`, `UserGrant`, `UserSession`, `OAuthScope`, etc. |
-| `tokenexchange/` | RFC 8693 token exchange + CEL evaluation | `TokenExchangeService` (JWT validation, CEL authz) |
+| `agents/` | Agent lifecycle and canonical-ID resolution | `Service` |
+| `approval/` | Tool approval lifecycle, rate limiting, and sync | `Service`, `ApprovalSyncBroadcaster` |
+| `canonical/` | Canonical identifier validation | `Validate()` |
+| `config/` | Configuration domain types and validation | `LogLevel`, `LogFormat` |
+| `consent/` | Consent management business logic | `Service` |
+| `encryption/` | Encryption domain errors | `EncryptionError` |
+| `id/` | Strongly typed entity IDs | `AgentID`, `ServiceID` |
+| `jwe/` | Encrypted token service | `TokenService` |
+| `jwtauth/` | JWT authentication and claim extraction | `JWTAuthenticator`, `CELEvaluator` |
+| `model/` | Shared domain entities and value objects | `Secret`, `OAuthScope` |
+| `oauth2/` | OAuth2 authorization, CIMD, and JWKS publishing | `OAuth2AuthorizationService` |
+| `oauth2server/` | Broker OAuth2 authorization-server logic | `Provider`, `SigningKeyService` |
+| `oauth2session/` | OAuth2 session lifecycle and token vault | `OAuth2SessionService` |
+| `permissionset/` | Permission-set lifecycle and resolution | `Service` |
+| `principal/` | Authenticated identity context | `WithPrincipal()`, `FromContext()` |
+| `server/` | Server lifecycle configuration | `Config` |
+| `storage/` | Domain data models and endpoint discovery | `Agent`, `UserGrant`, `UserSession` |
+| `thirdparty/` | Third-party OAuth2 provider management | `ThirdpartyOAuth2ProviderService` |
+| `tokenexchange/` | RFC 8693 token exchange and CEL evaluation | `TokenExchangeService` |
+| `urivalidation/` | Redirect and resource URI validation | `MatchesRedirectURI()`, `NormalizeResourceURI()` |
 
 ## Critical Rules
 
 ### Zero Infrastructure Imports
-Forbidden: `database/sql`, `pgx`, `sqlx`, `chi`, AWS SDKs, `internal/adapters/`, `internal/app/`. `net/http` is forbidden by default and allowed only in domain packages with established protocol/domain needs: `oauth2session`, `storage` (RFC 8414 discovery), and `oauth2server` (HTTP status code mapping).
-Allowed: Go stdlib (non-I/O by default), `internal/ports/`, other `internal/domain/`, declared external libs (`jwx`, `oauth2`, `cel-go`), plus the explicit `net/http` exceptions above.
+
+Do not import `database/sql`, `pgx`, `sqlx`, `chi`, AWS SDKs, `internal/adapters/`, or `internal/app/`. Only `oauth2session`, `storage`, and `oauth2server` import `net/http`.
+Use the Go standard library, `internal/ports/`, other `internal/domain/` packages, and declared domain libraries such as `jwx`, `oauth2`, and `cel-go`.
 
 ### Domain Services Pattern
-Constructor injection with port interfaces. Services instantiated in `app/builder.go` — never self-instantiate. Read existing services for patterns.
+
+Use constructor injection with port interfaces. Create services in `app/builder.go`. Do not self-instantiate services. Read existing services for patterns.
 
 ### Cross-Domain Dependencies
-Acceptable within domain ring: `tokenexchange/` → `consent/`, `oauth2session/`. `consent/`, `thirdparty/`, `oauth2session/` → `storage/` (data models). All → `ports/`.
+
+Keep cross-domain imports narrowly scoped. Read the importing package and its direct dependencies before you add an import.
 
 ## Domain Data Models (`storage/`)
 
-**Domain entities and value objects** — NOT database models. Adapter-specific details belong in adapters.
+**Domain entities and value objects** — These are not database models. Put adapter-specific details in adapters.
 
 ### Entities
+
 | Type | Key Invariants |
 |---|---|
-| `Agent` | `ClientID` nullable (ADR 017), `DisplayName` required, URLs validated for HTTP(S) |
-| `UserGrant` | One per (principal, agent) pair (upsert); delegated tokens may be empty when no delegation is required |
-| `UserSession` | One per (principal, service_id), tokens encrypted, user-session `EncryptionContext` uses `service_id` while other encrypted assets may use a different single subject such as `kid` (ADR 008 amendment) |
+| `Agent` | `ClientID` can be empty. `DisplayName` is required. URLs require HTTP(S). |
+| `UserGrant` | One per `(principal, agent)` pair. It records granted permission sets and optional validity. |
+| `UserSession` | One per `(principal, service_id)`. Tokens are encrypted. The context uses one approved subject key. |
 | `User` | ID + email, timestamps |
 
 ### Value Objects
-- `OAuthScope` — permission scope (`ScopeValue` + `Description`)
-- `RequirementType` — enum: mandatory/optional
-- `ServiceRequirement` — agent's declared need: `ServiceID` + `RequirementType` + `RequiredScopes[]` ceiling, or `RequireAllScopes` to consume the full granted permission-set scope union
-- `DelegatedToken` — grant component: `ThirdpartyOAuth2ServiceID` + `Scopes[]`
-- `EncryptionContext` — AAD metadata (JSONB, implements `driver.Valuer`/`sql.Scanner`); exactly one approved subject key such as `service_id` or `kid`
-- `BranchKeySubject` — typed encryption namespace wrapper selecting either the `service` or `signing_key` branch-key subject
-- `ConnectionParameters`, `StorageBackend` (memory/postgres), `DiscoveryConfig`, `OAuth2Endpoints`
+
+- `OAuthScope` — permission scope in `model/`
+- `RequirementType` and `ServiceRequirement` — service requirements in `storage/`
+- `EncryptionContext` — service-scoped AAD in `storage/`
+- `BranchKeySubject` — service or signing-key encryption namespace in `encryption/`
+- `ConnectionParameters`, `StorageBackend`, `DiscoveryConfig`, and `OAuth2Endpoints` in `storage/`
 
 ### Validation
-All entities implement `Validate() error`. Some add `ValidateForCreate()`/`ValidateForUpdate()`. Validation is pure — no I/O.
+
+Entities use `Validate() error`. Some use create or update variants. Validation does not do I/O.
 
 ### Error Types
-- `storage.StorageError` — `ErrorKind`: connection, timeout, validation, not_found, conflict, unknown
-- `encryption.EncryptionError` — `ErrorKind`: encryption_failed, decryption_failed, context_mismatch, integrity_violation, kek_unavailable. **Never contains key material.**
-- `tokenexchange.TokenExchangeError` — RFC 8693 error. Token values **never** in messages (SR-005).
-- Sentinel errors: `consent.Err*`, `principal.Err*`, `config.Err*`
+
+- `storage.StorageError` — connection, timeout, validation, not-found, conflict, or unknown error kind
+- `encryption.EncryptionError` — encryption, decryption, context, integrity, or KEK error. Never include key material.
+- `tokenexchange.TokenExchangeError` — RFC 8693 error. Never include token values in messages.
+- Error types in `consent/`, `principal/`, and `config/`
 
 ### Storage Discovery
-`storage/discovery.go` — `DiscoverOAuth2Endpoints()` for RFC 8414 metadata. HTTPS required in prod; HTTP allowed for localhost in dev.
+
+`storage/discovery.go` — `DiscoverOAuth2Endpoints()` gets RFC 8414 metadata. HTTPS is required in prod. HTTP is permitted for localhost in dev.
 
 ## Testing
 
-- **TDD**: Tests first, must fail before implementation
-- **Files**: `_test.go` co-located, same package (white-box)
-- **Mocking**: Hand-rolled mocks (structs with function fields). No `testify/mock` in domain.
-- **Table-driven tests** for validation. Security tests in `_security_test.go` files.
+- **TDD**: Write tests first. Make them fail before you implement the behavior.
+- **Files**: Put `_test.go` beside the package. Use the same package (white-box).
+- **Mocking**: Use hand-rolled mocks (structs with function fields). Do not use `testify/mock` in domain.
+- **Table-driven tests**: Use them for validation. Put security tests in `_security_test.go` files.
