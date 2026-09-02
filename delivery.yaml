@@ -9,7 +9,7 @@ pipeline:
     vm_config:
       type: linux
       size: large
-      image: cdp-runtime/go-1.25
+      image: cdp-runtime/go-1.26
     cache:
       paths:
         # Go module download cache (stable — only changes when go.mod/go.sum change)
@@ -50,7 +50,7 @@ pipeline:
         branch: main
     vm_config:
       type: linux
-      image: cdp-runtime/go-1.25
+      image: cdp-runtime/go-1.26
     cache:
       paths:
         # Go module download cache (stable — only changes when go.mod/go.sum change)

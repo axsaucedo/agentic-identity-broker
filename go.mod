@@ -1,6 +1,6 @@
 module github.com/agentic-identity-broker/agentic-identity-broker
 
-go 1.25.6
+go 1.26.8
 
 require (
 	github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl v0.4.0

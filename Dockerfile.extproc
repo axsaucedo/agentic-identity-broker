@@ -5,7 +5,7 @@ ARG BASE_IMAGE=default
 FROM container-registry.zalando.net/library/alpine-3:latest AS default
 
 # Builder stage
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26.8-alpine AS builder
 
 WORKDIR /app
 
