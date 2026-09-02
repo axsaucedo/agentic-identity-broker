@@ -11,7 +11,9 @@ import (
 	"time"
 
 	domconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/impersonation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -46,6 +48,13 @@ func Validate(cfg *ports.Config) error {
 	// Validate OAuth2 Authorization Server configuration (mandatory)
 	if err := validateOAuth2AuthServerConfig(&cfg.OAuth2AuthServer); err != nil {
 		return err
+	}
+
+	// Validate optional impersonation configuration (local mode only, CR-001..CR-008).
+	if cfg.OAuth2AuthServer.Impersonation != nil {
+		if err := validateImpersonationConfig(cfg.OAuth2AuthServer.Impersonation, cfg.OAuth2AuthServer.Mode, &cfg.Security); err != nil {
+			return err
+		}
 	}
 
 	if err := validateTokenExchangeConfig(&cfg.TokenExchange, &cfg.Security); err != nil {
@@ -832,4 +841,192 @@ func isValidURL(urlStr string) bool {
 	}
 
 	return true
+}
+
+// validateImpersonationConfig validates the optional impersonation subtree (CR-001..CR-008).
+// Local-issuer exclusion (CR-004) is enforced in the builder where the resolved local issuer
+// URI is known.
+func validateImpersonationConfig(cfg *ports.ImpersonationConfig, mode servermode.Mode, security *ports.SecurityConfig) error {
+	const base = "oauth2_authorization_server.impersonation"
+
+	// CR-006: impersonation is local mode only.
+	if mode != servermode.Local {
+		return formatValidationError(base, string(mode), "mode 'local' (impersonation is not supported in proxy or hybrid mode)", nil)
+	}
+	// CR-001: routing-only audience prefix.
+	if err := impersonation.ValidateAudiencePrefix(cfg.AudiencePrefix); err != nil {
+		return formatValidationError(base+".audience_prefix", cfg.AudiencePrefix, "absolute HTTP(S) URI with host and no userinfo, query, fragment, or trailing slash", err)
+	}
+	// CR-002: non-empty, ordered rules.
+	if len(cfg.Rules) == 0 {
+		return formatValidationError(base+".rules", "", "at least one impersonation rule", nil)
+	}
+
+	seenNames := make(map[string]bool)
+	for i := range cfg.Rules {
+		rule := &cfg.Rules[i]
+		rbase := fmt.Sprintf("%s.rules[%d]", base, i)
+		if rule.Name == "" {
+			return formatValidationError(rbase+".name", "", "non-empty, unique rule name", nil)
+		}
+		if seenNames[rule.Name] {
+			return formatValidationError(rbase+".name", rule.Name, "unique rule name across rules", nil)
+		}
+		seenNames[rule.Name] = true
+		if err := validateImpersonationRule(rule, rbase, security); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+var impersonationRoleKeys = []string{
+	string(ports.CredentialRoleClientAssertion),
+	string(ports.CredentialRoleActor),
+	string(ports.CredentialRoleSubject),
+}
+
+// validateImpersonationRule validates a single rule's roles, authorization predicate, and
+// trusted issuers (CR-003, CR-005, CR-007, CR-008).
+func validateImpersonationRule(rule *ports.ImpersonationRuleConfig, rbase string, security *ports.SecurityConfig) error {
+	validRole := map[string]bool{
+		string(ports.CredentialRoleClientAssertion): true,
+		string(ports.CredentialRoleActor):           true,
+		string(ports.CredentialRoleSubject):         true,
+	}
+	// CR-003: role keys subset of the credential roles; all three defined.
+	for key := range rule.Roles {
+		if !validRole[key] {
+			return formatValidationError(rbase+".roles", key, "role keys in {client_assertion, actor, subject}", nil)
+		}
+	}
+	for _, roleName := range impersonationRoleKeys {
+		role, ok := rule.Roles[roleName]
+		if !ok {
+			return formatValidationError(rbase+".roles."+roleName, "", "the role to be defined", nil)
+		}
+		pbase := rbase + ".roles." + roleName
+		if role.PrincipalExpression == "" {
+			return formatValidationError(pbase+".principal_expression", "", "non-empty CEL principal_expression", nil)
+		}
+		if roleName != string(ports.CredentialRoleSubject) {
+			if role.EmailExpression != "" {
+				return formatValidationError(pbase+".email_expression", role.EmailExpression, "email_expression only on the subject role", nil)
+			}
+			if role.Verification != "" {
+				return formatValidationError(pbase+".verification", role.Verification, "verification only on the subject role", nil)
+			}
+		}
+	}
+
+	subject := rule.Roles[string(ports.CredentialRoleSubject)]
+	subjectUnverified := subject.Verification == ports.SubjectVerificationNone
+	// FR-003d/ADR 031: the subject role may be signed ("jwks", default) or unverified ("none").
+	if subject.Verification != "" &&
+		subject.Verification != ports.SubjectVerificationJWKS &&
+		subject.Verification != ports.SubjectVerificationNone {
+		return formatValidationError(rbase+".roles.subject.verification", subject.Verification, "'jwks' or 'none'", nil)
+	}
+	if subjectUnverified {
+		// The unverified subject carries no signature or audience: expected_audience is forbidden.
+		if subject.ExpectedAudience != "" {
+			return formatValidationError(rbase+".roles.subject.expected_audience", subject.ExpectedAudience,
+				"unset for the unverified subject mode (verification: none)", nil)
+		}
+	}
+	// Signed roles require an expected audience (CR-003); the unverified subject is exempt.
+	for _, roleName := range impersonationRoleKeys {
+		if roleName == string(ports.CredentialRoleSubject) && subjectUnverified {
+			continue
+		}
+		if rule.Roles[roleName].ExpectedAudience == "" {
+			return formatValidationError(rbase+".roles."+roleName+".expected_audience", "", "non-empty expected_audience for a signed role", nil)
+		}
+	}
+
+	// CR-005: exactly one CEL authorization predicate.
+	if rule.Authorization.Type != "cel" {
+		return formatValidationError(rbase+".authorization.type", rule.Authorization.Type, "'cel'", nil)
+	}
+	if rule.Authorization.CEL.Expression == "" {
+		return formatValidationError(rbase+".authorization.cel.expression", "", "non-empty CEL authorization expression", nil)
+	}
+	if t := rule.Authorization.CEL.EvaluationTimeout; t != 0 && (t < 10*time.Millisecond || t > 5*time.Second) {
+		return formatValidationError(rbase+".authorization.cel.evaluation_timeout", t.String(), "a duration between 10ms and 5s", nil)
+	}
+
+	return validateImpersonationTrustedIssuers(rule, rbase, security)
+}
+
+// validateImpersonationTrustedIssuers validates the rule's trust anchors (CR-007, CR-008).
+func validateImpersonationTrustedIssuers(rule *ports.ImpersonationRuleConfig, rbase string, security *ports.SecurityConfig) error {
+	if len(rule.TrustedIssuers) == 0 {
+		return formatValidationError(rbase+".trusted_issuers", "", "at least one trusted issuer", nil)
+	}
+	subjectUnverified := rule.Roles[string(ports.CredentialRoleSubject)].Verification == ports.SubjectVerificationNone
+	signedRole := map[string]bool{
+		string(ports.CredentialRoleClientAssertion): true,
+		string(ports.CredentialRoleActor):           true,
+		string(ports.CredentialRoleSubject):         true,
+	}
+	seenIssuer := make(map[string]bool)
+	covered := make(map[string]bool)
+	for j := range rule.TrustedIssuers {
+		issuer := &rule.TrustedIssuers[j]
+		ibase := fmt.Sprintf("%s.trusted_issuers[%d]", rbase, j)
+		if issuer.IssuerURI == "" {
+			return formatValidationError(ibase+".issuer_uri", "", "non-empty issuer_uri", nil)
+		}
+		// CR-008: issuer_uri unique within the rule.
+		if seenIssuer[issuer.IssuerURI] {
+			return formatValidationError(ibase+".issuer_uri", issuer.IssuerURI, "unique issuer_uri within the rule", nil)
+		}
+		seenIssuer[issuer.IssuerURI] = true
+		if err := validateOptionalHTTPSURL(issuer.IssuerURI, ibase+".issuer_uri", security); err != nil {
+			return err
+		}
+		if err := validateOptionalHTTPSURL(issuer.JWKSURI, ibase+".jwks_uri", security); err != nil {
+			return err
+		}
+		if issuer.JWKSMinRefresh < 0 {
+			return formatValidationError(ibase+".jwks_min_refresh", issuer.JWKSMinRefresh.String(), "non-negative duration", nil)
+		}
+		if issuer.JWKSMaxRefresh < 0 {
+			return formatValidationError(ibase+".jwks_max_refresh", issuer.JWKSMaxRefresh.String(), "non-negative duration", nil)
+		}
+		// CR-007: non-empty, approved asymmetric algorithms only.
+		if len(issuer.AllowedAlgorithms) == 0 {
+			return formatValidationError(ibase+".allowed_algorithms", "", "a non-empty list of approved asymmetric algorithms", nil)
+		}
+		for _, alg := range issuer.AllowedAlgorithms {
+			if !impersonation.IsApprovedAlgorithm(alg) {
+				return formatValidationError(ibase+".allowed_algorithms", alg,
+					"an approved asymmetric algorithm (RS/PS/ES 256/384/512 or EdDSA); none and HS* are rejected", nil)
+			}
+		}
+		// CR-008: signs_roles non-empty, subset of the rule's signed roles.
+		if len(issuer.SignsRoles) == 0 {
+			return formatValidationError(ibase+".signs_roles", "", "a non-empty list of signed roles", nil)
+		}
+		for _, r := range issuer.SignsRoles {
+			if !signedRole[r] {
+				return formatValidationError(ibase+".signs_roles", r, "roles in {client_assertion, actor, subject}", nil)
+			}
+			if r == string(ports.CredentialRoleSubject) && subjectUnverified {
+				return formatValidationError(ibase+".signs_roles", r,
+					"the unverified subject role (verification: none) to be absent from signs_roles", nil)
+			}
+			covered[r] = true
+		}
+	}
+	// CR-008: each signed role covered by at least one trusted issuer; the unverified subject is exempt.
+	for _, r := range impersonationRoleKeys {
+		if r == string(ports.CredentialRoleSubject) && subjectUnverified {
+			continue
+		}
+		if !covered[r] {
+			return formatValidationError(rbase+".trusted_issuers", r, "at least one trusted issuer whose signs_roles includes "+r, nil)
+		}
+	}
+	return nil
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/ory/fosite/handler/pkce"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/oidcscope"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
@@ -82,20 +83,7 @@ func NewProvider(
 		EnablePKCEPlainChallengeMethod: false,
 		// Empty AllowedScopes means unrestricted in our domain model.
 		// fosite's default WildcardScopeStrategy treats empty as no scopes allowed.
-		ScopeStrategy: func(allowedScopes []string, requestedScope string) bool {
-			if oidcscope.IsReservedRefreshTokenScope(requestedScope) {
-				return true
-			}
-			if len(allowedScopes) == 0 {
-				return true
-			}
-			for _, s := range allowedScopes {
-				if s == requestedScope {
-					return true
-				}
-			}
-			return false
-		},
+		ScopeStrategy: oauth2.IsScopeAllowed,
 	}
 
 	helper := &fositeOAuth2.HandleHelper{
@@ -142,6 +130,12 @@ func (p *Provider) ClientAuth() *ClientAuthService {
 	return p.clientAuth
 }
 
+// IssueImpersonationToken implements ports.ImpersonationTokenIssuer by minting a locally signed
+// impersonated broker token via the access-token strategy.
+func (p *Provider) IssueImpersonationToken(ctx context.Context, input ports.ImpersonationMintInput) (string, error) {
+	return p.accessStrategy.GenerateImpersonationToken(ctx, input)
+}
+
 // HandleClientCredentials processes a client_credentials grant type request.
 // Scope validation and token generation are fully delegated to fosite's ccHandler.
 func (p *Provider) HandleClientCredentials(ctx context.Context, clientID string, secret string, requestedScope string) (resp *ports.TokenResponse, err error) {
@@ -166,7 +160,7 @@ func (p *Provider) HandleClientCredentials(ctx context.Context, clientID string,
 	}
 
 	client := &confidentialClient{clientID: clientID, agent: authClient.Agent, credential: authClient.Credential}
-	scopes := splitScope(requestedScope)
+	scopes := fosite.Arguments(oauth2.SplitScope(requestedScope))
 
 	session := &fosite.DefaultSession{
 		Subject: authClient.Agent.ID.String(),
@@ -252,15 +246,10 @@ func (p *Provider) HandleAuthorize(
 		return "", fosite.ErrUnsupportedResponseType.WithHintf("only 'code' response_type is supported")
 	}
 
-	scopes := splitScope(scope)
-	if len(agent.AllowedScopes) > 0 && len(scopes) > 0 {
-		for _, s := range scopes {
-			if oidcscope.IsReservedRefreshTokenScope(s) {
-				continue
-			}
-			if !containsScope(agent.AllowedScopes, s) {
-				return "", fosite.ErrInvalidScope.WithHintf("scope %q is not allowed for this client", s)
-			}
+	scopes := fosite.Arguments(oauth2.SplitScope(scope))
+	for _, requestedScope := range scopes {
+		if !oauth2.IsScopeAllowed(agent.AllowedScopes, requestedScope) {
+			return "", fosite.ErrInvalidScope.WithHintf("scope %q is not allowed for this client", requestedScope)
 		}
 	}
 
@@ -461,25 +450,9 @@ func (p *Provider) HandleRefreshToken(
 	return resp, nil
 }
 
-func splitScope(scope string) fosite.Arguments {
-	if scope == "" {
-		return fosite.Arguments{}
-	}
-	return strings.Split(scope, " ")
-}
-
 func containsRedirectURI(list []string, item string) bool {
 	for _, v := range list {
 		if urivalidation.MatchesRedirectURI(v, item) {
-			return true
-		}
-	}
-	return false
-}
-
-func containsScope(list []string, scope string) bool {
-	for _, candidate := range list {
-		if candidate == scope {
 			return true
 		}
 	}

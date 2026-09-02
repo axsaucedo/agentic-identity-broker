@@ -93,35 +93,23 @@ test-coverage-summary:
 # Run the backend E2E acceptance suite with Ginkgo
 test-e2e-backend:
     @echo "Running backend E2E suite..."
-    @if command -v ginkgo > /dev/null; then \
-        ginkgo -v --procs={{GINKGO_BACKEND_PROCS}} ./tests/e2e/; \
-    else \
-        echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
-        exit 1; \
-    fi
+    @if command -v ginkgo > /dev/null; then ginkgo -v --procs={{GINKGO_BACKEND_PROCS}} --label-filter="!performance" ./tests/e2e/; else echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; fi
+
+# Run the SC-001 backend performance measurement separately from functional E2E tests
+test-e2e-performance:
+    @echo "Running backend E2E performance measurement..."
+    @if command -v ginkgo > /dev/null; then ginkgo -v --procs=1 --label-filter="performance" ./tests/e2e/; else echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; fi
 
 # Run the backend E2E acceptance suite with coverage report
 test-e2e-backend-coverage:
     @echo "Running backend E2E suite with coverage..."
     @mkdir -p coverage
-    @if command -v ginkgo > /dev/null; then \
-        ginkgo -v --procs={{GINKGO_BACKEND_PROCS}} --cover --coverprofile=e2e-backend.out --output-dir=coverage ./tests/e2e/; \
-        go tool cover -html=coverage/e2e-backend.out -o coverage/e2e-backend.html; \
-        echo "Backend E2E coverage report generated at coverage/e2e-backend.html"; \
-    else \
-        echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
-        exit 1; \
-    fi
+    @if command -v ginkgo > /dev/null; then ginkgo -v --procs={{GINKGO_BACKEND_PROCS}} --label-filter="!performance" --cover --coverprofile=e2e-backend.out --output-dir=coverage ./tests/e2e/; go tool cover -html=coverage/e2e-backend.out -o coverage/e2e-backend.html; echo "Backend E2E coverage report generated at coverage/e2e-backend.html"; else echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; fi
 
 # Watch the backend E2E acceptance suite during development
 test-e2e-backend-watch:
     @echo "Watching backend E2E suite..."
-    @if command -v ginkgo > /dev/null; then \
-        ginkgo watch -v ./tests/e2e/; \
-    else \
-        echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
-        exit 1; \
-    fi
+    @if command -v ginkgo > /dev/null; then ginkgo watch -v --label-filter="!performance" ./tests/e2e/; else echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; fi
 
 # Run the ExtProc E2E acceptance suite with Ginkgo
 test-e2e-extproc:
@@ -179,12 +167,7 @@ test-e2e-coverage: test-e2e-backend-coverage test-e2e-extproc-coverage test-e2e-
 # Watch all E2E acceptance suites during development
 test-e2e-watch:
     @echo "Watching backend, ExtProc, and frontend E2E suites..."
-    @if command -v ginkgo > /dev/null; then \
-        E2E_FRONTEND_MODE=built ginkgo watch -v ./tests/e2e/ ./tests/e2e/extproc/ ./tests/e2e/frontend/; \
-    else \
-        echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
-        exit 1; \
-    fi
+    @if command -v ginkgo > /dev/null; then E2E_FRONTEND_MODE=built ginkgo watch -v --label-filter="!performance" ./tests/e2e/ ./tests/e2e/extproc/ ./tests/e2e/frontend/; else echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; fi
 
 
 # Build and run the application
@@ -469,7 +452,7 @@ verify-junit:
         exit 1
     fi
 
-    ginkgo run -v --procs={{GINKGO_BACKEND_PROCS}} \
+    ginkgo run -v --procs={{GINKGO_BACKEND_PROCS}} --label-filter="!performance" \
         --junit-report=test-results/e2e-backend-junit.xml ./tests/e2e/ \
         > test-results/e2e-backend.log 2>&1 &
     E2E_BACKEND_PID=$!

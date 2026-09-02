@@ -737,6 +737,39 @@ OAuth2 /authorize request
 
 **See Also**: ADR 015 — CIMD Fetcher Architecture (SSRF hardening, caching, strategy pattern)
 
+#### 3.1.y. User Impersonation Domain (Feature 037)
+
+**Purpose**: Orchestrate the broker's user-impersonation capability on `POST /oauth2/token` so a privileged client can mint a broker-issued access token that represents a specified subject while explicitly attributing the acting party via the standard `act` claim. Because the issued token carries both `sub` and `act`, this is *delegation* in RFC 8693 §1.1 terms, not impersonation; the broker keeps **impersonation** as the operator-facing capability name but implements RFC 8693 delegation semantics for actor accountability. (This is unrelated to the repo's user-consented `UserGrant`/`DelegatedToken` delegation.) Available only in `local` mode.
+
+**New Bounded Context**: `internal/domain/impersonation/` independently orchestrates credential validation, authorization, audience-target resolution, and local minting. It depends only on ports and domain; `ports.ImpersonationTokenIssuer` insulates it from the fosite signer. It resolves existing registered target agents through `ports.AgentRepository`; no new persistence exists.
+
+**Responsibility / Flow**:
+
+```
+POST /oauth2/token (grant_type=urn:ietf:params:oauth:grant-type:token-exchange)
+  ↓ Activate: exactly one audience == <audience_prefix>/<canonical AgentID>; resolve registered target
+  ↓   malformed/bare suffix → invalid_request; missing target → invalid_target; validate optional non-reserved scope against target AllowedScopes (`offline` and `offline_access` are always permitted); reject resource
+  ↓ Walk oauth2_authorization_server.impersonation.rules in configured order, first-match:
+  ↓   ├─ Validate signed client_assertion, actor, and subject against the rule's per-issuer JWKS
+  ↓   │    (signature, algorithm allow-list, iss, per-role expected audience, exp, nbf)
+  ↓   ├─ Evaluate the rule's single CEL authorization predicate (ADR-009 pattern)
+  ↓   └─ Extract privileged-client, actor-token issuer, actor, and subject identities (+ optional subject email)
+  ↓ Mint through normal local access-token path: target agent_id + local CEL agent.*, sub=subject, act.iss=validated actor-token issuer, act.sub=actor, granted scope
+  ↓ Local token_claims_expression alone emits aud (or omits it); RFC 8693 response returns non-empty granted scope; audit target and privileged client
+```
+
+**Invariants**:
+
+- Signature validation is never optional for signed roles (client assertion, actor, subject).
+- `actor == subject` is permitted and yields `act.sub == sub`; `act.iss` remains the validated actor-token issuer.
+- The issued token uses normal local issuer, lifetime, signing-key, base claims, token-claims policy, and JWT `scope` claim. The target supplies minted `agent_id`, CEL `agent.*`, request `agent_id`, audit identity, and `AllowedScopes`: empty is unrestricted, listed values are exact, and reserved refresh-token scopes retain normal handling. A rejected scope returns credential-free `invalid_scope`; absent scope yields JWT `scope == ""` and no response field. The assertion supplies privileged-client authorization/audit identity only. `aud` remains policy-owned.
+- Fail-closed on validation, extraction, predicate denial, or CEL timeout; no-match precedence is `access_denied` > `invalid_request` > `invalid_client`.
+- Local-mode only; proxy and hybrid modes reject impersonation and never forward upstream.
+
+**Reused Machinery**: the JWKS adapter (`internal/adapters/jwks`), the ADR-009 CEL evaluator pattern (`internal/domain/tokenexchange/cel_evaluator.go`), the signed-JWT validation pattern, and the local issuer's signing key + `token_claims_expression` principal context (`internal/domain/oauth2server`).
+
+**See Also**: spec `037-oauth2-user-impersonation` (FR-013/014/015, CR-001..008).
+
 ### 3.2. Envoy External Processor (ExtProc) Token Exchange Service
 
 **Name**: extproc-token-exchange
@@ -1258,6 +1291,22 @@ Define any project-specific terms or acronyms.)
 **CEL Authorization**: Common Expression Language policy evaluation for privileged client authorization. Expression evaluated against client_assertion claims and request context. Expression must return boolean; defaults to "true" (allow all valid privileged clients). Enables flexible authorization policies beyond basic JWT validation.
 
 **Protected Resources (Feature 035)**: An unordered set of normalized resource URIs owned by a `ThirdpartyOAuth2Provider` that identifies which resources map to that provider for RFC 8693 token exchange. Migration `027` replaces the provider's `TEXT[]` column and GIN index with `service_protected_resources`, a child table whose `resource_uri` is the global primary key and whose `service_id` references the owning provider. This makes one normalized URI claimable by at most one service. The provider has a monotonic `version` counter, exposed as a strong ETag: every resource-set mutation increments it; a full-service update that supplies `protected_resources` must use the current ETag to replace the set, while an update that omits or sets the field to `null` preserves it. Single-resource add, remove, and rename operations are atomic deltas and do not require `If-Match`.
+
+### RFC 8693 User Impersonation (Feature 037)
+
+**Target Agent**: The existing registered `storage.Agent` selected from the canonical suffix of the routing `audience_prefix`. It supplies issued `agent_id`, local-token CEL `agent.*`, request `agent_id`, audit identity, and `AllowedScopes` policy for the optional impersonation scope request; an empty allow-list is unrestricted. It is not the privileged client.
+
+**Impersonation Rule**: An ordered, self-contained configuration entry (`oauth2_authorization_server.impersonation.rules[]`) bundling per-role semantics keyed by role name (`client_assertion`, `actor`, `subject`) — each declaring its expected audience and CEL identity extraction — a non-empty list of trusted-issuer anchors that declare which roles they may sign (`signs_roles`), and exactly one CEL authorization predicate. Rules are evaluated first-match; a rule matches only when every required credential validates against its issuers AND its predicate returns true, otherwise evaluation falls through to the next rule. The same issuer identifier may appear across multiple rules. Represented by `ImpersonationRuleConfig` in `internal/ports/config.go`.
+
+**Trusted Token Issuer**: An operator-configured external identity authority, scoped within a single rule, that specifies how its signing keys are trusted (`issuer_uri`, optional `jwks_uri`, `jwks_min_refresh`/`jwks_max_refresh` bounds), its explicit non-empty permitted signing-algorithm allow-list (`allowed_algorithms` — asymmetric only; `none` and `HS*` always rejected, CR-007), and which signed credential roles it is permitted to sign (`signs_roles`, CR-008). Identity extraction and expected audience are declared per role on the rule, not on the issuer. Within a rule each `issuer_uri` MUST be unique; the broker's local issuer is rejected for the `client_assertion` role. Represented by `TrustedTokenIssuerConfig` in `internal/ports/config.go`.
+
+**Privileged Client Identity**: The non-empty identity extracted from a cryptographically validated client assertion. It is used only for rule authorization and audit; it is never presented to local issuance as a broker Agent.
+
+**Actor Identity**: The non-empty identity extracted from the validated actor token via the selected rule's `actor` role `principal_expression`, represented with its validated issuer as the standardized `act.iss` and `act.sub` claims in a successful impersonated broker token.
+
+**Subject Identity**: The non-empty user identity extracted from a validated signed subject token via the selected rule's `subject` role `principal_expression`, represented as the `sub` claim in a successful impersonated broker token. It may be accompanied by an optional `email` claim produced from the role's optional `email_expression`, fed through the existing local-token `principal` CEL context so `token_claims_expression` mints it unchanged.
+
+**Impersonated Broker Token**: A locally issued token minted by the normal local access-token path, carrying target-derived `agent_id`, subject identity, protected `act.iss`/`act.sub`, optional email, granted JWT `scope`, and normal local-policy claims. The routing URI never forces `aud`; local token policy may emit it or omit it.
 
 ### ExtProc (Envoy External Processor) Domain
 

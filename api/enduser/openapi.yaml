@@ -1283,6 +1283,42 @@ paths:
         **User Grant Verification:**
         - User must have active (non-revoked, non-expired) grant to agent+service
         - Missing grant returns 403 access_denied error
+
+        ### Token Exchange Grant (RFC 8693) — User Impersonation (local mode only)
+        Mints a locally issued access token representing a subject user and attributing the acting
+        party with the standard `act` claim. Available only in `local` mode; `proxy` and `hybrid`
+        reject it.
+
+        The routing-only `oauth2_authorization_server.impersonation.audience_prefix` activates
+        impersonation only when exactly one request `audience` is
+        `<audience_prefix>/<canonical lower-case AgentID UUID>`—the target agent's `id` UUID,
+        not its optional `canonical_id`. The suffix selects a registered target agent, which
+        supplies minted `agent_id` and local-token CEL `agent.*`. A signed client assertion
+        is the privileged-client identity for authorization and audit only. The routing audience
+        is never copied into issued `aud`; the existing local `token_claims_expression` emits `aud`
+        or leaves it absent exactly as normal local issuance does. Activation precedes the
+        third-party mandatory-`resource` check.
+
+        - `grant_type`: `urn:ietf:params:oauth:grant-type:token-exchange`
+        - `audience`: one `<audience_prefix>/<canonical lower-case AgentID UUID>` URI
+        - `client_assertion_type`: `urn:ietf:params:oauth:client-assertion-type:jwt-bearer`
+        - `client_assertion`: signed JWT authenticating the privileged client
+        - `actor_token_type`: `urn:ietf:params:oauth:token-type:jwt`
+        - `actor_token`: signed JWT identifying the actor
+        - `subject_token_type`: `urn:ietf:params:oauth:token-type:jwt`; a matching rule's
+          `verification: none` selects the unsigned-subject profile
+        - `subject_token`: signed subject JWT, or, for a matching `verification: none` rule, an
+          unsigned `alg:none` JWT
+        - `requested_token_type`: optional; when present MUST equal the access-token type
+
+        `resource` is rejected with `invalid_request`. An optional `scope` requests values from the
+        resolved target agent's `allowed_scopes`; an empty target allow-list is unrestricted, and
+        `offline` and `offline_access` are always permitted refresh-token scopes. An out-of-list
+        non-reserved value returns `invalid_scope`. The normal local JWT and response carry non-empty granted scope.
+        Signed credentials are validated for signature, issuer, audience, expiry, and not-before
+        before a CEL authorization predicate decides the request. Malformed/bare/noncanonical target
+        suffixes return `invalid_request`; a canonical unknown target returns `invalid_target`.
+        No-match precedence is `access_denied` > `invalid_request` > `invalid_client`.
       operationId: tokenExchange
       tags:
         - OAuth2 Token
@@ -1318,6 +1354,29 @@ paths:
                   resource: "https://api.github.com"
                   client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
                   client_assertion: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+              token_exchange_impersonation:
+                summary: User Impersonation Request (RFC 8693, local mode only)
+                value:
+                  grant_type: "urn:ietf:params:oauth:grant-type:token-exchange"
+                  audience: "https://broker.example.com/impersonation/550e8400-e29b-41d4-a716-446655440000"
+                  client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+                  client_assertion: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  actor_token_type: "urn:ietf:params:oauth:token-type:jwt"
+                  actor_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  subject_token_type: "urn:ietf:params:oauth:token-type:jwt"
+                  subject_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  scope: "read"
+              token_exchange_impersonation_unverified:
+                summary: "User Impersonation Request with an unverified subject (verification: none)"
+                value:
+                  grant_type: "urn:ietf:params:oauth:grant-type:token-exchange"
+                  audience: "https://broker.example.com/impersonation/550e8400-e29b-41d4-a716-446655440000"
+                  client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+                  client_assertion: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  actor_token_type: "urn:ietf:params:oauth:token-type:jwt"
+                  actor_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  subject_token_type: "urn:ietf:params:oauth:token-type:jwt"
+                  subject_token: "eyJhbGciOiJub25lIn0..."
               authorization_code_proxy:
                 summary: Authorization Code Exchange (Proxy Mode)
                 value:
@@ -1341,6 +1400,14 @@ paths:
                     token_type: "Bearer"
                     issued_token_type: "urn:ietf:params:oauth:token-type:access_token"
                     expires_in: 3600
+                impersonation_success:
+                  summary: Successful Impersonation Response
+                  value:
+                    access_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    token_type: "Bearer"
+                    issued_token_type: "urn:ietf:params:oauth:token-type:access_token"
+                    expires_in: 3600
+                    scope: "read"
         "400":
           description: Bad Request - Invalid parameters, invalid tokens, or no valid session
           content:
@@ -1368,6 +1435,16 @@ paths:
                   value:
                     error: "invalid_client"
                     error_description: "agent has no upstream client_id configured; proxy-mode OAuth2 flows require client_id"
+                impersonation_invalid_scope:
+                  summary: Impersonation - requested scope not permitted for target
+                  value:
+                    error: "invalid_scope"
+                    error_description: "requested scope is not permitted"
+                impersonation_resource_present:
+                  summary: Impersonation - resource not permitted
+                  value:
+                    error: "invalid_request"
+                    error_description: "resource must not be present for impersonation"
         "401":
           description: Unauthorized - Invalid client authentication (client_assertion or client credentials)
           content:
@@ -1385,6 +1462,11 @@ paths:
                   value:
                     error: "invalid_client"
                     error_description: "Invalid client_id or client_secret"
+                impersonation_untrusted_client:
+                  summary: Impersonation - client assertion not trusted
+                  value:
+                    error: "invalid_client"
+                    error_description: "client assertion is not trusted for impersonation"
         "403":
           description: Forbidden - User has not granted access or CEL authorization failed
           content:
@@ -1397,6 +1479,11 @@ paths:
                   value:
                     error: "access_denied"
                     error_description: "User has not granted this agent access to the requested service"
+                impersonation_access_denied:
+                  summary: Impersonation - no rule permits the request
+                  value:
+                    error: "access_denied"
+                    error_description: "impersonation not permitted"
         "500":
           description: Internal Server Error
           content:
@@ -3104,6 +3191,7 @@ components:
         **authorization_code** (local/hybrid): requires client_id, code, redirect_uri. client_secret required for confidential clients, optional for public clients. Optional: code_verifier.
         **authorization_code** (proxy): requires client_id, client_secret, code, redirect_uri.
         **token-exchange** (RFC 8693): requires subject_token, subject_token_type, resource, client_assertion_type, client_assertion.
+        **token-exchange (user impersonation)** (RFC 8693, local mode only): activated only by one `audience` equal to `<audience_prefix>/<canonical lower-case AgentID UUID>`, which must resolve to a registered target. That target supplies issued `agent_id`, local-policy `agent.*`, and optional scope policy through `allowed_scopes`; an empty allow-list is unrestricted, while the reserved refresh-token scopes `offline` and `offline_access` are always permitted. Required credentials are client assertion, actor token, and subject token. `resource` MUST be absent; a target-disallowed non-reserved optional scope is `invalid_scope`.
       required:
         - grant_type
       properties:
@@ -3156,24 +3244,54 @@ components:
         subject_token:
           type: string
           description: |
-            JWT issued by the Upstream OAuth2 Server containing both:
-            - User principal (extracted via configurable CEL, default: 'sub' claim)
-            - Agent identifier (extracted via configurable CEL, default: 'azp' claim)
-            Required for token-exchange grant type.
+            For third-party token exchange, a JWT from which the broker extracts the user
+            principal and agent identifier. For user impersonation, a signed subject JWT or,
+            only when a matching rule declares `verification: none`, an unsigned `alg:none`
+            subject JWT whose claims provide the impersonated principal. Required for
+            token-exchange grant type.
           example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
         subject_token_type:
           type: string
+          description: |
+            Type of the subject_token.
+            - `urn:ietf:params:oauth:token-type:access_token`: third-party token exchange (default).
+            - `urn:ietf:params:oauth:token-type:jwt`: user impersonation (local mode only). A
+              signed subject is signature-verified; a rule declaring `verification: none` accepts
+              an unsigned (`alg:none`) subject JWT and rejects signed JWSs on that path. An
+              unsigned JWT is rejected by signed subject roles.
+            Required for token-exchange grant type.
+          example: "urn:ietf:params:oauth:token-type:access_token"
+        actor_token:
+          type: string
+          description: |
+            Signed JWT identifying the acting party for user impersonation. Required for the
+            impersonation flow. Its validated issuer and extracted identity surface as
+            `act.iss` and `act.sub` in the issued token.
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+        actor_token_type:
+          type: string
+          enum:
+            - "urn:ietf:params:oauth:token-type:jwt"
+          description: |
+            Type of the actor_token. MUST be the RFC 8693 JWT token type. Required for the
+            impersonation flow.
+          example: "urn:ietf:params:oauth:token-type:jwt"
+        requested_token_type:
+          type: string
           enum:
             - "urn:ietf:params:oauth:token-type:access_token"
-          description: Type of the subject_token. Must be access_token type. Required for token-exchange grant type.
+          description: |
+            Optional for the impersonation flow. When present it MUST equal the access-token
+            type; any other value is rejected with `invalid_request`. When absent the
+            access-token type is assumed.
           example: "urn:ietf:params:oauth:token-type:access_token"
         resource:
           type: string
           format: uri
           description: |
-            The target resource URI. Must match a protected_resource configured on
-            a ThirdpartyOAuth2Service. URI is normalized (trailing slashes removed)
-            before matching. Required for token-exchange grant type.
+            Required for third-party token exchange. It must match a protected_resource on a
+            ThirdpartyOAuth2Service and is normalized by removing trailing slashes before
+            matching. It MUST be absent for audience-activated user impersonation.
           example: "https://api.github.com"
         client_assertion_type:
           type: string
@@ -3184,18 +3302,23 @@ components:
         client_assertion:
           type: string
           description: |
-            JWT authenticating the gateway making the request. Issued by the
-            Upstream OAuth2 Server. The 'sub' claim identifies the gateway for
-            audit logging. Required for token-exchange grant type.
+            Signed JWT authenticating the privileged client. Third-party token exchange
+            validates it against the configured client-assertion issuer; user impersonation
+            validates it against a trusted issuer in the matching impersonation rule. Required
+            for token-exchange grant type.
           example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
         scope:
           type: string
-          description: Space-delimited scopes requested (optional).
+          description: Optional literal-space-separated scope request. For user impersonation, every non-reserved value must be permitted by the resolved target agent's `allowed_scopes`; an empty allow-list is unrestricted. The reserved refresh-token scopes `offline` and `offline_access` are always permitted. A denied non-reserved value returns `invalid_scope`.
           example: "read:user repo"
         audience:
           type: string
-          description: Intended audience for the issued token (optional).
-          example: "https://api.github.com"
+          format: uri
+          description: |
+            Optional token-exchange audience. For local impersonation it must be exactly one
+            `<audience_prefix>/<canonical lower-case AgentID UUID>` URI. The suffix selects the
+            registered target agent; the routing audience never sets issued-token `aud`.
+          example: "https://broker.example.com/impersonation/550e8400-e29b-41d4-a716-446655440000"
     TokenExchangeResponse:
       type: object
       required:
@@ -3205,13 +3328,19 @@ components:
       properties:
         access_token:
           type: string
-          description: The third-party OAuth2 access token from the token vault.
+          description: |
+            The issued access token. For third-party exchange this is the token vault token. For
+            user impersonation it is a locally signed broker JWT with `sub`, target-derived
+            `agent_id` and local-policy `agent.*`, `act` = `{ "iss": <actor-token issuer>,
+            "sub": <actor> }`, optional email, normal local base claims, and a `scope` claim
+            equal to the granted requested scope. `aud`, if present, is emitted by the existing
+            local token-claims policy.
           example: "ghu_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
         token_type:
           type: string
           description: |
-            Token type (e.g., "Bearer"). Passed through from the stored
-            third-party token response.
+            For third-party token exchange, the type passed through from the stored provider
+            token. For user impersonation, always `Bearer` for the locally issued broker JWT.
           example: "Bearer"
         issued_token_type:
           type: string
@@ -3221,14 +3350,12 @@ components:
           type: integer
           format: int64
           description: |
-            Remaining lifetime in seconds of the access token. Only present
-            if the stored token has expiration information.
+            Remaining lifetime in seconds. For third-party token exchange it reflects the
+            stored token; for user impersonation it reflects the configured local token TTL.
           example: 3600
         scope:
           type: string
-          description: |
-            Scopes associated with the access token. Only present if
-            different from requested scope.
+          description: For user impersonation, the non-empty granted scope, including target-allowed values and any requested reserved refresh-token scopes (`offline`, `offline_access`); omitted when no scope was requested.
           example: "read:user repo"
         refresh_token:
           type: string

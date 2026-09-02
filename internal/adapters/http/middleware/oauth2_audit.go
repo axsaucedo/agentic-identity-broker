@@ -7,12 +7,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/httpctx"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 )
-
-// requestIDContextKey is an unexported type used as the context key for request IDs.
-// Using an unexported type prevents context key collisions.
-type requestIDContextKey struct{}
 
 // OAuth2AuditMiddleware creates audit logging middleware for OAuth2 endpoints
 func OAuth2AuditMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
@@ -38,7 +35,7 @@ func OAuth2AuditMiddleware(logger *slog.Logger) func(http.Handler) http.Handler 
 			}
 
 			// Add request_id to context
-			ctx := context.WithValue(r.Context(), requestIDContextKey{}, requestID)
+			ctx := httpctx.WithRequestID(r.Context(), requestID)
 
 			// Call next handler with updated context
 			next.ServeHTTP(wrapped, r.WithContext(ctx))

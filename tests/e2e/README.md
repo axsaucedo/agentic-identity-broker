@@ -144,62 +144,69 @@ Expect(resp.StatusCode).To(Equal(http.StatusFound))
 ### Quick Start
 
 ```bash
-# Run the backend E2E suite
+# Run the functional backend E2E suite (excludes performance-labelled specs)
 just test-e2e-backend
 
-# Run the backend suite with coverage report
+# Run the functional backend suite with coverage report
 just test-e2e-backend-coverage
 
-# Watch the backend suite during development (auto-rerun on changes)
+# Watch the functional backend suite during development (auto-rerun on changes)
 just test-e2e-backend-watch
 
-# Run all backend, ExtProc, and frontend E2E suites
+# Run the dedicated warmed local-mode, signed-subject 100-request SC-001 measurement
+just test-e2e-performance
+
+# Run all functional backend, ExtProc, and frontend E2E suites
 just test-e2e
 
-# Run specific test suite
-ginkgo -v ./tests/e2e/oauth2_authorize_test.go
+# Run specific functional backend suite
+ginkgo -v --label-filter="!performance" ./tests/e2e/oauth2_authorize_test.go
 
-# Run tests matching pattern
-ginkgo -v --focus="should redirect to consent" ./tests/e2e/
-```
+# Run functional tests matching pattern
+ginkgo -v --label-filter="!performance" --focus="should redirect to consent" ./tests/e2e/
 
 ### Ginkgo Command Reference
 
 ```bash
-# Run all tests in verbose mode
-ginkgo -v ./tests/e2e/
+# Run all functional backend tests in verbose mode
+ginkgo -v --label-filter="!performance" ./tests/e2e/
 
-# Run with coverage
-ginkgo -v --cover ./tests/e2e/
+# Run the dedicated performance-labelled SC-001 measurement
+ginkgo -v --procs=1 --label-filter="performance" ./tests/e2e/
 
-# Generate HTML coverage report
-ginkgo -v --coverprofile=coverage/e2e-backend.out ./tests/e2e/
+# Run functional backend tests with coverage
+ginkgo -v --label-filter="!performance" --cover ./tests/e2e/
+
+# Generate functional backend HTML coverage report
+ginkgo -v --label-filter="!performance" --coverprofile=coverage/e2e-backend.out ./tests/e2e/
 go tool cover -html=coverage/e2e-backend.out -o coverage/e2e-backend.html
 
-# Watch mode: auto-rerun on file changes
-ginkgo watch -v ./tests/e2e/
+# Watch functional backend tests
+ginkgo watch -v --label-filter="!performance" ./tests/e2e/
 
-# Run specific test suite file
-ginkgo -v ./tests/e2e/oauth2_authorize_test.go
+# Run a functional backend suite file
+ginkgo -v --label-filter="!performance" ./tests/e2e/oauth2_authorize_test.go
 
-# Run tests matching pattern
-ginkgo -v --focus="Authorization" ./tests/e2e/
+# Run functional backend tests matching pattern
+ginkgo -v --label-filter="!performance" --focus="Authorization" ./tests/e2e/
 
-# Run tests excluding pattern
-ginkgo -v --skip="Edge Cases" ./tests/e2e/
+# Run functional backend tests excluding pattern
+ginkgo -v --label-filter="!performance" --skip="Edge Cases" ./tests/e2e/
 
-# Parallel execution (4 workers)
-ginkgo -v --procs=4 ./tests/e2e/
+# Functional backend parallel execution (4 workers)
+ginkgo -v --procs=4 --label-filter="!performance" ./tests/e2e/
 
-# Run with junit reporter
-ginkgo -v --reporter=junit ./tests/e2e/
+# Functional backend JUnit reporter
+ginkgo -v --label-filter="!performance" --reporter=junit ./tests/e2e/
 
-# Show pending tests
-ginkgo -v --pending ./tests/e2e/
+# Show pending functional backend tests
+ginkgo -v --label-filter="!performance" --pending ./tests/e2e/
 
-# Set random seed for test execution order
-ginkgo -v --seed=12345 ./tests/e2e/
+# Set random seed for functional backend test execution order
+ginkgo -v --label-filter="!performance" --seed=12345 ./tests/e2e/
 ```
+
+`just test-e2e-performance` is a manually run, warmed local-mode, signed-subject 100-request check. Copy its verbose `SC-001: <ok>/100 succeeded; p95=<duration> max=<duration> min=<duration>` result into PR #464; functional recipes intentionally exclude this machine-sensitive measurement.
 
 ### Running Tests Locally
 

@@ -995,6 +995,143 @@ oauth2_authorization_server:
 
 See [OAuth2 server modes](/docs/concepts/oauth2-server-modes) for how the broker issues or proxies tokens.
 
+### OAuth2 User Impersonation Configuration
+
+#### oauth2_authorization_server.impersonation
+
+**Description**: Configures RFC 8693 user impersonation on `POST /oauth2/token`. In `local` mode only, exactly one request `audience` of `<impersonation.audience_prefix>/<canonical lower-case AgentID UUID>`—the target agent's `id` UUID, not its optional `canonical_id`—selects a registered target agent before the third-party `resource` guard. The target supplies minted `agent_id` and local-token CEL `agent.*`; the validated client assertion remains privileged-client authorization and audit material. The routing prefix is never copied to an issued `aud`: `token_claims_expression` controls `aud`, including omission, exactly as normal local issuance. The subject role supports signed (`verification: jwks`) and broker-profile unverified (`verification: none`, ADR 031) subject modes.
+
+**Configuration block** (nested under `oauth2_authorization_server`, `local` mode only):
+
+| Option | Type | Default | Valid Values | Required | Description |
+|--------|------|---------|--------------|----------|-------------|
+| `impersonation.audience_prefix` | URI | — | Absolute HTTP(S) URI; host required; no userinfo/query/fragment/trailing slash | Yes (CR-001) | Routing-only prefix. Exactly one `<audience_prefix>/<canonical lower-case AgentID UUID>`—the target agent's `id` UUID, not its optional `canonical_id`—selects a registered target agent; it never sets the issued token `aud`. |
+| `impersonation.rules` | list | — | Non-empty, ordered | Yes (CR-002) | Ordered rules evaluated first-match. |
+| `impersonation.rules[].name` | string | — | Unique across rules | Yes (CR-003) | Operator-facing rule identifier. |
+| `impersonation.rules[].roles` | map | — | Keys `client_assertion`, `actor`, `subject` | Yes (CR-003) | Role semantics keyed by role name; all three roles MUST be defined. |
+| `impersonation.rules[].roles.<role>.expected_audience` | string | — | Non-empty string | Yes for signed roles | The `aud` each signed credential for this role must carry. Required for `client_assertion`, `actor`, and a signed `subject`; MUST be omitted for an unverified subject (`verification: none`). |
+| `impersonation.rules[].roles.<role>.principal_expression` | string | — | CEL expression | Yes | CEL extracting a non-empty identity from the role's token. |
+| `impersonation.rules[].roles.subject.verification` | enum | `jwks` | `jwks`, `none` | No | `subject` role only. `jwks` = signed subject validated against a trusted issuer; `none` = unverified unsigned `alg:none` subject JWT under `subject_token_type=urn:ietf:params:oauth:token-type:jwt` (broker profile extension, ADR 031). |
+| `impersonation.rules[].roles.subject.email_expression` | string | `""` | CEL expression | No | CEL extracting the subject's email; `subject` role only. For an unverified subject the email is minted only when the authorization predicate binds `subject_token.email` (FR-006a). Omitted from the issued token when it evaluates empty. |
+| `impersonation.rules[].trusted_issuers` | list | — | Non-empty | Yes (CR-008) | Trust anchors permitted to sign this rule's credentials. |
+| `impersonation.rules[].trusted_issuers[].issuer_uri` | string | — | Valid URI | Yes | Matched against a credential's `iss`. |
+| `impersonation.rules[].trusted_issuers[].jwks_uri` | string | Discovered from `issuer_uri` | Valid URI | No | Explicit JWKS endpoint; discovered from issuer metadata when empty. |
+| `impersonation.rules[].trusted_issuers[].jwks_min_refresh` | duration | `15m` | Non-negative Go duration | No | Minimum interval between JWKS refresh attempts. |
+| `impersonation.rules[].trusted_issuers[].jwks_max_refresh` | duration | `max(jwks_min_refresh, 1h)` | Non-negative Go duration | No | Maximum JWKS refresh interval; values below the effective minimum are raised to it. |
+| `impersonation.rules[].trusted_issuers[].allowed_algorithms` | list | — | Subset of `RS256,RS384,RS512,PS256,PS384,PS512,ES256,ES384,ES512,EdDSA` | Yes (CR-007) | Accepted signing algorithms; `none` and `HS*` are rejected. |
+| `impersonation.rules[].trusted_issuers[].signs_roles` | list | — | Subset of defined signed roles | Yes (CR-008) | Which signed roles this issuer may sign. |
+| `impersonation.rules[].authorization.type` | enum | — | `cel` | Yes (CR-005) | Authorization predicate type; reuses the token-exchange schema. |
+| `impersonation.rules[].authorization.cel.expression` | string | — | CEL expression | Yes (CR-005) | Predicate deciding the request; compiled at startup. |
+| `impersonation.rules[].authorization.cel.evaluation_timeout` | duration | `100ms` | `10ms`–`5s` | No (CR-005) | Per-evaluation CEL timeout. |
+
+**Startup validation** (fail-closed; every failure yields a `ConfigError` with an indexed field path, e.g. `oauth2_authorization_server.impersonation.rules[1].trusted_issuers[0].allowed_algorithms`):
+
+- **CR-001**: `audience_prefix` is an absolute HTTP(S) routing URI with a host and no userinfo, query, fragment, or trailing slash. Only one exact `<audience_prefix>/<canonical lower-case AgentID UUID>` activates impersonation; malformed/bare targets are `invalid_request`, absent registered targets are `invalid_target`.
+- **CR-002**: `rules` is non-empty and ordered; evaluated first-match.
+- **CR-003**: each rule has a unique `name`; `roles` keys are a subset of `{client_assertion, actor, subject}` and MUST define all three; each role requires `principal_expression`; `expected_audience` is required for signed roles and MUST be absent for an unverified subject; `verification` and `email_expression` are allowed on `subject` only.
+- **CR-004**: the local `issuer_uri` MUST NOT be a trusted issuer that signs the `client_assertion` role.
+- **CR-005**: `authorization.type` is `cel`; `authorization.cel.expression` is required and compiles at startup (empty fails); `authorization.cel.evaluation_timeout` is within `[10ms, 5s]` and defaults to `100ms`.
+- **CR-005a**: the unverified subject mode (`verification: none`) is OFF unless a rule declares it. A rule that accepts it MUST have an authorization predicate that references `subject_token` (verified at startup from the compiled expression); startup fails otherwise. A caller-controlled `email` is minted only when the predicate binds `subject_token.email` (FR-006a).
+- **CR-006**: the `impersonation` block is rejected outside `local` mode.
+- **CR-007**: `allowed_algorithms` is a non-empty subset of `{RS256, RS384, RS512, PS256, PS384, PS512, ES256, ES384, ES512, EdDSA}`; `none` and `HS*` are rejected. This governs signed credentials only; the unsigned unverified subject is not validated against it.
+- **CR-008**: within a rule, `issuer_uri` is unique across `trusted_issuers`; every `signs_roles` entry is a defined signed role; each signed role (`client_assertion`, `actor`, and a signed `subject`) is covered by at least one trusted issuer's `signs_roles`; a subject whose `verification` is `none` MUST NOT appear in any `signs_roles`. The same `issuer_uri` MAY be reused across rules.
+
+**Example** (`local` mode; the same issuer signs the credentials of two signed rules):
+
+```yaml
+oauth2_authorization_server:
+  mode: "local"
+  local:
+    issuer_uri: "https://broker.example.com"
+    token_ttl: "1h"
+    # Routing never sets aud. The existing local token policy may emit it.
+    token_claims_expression: '{"aud": "https://policy.example.com"}'
+  impersonation:
+    audience_prefix: "https://broker.example.com/impersonation"
+    rules:
+      - name: "internal-gateway-signed-subject"
+        roles:
+          client_assertion:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "client_assertion.sub"
+          actor:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "actor_token.sub"
+          subject:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "subject_token.sub"
+            email_expression: "has(subject_token.email) ? subject_token.email : ''"
+        trusted_issuers:
+          - issuer_uri: "https://idp.internal.example.com"
+            jwks_min_refresh: "15m"
+            jwks_max_refresh: "1h"
+            allowed_algorithms: ["ES256", "RS256"]
+            signs_roles: ["client_assertion", "actor", "subject"]
+        authorization:
+          type: cel
+          cel:
+            expression: |
+              client_assertion.iss == "https://idp.internal.example.com" &&
+              client_assertion.sub in ["gateway-prod", "gateway-staging"]
+            evaluation_timeout: "100ms"
+      - name: "partner-gateway-signed-subject"
+        roles:
+          client_assertion:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "client_assertion.sub"
+          actor:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "actor_token.sub"
+          subject:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "subject_token.sub"
+        trusted_issuers:
+          - issuer_uri: "https://idp.internal.example.com"
+            jwks_min_refresh: "15m"
+            jwks_max_refresh: "1h"
+            allowed_algorithms: ["ES256", "RS256"]
+            signs_roles: ["client_assertion", "actor", "subject"]
+        authorization:
+          type: cel
+          cel:
+            expression: |
+              client_assertion.sub == "partner-gateway-prod"
+            evaluation_timeout: "100ms"
+```
+
+**Request contract** (`POST /oauth2/token`): send `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`, `audience=<impersonation.audience_prefix>/<canonical lower-case AgentID UUID>`, client assertion and actor/subject credentials. The suffix must identify a registered target agent. `requested_token_type` is optional and must equal the access-token type. `resource` must be absent; `scope` is optional and literal-space-separated. Every non-reserved value must be allowed by the resolved target's `allowed_scopes` unless that allow-list is empty; the reserved refresh-token scopes `offline` and `offline_access` are always permitted. A non-empty granted scope is returned in the response and minted token. Target-derived `agent_id` and local CEL `agent.*` are supplied to no other grant type; the routing audience does not set issued-token `aud`.
+
+**Unverified subject rule** (broker profile extension, ADR 031): the subject role sets `verification: none`, omits `expected_audience`, and is absent from every issuer's `signs_roles`; the authorization predicate MUST reference `subject_token` and binds `subject_token.email` so the caller-supplied email may be minted:
+
+```yaml
+      - name: "chat-bridge-unverified-subject"
+        roles:
+          client_assertion:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "client_assertion.sub"
+          actor:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "actor_token.sub"
+          subject:
+            verification: "none"
+            principal_expression: "subject_token.sub"
+            email_expression: "has(subject_token.email) ? subject_token.email : ''"
+        trusted_issuers:
+          - issuer_uri: "https://idp.internal.example.com"
+            allowed_algorithms: ["ES256", "RS256"]
+            signs_roles: ["client_assertion", "actor"]
+        authorization:
+          type: cel
+          cel:
+            expression: |
+              client_assertion.sub == "chat-bridge" &&
+              subject_token.sub != "" &&
+              has(subject_token.email) && subject_token.email.endsWith("@example.com")
+            evaluation_timeout: "100ms"
+```
+
+For the unverified subject, send `subject_token_type=urn:ietf:params:oauth:token-type:jwt` and `subject_token=<unsigned alg:none JWT carrying sub and optional email>`; all other request parameters are identical to the signed contract above.
+
 ## Observability / OpenTelemetry
 
 The Identity Broker supports configurable OpenTelemetry (OTel) tracing, metrics, and logging export via OTLP (gRPC or HTTP). When disabled (default), the OTel SDK is never initialized and there is zero overhead.

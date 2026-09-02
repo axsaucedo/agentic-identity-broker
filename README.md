@@ -125,6 +125,9 @@ just test-integration
 # Run all E2E acceptance suites
 just test-e2e
 
+# Run the dedicated SC-001 E2E performance measurement
+just test-e2e-performance
+
 # Run static quality checks (format, vet, lint)
 just check
 
@@ -177,6 +180,7 @@ All development tasks are managed using [just](https://github.com/casey/just). R
 - `just test-integration-infra` - Run infra-backed integration suites only (Docker/Podman required)
 - `just test-integration-all` - Run both integration layers
 - `just test-e2e` - Run all backend, ExtProc, and frontend E2E suites
+- `just test-e2e-performance` - Run only performance-labelled E2E measurements; normal E2E commands exclude them
 - `just verify` - Run the full verification gate with E2E last
 - `just check` - Run static quality checks only (fmt, vet, lint)
 
@@ -375,6 +379,7 @@ Run `just --list` to see all available commands:
 - `just test-integration-infra` - Run infra-backed integration suites only (Docker/Podman required)
 - `just test-integration-all` - Run both integration layers
 - `just test-e2e` - Run all backend, ExtProc, and frontend E2E suites
+- `just test-e2e-performance` - Run only performance-labelled E2E measurements; normal E2E commands exclude them
 - `just verify` - Run the full verification gate with E2E last
 - `just check` - Run static quality checks only: fmt, vet, lint
 

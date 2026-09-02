@@ -374,6 +374,24 @@ Key settings:
 ./agentic-identity-broker --config ./examples/config/oauth2-server-mode.yaml
 ```
 
+### `impersonation.yaml` — RFC 8693 User Impersonation
+
+Complete, bootable `local`-mode configuration demonstrating RFC 8693 user impersonation. A privileged client presents client-assertion, actor, and subject JWT credentials; the broker authorizes that client, resolves the registered target agent from the suffixed routing audience, and mints a token whose `sub` represents the impersonated subject and whose `act` records the actor. A request activates only when its single `audience` is `<audience_prefix>/<canonical AgentID>`.
+
+Key settings (`oauth2_authorization_server.impersonation`):
+- `audience_prefix` — routing-only HTTP(S) URI prefix; requests append one canonical registered AgentID. It is not an issued-token audience.
+- `rules[]` — ordered, first-match list of impersonation rules (CR-002)
+- `rules[].roles.{client_assertion,actor,subject}` — per-role `expected_audience` and `principal_expression` (subject also `email_expression`) (CR-003)
+- `rules[].trusted_issuers[]` — trust anchors: `issuer_uri`, JWKS refresh bounds, `allowed_algorithms` (asymmetric only), and `signs_roles` (CR-007/CR-008)
+- `rules[].authorization` — CEL predicate, reusing the token-exchange schema (`type: cel`, `cel.expression`, `cel.evaluation_timeout`) (CR-005)
+
+The audience-selected target supplies minted `agent_id` and local policy `agent.*`; the asserted privileged-client identity is retained only for authorization and audit. `token_claims_expression` alone controls issued `aud`.
+
+**Usage:**
+```bash
+./agentic-identity-broker --config ./examples/config/impersonation.yaml
+```
+
 ### Hybrid Mode (`oauth2-hybrid-mode.yaml`)
 
 Configures the broker to serve both proxy agents (forwarded to an upstream OAuth2 server) and local agents (tokens issued locally) in a single deployment. Agent classification is property-based: agents with `ClientID` set are ProxyClients; agents with `ClientURIs` set are CIMDClients; agents with neither are LocalClients.

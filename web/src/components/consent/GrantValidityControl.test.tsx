@@ -2,10 +2,11 @@
  * Tests for GrantValidityControl component.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { GrantValidityControl } from './GrantValidityControl';
 import type { GrantValidityState } from '../../types/consent';
+import { addMonths } from 'date-fns';
 
 describe('GrantValidityControl', () => {
   const mockOnChange = vi.fn();
@@ -18,6 +19,8 @@ describe('GrantValidityControl', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
+
+  afterEach(() => vi.useRealTimers());
 
   it('should render with no expiration by default', () => {
     render(
@@ -132,12 +135,12 @@ describe('GrantValidityControl', () => {
   });
 
   it('should call onChange when suggested date is clicked', () => {
-    const futureDate = new Date();
-    futureDate.setFullYear(futureDate.getFullYear() + 1);
-
+    const now = new Date(2025, 0, 31, 12);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(now);
     const stateWithExpiration: GrantValidityState = {
       noExpiration: false,
-      expiresAt: futureDate,
+      expiresAt: addMonths(now, 12),
     };
 
     render(
@@ -155,15 +158,8 @@ describe('GrantValidityControl', () => {
       expiresAt: expect.any(Date),
     });
 
-    // Check that the date is roughly 1 month from now
     const calledDate = mockOnChange.mock.calls[0][0].expiresAt;
-    const now = new Date();
-    const expectedDate = new Date(now);
-    expectedDate.setMonth(expectedDate.getMonth() + 1);
-
-    // Allow 1 day difference for test execution time
-    const diff = Math.abs(calledDate.getTime() - expectedDate.getTime());
-    expect(diff).toBeLessThan(24 * 60 * 60 * 1000);
+    expect(calledDate).toEqual(addMonths(now, 1));
   });
 
   it('should show current date', () => {

@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/lestrrat-go/jwx/v3/jwt"
 	"net/http"
 	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtclaims"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 )
@@ -217,7 +217,7 @@ func (a *ApprovalRequestAuthenticator) authenticateSubjectToken(ctx context.Cont
 		return "", id.AgentID{}, nil, newUnauthorizedApprovalAuthError("invalid subject token", err)
 	}
 
-	subjectClaims := jwtToClaims(subjectJWT)
+	subjectClaims := jwtclaims.FromToken(subjectJWT)
 	principalValue, err := a.celEvaluator.ExtractPrincipal(subjectClaims)
 	if err != nil {
 		return "", id.AgentID{}, nil, newUnauthorizedApprovalAuthError("subject token principal extraction failed", err)
@@ -258,7 +258,7 @@ func (a *ApprovalRequestAuthenticator) authorizeClientAssertion(ctx context.Cont
 		return "", newUnauthorizedApprovalAuthError("invalid client assertion", err)
 	}
 
-	clientAssertionClaims := jwtToClaims(clientAssertionJWT)
+	clientAssertionClaims := jwtclaims.FromToken(clientAssertionJWT)
 	authorized, err := a.celEvaluator.AuthorizePrivilegedClient(clientAssertionClaims, subjectClaims, requestContext)
 	if err != nil {
 		if isServerSideTokenExchangeError(err) {
@@ -316,46 +316,4 @@ func isServerSideTokenExchangeError(err error) bool {
 		return false
 	}
 	return tokenErr.HTTPStatus() >= http.StatusInternalServerError
-}
-
-func jwtToClaims(token jwt.Token) map[string]any {
-	claims := make(map[string]any)
-
-	if iss, _ := token.Issuer(); iss != "" {
-		claims["iss"] = iss
-	}
-	if sub, _ := token.Subject(); sub != "" {
-		claims["sub"] = sub
-	}
-	if aud, _ := token.Audience(); len(aud) > 0 {
-		if len(aud) == 1 {
-			claims["aud"] = aud[0]
-		} else {
-			claims["aud"] = aud
-		}
-	}
-	if exp, _ := token.Expiration(); !exp.IsZero() {
-		claims["exp"] = exp.Unix()
-	}
-	if iat, _ := token.IssuedAt(); !iat.IsZero() {
-		claims["iat"] = iat.Unix()
-	}
-	if nbf, _ := token.NotBefore(); !nbf.IsZero() {
-		claims["nbf"] = nbf.Unix()
-	}
-	if jti, _ := token.JwtID(); jti != "" {
-		claims["jti"] = jti
-	}
-
-	for _, key := range token.Keys() {
-		if _, exists := claims[key]; exists {
-			continue
-		}
-		var value any
-		if err := token.Get(key, &value); err == nil {
-			claims[key] = value
-		}
-	}
-
-	return claims
 }

@@ -42,6 +42,7 @@ import (
 	domainapproval "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/approval"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/impersonation"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
@@ -878,6 +879,10 @@ func (b *Builder) Build() (*App, error) {
 		return grant, proceed
 	}
 
+	// impersonationIssuer is the local token issuer used to mint impersonated broker tokens.
+	// It is set only in local mode; impersonation is rejected outside local mode at config time.
+	var impersonationIssuer ports.ImpersonationTokenIssuer
+
 	switch cfg := oauthCfg.(type) {
 	case *ports.LocalOAuth2Config:
 		signingKeyService := wireLocalAdminHandlers()
@@ -885,6 +890,7 @@ func (b *Builder) Build() (*App, error) {
 		if err != nil {
 			return nil, err
 		}
+		impersonationIssuer = provider
 		grantHandler = enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
 		proceedHandler = enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
 		b.logger.Info("OAuth2 server mode: local — local token minting enabled",
@@ -955,6 +961,34 @@ func (b *Builder) Build() (*App, error) {
 		jwksHandler = enduserHandlers.NewJWKSHandler(proxyPublisher, b.logger)
 	default:
 		panic(fmt.Sprintf("BUG: unhandled OAuth2ModeConfig type %T — update strategy switch", oauthCfg))
+	}
+
+	// Build the impersonation service (local mode only). Config validation already rejected
+	// impersonation outside local mode and validated the static rule shape (CR-001..CR-008).
+	var impersonationService enduser.ImpersonationService
+	if impCfg := b.config.OAuth2AuthServer.Impersonation; impCfg != nil {
+		if impersonationIssuer == nil {
+			return nil, fmt.Errorf("oauth2_authorization_server.impersonation requires local mode with a local token issuer")
+		}
+		// CR-004: the broker's own issuer must never sign the client_assertion role.
+		normalizedLocalIssuer := normalizedIssuerURI(ov.localIssuerURI)
+		for i, rule := range impCfg.Rules {
+			for j, issuer := range rule.TrustedIssuers {
+				for _, role := range issuer.SignsRoles {
+					if ports.CredentialRole(role) == ports.CredentialRoleClientAssertion &&
+						normalizedIssuerURI(issuer.IssuerURI) == normalizedLocalIssuer {
+						return nil, fmt.Errorf("oauth2_authorization_server.impersonation.rules[%d].trusted_issuers[%d].issuer_uri must be an external identity provider, not the broker's own issuer (%q); broker-minted tokens must never be accepted as privileged-client assertions", i, j, ov.localIssuerURI)
+					}
+				}
+			}
+		}
+
+		svc, err := impersonation.NewService(impCfg, b.newImpersonationJWKSFactory(upstreamClient), b.storage.Agents(), impersonationIssuer, 0, b.logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build impersonation service: %w", err)
+		}
+		impersonationService = svc
+		b.logger.Info("OAuth2 impersonation enabled", "audience_prefix", impCfg.AudiencePrefix, "rules", len(impCfg.Rules))
 	}
 
 	app.ApprovalRequestAuthenticator = httpmiddleware.NewApprovalRequestAuthenticator(nil, nil)
@@ -1066,6 +1100,7 @@ func (b *Builder) Build() (*App, error) {
 			OAuth2Service: app.OAuth2Service,
 			Logger:        b.logger,
 			GrantHandler:  grantHandler,
+			Impersonation: impersonationService,
 		},
 		OAuth2Metadata:    oauth2MetadataHandler,
 		ApprovalCreate:    approval.NewCreateHandler(app.ApprovalService),
@@ -1122,5 +1157,43 @@ func newTokenExchangeAgentIDResolver(agentService *agentsservice.Service, timeou
 		}
 
 		return agent.ID.String(), nil
+	}
+}
+
+// impersonationDiscoveryTimeout bounds JWKS discovery for an impersonation trusted issuer whose
+// jwks_uri is not set explicitly.
+const impersonationDiscoveryTimeout = 30 * time.Second
+
+// newImpersonationJWKSFactory returns a factory that builds a cached JWKS provider per trusted
+// impersonation issuer, discovering the JWKS URI from issuer metadata when it is not configured.
+func (b *Builder) newImpersonationJWKSFactory(httpClient *http.Client) impersonation.JWKSProviderFactory {
+	return func(issuer ports.TrustedTokenIssuerConfig) (tokenexchange.JWKSProvider, error) {
+		jwksURI := issuer.JWKSURI
+		if jwksURI == "" {
+			discoveryCtx, cancel := context.WithTimeout(context.Background(), impersonationDiscoveryTimeout)
+			discovered, err := domstorage.DiscoverOAuth2Endpoints(discoveryCtx, issuer.IssuerURI, nil, b.config.Security.SkipThirdpartyHTTPSValidation)
+			cancel()
+			if err != nil {
+				return nil, fmt.Errorf("failed to discover JWKS for issuer %q: %w", issuer.IssuerURI, err)
+			}
+			jwksURI = discovered.JWKsURI
+		}
+		minRefresh := issuer.JWKSMinRefresh
+		if minRefresh == 0 {
+			minRefresh = 15 * time.Minute
+		}
+		maxRefresh := issuer.JWKSMaxRefresh
+		if maxRefresh == 0 || maxRefresh < minRefresh {
+			if minRefresh > time.Hour {
+				maxRefresh = minRefresh
+			} else {
+				maxRefresh = time.Hour
+			}
+		}
+		adapter, err := jwks.NewJWKSAdapter(jwksURI, httpClient, minRefresh, maxRefresh, b.logger)
+		if err != nil {
+			return nil, err
+		}
+		return adapter, nil
 	}
 }

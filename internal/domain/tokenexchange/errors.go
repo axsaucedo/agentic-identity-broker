@@ -109,6 +109,25 @@ func NewInvalidRequestErrorWithDetails(description, details string) *TokenExchan
 	}
 }
 
+// NewInvalidScopeError creates an error for a requested scope that is not permitted.
+func NewInvalidScopeError(description string) *TokenExchangeError {
+	return &TokenExchangeError{
+		code:        InvalidScopeError,
+		description: description,
+		httpStatus:  400,
+	}
+}
+
+// NewInvalidScopeErrorWithDetails creates an invalid_scope error with structured logging details.
+func NewInvalidScopeErrorWithDetails(description, details string) *TokenExchangeError {
+	return &TokenExchangeError{
+		code:        InvalidScopeError,
+		description: description,
+		httpStatus:  400,
+		details:     details,
+	}
+}
+
 // NewInvalidClientError creates an error for invalid client authentication.
 // RFC 8693 Section 5.2: invalid_client (401)
 // Used when client_assertion is missing, invalid, expired, or fails signature verification.

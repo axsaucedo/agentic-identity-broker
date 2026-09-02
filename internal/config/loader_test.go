@@ -208,6 +208,46 @@ func setMinimalConfigEnv(t *testing.T) {
 	t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "local")
 }
 
+func TestImpersonationEnvironmentVariableNoLongerOverridesYAML(t *testing.T) {
+	setMinimalConfigEnv(t)
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`oauth2_authorization_server:
+  impersonation:
+    audience_prefix: https://yaml.example.com/impersonation
+    rules:
+      - name: gateway
+        roles:
+          client_assertion: {expected_audience: https://yaml.example.com/impersonation, principal_expression: client_assertion.sub}
+          actor: {expected_audience: https://yaml.example.com/impersonation, principal_expression: actor_token.sub}
+          subject: {expected_audience: https://yaml.example.com/impersonation, principal_expression: subject_token.sub}
+        trusted_issuers:
+          - {issuer_uri: https://idp.example.com, allowed_algorithms: [ES256], signs_roles: [client_assertion, actor, subject]}
+        authorization: {type: cel, cel: {expression: "true"}}
+`), 0o600))
+	t.Setenv("IDENTITY_BROKER_CONFIG_PATH", configPath)
+	t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_IMPERSONATION", `{
+		"audience_prefix": "https://env.example.com/impersonation",
+		"rules": [{
+			"name": "gateway",
+			"roles": {
+				"client_assertion": {"expected_audience": "https://env.example.com/impersonation", "principal_expression": "client_assertion.sub"},
+				"actor": {"expected_audience": "https://env.example.com/impersonation", "principal_expression": "actor_token.sub"},
+				"subject": {"expected_audience": "https://env.example.com/impersonation", "principal_expression": "subject_token.sub"}
+			},
+			"trusted_issuers": [{"issuer_uri": "https://idp.example.com", "allowed_algorithms": ["ES256"], "signs_roles": ["client_assertion", "actor", "subject"]}],
+			"authorization": {"type": "cel", "cel": {"expression": "true"}}
+		}]
+	}`)
+
+	loader := NewLoader()
+	cfg, err := loader.GetConfig(context.Background())
+
+	require.NoError(t, err)
+	require.NotNil(t, cfg.OAuth2AuthServer.Impersonation)
+	assert.Equal(t, "https://yaml.example.com/impersonation", cfg.OAuth2AuthServer.Impersonation.AudiencePrefix)
+}
+
 func TestConfigLoader_MissingOAuth2Mode(t *testing.T) {
 	t.Run("GetConfig fails when oauth2_authorization_server.mode is not set", func(t *testing.T) {
 		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(t, 32))

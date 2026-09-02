@@ -9,10 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwt"
-
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtclaims"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/permissionset"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -184,7 +183,7 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	}
 
 	// Step 4: Extract principal from subject_token via CEL
-	subjectTokenClaims := jwtToClaims(subjectTokenJWT)
+	subjectTokenClaims := jwtclaims.FromToken(subjectTokenJWT)
 	principal, err := s.celEvaluator.ExtractPrincipal(subjectTokenClaims)
 	if err != nil {
 		return nil, err
@@ -197,7 +196,7 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	}
 
 	// Step 6: Authorize privileged client via CEL expression evaluation
-	clientAssertionClaims := jwtToClaims(clientAssertionJWT)
+	clientAssertionClaims := jwtclaims.FromToken(clientAssertionJWT)
 	requestContext := &CELRequestContext{
 		Resource:  req.Resource,
 		GrantType: req.GrantType,
@@ -519,46 +518,4 @@ func (s *TokenExchangeService) resolveEffectiveScopes(
 	}
 
 	return effectiveScopes, nil
-}
-
-func jwtToClaims(token jwt.Token) map[string]any {
-	claims := make(map[string]any)
-
-	if iss, _ := token.Issuer(); iss != "" {
-		claims["iss"] = iss
-	}
-	if sub, _ := token.Subject(); sub != "" {
-		claims["sub"] = sub
-	}
-	if aud, _ := token.Audience(); len(aud) > 0 {
-		if len(aud) == 1 {
-			claims["aud"] = aud[0]
-		} else {
-			claims["aud"] = aud
-		}
-	}
-	if exp, _ := token.Expiration(); !exp.IsZero() {
-		claims["exp"] = exp.Unix()
-	}
-	if iat, _ := token.IssuedAt(); !iat.IsZero() {
-		claims["iat"] = iat.Unix()
-	}
-	if nbf, _ := token.NotBefore(); !nbf.IsZero() {
-		claims["nbf"] = nbf.Unix()
-	}
-	if jti, _ := token.JwtID(); jti != "" {
-		claims["jti"] = jti
-	}
-
-	for _, key := range token.Keys() {
-		if _, exists := claims[key]; exists {
-			continue
-		}
-		var value any
-		if err := token.Get(key, &value); err == nil {
-			claims[key] = value
-		}
-	}
-
-	return claims
 }

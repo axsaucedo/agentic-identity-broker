@@ -13,6 +13,7 @@ import (
 	fositestorage "github.com/ory/fosite/storage"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -157,8 +158,8 @@ func (s *FositeStorage) GetAuthorizeCodeSession(ctx context.Context, code string
 		ID:             authCode.ID.String(),
 		Client:         client,
 		Session:        session,
-		RequestedScope: splitScope(authCode.Scope),
-		GrantedScope:   splitScope(authCode.Scope),
+		RequestedScope: fosite.Arguments(oauth2.SplitScope(authCode.Scope)),
+		GrantedScope:   fosite.Arguments(oauth2.SplitScope(authCode.Scope)),
 		Form: map[string][]string{
 			"redirect_uri":   {authCode.RedirectURI},
 			"code_challenge": {authCode.CodeChallenge},
@@ -264,8 +265,8 @@ func (s *FositeStorage) GetRefreshTokenSession(ctx context.Context, signature st
 		ID:             refreshSession.RequestID,
 		Client:         client,
 		Session:        sess,
-		RequestedScope: splitScope(refreshSession.Scope),
-		GrantedScope:   splitScope(refreshSession.Scope),
+		RequestedScope: fosite.Arguments(oauth2.SplitScope(refreshSession.Scope)),
+		GrantedScope:   fosite.Arguments(oauth2.SplitScope(refreshSession.Scope)),
 		RequestedAt:    refreshSession.CreatedAt,
 	}
 

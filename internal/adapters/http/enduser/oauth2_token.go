@@ -1,6 +1,7 @@
 package enduser
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,10 +15,19 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/httpctx"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/impersonation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
+
+// ImpersonationService supplies the impersonation operations required by the token handler.
+type ImpersonationService interface {
+	ResolveTarget(ctx context.Context, audiences []string) (*impersonation.Target, bool, error)
+	Impersonate(ctx context.Context, req *impersonation.Request, target *impersonation.Target) (*impersonation.Outcome, error)
+	AudiencePrefix() string
+}
 
 // OAuth2TokenHandler handles OAuth2 token endpoint requests.
 // Routes RFC 8693 token exchange to handleTokenExchange; all other grants are
@@ -27,6 +37,10 @@ type OAuth2TokenHandler struct {
 	OAuth2Service ports.OAuth2Service
 	Logger        *slog.Logger
 	GrantHandler  TokenGrantStrategy // always non-nil: proxy, local, or hybrid
+
+	// Impersonation is non-nil only in local mode when configured. Its routing prefix resolves a
+	// canonical registered target agent before third-party token-exchange parameter validation.
+	Impersonation ImpersonationService
 }
 
 // ServeHTTP implements http.Handler for the token endpoint.
@@ -108,6 +122,21 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // handleTokenExchange processes RFC 8693 token exchange requests.
 func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.Request, formData url.Values) {
+	// Resolve audience-target activation before the generic resource guard. Unselected audiences
+	// retain third-party exchange behavior; malformed and unknown targets fail closed.
+	if h.Impersonation != nil {
+		target, activated, err := h.Impersonation.ResolveTarget(r.Context(), formData["audience"])
+		if err != nil {
+			h.logImpersonationDecision(r.Context(), h.impersonationParseAudit(err))
+			h.handleTokenExchangeError(w, err)
+			return
+		}
+		if activated {
+			h.handleImpersonation(w, r, formData, target)
+			return
+		}
+	}
+
 	if h.TokenExchange == nil {
 		if h.Logger != nil {
 			h.Logger.Warn("token exchange not wired, returning unsupported_grant_type")
@@ -204,6 +233,108 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 			"issued_token_type", response.IssuedTokenType,
 		)
 	}
+}
+
+// handleImpersonation processes a target-resolved impersonation request end to end. It always
+// emits a credential-free audit event, then writes the RFC 8693 success response or mapped error.
+func (h *OAuth2TokenHandler) handleImpersonation(w http.ResponseWriter, r *http.Request, formData url.Values, target *impersonation.Target) {
+	ctx, span := otel.Tracer("tokenexchange").Start(r.Context(), "tokenexchange.impersonation")
+	defer span.End()
+	span.SetAttributes(attribute.String("impersonation.target_agent_id", target.Agent.ID.String()))
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+
+	req, err := impersonation.ParseRequest(formData)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		record := h.impersonationParseAudit(err)
+		record.TargetAgentID = target.Agent.ID.String()
+		h.logImpersonationDecision(ctx, record)
+		h.handleTokenExchangeError(w, err)
+		return
+	}
+
+	outcome, err := h.Impersonation.Impersonate(ctx, req, target)
+	h.logImpersonationDecision(ctx, outcome.Audit)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		h.handleTokenExchangeError(w, err)
+		return
+	}
+	span.SetAttributes(attribute.String("impersonation.outcome", outcome.Audit.Outcome))
+
+	body, marshalErr := json.Marshal(outcome.Response)
+	if marshalErr != nil {
+		if h.Logger != nil {
+			h.Logger.Error("failed to encode impersonation response", "error", marshalErr)
+		}
+		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
+// impersonationParseAudit builds an audit record for a failure before rule evaluation.
+func (h *OAuth2TokenHandler) impersonationParseAudit(err error) impersonation.AuditRecord {
+	record := impersonation.AuditRecord{Audience: h.Impersonation.AudiencePrefix()}
+	var tokenErr *tokenexchange.TokenExchangeError
+	if errors.As(err, &tokenErr) {
+		record.Outcome = tokenErr.Code()
+		record.OAuthErrorCode = tokenErr.Code()
+		record.FailureCategory = tokenErr.Details()
+	} else {
+		record.Outcome = "server_error"
+		record.OAuthErrorCode = "server_error"
+	}
+	return record
+}
+
+// logImpersonationDecision emits the credential-free impersonation_decision audit event. Only
+// whitelisted, non-secret fields are recorded (FR-012, SC-005).
+func (h *OAuth2TokenHandler) logImpersonationDecision(ctx context.Context, record impersonation.AuditRecord) {
+	if h.Logger == nil {
+		return
+	}
+	attrs := []any{
+		"event", "impersonation_decision",
+		"outcome", record.Outcome,
+		"audience", record.Audience,
+	}
+	if record.TargetAgentID != "" {
+		attrs = append(attrs, "target_agent_id", record.TargetAgentID)
+	}
+	if record.SelectedRule != "" {
+		attrs = append(attrs, "rule", record.SelectedRule)
+	}
+	if len(record.IssuerIdentifiers) > 0 {
+		attrs = append(attrs, "issuer_identifiers", record.IssuerIdentifiers)
+	}
+	if len(record.IssuerRoles) > 0 {
+		attrs = append(attrs, "issuer_roles", record.IssuerRoles)
+	}
+	if record.PrivilegedClientIdentity != "" {
+		attrs = append(attrs, "privileged_client_identity", record.PrivilegedClientIdentity)
+	}
+	if record.ActorIdentity != "" {
+		attrs = append(attrs, "actor_identity", record.ActorIdentity)
+	}
+	if record.SubjectIdentity != "" {
+		attrs = append(attrs, "subject_identity", record.SubjectIdentity)
+	}
+	if record.OAuthErrorCode != "" {
+		attrs = append(attrs, "oauth_error_code", record.OAuthErrorCode)
+	}
+	if record.FailureCategory != "" {
+		attrs = append(attrs, "failure_category", record.FailureCategory)
+	}
+	if requestID := httpctx.RequestIDFromContext(ctx); requestID != "" {
+		attrs = append(attrs, "request_id", requestID)
+	}
+	h.Logger.InfoContext(ctx, "impersonation_decision", attrs...)
 }
 
 // handleTokenExchangeError maps domain-layer token exchange errors to RFC 8693 error responses.

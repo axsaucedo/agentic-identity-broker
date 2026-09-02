@@ -125,10 +125,11 @@ just test-e2e-backend          # Backend E2E suite only
 just test-e2e-backend-coverage # Backend E2E suite with coverage report
 just test-e2e-backend-watch    # Backend E2E watch mode for TDD
 just test-e2e                  # Run backend, ExtProc, and frontend suites
-ginkgo -v --focus="pattern" ./tests/e2e/    # Focused backend run
+ginkgo -v --label-filter="!performance" --focus="pattern" ./tests/e2e/    # Focused backend run
 ```
 
 Use `just test-e2e-extproc` for the ExtProc suite. Some agentgateway scenarios require Docker.
+`test-e2e-performance` runs the warmed local-mode, signed-subject 100-request SC-001 measurement with one Ginkgo worker. Its verbose `SC-001: <ok>/100 succeeded; p95=<duration> max=<duration> min=<duration>` line is recorded in PR #464.
 
 ### Parallelism expectations
 

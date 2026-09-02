@@ -236,3 +236,28 @@ type AuthorizationSession struct {
 type SessionTokenValidator interface {
 	ValidateAuthorizationSessionToken(token string, agentID id.AgentID, principal id.Principal) (*AuthorizationSession, error)
 }
+
+// ImpersonationMintInput carries extracted identities and the audience-selected target agent.
+// It never carries credential values or privileged-client identity.
+type ImpersonationMintInput struct {
+	// Subject is the impersonated user identity, minted as the token sub claim.
+	Subject string
+	// Email is the optional subject email provided to local token-claims policy.
+	Email *string
+	// Actor is the acting-party identity, minted as nested act.sub.
+	Actor string
+	// ActorIssuer is the validated actor token issuer, minted as nested act.iss.
+	ActorIssuer string
+	// TargetAgent supplies minted agent_id and local-token CEL agent.* context.
+	TargetAgent *storage.Agent
+	// Scopes are validated granted scopes minted into the access token.
+	Scopes []string
+}
+
+// ImpersonationTokenIssuer mints a locally signed impersonated broker token.
+// Implemented by the local oauth2server.Provider; keeps the impersonation domain service
+// insulated from the fosite/oauth2server concrete (Principle VI).
+type ImpersonationTokenIssuer interface {
+	// IssueImpersonationToken returns the signed access token or an error.
+	IssueImpersonationToken(ctx context.Context, input ImpersonationMintInput) (string, error)
+}

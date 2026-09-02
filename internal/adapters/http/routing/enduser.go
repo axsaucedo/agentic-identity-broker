@@ -169,7 +169,7 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 	// Single token handler serves both proxy and local mode.
 	// In local mode, the handler's TokenMinting strategy mints local tokens.
 	if h.OAuth2Token != nil {
-		r.Post("/oauth2/token", h.OAuth2Token.ServeHTTP)
+		r.With(middleware.OAuth2AuditMiddleware(cfg.Logger)).Post("/oauth2/token", h.OAuth2Token.ServeHTTP)
 	}
 
 	// RFC 8414 discovery endpoint — single handler serves both modes.

@@ -586,3 +586,38 @@ func TestOAuth2AuthServerConfig_Resolve(t *testing.T) {
 		assert.Contains(t, err.Error(), "mode")
 	})
 }
+
+// TestOAuth2AuthServerConfig_ImpersonationIsOptional verifies the optional-pointer contract
+// (research R7): Impersonation defaults to nil (preserving existing behavior), and ports-level
+// mode validation is unaffected by its presence — the detailed CR-001..CR-008 validation is
+// layered in internal/config, not here.
+func TestOAuth2AuthServerConfig_ImpersonationIsOptional(t *testing.T) {
+	base := validLocalOAuth2Config()
+	require.Nil(t, base.Impersonation, "impersonation defaults to nil")
+	require.NoError(t, base.Validate())
+
+	withImp := validLocalOAuth2Config()
+	withImp.Impersonation = &ImpersonationConfig{
+		AudiencePrefix: "https://broker.example.com/impersonation",
+		Rules: []ImpersonationRuleConfig{{
+			Name: "internal-gateway",
+			Roles: map[string]ImpersonationRoleConfig{
+				"client_assertion": {ExpectedAudience: "https://broker.example.com/impersonation", PrincipalExpression: "client_assertion.sub"},
+				"actor":            {ExpectedAudience: "https://broker.example.com/impersonation", PrincipalExpression: "actor_token.sub"},
+				"subject":          {ExpectedAudience: "https://broker.example.com/impersonation", PrincipalExpression: "subject_token.sub"},
+			},
+			TrustedIssuers: []TrustedTokenIssuerConfig{{
+				IssuerURI:         "https://idp.example.com",
+				AllowedAlgorithms: []string{"RS256"},
+				SignsRoles:        []string{"client_assertion", "actor", "subject"},
+			}},
+			Authorization: AuthorizationConfig{Type: "cel", CEL: CELAuthorizationConfig{Expression: "true"}},
+		}},
+	}
+	require.NoError(t, withImp.Validate(), "ports-level mode validation is unaffected by the impersonation block")
+	require.NotNil(t, withImp.Impersonation)
+	assert.Equal(t, "https://broker.example.com/impersonation", withImp.Impersonation.AudiencePrefix)
+	require.Len(t, withImp.Impersonation.Rules, 1)
+	assert.Len(t, withImp.Impersonation.Rules[0].Roles, 3)
+	assert.Equal(t, CredentialRoleSubject, CredentialRole("subject"))
+}

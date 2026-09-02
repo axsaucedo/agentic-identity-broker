@@ -70,13 +70,16 @@ returns `503` and verification-dependent flows reject requests until the upstrea
 
 In `local` mode the broker is a standalone OAuth2 authorization server. It mints its own JWT
 access tokens signed with managed **ES256** keys, and its JWKS and metadata expose only those
-broker-managed keys. Local mode supports two grants:
+broker-managed keys. For locally issued tokens, it supports these flows:
 
 - **`client_credentials`** — an agent authenticates with broker-issued credentials
   (`client_id` = the agent UUID, a `brk_sec_…` secret) and receives a broker-signed token.
 - **`authorization_code` with PKCE** — the interactive flow for agents acting on behalf of a
   user.
-
+- **RFC 8693 user impersonation** — an explicitly configured privileged client presents client
+  assertion, actor, and subject credentials for an audience-selected registered target; the
+  broker mints a locally signed token with subject and actor attribution. It is not available in
+  proxy or hybrid mode. See [user impersonation](/docs/reference/token-exchange#user-impersonation).
 Signing keys are rotatable and published to the JWKS with a grace period, so verifiers pick
 up a new key before it starts signing. This mode makes the broker the authority for agent
 tokens end to end, with no external authorization server in the path.

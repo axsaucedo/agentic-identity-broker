@@ -1,22 +1,24 @@
 ---
 title: "Token exchange"
-description: "How the broker uses RFC 8693 to swap an agent's token for the correct third-party token at request time, so agents never hold third-party credentials."
+description: "How the broker uses RFC 8693 for third-party token exchange and local user impersonation."
 ---
 
 # Token exchange
 
-Token exchange is how an agent reaches a real third-party API without ever holding that
-provider's credential. Instead of storing GitHub or Google tokens itself, an agent presents
-its own token to a gateway; the gateway asks the broker to **exchange** it for the correct
-third-party token, scoped to the user who delegated access. The provider credential stays
-inside the broker, encrypted at rest, and the agent only ever sees a short-lived token for
-the specific resource it is calling.
+The broker supports two distinct RFC 8693 flows on `POST /oauth2/token`:
 
-This page explains the model. For the exact request and response fields, see the
-[token exchange reference](/docs/reference/token-exchange); for deploying the gateway that
-performs it transparently, see [token exchange at the gateway](/docs/guides/token-exchange-gateway).
+| Flow | Activation | Result |
+|---|---|---|
+| Third-party token exchange | Standard exchange parameters, including `resource` | A provider credential held in the encrypted token vault. |
+| User impersonation | One `audience` equal to `<impersonation.audience_prefix>/<canonical lower-case AgentID UUID>` in local mode | A locally issued broker token with an impersonated `sub`, target-derived `agent_id`, and accountable `act.iss`/`act.sub`. |
 
-## Why exchange instead of sharing
+This page explains third-party token exchange. User impersonation neither resolves a third-party
+resource nor returns a provider credential; its target agent owns optional scope policy and its
+routing audience never controls issued `aud`. For its complete request, response, error, and
+audit contract, see [user impersonation](/docs/reference/token-exchange#user-impersonation).
+For its operator configuration, see [Configuration](/docs/configuration).
+
+## Third-party token exchange
 
 If an agent held a third-party token directly, every problem the broker exists to prevent
 would return: the token would be over-broad, hard to revoke per agent, and invisible to
@@ -32,7 +34,7 @@ per request:
 The broker implements this with **RFC 8693 OAuth2 Token Exchange** on its
 `POST /oauth2/token` endpoint.
 
-## The actors
+### The actors
 
 An exchange involves four parties, and each answers a specific question.
 
@@ -52,7 +54,7 @@ An exchange involves four parties, and each answers a specific question.
 `subject_token_type` **must** be `urn:ietf:params:oauth:token-type:access_token`; it is the
 only accepted value.
 
-## How an exchange flows
+### How an exchange flows
 
 ```mermaid
 sequenceDiagram
@@ -75,7 +77,7 @@ The response carries the third-party `access_token` along with its `token_type`,
 `issued_token_type`, and the `granted_permission_sets` the exchange honored — so the caller
 can see exactly what access was delegated.
 
-## Two policy gates, composed as fail-closed AND
+### Two policy gates, composed as fail-closed AND
 
 An exchange can be governed at two independent points, and both must allow the request for it
 to succeed:

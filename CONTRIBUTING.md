@@ -92,6 +92,7 @@ export function MyComponent() {
 - Fast Go/package tests: `just test`
 - Integration suites: `just test-integration`
 - All E2E suites: `just test-e2e`
+- Dedicated E2E performance measurement: `just test-e2e-performance` (manual; normal E2E commands exclude performance-labelled specs)
 - Full verification gate: `just verify`
 - Coverage for the fast Go/package suite: `just test-coverage`
 

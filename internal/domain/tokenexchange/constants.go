@@ -113,6 +113,9 @@ const (
 	// InvalidRequestError indicates a missing or invalid parameter.
 	InvalidRequestError = "invalid_request"
 
+	// InvalidScopeError indicates a requested scope is not permitted.
+	InvalidScopeError = "invalid_scope"
+
 	// InvalidClientError indicates the client authentication failed.
 	InvalidClientError = "invalid_client"
 

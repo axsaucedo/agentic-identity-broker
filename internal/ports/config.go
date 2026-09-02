@@ -384,6 +384,10 @@ type OAuth2AuthServerConfig struct {
 
 	// CIMD holds Client ID Metadata Document configuration.
 	CIMD CIMDConfig `mapstructure:"cimd"`
+
+	// Impersonation holds optional RFC 8693 user-impersonation configuration.
+	// Present only in local mode (CR-006); nil preserves existing behavior.
+	Impersonation *ImpersonationConfig `mapstructure:"impersonation"`
 }
 
 // Validate validates the OAuth2AuthServerConfig structure.
@@ -646,6 +650,75 @@ func (e *oauth2ValidationError) Error() string {
 // Field returns the error field for test compatibility
 func (e *oauth2ValidationError) Field() string {
 	return e.field
+}
+
+// CredentialRole identifies an impersonation credential role. It keys the rule's roles map,
+// scopes a trusted issuer's signs_roles, and labels audit records (data-model §1).
+type CredentialRole string
+
+// Impersonation credential roles.
+const (
+	CredentialRoleClientAssertion CredentialRole = "client_assertion"
+	CredentialRoleActor           CredentialRole = "actor"
+	CredentialRoleSubject         CredentialRole = "subject"
+)
+
+// Subject verification modes (ImpersonationRoleConfig.Verification, subject role only).
+const (
+	// SubjectVerificationJWKS validates a signed subject against a trusted issuer (default).
+	SubjectVerificationJWKS = "jwks"
+	// SubjectVerificationNone accepts an unsigned unverified subject JWT (FR-003d, ADR 031).
+	SubjectVerificationNone = "none"
+)
+
+// ImpersonationConfig is the optional oauth2_authorization_server.impersonation subtree.
+// It activates an RFC 8693 user-impersonation flow in local mode (data-model §1).
+type ImpersonationConfig struct {
+	// AudiencePrefix is a routing URI prefix, not an issued-token audience (CR-001).
+	AudiencePrefix string `mapstructure:"audience_prefix"`
+	// Rules is a non-empty, ordered list evaluated first-match (CR-002, FR-004a).
+	Rules []ImpersonationRuleConfig `mapstructure:"rules"`
+}
+
+// ImpersonationRuleConfig is a self-contained, atomically reviewable impersonation rule (CR-002/CR-003).
+type ImpersonationRuleConfig struct {
+	// Name is a unique, operator-facing rule name; appears in audit (CR-003).
+	Name string `mapstructure:"name"`
+	// Roles declares per-role semantics keyed by role name (client_assertion|actor|subject) (CR-003).
+	Roles map[string]ImpersonationRoleConfig `mapstructure:"roles"`
+	// TrustedIssuers are the rule's trust anchors, each declaring which roles it may sign (CR-008).
+	TrustedIssuers []TrustedTokenIssuerConfig `mapstructure:"trusted_issuers"`
+	// Authorization is the rule's single CEL predicate, reusing the token-exchange schema (CR-005).
+	Authorization AuthorizationConfig `mapstructure:"authorization"`
+}
+
+// ImpersonationRoleConfig declares role semantics once per role within a rule (data-model §1).
+type ImpersonationRoleConfig struct {
+	// Verification applies to the subject role only: "jwks" (default, signed) or "none" (unverified).
+	Verification string `mapstructure:"verification"`
+	// ExpectedAudience is the aud each signed credential must carry; required for signed roles,
+	// forbidden when Verification is "none" (CR-003).
+	ExpectedAudience string `mapstructure:"expected_audience"`
+	// PrincipalExpression extracts the non-empty role identity from claims (required, FR-006).
+	PrincipalExpression string `mapstructure:"principal_expression"`
+	// EmailExpression optionally extracts a subject email; subject role only (FR-006a).
+	EmailExpression string `mapstructure:"email_expression"`
+}
+
+// TrustedTokenIssuerConfig is an impersonation trust anchor scoped within a rule (data-model §1).
+type TrustedTokenIssuerConfig struct {
+	// IssuerURI is matched against a credential's iss claim (CR-008).
+	IssuerURI string `mapstructure:"issuer_uri"`
+	// JWKSURI is the explicit key-set location; discovered from issuer metadata when empty.
+	JWKSURI string `mapstructure:"jwks_uri"`
+	// JWKSMinRefresh bounds the minimum JWKS refresh cadence (default 15m).
+	JWKSMinRefresh time.Duration `mapstructure:"jwks_min_refresh"`
+	// JWKSMaxRefresh bounds the maximum JWKS refresh cadence (default max(min, 1h)).
+	JWKSMaxRefresh time.Duration `mapstructure:"jwks_max_refresh"`
+	// AllowedAlgorithms is a non-empty subset of the broker-approved asymmetric set (CR-007).
+	AllowedAlgorithms []string `mapstructure:"allowed_algorithms"`
+	// SignsRoles lists the signed roles this issuer may sign (CR-008).
+	SignsRoles []string `mapstructure:"signs_roles"`
 }
 
 // ClientAssertionTrustConfig configures the trust anchor used to validate the privileged gateway's

@@ -1,38 +1,22 @@
 <!--
 Sync Impact Report
 ==================
-Version Change: 1.8.1 → 1.9.0
+Version Change: 1.9.0 → 1.9.1
 Rationale:
-  1.8.1 → 1.9.0 (MINOR): materially expanded implementation guidance across three templates:
-    - spec-template.md: added GitHub-compatible Mermaid diagram section (erDiagram + sequenceDiagram)
-      with explicit rules for GitHub Mermaid compatibility (curly brace usage, newline avoidance)
-    - tasks-template.md: added Phase 0 (optional pre-implementation refactoring) and Phase 2.7
-      (entity boilerplate scaffolding) — dedicated phases that isolate structural/boilerplate
-      changes from business logic for incremental, reviewable PRs
-    - plan-template.md: added Implementation Phase Overview section documenting when to include
-      Phase 0 and Phase 2.7 with review ergonomics rationale
-    - Governance > Task List Requirements updated to document the new optional phases
+  1.9.0 → 1.9.1 (PATCH): Principle I now names the accepted, bounded exception
+    established by ADR 031 for unsigned unverified-subject JWTs in local-mode OAuth2
+    impersonation. The exception is limited to the unverified subject role
+    (`verification: none`) and retains all six compensating controls from ADR 031.
 
-Modified Principles: None
+Modified Principles:
+  - Principle I: added ADR 031 bounded exception
 
-Added Sections:
-  - Governance > Task List Requirements: Phase 0 and Phase 2.7 documented as optional phases
+Added Sections: None
 
 Removed Sections: None
 
 Templates Status:
-- ✅ spec-template.md: UPDATED
-  - Domain Model section: added erDiagram and sequenceDiagram Mermaid examples with
-    GitHub-compatibility rules (curly brace handling, newline avoidance, diagram type selection)
-- ✅ tasks-template.md: UPDATED
-  - Added Phase 0 (Pre-implementation Refactoring): optional, separate PR discipline
-  - Added Phase 2.7 (Entity Boilerplate): optional, empty CRUD scaffolding before business logic
-  - Updated Dependencies section to include Phase 0 and Phase 2.7
-  - Updated Implementation Strategy > MVP First to include new phases
-- ✅ plan-template.md: UPDATED
-  - Added Implementation Phase Overview section with phase table and review ergonomics rationale
-- ✅ constitution.md: UPDATED
-  - Governance > Task List Requirements: documented Phase 0 and Phase 2.7
+- ✅ No template changes required
 
 Follow-up TODOs: None
 
@@ -56,7 +40,15 @@ Security is NON-NEGOTIABLE and MUST NOT be bypassed or made optional in this cod
 
 **Rules**:
 - Security features MUST be enabled by default; disabling them MUST require explicit configuration
-- Signature validation is NEVER optional—no code path shall skip cryptographic verification
+- Signature validation is NEVER optional—no code path shall skip cryptographic verification, except
+  for the exact **Accepted ADR 031** exception: in local-mode OAuth2 user impersonation only, a
+  subject credential accepted by a rule declaring `verification: none` MAY be an unsigned
+  `alg:none` JWT carried under the RFC 8693 JWT token type. The exception NEVER applies to a
+  client assertion, actor token, or a signed subject (a rule with `verification: jwks`). It
+  requires all ADR 031 compensating controls: explicit per-rule opt-in; signature-verified client
+  assertion and actor; a startup-verified authorization predicate reference to `subject_token`; an
+  unverified email minted only when the predicate binds `subject_token.email`; fail-closed
+  evaluation and extraction; and credential-free structured audit events.
 - Encryption MUST NOT have accidental fallbacks to plaintext or weaker modes
 - Security controls MUST fail closed: if verification fails, the operation MUST abort
 - All security-critical operations MUST be auditable via structured logging
@@ -695,4 +687,4 @@ Every feature's `tasks.md` file MUST include these mandatory sections from [task
 - The tasks-template.md uses 🔒 emoji and [MANDATORY] markers to clearly distinguish mandatory from customizable sections
 - Omitting mandatory sections violates this constitution and blocks feature completion
 
-**Version**: 1.9.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2026-03-27
+**Version**: 1.9.1 | **Ratified**: 2025-12-14 | **Last Amended**: 2026-08-27

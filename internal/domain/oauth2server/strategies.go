@@ -17,6 +17,9 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/ory/fosite"
 	fositeOAuth2 "github.com/ory/fosite/handler/oauth2"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // Compile-time interface checks
@@ -30,6 +33,11 @@ var (
 var baseClaims = map[string]bool{
 	"iss": true, "sub": true, "iat": true, "exp": true,
 	"jti": true, "kid": true, "agent_id": true, "scope": true,
+}
+
+type actorClaim struct {
+	Issuer  string `json:"iss"`
+	Subject string `json:"sub"`
 }
 
 // JWXAccessTokenStrategy implements fosite's AccessTokenStrategy using lestrrat-go/jwx.
@@ -69,7 +77,10 @@ func NewJWXAccessTokenStrategy(
 
 // GenerateAccessToken creates a signed JWT access token.
 func (s *JWXAccessTokenStrategy) GenerateAccessToken(ctx context.Context, requester fosite.Requester) (string, string, error) {
-	// 1. Get current signing key
+	return s.mintAccessToken(ctx, requester, nil)
+}
+
+func (s *JWXAccessTokenStrategy) mintAccessToken(ctx context.Context, requester fosite.Requester, actor *actorClaim) (token string, signature string, err error) {
 	key, err := s.signingKeyService.GetCurrent(ctx)
 	if err != nil {
 		if isStorageNotFound(err) {
@@ -78,23 +89,17 @@ func (s *JWXAccessTokenStrategy) GenerateAccessToken(ctx context.Context, reques
 		return "", "", fmt.Errorf("failed to get current signing key: %w", err)
 	}
 
-	// 2. Decrypt private key material
 	privPEM, err := s.signingKeyService.DecryptPrivateKey(ctx, key)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to decrypt signing key: %w", err)
 	}
 
-	// 3. Parse PEM → jwk.Key
 	privKey, err := jwk.ParseKey(privPEM, jwk.WithPEM(true))
 	if err != nil {
 		return "", "", fmt.Errorf("failed to parse private key: %w", err)
 	}
 
-	// 4. Build JWT with claims
 	now := time.Now()
-	jti := uuid.New().String()
-
-	// Subject: use session subject (principal for auth_code, client ID for client_credentials)
 	subject := requester.GetSession().GetSubject()
 	if subject == "" {
 		subject = requester.GetClient().GetID()
@@ -105,11 +110,10 @@ func (s *JWXAccessTokenStrategy) GenerateAccessToken(ctx context.Context, reques
 		Subject(subject).
 		IssuedAt(now).
 		Expiration(now.Add(s.tokenTTL)).
-		JwtID(jti).
+		JwtID(uuid.New().String()).
 		Claim("agent_id", requester.GetClient().GetID()).
 		Claim("scope", strings.Join(requester.GetGrantedScopes(), " "))
 
-	// 5. Evaluate CEL token_claims_expression if configured
 	if s.customClaimsEval != nil {
 		customClaims, err := s.customClaimsEval.Evaluate(ctx, requester)
 		if err != nil {
@@ -127,11 +131,17 @@ func (s *JWXAccessTokenStrategy) GenerateAccessToken(ctx context.Context, reques
 				s.logger.Warn("CEL expression returned reserved claim, skipping", "claim", k)
 				continue
 			}
+			if actor != nil && k == "act" {
+				continue
+			}
 			builder = builder.Claim(k, v)
 		}
 	}
+	if actor != nil {
+		builder = builder.Claim("act", actor)
+	}
 
-	token, err := builder.Build()
+	jwtToken, err := builder.Build()
 	if err != nil {
 		buildErr := fmt.Errorf("failed to build JWT: %w", err)
 		s.logger.ErrorContext(ctx, "failed to build JWT",
@@ -143,19 +153,41 @@ func (s *JWXAccessTokenStrategy) GenerateAccessToken(ctx context.Context, reques
 		return "", "", buildErr
 	}
 
-	// 6. Sign with kid
 	_ = privKey.Set(jwk.KeyIDKey, string(key.KID))
 	alg, err := algorithmToJWA(key.Algorithm)
 	if err != nil {
 		return "", "", fmt.Errorf("signing key %s has unrecognized algorithm %q: %w", key.KID, key.Algorithm, err)
 	}
-	signed, err := jwt.Sign(token, jwt.WithKey(alg, privKey))
+	signed, err := jwt.Sign(jwtToken, jwt.WithKey(alg, privKey))
 	if err != nil {
 		return "", "", fmt.Errorf("failed to sign JWT: %w", err)
 	}
 
-	// Signature = SHA-256 of the token (for storage/lookup)
 	return string(signed), sha256Hex(string(signed)), nil
+}
+
+// GenerateImpersonationToken adapts a validated impersonation request to the normal local
+// access-token minting path. The target supplies requester context and granted scopes; the routing
+// audience never forces an aud claim.
+func (s *JWXAccessTokenStrategy) GenerateImpersonationToken(ctx context.Context, input ports.ImpersonationMintInput) (string, error) {
+	if input.TargetAgent == nil || input.TargetAgent.ID.IsZero() {
+		return "", fmt.Errorf("impersonation target agent is required")
+	}
+
+	session := &fosite.DefaultSession{Subject: input.Subject}
+	setSessionProfile(session, input.Email, "")
+	requester := fosite.NewAccessRequest(session)
+	requester.Client = &publicClient{
+		clientID:   input.TargetAgent.ID.String(),
+		agent:      input.TargetAgent,
+		grantTypes: fosite.Arguments{tokenexchange.TokenExchangeGrantType},
+	}
+	requester.GrantTypes = fosite.Arguments{tokenexchange.TokenExchangeGrantType}
+	requester.RequestedScope = fosite.Arguments(input.Scopes)
+	requester.GrantedScope = fosite.Arguments(input.Scopes)
+
+	token, _, err := s.mintAccessToken(ctx, requester, &actorClaim{Issuer: input.ActorIssuer, Subject: input.Actor})
+	return token, err
 }
 
 // AccessTokenSignature returns a signature for the given access token.
