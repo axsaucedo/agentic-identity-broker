@@ -1,8 +1,6 @@
 module github.com/agentic-identity-broker/sample-agent
 
-go 1.24.0
-
-toolchain go1.24.5
+go 1.26.8
 
 require (
 	github.com/mark3labs/mcp-go v0.44.0

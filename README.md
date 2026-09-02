@@ -36,7 +36,7 @@ Major roadmap topics include: (a) centralized tool authorization with Open Polic
 
 ## Prerequisites
 
-- **Go 1.24.0** or higher (required)
+- **Go 1.26.8** or higher (required)
 - **PostgreSQL 12+** (for persistence; in-memory storage available for development)
 - **Node.js 18+** (for React frontend development, optional)
 - **[just](https://github.com/casey/just)** command runner (recommended)
