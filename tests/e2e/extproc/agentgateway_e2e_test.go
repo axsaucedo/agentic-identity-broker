@@ -281,6 +281,9 @@ func startAgentgwMCPServer() net.Listener {
 	// Create the streamable HTTP server with context injection for Authorization header
 	httpSrv := mcpserver.NewStreamableHTTPServer(mcpSvr,
 		mcpserver.WithEndpointPath("/mcp"),
+		// Agentgateway reaches this host fixture through a loopback proxy but preserves
+		// host.testcontainers.internal. This fixture is not browser-facing.
+		mcpserver.WithDisableLocalhostProtection(true),
 		mcpserver.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
 			return context.WithValue(ctx, agentgwAuthHeaderKey, r.Header.Get("Authorization"))
 		}),

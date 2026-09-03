@@ -24,7 +24,7 @@ require (
 	github.com/lestrrat-go/httprc/v3 v3.0.6
 	github.com/lestrrat-go/jwx/v3 v3.2.0
 	github.com/lib/pq v1.12.3
-	github.com/mark3labs/mcp-go v0.54.1
+	github.com/mark3labs/mcp-go v0.58.0
 	github.com/moby/moby/api v1.54.1
 	github.com/mxschmitt/playwright-go v0.6100.0
 	github.com/onsi/ginkgo/v2 v2.29.0

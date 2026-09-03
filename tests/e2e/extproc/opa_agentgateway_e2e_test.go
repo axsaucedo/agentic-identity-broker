@@ -734,6 +734,9 @@ func opaAgentgwStartMCPServer(lastAuth *string, mu *sync.Mutex) net.Listener {
 
 	httpSrv := mcpserver.NewStreamableHTTPServer(mcpSvr,
 		mcpserver.WithEndpointPath("/mcp"),
+		// Agentgateway reaches this host fixture through a loopback proxy but preserves
+		// host.testcontainers.internal. This fixture is not browser-facing.
+		mcpserver.WithDisableLocalhostProtection(true),
 		mcpserver.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
 			auth := r.Header.Get("Authorization")
 			// Capture auth for all HTTP requests (GET, POST) so header-only GET /mcp
