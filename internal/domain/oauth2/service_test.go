@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
@@ -27,7 +27,7 @@ func newServiceTestJWETokenService() *domjwe.TokenService {
 	if err != nil {
 		panic("newServiceTestJWETokenService: failed to decode key: " + err.Error())
 	}
-	jweKey, err := jwk.Import(keyBytes)
+	jweKey, err := jwk.Import[jwk.Key](keyBytes)
 	if err != nil {
 		panic("newServiceTestJWETokenService: failed to import key: " + err.Error())
 	}

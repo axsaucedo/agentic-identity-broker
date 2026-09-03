@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -76,7 +76,7 @@ func signedValidationKey(t *testing.T, kid string) (jwk.Key, jwk.Set) {
 	t.Helper()
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
-	signingKey, err := jwk.Import(privateKey)
+	signingKey, err := jwk.Import[jwk.Key](privateKey)
 	require.NoError(t, err)
 	require.NoError(t, signingKey.Set(jwk.KeyIDKey, kid))
 	require.NoError(t, signingKey.Set(jwk.AlgorithmKey, jwa.ES256()))
@@ -129,7 +129,7 @@ func TestSignedValidator(t *testing.T) {
 	t.Run("rejects permitted-algorithm mismatch", func(t *testing.T) {
 		privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 		require.NoError(t, err)
-		rsaKey, err := jwk.Import(privateKey)
+		rsaKey, err := jwk.Import[jwk.Key](privateKey)
 		require.NoError(t, err)
 		require.NoError(t, rsaKey.Set(jwk.KeyIDKey, "rs256"))
 		require.NoError(t, rsaKey.Set(jwk.AlgorithmKey, jwa.RS256()))

@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/ory/fosite"
 	fositeOAuth2 "github.com/ory/fosite/handler/oauth2"
 
@@ -94,7 +94,7 @@ func (s *JWXAccessTokenStrategy) mintAccessToken(ctx context.Context, requester 
 		return "", "", fmt.Errorf("failed to decrypt signing key: %w", err)
 	}
 
-	privKey, err := jwk.ParseKey(privPEM, jwk.WithPEM(true))
+	privKey, err := jwk.ParseKey(privPEM, jwk.WithX509(true))
 	if err != nil {
 		return "", "", fmt.Errorf("failed to parse private key: %w", err)
 	}

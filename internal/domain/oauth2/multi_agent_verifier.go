@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -97,8 +97,8 @@ func (v *MultiAgentTokenVerifier) VerifyAgentIDClaim(ctx context.Context, respon
 	}
 
 	// Step 3: Look up the configured claim directly.
-	var claimValue interface{}
-	if err := tok.Get(v.agentIDClaimName, &claimValue); err != nil {
+	claimValue, err := jwt.Get[any](tok, v.agentIDClaimName)
+	if err != nil {
 		return fmt.Errorf("agent ID claim absent from upstream token: claim %q not found in JWT", v.agentIDClaimName)
 	}
 

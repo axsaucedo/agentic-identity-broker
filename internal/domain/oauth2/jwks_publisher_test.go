@@ -13,8 +13,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -80,7 +80,7 @@ func makePublicECKey(kid string) jwk.Key {
 	if err != nil {
 		panic(err)
 	}
-	raw, err := jwk.Import(priv.Public())
+	raw, err := jwk.Import[jwk.Key](priv.Public())
 	if err != nil {
 		panic(err)
 	}
@@ -338,8 +338,7 @@ func TestPublishJWKS_NeverExposesPrivateKeyMaterial(t *testing.T) {
 				key, ok := set.Key(i)
 				require.True(t, ok)
 				kid, _ := key.KeyID()
-				var d interface{}
-				err := key.Get("d", &d)
+				_, err := jwk.Get[any](key, "d")
 				assert.Error(t, err, "key %q must not contain private 'd' field", kid)
 			}
 		})

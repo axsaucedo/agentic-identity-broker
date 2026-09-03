@@ -15,8 +15,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -37,7 +37,7 @@ func newTestJWKSHandler(t *testing.T) *JWKSHandler {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
-	publicKey, err := jwk.Import(privateKey.Public())
+	publicKey, err := jwk.Import[jwk.Key](privateKey.Public())
 	require.NoError(t, err)
 	require.NoError(t, publicKey.Set(jwk.KeyIDKey, "test-kid"))
 	require.NoError(t, publicKey.Set(jwk.KeyUsageKey, "sig"))

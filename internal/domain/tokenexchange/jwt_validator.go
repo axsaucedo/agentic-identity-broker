@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 )
 
 // JWKSProvider defines the interface for JSON Web Key Set (JWKS) operations.
@@ -31,7 +31,7 @@ type JWKSProvider interface {
 // JWTValidator provides JWT validation for token exchange.
 // It validates token signatures, issuer, audience, and expiration using the JWKSProvider adapter.
 //
-// This service implements claim validation using the lestrrat-go/jwx/v3 library (Principle III - Library-First Security).
+// This service implements claim validation using the lestrrat-go/jwx/v4 library (Principle III - Library-First Security).
 // No custom cryptography is used; all validation relies on vetted libraries.
 //
 // The validator is stateless and thread-safe for concurrent calls.
@@ -196,19 +196,19 @@ func (v *JWTValidator) mapParseError(err error, tokenType string, tokenString st
 		return nil
 	}
 	switch {
-	case errors.Is(err, jwt.InvalidIssuerError()):
+	case errors.Is(err, jwt.InvalidIssuerError{}):
 		return NewInvalidGrantError(
 			fmt.Sprintf("%s issuer validation failed: expected %s", tokenType, formatExpectedIssuers(v.subjectTokenPolicy.ExpectedIssuers)),
 		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.subjectTokenPolicy.ExpectedIssuers))
-	case errors.Is(err, jwt.InvalidAudienceError()):
+	case errors.Is(err, jwt.InvalidAudienceError{}):
 		return NewInvalidGrantError(
 			fmt.Sprintf("%s audience validation failed: expected aud=%q", tokenType, v.brokerAudience),
 		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.subjectTokenPolicy.ExpectedIssuers))
-	case errors.Is(err, jwt.TokenExpiredError()):
+	case errors.Is(err, jwt.TokenExpiredError{}):
 		return NewInvalidGrantError(tokenType + " has expired").WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.subjectTokenPolicy.ExpectedIssuers))
-	case errors.Is(err, jwt.TokenNotYetValidError()):
+	case errors.Is(err, jwt.TokenNotYetValidError{}):
 		return NewInvalidGrantError(tokenType + " is not yet valid (nbf)").WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.subjectTokenPolicy.ExpectedIssuers))
-	case errors.Is(err, jwt.ParseError()):
+	case errors.Is(err, jwt.ParseError{}):
 		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed").WithCause(err).WithDetails(diagnoseTokenShape(tokenString))
 	default:
 		return NewInvalidGrantError(tokenType + " validation failed").WithCause(err)
@@ -227,19 +227,19 @@ func (v *JWTValidator) mapClientAssertionParseError(err error, tokenString strin
 		return nil
 	}
 	switch {
-	case errors.Is(err, jwt.InvalidIssuerError()):
+	case errors.Is(err, jwt.InvalidIssuerError{}):
 		return NewInvalidClientError(
 			fmt.Sprintf("client_assertion issuer validation failed: expected %s", formatExpectedIssuers(v.clientAssertionPolicy.ExpectedIssuers)),
 		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.clientAssertionPolicy.ExpectedIssuers))
-	case errors.Is(err, jwt.InvalidAudienceError()):
+	case errors.Is(err, jwt.InvalidAudienceError{}):
 		return NewInvalidClientError(
 			fmt.Sprintf("client_assertion audience validation failed: expected aud=%q", v.brokerAudience),
 		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.clientAssertionPolicy.ExpectedIssuers))
-	case errors.Is(err, jwt.TokenExpiredError()):
+	case errors.Is(err, jwt.TokenExpiredError{}):
 		return NewInvalidClientError("client_assertion has expired").WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.clientAssertionPolicy.ExpectedIssuers))
-	case errors.Is(err, jwt.TokenNotYetValidError()):
+	case errors.Is(err, jwt.TokenNotYetValidError{}):
 		return NewInvalidClientError("client_assertion is not yet valid (nbf)").WithCause(err).WithDetails(v.extractDiagnostics(tokenString, v.clientAssertionPolicy.ExpectedIssuers))
-	case errors.Is(err, jwt.ParseError()):
+	case errors.Is(err, jwt.ParseError{}):
 		return NewInvalidClientError("client_assertion is malformed or signature verification failed").WithCause(err)
 	default:
 		return NewInvalidClientError("client_assertion validation failed").WithCause(err)
@@ -422,7 +422,7 @@ func (v *JWTValidator) parseWithPolicy(tokenString string, keyset jwk.Set, polic
 		if firstErr == nil {
 			firstErr = err
 		}
-		if !errors.Is(err, jwt.InvalidIssuerError()) {
+		if !errors.Is(err, jwt.InvalidIssuerError{}) {
 			preferredErr = err
 		}
 	}

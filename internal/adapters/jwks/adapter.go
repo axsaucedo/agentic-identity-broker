@@ -13,7 +13,7 @@ import (
 
 	"github.com/lestrrat-go/httprc/v3"
 	"github.com/lestrrat-go/httprc/v3/errsink"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -66,7 +66,7 @@ func (t trackingTransformer) Transform(_ context.Context, res *http.Response) (j
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	set, err := jwk.Parse(buf)
+	set, err := jwk.Parse(buf, jwk.WithStrictKeySetParsing(true))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse JWK set at %q: %w", res.Request.URL.String(), err)
 	}

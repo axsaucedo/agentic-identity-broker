@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +26,7 @@ func TestGenerateTestRSAKeyPair(t *testing.T) {
 
 // TestSignTestJWT verifies JWT signing produces valid JWTs.
 func TestSignTestJWT(t *testing.T) {
-	privateKeyPEM, _, err := GenerateTestRSAKeyPair()
+	privateKeyPEM, publicKeyPEM, err := GenerateTestRSAKeyPair()
 	require.NoError(t, err)
 
 	claims := map[string]interface{}{
@@ -47,10 +49,11 @@ func TestSignTestJWT(t *testing.T) {
 	}
 	assert.Equal(t, 2, parts, "JWT should have 3 parts separated by 2 dots")
 
-	// Verify token can be parsed (basic structure check)
-	token, err := jwt.ParseString(tokenString, jwt.WithVerify(false))
-	assert.NoError(t, err)
-	assert.NotNil(t, token)
+	// Verify the token signature and basic structure.
+	publicKey, err := jwk.ParseKey([]byte(publicKeyPEM), jwk.WithX509(true))
+	require.NoError(t, err)
+	token, err := jwt.ParseString(tokenString, jwt.WithKey(jwa.RS256(), publicKey))
+	require.NoError(t, err)
 
 	// Verify claims are present
 	sub, _ := token.Subject()
@@ -122,6 +125,7 @@ func TestJWTSigningAndVerification(t *testing.T) {
 
 	// Create a JWT with test server's private key
 	privateKeyPEM := mockServer.GetPrivateKeyPEM()
+	publicKeyPEM := mockServer.GetPublicKeyPEM()
 	claims := map[string]interface{}{
 		"sub": "test-user",
 		"iss": mockServer.URL(),
@@ -132,8 +136,10 @@ func TestJWTSigningAndVerification(t *testing.T) {
 	tokenString, err := SignTestJWT(claims, privateKeyPEM)
 	require.NoError(t, err)
 
-	// Verify token can be parsed and claims are correct
-	token, err := jwt.ParseString(tokenString, jwt.WithVerify(false))
+	// Verify the token signature and claims.
+	publicKey, err := jwk.ParseKey([]byte(publicKeyPEM), jwk.WithX509(true))
+	require.NoError(t, err)
+	token, err := jwt.ParseString(tokenString, jwt.WithKey(jwa.RS256(), publicKey))
 	require.NoError(t, err)
 
 	sub, _ := token.Subject()

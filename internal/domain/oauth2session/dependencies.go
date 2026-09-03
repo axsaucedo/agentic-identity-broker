@@ -3,6 +3,6 @@
 package oauth2session
 
 import (
-	_ "github.com/lestrrat-go/jwx/v3/jwe" // JWE encryption for state tokens
+	_ "github.com/lestrrat-go/jwx/v4/jwe" // JWE encryption for state tokens
 	_ "golang.org/x/oauth2"               // OAuth2 client library
 )

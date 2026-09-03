@@ -10,7 +10,7 @@ import "context"
 // and CEL-based claim extraction from the middleware layer.
 //
 // Implementations:
-//   - internal/adapters/jwtauth/jwx_authenticator.go (lestrrat-go/jwx v3)
+//   - internal/adapters/jwtauth/jwx_authenticator.go (lestrrat-go/jwx v4)
 //
 // The middleware calls Authenticate with the raw JWT string (prefix stripped).
 // On success, returns AuthResult with extracted principal and optional profile attributes.

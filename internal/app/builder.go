@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/contrib/propagators/b3"
@@ -380,7 +380,7 @@ func (b *Builder) Build() (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode JWE signing key: %w", err)
 	}
-	jweKey, err := jwk.Import(keyBytes)
+	jweKey, err := jwk.Import[jwk.Key](keyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to import JWE signing key: %w", err)
 	}
@@ -717,7 +717,7 @@ func (b *Builder) Build() (*App, error) {
 			return nil, fmt.Errorf("failed to create CEL evaluator for JWT pre-auth: %w", err)
 		}
 
-		// Create JWT authenticator adapter (uses lestrrat-go/jwx v3)
+		// Create JWT authenticator adapter (uses lestrrat-go/jwx v4)
 		jwtAuthenticator, err := jwtauthadapter.NewJWXAuthenticator(jwtauthadapter.JWXAuthenticatorConfig{
 			JWTConfig:    jwtCfg,
 			CELEvaluator: celEval,
@@ -729,6 +729,14 @@ func (b *Builder) Build() (*App, error) {
 		}
 
 		app.JWTAuthenticator = jwtAuthenticator
+		prevShutdown := app.Shutdown
+		app.Shutdown = func(ctx context.Context) error {
+			var prevErr error
+			if prevShutdown != nil {
+				prevErr = prevShutdown(ctx)
+			}
+			return errors.Join(jwtAuthenticator.Shutdown(ctx), prevErr)
+		}
 		b.logger.Info("JWT pre-authentication enabled",
 			"header_name", jwtCfg.HeaderName,
 			"verification", jwtCfg.Verification,

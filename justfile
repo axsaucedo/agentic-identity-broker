@@ -11,6 +11,8 @@ INTEGRATION_INFRA_TEST_PACKAGES := "./tests/integration/infra/... ./tests/integr
 INTEGRATION_INFRA_PACKAGE_PROCS := env_var_or_default("INTEGRATION_INFRA_PACKAGE_PROCS", "2")
 GINKGO_FRONTEND_PROCS := env_var_or_default("GINKGO_FRONTEND_PROCS", "2")
 E2E_CAPTURE_SCREENSHOTS := env_var_or_default("E2E_CAPTURE_SCREENSHOTS", "false")
+# JWX v4 requires jsonv2 only on Go 1.26; Go 1.27 includes it by default.
+export GOEXPERIMENT := `case "$(go env GOVERSION)" in go1.26.*) printf 'jsonv2' ;; esac`
 
 # Determine container runtime (docker or podman)
 # Prefer docker over podman when both are available for better multi-arch support

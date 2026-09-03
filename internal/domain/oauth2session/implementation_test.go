@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -25,7 +25,7 @@ func setupImplementedService(t *testing.T) (*oauth2session.OAuth2SessionService,
 	t.Helper()
 
 	// Create test JWE key
-	key, err := jwk.Import([]byte("test-secret-key-must-be-32-bytes"))
+	key, err := jwk.Import[jwk.Key]([]byte("test-secret-key-must-be-32-bytes"))
 	require.NoError(t, err)
 	err = key.Set(jwk.KeyIDKey, "test-key")
 	require.NoError(t, err)

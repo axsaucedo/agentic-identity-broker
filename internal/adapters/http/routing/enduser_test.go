@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 
 	httpadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
 	enduserhttp "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"

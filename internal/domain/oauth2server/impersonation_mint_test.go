@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jws"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jws"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/ory/fosite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -98,17 +98,20 @@ func TestGenerateImpersonationToken(t *testing.T) {
 		subject, ok := token.Subject()
 		require.True(t, ok)
 		assert.Equal(t, input.Subject, subject)
-		var agentID, scope, gotEmail, celClaim string
-		require.NoError(t, token.Get("agent_id", &agentID))
-		require.NoError(t, token.Get("scope", &scope))
-		require.NoError(t, token.Get("email", &gotEmail))
-		require.NoError(t, token.Get("cel_claim", &celClaim))
+		agentID, err := jwt.Get[string](token, "agent_id")
+		require.NoError(t, err)
+		scope, err := jwt.Get[string](token, "scope")
+		require.NoError(t, err)
+		gotEmail, err := jwt.Get[string](token, "email")
+		require.NoError(t, err)
+		celClaim, err := jwt.Get[string](token, "cel_claim")
+		require.NoError(t, err)
 		assert.Equal(t, target.ID.String(), agentID)
 		assert.Equal(t, "read", scope)
 		assert.Equal(t, email, gotEmail)
 		assert.Equal(t, "present", celClaim)
-		var audience any
-		require.NoError(t, token.Get("aud", &audience))
+		audience, err := jwt.Get[any](token, "aud")
+		require.NoError(t, err)
 		assert.True(t, audClaimContains(audience, "https://policy.example.com"))
 		issuedAt, ok := token.IssuedAt()
 		require.True(t, ok)
@@ -125,10 +128,10 @@ func TestGenerateImpersonationToken(t *testing.T) {
 	require.NoError(t, err)
 	impersonationClaims, err := jwt.Parse([]byte(impersonationToken), jwt.WithKeySet(jwks))
 	require.NoError(t, err)
-	var normalAct string
-	var impersonationAct map[string]any
-	require.NoError(t, normalClaims.Get("act", &normalAct))
-	require.NoError(t, impersonationClaims.Get("act", &impersonationAct))
+	normalAct, err := jwt.Get[string](normalClaims, "act")
+	require.NoError(t, err)
+	impersonationAct, err := jwt.Get[map[string]any](impersonationClaims, "act")
+	require.NoError(t, err)
 	assert.Equal(t, "policy-actor", normalAct)
 	assert.Equal(t, input.Actor, impersonationAct["sub"])
 	assert.Equal(t, input.ActorIssuer, impersonationAct["iss"])
@@ -150,8 +153,8 @@ func TestGenerateImpersonationToken_NoScopeRetainsEmptyJWTClaim(t *testing.T) {
 	require.NoError(t, err)
 	claims, err := jwt.ParseInsecure([]byte(tokenString))
 	require.NoError(t, err)
-	var scope string
-	require.NoError(t, claims.Get("scope", &scope))
+	scope, err := jwt.Get[string](claims, "scope")
+	require.NoError(t, err)
 	assert.Empty(t, scope)
 }
 

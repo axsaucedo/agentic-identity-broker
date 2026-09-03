@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,7 +25,7 @@ func newTestService(t *testing.T) *TokenService {
 	var raw [32]byte
 	_, err := rand.Read(raw[:])
 	require.NoError(t, err)
-	key, err := jwk.Import(raw[:])
+	key, err := jwk.Import[jwk.Key](raw[:])
 	require.NoError(t, err)
 	return New(key)
 }

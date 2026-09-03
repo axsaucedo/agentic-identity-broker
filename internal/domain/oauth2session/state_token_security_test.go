@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -239,7 +239,7 @@ func TestStateTokenSecurityTampered_EmptyToken(t *testing.T) {
 // cannot be decrypted with a different key.
 func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	// Create service with key1 (exactly 32 bytes for AES-256)
-	key1, err := jwk.Import([]byte("0123456789012345678901234567890X"))
+	key1, err := jwk.Import[jwk.Key]([]byte("0123456789012345678901234567890X"))
 	require.NoError(t, err)
 	err = key1.Set(jwk.KeyIDKey, "key1")
 	require.NoError(t, err)
@@ -277,7 +277,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	)
 
 	// Create service with key2 (different key, exactly 32 bytes)
-	key2, err := jwk.Import([]byte("0123456789012345678901234567890Y"))
+	key2, err := jwk.Import[jwk.Key]([]byte("0123456789012345678901234567890Y"))
 	require.NoError(t, err)
 	err = key2.Set(jwk.KeyIDKey, "key2")
 	require.NoError(t, err)

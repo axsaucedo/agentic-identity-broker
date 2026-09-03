@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 
 	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -162,7 +162,7 @@ func (s *SigningKeyService) BuildJWKS(ctx context.Context) (jwk.Set, error) {
 			continue
 		}
 
-		jwkKey, err := jwk.Import(pubKey)
+		jwkKey, err := jwk.Import[jwk.Key](pubKey)
 		if err != nil {
 			s.logger.Error("failed to import signing key to JWK, skipping", "kid", key.KID, "error", err)
 			continue

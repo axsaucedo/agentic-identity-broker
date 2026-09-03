@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	gojwe "github.com/lestrrat-go/jwx/v3/jwe"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	gojwe "github.com/lestrrat-go/jwx/v4/jwe"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 )
 
 // ErrExpired is returned by DecryptAndValidate when the token's TTL has elapsed.

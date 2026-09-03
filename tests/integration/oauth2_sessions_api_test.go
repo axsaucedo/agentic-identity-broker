@@ -12,7 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -1618,7 +1618,7 @@ func createTestJWEKey(t *testing.T) jwk.Key {
 	t.Helper()
 
 	// Create a symmetric key for JWE
-	key, err := jwk.Import([]byte("test-secret-key-must-be-32-bytes"))
+	key, err := jwk.Import[jwk.Key]([]byte("test-secret-key-must-be-32-bytes"))
 	if err != nil {
 		t.Fatalf("failed to create JWE key: %v", err)
 	}

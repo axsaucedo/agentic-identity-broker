@@ -1,7 +1,7 @@
 // Package jwtclaims normalizes JWT claims for CEL evaluation.
 package jwtclaims
 
-import "github.com/lestrrat-go/jwx/v3/jwt"
+import "github.com/lestrrat-go/jwx/v4/jwt"
 
 // FromToken converts a JWT into a dynamic claims map. Standard claims are normalized first;
 // custom claims never overwrite their normalized representation.
@@ -34,12 +34,8 @@ func FromToken(token jwt.Token) map[string]any {
 		claims["jti"] = jti
 	}
 
-	for _, key := range token.Keys() {
-		if _, exists := claims[key]; exists {
-			continue
-		}
-		var value any
-		if err := token.Get(key, &value); err == nil {
+	for key, value := range token.Claims() {
+		if _, exists := claims[key]; !exists {
 			claims[key] = value
 		}
 	}

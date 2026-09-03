@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -71,7 +71,7 @@ func TestPublishedAdapter_GetKey(t *testing.T) {
 	t.Parallel()
 
 	keySet := jwk.NewSet()
-	symmetricKey, err := jwk.Import([]byte("0123456789abcdef0123456789abcdef"))
+	symmetricKey, err := jwk.Import[jwk.Key]([]byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
 	require.NoError(t, symmetricKey.Set(jwk.KeyIDKey, "kid-1"))
 	require.NoError(t, keySet.AddKey(symmetricKey))

@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -511,7 +511,7 @@ func TestSetJWKMetadata(t *testing.T) {
 		require.NoError(t, err)
 		pubKey, err := publicKeyFromPEM(privPEM, "ES256")
 		require.NoError(t, err)
-		jwkKey, err := jwk.Import(pubKey)
+		jwkKey, err := jwk.Import[jwk.Key](pubKey)
 		require.NoError(t, err)
 		return jwkKey
 	}

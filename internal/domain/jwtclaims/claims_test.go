@@ -1,10 +1,11 @@
 package jwtclaims
 
 import (
+	"iter"
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -13,12 +14,10 @@ type claimCollisionToken struct {
 	jwt.Token
 }
 
-func (t claimCollisionToken) Get(key string, dst any) error {
-	if key == "sub" {
-		*dst.(*any) = "custom-subject"
-		return nil
+func (claimCollisionToken) Claims() iter.Seq2[string, any] {
+	return func(yield func(string, any) bool) {
+		yield(jwt.SubjectKey, "custom-subject")
 	}
-	return t.Token.Get(key, dst)
 }
 
 func TestFromToken_NormalizesStandardAndCustomClaims(t *testing.T) {

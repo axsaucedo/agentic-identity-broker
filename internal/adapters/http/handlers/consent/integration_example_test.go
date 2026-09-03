@@ -25,7 +25,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 	"github.com/go-chi/chi/v5"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 )
 
 func newIntegrationJWETokenService() *domjwe.TokenService {
@@ -33,7 +33,7 @@ func newIntegrationJWETokenService() *domjwe.TokenService {
 	if err != nil {
 		panic("newIntegrationJWETokenService: " + err.Error())
 	}
-	key, err := jwk.Import(keyBytes)
+	key, err := jwk.Import[jwk.Key](keyBytes)
 	if err != nil {
 		panic("newIntegrationJWETokenService: " + err.Error())
 	}

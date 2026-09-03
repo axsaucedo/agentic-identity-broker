@@ -39,7 +39,7 @@ end-user `:8000` server and the admin `:14000` server.
 
 ### JWKS (`jwks/`)
 
-`lestrrat-go/jwx/v3` `jwk.Cache` refreshes data in the background. It implements `ports.JWKSPort`.
+`httprc` resources refresh upstream data in the background. The adapter implements `ports.JWKSPort`.
 `published_adapter.go` provides the broker aggregated JWKS to in-process consumers.
 
 ### Storage (`storage/`)

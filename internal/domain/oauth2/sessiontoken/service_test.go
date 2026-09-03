@@ -7,14 +7,14 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func newTestService(t *testing.T) *Service {
 	t.Helper()
-	key, err := jwk.Import([]byte("test-32-byte-key-must-be-exact-x"))
+	key, err := jwk.Import[jwk.Key]([]byte("test-32-byte-key-must-be-exact-x"))
 	require.NoError(t, err)
 	return NewService(jwe.New(key))
 }

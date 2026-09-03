@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -87,7 +87,7 @@ func newScopedImpersonationHandler(t *testing.T) (*OAuth2TokenHandler, *handlerI
 	t.Helper()
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
-	signingKey, err := jwk.Import(privateKey)
+	signingKey, err := jwk.Import[jwk.Key](privateKey)
 	require.NoError(t, err)
 	require.NoError(t, signingKey.Set(jwk.KeyIDKey, "es256"))
 	require.NoError(t, signingKey.Set(jwk.AlgorithmKey, jwa.ES256()))

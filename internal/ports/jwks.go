@@ -4,7 +4,7 @@ package ports
 import (
 	"context"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 )
 
 // JWKSHealthPort exposes operational health information for a network-backed

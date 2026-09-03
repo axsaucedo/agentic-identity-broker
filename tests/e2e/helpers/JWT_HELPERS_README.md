@@ -243,7 +243,9 @@ Tests using these helpers should verify:
 
 1. **JWT Signature**: Verify tokens are signed with RS256
    ```go
-   token, err := jwt.ParseString(tokenString, jwt.WithVerify(false))
+   publicKey, err := jwk.ParseKey([]byte(publicKeyPEM), jwk.WithX509(true))
+   require.NoError(t, err)
+   _, err = jwt.ParseString(tokenString, jwt.WithKey(jwa.RS256(), publicKey))
    require.NoError(t, err)
    ```
 
@@ -263,7 +265,7 @@ Tests using these helpers should verify:
 
 This package uses **only** battle-tested libraries per Constitution Principle III:
 - **stdlib**: crypto/rsa, crypto/x509, encoding/pem for key operations
-- **lestrrat-go/jwx/v3**: For JWT and JWK operations
+- **lestrrat-go/jwx/v4**: For JWT and JWK operations
 
 No custom cryptographic implementations are present.
 

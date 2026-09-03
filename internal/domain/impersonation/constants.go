@@ -5,7 +5,7 @@
 package impersonation
 
 import (
-	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwa"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 )

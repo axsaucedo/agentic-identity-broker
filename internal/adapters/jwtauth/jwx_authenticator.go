@@ -1,4 +1,4 @@
-// Package jwtauth provides the JWT authenticator adapter using lestrrat-go/jwx v3.
+// Package jwtauth provides the JWT authenticator adapter using lestrrat-go/jwx v4.
 // This package implements the domain JWTAuthenticator port for signed JWT verification
 // (JWKS mode) with JWKS caching, temporal validation, and CEL-based claim extraction.
 package jwtauth
@@ -9,13 +9,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/jwx-go/jwkfetch/v4"
 	"github.com/lestrrat-go/httprc/v3"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jws"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -45,7 +47,7 @@ type JWXAuthenticatorConfig struct {
 	Logger *slog.Logger
 }
 
-// JWXAuthenticator implements the domain JWTAuthenticator port using lestrrat-go/jwx v3.
+// JWXAuthenticator implements the domain JWTAuthenticator port using lestrrat-go/jwx v4.
 // It handles:
 //   - JWKS-based signature verification with auto-refresh caching
 //   - Bearer prefix stripping for Authorization header
@@ -55,7 +57,7 @@ type JWXAuthenticatorConfig struct {
 type JWXAuthenticator struct {
 	config       *ports.JWTConfig
 	celEvaluator *jwtauth.CELEvaluator
-	jwksCache    *jwk.Cache
+	jwksCache    *jwkfetch.Cache
 	jwksURL      string
 	logger       *slog.Logger
 }
@@ -89,10 +91,12 @@ func NewJWXAuthenticator(cfg JWXAuthenticatorConfig) (*JWXAuthenticator, error) 
 			httpClient = http.DefaultClient
 		}
 
-		// Create httprc client for JWKS fetching (follows existing pattern from internal/adapters/jwks/adapter.go)
-		httprcClient := httprc.NewClient()
-
-		cache, err := jwk.NewCache(context.Background(), httprcClient)
+		cache, err := jwkfetch.NewCache(
+			context.Background(),
+			httprc.NewClient(),
+			jwkfetch.WithHTTPClient(httpClient),
+			jwkfetch.WithParseOptions(jwk.WithStrictKeySetParsing(true)),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create JWKS cache: %w", err)
 		}
@@ -100,13 +104,15 @@ func NewJWXAuthenticator(cfg JWXAuthenticatorConfig) (*JWXAuthenticator, error) 
 		err = cache.Register(
 			context.Background(),
 			cfg.JWTConfig.JWKSURI,
-			jwk.WithMinInterval(DefaultJWKSMinRefreshInterval),
-			jwk.WithMaxInterval(DefaultJWKSMaxRefreshInterval),
-			jwk.WithWaitReady(false),
-			jwk.WithHttprcResourceOption(httprc.WithHTTPClient(httpClient)),
+			jwkfetch.WithMinInterval(DefaultJWKSMinRefreshInterval),
+			jwkfetch.WithMaxInterval(DefaultJWKSMaxRefreshInterval),
+			jwkfetch.WithWaitReady(false),
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to register JWKS URL: %w", err)
+			return nil, errors.Join(
+				fmt.Errorf("failed to register JWKS URL: %w", err),
+				cache.Shutdown(context.Background()),
+			)
 		}
 
 		// Force an initial refresh with a 30-second timeout so startup fails fast
@@ -114,13 +120,24 @@ func NewJWXAuthenticator(cfg JWXAuthenticatorConfig) (*JWXAuthenticator, error) 
 		initCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if _, err = cache.Refresh(initCtx, cfg.JWTConfig.JWKSURI); err != nil {
-			return nil, fmt.Errorf("failed to fetch JWKS on startup from %s (verify URL is reachable and returns valid JWKS): %w", cfg.JWTConfig.JWKSURI, err)
+			return nil, errors.Join(
+				fmt.Errorf("failed to fetch JWKS on startup from %s (verify URL is reachable and returns valid JWKS): %w", cfg.JWTConfig.JWKSURI, err),
+				cache.Shutdown(context.Background()),
+			)
 		}
 
 		auth.jwksCache = cache
 	}
 
 	return auth, nil
+}
+
+// Shutdown stops the JWKS cache refresh worker.
+func (a *JWXAuthenticator) Shutdown(ctx context.Context) error {
+	if a.jwksCache == nil {
+		return nil
+	}
+	return a.jwksCache.Shutdown(ctx)
 }
 
 // Authenticate implements jwtauth.JWTAuthenticator.
@@ -254,7 +271,7 @@ func (a *JWXAuthenticator) validateClaims(token jwt.Token) error {
 	// Validate audience if configured
 	if a.config.ExpectedAudience != "" {
 		audiences, _ := token.Audience()
-		if !containsAudience(audiences, a.config.ExpectedAudience) {
+		if !slices.Contains(audiences, a.config.ExpectedAudience) {
 			return jwtauth.ErrAudienceMismatch
 		}
 	}
@@ -270,22 +287,12 @@ func (a *JWXAuthenticator) validateClaims(token jwt.Token) error {
 	return nil
 }
 
-// containsAudience checks if the expected audience is present in the audience list.
-func containsAudience(audiences []string, expected string) bool {
-	for _, aud := range audiences {
-		if aud == expected {
-			return true
-		}
-	}
-	return false
-}
-
 // extractClaimsMap converts a jwt.Token into a map[string]interface{} for CEL evaluation.
 // Follows the pattern from internal/domain/tokenexchange/service.go jwtToClaims().
 func (a *JWXAuthenticator) extractClaimsMap(token jwt.Token) (map[string]interface{}, error) {
 	claims := make(map[string]interface{})
 
-	// Standard claims (jwx v3: all accessors return (value, bool))
+	// Standard claims
 	if sub, ok := token.Subject(); ok && sub != "" {
 		claims["sub"] = sub
 	}
@@ -308,13 +315,9 @@ func (a *JWXAuthenticator) extractClaimsMap(token jwt.Token) (map[string]interfa
 		claims["jti"] = jti
 	}
 
-	// Private/custom claims via Keys() and Get() (follows existing pattern)
-	for _, key := range token.Keys() {
+	for key, value := range token.Claims() {
 		if _, exists := claims[key]; !exists {
-			var value any
-			if err := token.Get(key, &value); err == nil {
-				claims[key] = value
-			}
+			claims[key] = value
 		}
 	}
 

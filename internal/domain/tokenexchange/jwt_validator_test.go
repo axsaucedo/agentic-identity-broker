@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -316,11 +316,11 @@ func TestMapParseError_WrapsUnderlyingCause(t *testing.T) {
 		rawErr          error
 		wantErrContains string
 	}{
-		{name: "parse/signature error mapped via ParseError sentinel", rawErr: jwt.ParseError(), wantErrContains: "malformed"},
-		{name: "issuer error includes expected iss value", rawErr: jwt.InvalidIssuerError(), wantErrContains: `expected iss="https://auth.example.com"`},
-		{name: "audience error includes expected aud value", rawErr: jwt.InvalidAudienceError(), wantErrContains: `expected aud="broker-id"`},
-		{name: "expired token mapped", rawErr: jwt.TokenExpiredError(), wantErrContains: "expired"},
-		{name: "not-yet-valid token mapped", rawErr: jwt.TokenNotYetValidError(), wantErrContains: "not yet valid"},
+		{name: "parse/signature error mapped via ParseError sentinel", rawErr: jwt.ParseError{}, wantErrContains: "malformed"},
+		{name: "issuer error includes expected iss value", rawErr: jwt.InvalidIssuerError{}, wantErrContains: `expected iss="https://auth.example.com"`},
+		{name: "audience error includes expected aud value", rawErr: jwt.InvalidAudienceError{}, wantErrContains: `expected aud="broker-id"`},
+		{name: "expired token mapped", rawErr: jwt.TokenExpiredError{}, wantErrContains: "expired"},
+		{name: "not-yet-valid token mapped", rawErr: jwt.TokenNotYetValidError{}, wantErrContains: "not yet valid"},
 		{name: "unknown error falls through to default case", rawErr: fmt.Errorf("some totally unknown jwt failure"), wantErrContains: "validation failed"},
 	}
 
@@ -355,11 +355,11 @@ func TestMapClientAssertionParseError_WrapsUnderlyingCause(t *testing.T) {
 		rawErr          error
 		wantErrContains string
 	}{
-		{name: "parse/signature error mapped via ParseError sentinel", rawErr: jwt.ParseError(), wantErrContains: "malformed"},
-		{name: "issuer error includes expected iss value", rawErr: jwt.InvalidIssuerError(), wantErrContains: `expected iss="https://auth.example.com"`},
-		{name: "audience error includes expected aud value", rawErr: jwt.InvalidAudienceError(), wantErrContains: `expected aud="broker-id"`},
-		{name: "expired token mapped", rawErr: jwt.TokenExpiredError(), wantErrContains: "expired"},
-		{name: "not-yet-valid token mapped", rawErr: jwt.TokenNotYetValidError(), wantErrContains: "not yet valid"},
+		{name: "parse/signature error mapped via ParseError sentinel", rawErr: jwt.ParseError{}, wantErrContains: "malformed"},
+		{name: "issuer error includes expected iss value", rawErr: jwt.InvalidIssuerError{}, wantErrContains: `expected iss="https://auth.example.com"`},
+		{name: "audience error includes expected aud value", rawErr: jwt.InvalidAudienceError{}, wantErrContains: `expected aud="broker-id"`},
+		{name: "expired token mapped", rawErr: jwt.TokenExpiredError{}, wantErrContains: "expired"},
+		{name: "not-yet-valid token mapped", rawErr: jwt.TokenNotYetValidError{}, wantErrContains: "not yet valid"},
 		{name: "unknown error falls through to default case", rawErr: fmt.Errorf("some totally unknown jwt failure"), wantErrContains: "validation failed"},
 	}
 
@@ -427,7 +427,7 @@ func TestExtractDiagnostics(t *testing.T) {
 		serialized, signErr := jwt.Sign(tok, jwt.WithInsecureNoSignature())
 		require.NoError(t, signErr)
 
-		domErr := validator.mapParseError(jwt.InvalidAudienceError(), "subject_token", string(serialized))
+		domErr := validator.mapParseError(jwt.InvalidAudienceError{}, "subject_token", string(serialized))
 		tokenErr, ok := domErr.(*TokenExchangeError)
 		require.True(t, ok)
 		assert.Contains(t, tokenErr.Details(), `sub="debug-user"`)
@@ -446,7 +446,7 @@ func newTestKeyPairWithID(t *testing.T, kid string) (jwk.Key, jwk.Set) {
 	t.Helper()
 	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
-	jwkKey, err := jwk.Import(privKey)
+	jwkKey, err := jwk.Import[jwk.Key](privKey)
 	require.NoError(t, err)
 	require.NoError(t, jwkKey.Set(jwk.KeyIDKey, kid))
 	require.NoError(t, jwkKey.Set(jwk.AlgorithmKey, jwa.ES256()))

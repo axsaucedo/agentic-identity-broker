@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -858,12 +858,12 @@ func TestProvider_AccessToken_ClaimsAndSignature(t *testing.T) {
 		require.True(t, ok, "jti must be present")
 		assert.NotEmpty(t, jti)
 
-		var gotAgentID string
-		require.NoError(t, tok.Get("agent_id", &gotAgentID), "agent_id must be present")
+		gotAgentID, err := jwt.Get[string](tok, "agent_id")
+		require.NoError(t, err, "agent_id must be present")
 		assert.Equal(t, wantAgentID, gotAgentID)
 
-		var scope string
-		require.NoError(t, tok.Get("scope", &scope), "scope must be present")
+		scope, err := jwt.Get[string](tok, "scope")
+		require.NoError(t, err, "scope must be present")
 		assert.Equal(t, wantScope, scope)
 	}
 
@@ -940,8 +940,8 @@ func TestProvider_CEL_RequestGrantType(t *testing.T) {
 		t.Helper()
 		tok, err := jwt.Parse([]byte(tokenStr), jwt.WithValidate(false), jwt.WithVerify(false))
 		require.NoError(t, err)
-		var v string
-		require.NoError(t, tok.Get(claim, &v))
+		v, err := jwt.Get[string](tok, claim)
+		require.NoError(t, err)
 		return v
 	}
 

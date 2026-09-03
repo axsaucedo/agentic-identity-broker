@@ -8,13 +8,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -214,7 +215,7 @@ func TestNewJWKSAdapter(t *testing.T) {
 // TestGetKeySet tests successful JWKS fetching and caching
 func TestGetKeySet(t *testing.T) {
 	// Create a test JWKS with one key
-	testKey, err := jwk.Import([]byte("secret_key_material_32_bytes_long_"))
+	testKey, err := jwk.Import[jwk.Key]([]byte("secret_key_material_32_bytes_long_"))
 	require.NoError(t, err)
 	require.NoError(t, testKey.Set(jwk.KeyIDKey, "test-kid"))
 	require.NoError(t, testKey.Set(jwk.AlgorithmKey, jwa.HS256()))
@@ -412,12 +413,12 @@ func TestGetKeySet_RefreshUsesFetchTimeoutWhenCallerContextExpires(t *testing.T)
 // TestGetKey tests key retrieval by kid
 func TestGetKey(t *testing.T) {
 	// Create test JWKS with multiple keys
-	key1, err := jwk.Import([]byte("secret_key_material_32_bytes_long_1"))
+	key1, err := jwk.Import[jwk.Key]([]byte("secret_key_material_32_bytes_long_1"))
 	require.NoError(t, err)
 	require.NoError(t, key1.Set(jwk.KeyIDKey, "kid-1"))
 	require.NoError(t, key1.Set(jwk.AlgorithmKey, jwa.HS256()))
 
-	key2, err := jwk.Import([]byte("secret_key_material_32_bytes_long_2"))
+	key2, err := jwk.Import[jwk.Key]([]byte("secret_key_material_32_bytes_long_2"))
 	require.NoError(t, err)
 	require.NoError(t, key2.Set(jwk.KeyIDKey, "kid-2"))
 	require.NoError(t, key2.Set(jwk.AlgorithmKey, jwa.HS256()))
@@ -456,7 +457,7 @@ func TestGetKey(t *testing.T) {
 
 // TestGetKey_NotFound tests handling of missing key
 func TestGetKey_NotFound(t *testing.T) {
-	key1, err := jwk.Import([]byte("secret_key_material_32_bytes_long_1"))
+	key1, err := jwk.Import[jwk.Key]([]byte("secret_key_material_32_bytes_long_1"))
 	require.NoError(t, err)
 	require.NoError(t, key1.Set(jwk.KeyIDKey, "kid-1"))
 	require.NoError(t, key1.Set(jwk.AlgorithmKey, jwa.HS256()))
@@ -489,7 +490,7 @@ func TestGetKey_NotFound(t *testing.T) {
 
 // TestGetKey_ConcurrentAccess tests thread-safety of concurrent Get calls
 func TestGetKey_ConcurrentAccess(t *testing.T) {
-	key1, err := jwk.Import([]byte("secret_key_material_32_bytes_long_1"))
+	key1, err := jwk.Import[jwk.Key]([]byte("secret_key_material_32_bytes_long_1"))
 	require.NoError(t, err)
 	require.NoError(t, key1.Set(jwk.KeyIDKey, "kid-1"))
 	require.NoError(t, key1.Set(jwk.AlgorithmKey, jwa.HS256()))
@@ -532,7 +533,7 @@ func TestGetKey_ConcurrentAccess(t *testing.T) {
 
 // TestGetKeySet_Caching verifies that subsequent calls use cached results
 func TestGetKeySet_Caching(t *testing.T) {
-	key1, err := jwk.Import([]byte("secret_key_material_32_bytes_long_1"))
+	key1, err := jwk.Import[jwk.Key]([]byte("secret_key_material_32_bytes_long_1"))
 	require.NoError(t, err)
 	require.NoError(t, key1.Set(jwk.KeyIDKey, "kid-1"))
 	require.NoError(t, key1.Set(jwk.AlgorithmKey, jwa.HS256()))
@@ -606,7 +607,7 @@ func TestShutdown_CanBeCalledMultipleTimes(t *testing.T) {
 }
 
 func TestBackgroundRefreshFailure_LogsWarn(t *testing.T) {
-	testKey, err := jwk.Import([]byte("secret_key_material_32_bytes_long_"))
+	testKey, err := jwk.Import[jwk.Key]([]byte("secret_key_material_32_bytes_long_"))
 	require.NoError(t, err)
 	require.NoError(t, testKey.Set(jwk.KeyIDKey, "test-kid"))
 	require.NoError(t, testKey.Set(jwk.AlgorithmKey, jwa.HS256()))
@@ -657,7 +658,7 @@ func TestBackgroundRefreshFailure_LogsWarn(t *testing.T) {
 }
 
 func TestGetKeySet_LogsOnceWhenServingCachedKeysAfterRefreshFailure(t *testing.T) {
-	testKey, err := jwk.Import([]byte("secret_key_material_32_bytes_long_"))
+	testKey, err := jwk.Import[jwk.Key]([]byte("secret_key_material_32_bytes_long_"))
 	require.NoError(t, err)
 	require.NoError(t, testKey.Set(jwk.KeyIDKey, "test-kid"))
 	require.NoError(t, testKey.Set(jwk.AlgorithmKey, jwa.HS256()))
@@ -744,7 +745,7 @@ func TestHealthState_DegradedBeforeFirstFetch(t *testing.T) {
 }
 
 func TestHealthState_TracksBackgroundRefreshLifecycle(t *testing.T) {
-	testKey, err := jwk.Import([]byte("secret_key_material_32_bytes_long_"))
+	testKey, err := jwk.Import[jwk.Key]([]byte("secret_key_material_32_bytes_long_"))
 	require.NoError(t, err)
 	require.NoError(t, testKey.Set(jwk.KeyIDKey, "test-kid"))
 	require.NoError(t, testKey.Set(jwk.AlgorithmKey, jwa.HS256()))
@@ -792,7 +793,7 @@ func TestHealthState_TracksBackgroundRefreshLifecycle(t *testing.T) {
 }
 
 func TestGetKeySet_ReturnsErrorWhenCachedMaterialExpiresAfterRefreshFailure(t *testing.T) {
-	testKey, err := jwk.Import([]byte("secret_key_material_32_bytes_long_"))
+	testKey, err := jwk.Import[jwk.Key]([]byte("secret_key_material_32_bytes_long_"))
 	require.NoError(t, err)
 	require.NoError(t, testKey.Set(jwk.KeyIDKey, "test-kid"))
 	require.NoError(t, testKey.Set(jwk.AlgorithmKey, jwa.HS256()))
@@ -833,5 +834,17 @@ func TestGetKeySet_ReturnsErrorWhenCachedMaterialExpiresAfterRefreshFailure(t *t
 	}, 4*time.Second, 50*time.Millisecond)
 
 	_, err = adapter.GetKeySet(ctx)
+	require.Error(t, err)
+}
+
+func TestTrackingTransformer_RejectsUnsupportedJWKSKeys(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "https://issuer.example.com/jwks", nil)
+	response := &http.Response{
+		Body:    io.NopCloser(strings.NewReader(`{"keys":[{"kty":"unsupported"}]}`)),
+		Request: request,
+	}
+
+	_, err := (trackingTransformer{}).Transform(context.Background(), response)
+
 	require.Error(t, err)
 }

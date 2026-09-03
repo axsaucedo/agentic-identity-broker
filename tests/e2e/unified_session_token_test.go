@@ -13,7 +13,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -29,7 +29,7 @@ import (
 // newE2EJWETokenService returns a JWE token service backed by the same key as DefaultOAuth2Config.
 // Used to create test tokens (including expired ones) for E2E rejection scenarios.
 func newE2EJWETokenService() *domjwe.TokenService {
-	jweKey, err := jwk.Import([]byte("test-32-byte-key-must-be-exact-x"))
+	jweKey, err := jwk.Import[jwk.Key]([]byte("test-32-byte-key-must-be-exact-x"))
 	if err != nil {
 		panic("newE2EJWETokenService: failed to import key: " + err.Error())
 	}

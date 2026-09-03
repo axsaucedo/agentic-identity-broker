@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -49,7 +49,7 @@ func newApprovalRequestAuthenticatorForTest(t *testing.T, authorizationExpressio
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	publicKey, err := jwk.Import(&privateKey.PublicKey)
+	publicKey, err := jwk.Import[jwk.Key](&privateKey.PublicKey)
 	require.NoError(t, err)
 	require.NoError(t, publicKey.Set(jwk.KeyIDKey, testApprovalKeyID))
 	require.NoError(t, publicKey.Set(jwk.AlgorithmKey, jwa.RS256()))
@@ -90,7 +90,7 @@ func signApprovalJWT(t *testing.T, privateKey *rsa.PrivateKey, claims map[string
 		require.NoError(t, tok.Set(key, value))
 	}
 
-	jwkKey, err := jwk.Import(privateKey)
+	jwkKey, err := jwk.Import[jwk.Key](privateKey)
 	require.NoError(t, err)
 	require.NoError(t, jwkKey.Set(jwk.KeyIDKey, testApprovalKeyID))
 

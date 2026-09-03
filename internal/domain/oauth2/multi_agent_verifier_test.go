@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -54,7 +54,7 @@ func generateTestRSAKeyPair(t *testing.T) (*rsa.PrivateKey, jwk.Set) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	pubJWK, err := jwk.Import(&privateKey.PublicKey)
+	pubJWK, err := jwk.Import[jwk.Key](&privateKey.PublicKey)
 	require.NoError(t, err)
 	require.NoError(t, pubJWK.Set(jwk.KeyIDKey, "test-key-id"))
 	require.NoError(t, pubJWK.Set(jwk.AlgorithmKey, jwa.RS256()))
@@ -71,7 +71,7 @@ func signTestJWT(t *testing.T, privateKey *rsa.PrivateKey, claims map[string]int
 	for k, v := range claims {
 		require.NoError(t, tok.Set(k, v))
 	}
-	privJWK, err := jwk.Import(privateKey)
+	privJWK, err := jwk.Import[jwk.Key](privateKey)
 	require.NoError(t, err)
 	require.NoError(t, privJWK.Set(jwk.KeyIDKey, "test-key-id"))
 	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256(), privJWK))

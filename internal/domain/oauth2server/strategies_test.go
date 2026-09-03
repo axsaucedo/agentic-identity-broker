@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jws"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/ory/fosite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -413,12 +413,12 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 		require.True(t, ok, "jti must be present")
 		assert.NotEmpty(t, jti)
 
-		var gotAgentID string
-		require.NoError(t, tok.Get("agent_id", &gotAgentID), "agent_id must be present")
+		gotAgentID, err := jwt.Get[string](tok, "agent_id")
+		require.NoError(t, err, "agent_id must be present")
 		assert.Equal(t, req.GetClient().GetID(), gotAgentID)
 
-		var scope string
-		require.NoError(t, tok.Get("scope", &scope), "scope must be present")
+		scope, err := jwt.Get[string](tok, "scope")
+		require.NoError(t, err, "scope must be present")
 		assert.Equal(t, "read write", scope)
 	})
 }
@@ -516,8 +516,8 @@ func TestJWXAccessTokenStrategy_SubClaimNotOverridable(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "legitimate@example.com", sub)
 
-	var extra string
-	require.NoError(t, tok.Get("extra", &extra), "non-reserved CEL claim should be present")
+	extra, err := jwt.Get[string](tok, "extra")
+	require.NoError(t, err, "non-reserved CEL claim should be present")
 	assert.Equal(t, "ok", extra)
 }
 
@@ -557,7 +557,7 @@ func TestJWXAccessTokenStrategy_ValidateAccessToken(t *testing.T) {
 		require.NoError(t, err)
 		privPEM, err := svc.DecryptPrivateKey(ctx, key)
 		require.NoError(t, err)
-		privKey, err := jwk.ParseKey(privPEM, jwk.WithPEM(true))
+		privKey, err := jwk.ParseKey(privPEM, jwk.WithX509(true))
 		require.NoError(t, err)
 		_ = privKey.Set(jwk.KeyIDKey, key.KID.String())
 

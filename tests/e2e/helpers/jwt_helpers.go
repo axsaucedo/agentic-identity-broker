@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 )
 
 // GenerateTestRSAKeyPair generates a test RSA key pair suitable for JWT signing.
@@ -77,7 +77,7 @@ func SignTestJWT(claims map[string]interface{}, privateKeyPEM string) (string, e
 	}
 
 	// Convert private key to JWK for signing
-	jwkKey, err := jwk.Import(privateKey)
+	jwkKey, err := jwk.Import[jwk.Key](privateKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to import private key as JWK: %w", err)
 	}
@@ -112,7 +112,7 @@ func GenerateJWKSFromPublicKey(publicKeyPEM string) (map[string]interface{}, err
 	}
 
 	// Convert raw public key to lestrrat-go/jwx JWK format using jwk.Import
-	jwkKey, err := jwk.Import(publicKey)
+	jwkKey, err := jwk.Import[jwk.Key](publicKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert to JWK: %w", err)
 	}

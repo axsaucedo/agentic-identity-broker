@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -38,7 +38,7 @@ func generateTestKeyPair(t *testing.T) (*ecdsa.PrivateKey, []byte, jwk.Key) {
 	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
-	jwkKey, err := jwk.Import(privKey)
+	jwkKey, err := jwk.Import[jwk.Key](privKey)
 	require.NoError(t, err)
 	err = jwkKey.Set(jwk.KeyIDKey, "test-key-1")
 	require.NoError(t, err)
@@ -126,7 +126,32 @@ func newTestAuthenticator(t *testing.T, jwksURL string, signingKey jwk.Key, jwtC
 		Logger:       testLogger(),
 	})
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, auth.Shutdown(context.Background())) })
 	return auth
+}
+
+func TestNewJWXAuthenticator_RejectsUnsupportedJWKSKeys(t *testing.T) {
+	jwksServer := startMockJWKSServer(t, []byte(`{"keys":[{"kty":"unsupported"}]}`))
+	celEvaluator, err := jwtauth.NewCELEvaluator(jwtauth.CELEvaluatorConfig{
+		PrincipalExpression: "claims.sub",
+	}, testLogger())
+	require.NoError(t, err)
+
+	auth, err := NewJWXAuthenticator(JWXAuthenticatorConfig{
+		JWTConfig: &ports.JWTConfig{
+			HeaderName:   "Authorization",
+			Verification: "jwks",
+			JWKSURI:      jwksServer.URL,
+			ClaimExtraction: ports.JWTClaimExtractionConfig{
+				PrincipalExpression: "claims.sub",
+			},
+		},
+		CELEvaluator: celEvaluator,
+		HTTPClient:   &http.Client{Timeout: 5 * time.Second},
+		Logger:       testLogger(),
+	})
+	require.Error(t, err)
+	assert.Nil(t, auth)
 }
 
 func TestJWXAuthenticator_ValidSignedJWT(t *testing.T) {
