@@ -312,8 +312,9 @@ func (b *Builder) Build() (*App, error) {
 		// Test override: register the provided TracerProvider globally
 		otel.SetTracerProvider(b.tracerProvider)
 		// Set default propagators for test environment — must match the production
-		// default set (ottrace, b3multi, baggage) to ensure span connectivity.
+		// default set (tracecontext, ottrace, b3multi, baggage) to ensure span connectivity.
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+			propagation.TraceContext{},
 			ot.OT{},
 			b3.New(b3.WithInjectEncoding(b3.B3MultipleHeader)),
 			propagation.Baggage{},
@@ -335,15 +336,14 @@ func (b *Builder) Build() (*App, error) {
 		app.Shutdown = shutdownTelemetry
 	}
 
-	// T038: Wire OTel slog bridge when telemetry and log export are both enabled.
-	// Wraps the base logger handler with a multi-handler that fans log records to both
-	// the original handler and the OTel log bridge (otelslog), enabling log-trace correlation.
+	baseHandler := b.logger.Handler()
 	if b.config.Telemetry.Enabled && b.config.Telemetry.Logs.Enabled {
 		otelHandler := otelslog.NewHandler(b.config.Telemetry.ServiceName,
 			otelslog.WithLoggerProvider(global.GetLoggerProvider()))
-		b.logger = slog.New(telemetry.NewMultiHandler(b.logger.Handler(), otelHandler))
-		app.Logger = b.logger
+		baseHandler = telemetry.NewMultiHandler(baseHandler, otelHandler)
 	}
+	b.logger = slog.New(telemetry.NewContextHandler(baseHandler))
+	app.Logger = b.logger
 
 	// Phase 1: Initialize encryption adapter (must happen before domain services).
 	// Encryption is mandatory — no fallback. Config must specify memory or aws_kms backend.

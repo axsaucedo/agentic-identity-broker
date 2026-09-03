@@ -52,7 +52,7 @@ func (h *UserInfoHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 			PictureURL:  profile.PictureURL(),
 		}
 
-		h.logger.Info("user info retrieved from profile",
+		h.logger.InfoContext(ctx, "user info retrieved from profile",
 			"principal", profile.Principal(),
 			"has_email", profile.Email() != nil,
 			"has_picture_url", profile.PictureURL() != nil)
@@ -68,7 +68,7 @@ func (h *UserInfoHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 	// Fall back to plain principal (backward-compatible)
 	principalValue, ok := principal.FromContext(ctx)
 	if !ok || principalValue == "" {
-		h.logger.Warn("principal not found in context")
+		h.logger.WarnContext(ctx, "principal not found in context")
 		h.writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
@@ -79,7 +79,7 @@ func (h *UserInfoHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 		PictureURL:  nil,
 	}
 
-	h.logger.Info("user info retrieved",
+	h.logger.InfoContext(ctx, "user info retrieved",
 		"principal", principalValue)
 
 	response := GetUserInfoResponse{

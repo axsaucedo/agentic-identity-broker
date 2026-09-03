@@ -566,6 +566,57 @@ Admin Server (Port 14000):
       └── DELETE /{kid}           (remove key)
 ```
 
+#### 3.1.4.2. Request Security Context Propagation (Feature 033)
+
+**Purpose**: Capture one immutable, request-scoped security context at the broker perimeter and propagate it through handlers, services, repositories, and audit logs without per-endpoint metadata plumbing.
+
+**Scope**:
+
+- Applies to both HTTP servers and to the ExtProc gRPC perimeter by log-semantics parity.
+- Adds **no new endpoints** and **no request/response body schema changes**. The only HTTP contract change is the additive global W3C `traceresponse` response header.
+- Adds **no persisted entities**, **no database schema changes**, and **no files under `migrations/`**.
+- Backend-only feature: no files under `web/` or `tests/e2e/frontend/` are in scope.
+
+**HTTP middleware ordering** (outermost → innermost):
+
+1. `RecoveryMiddleware`
+2. `TraceContextNormalizationMiddleware`
+3. `otelchi` span middleware
+4. `OptionalPrincipalMiddleware`
+5. `SecurityContextMiddleware`
+6. `LoggingMiddleware`
+7. `ContextRecoveryMiddleware`
+8. Route setup and handlers
+
+This ordering is intentional. `TraceContextNormalizationMiddleware` collapses duplicate `traceparent` headers to the first value the configured propagator accepts, so `otelchi` can reuse the first valid inbound trace identifier instead of falling back to a fresh trace. `otelchi` then establishes the authoritative request trace before security-context capture. `OptionalPrincipalMiddleware` resolves the ordinary authenticated principal. `SecurityContextMiddleware` then builds the request-scoped forensic value object and writes the additive `traceresponse` header unless disabled by configuration. `LoggingMiddleware` and the inner recovery layer run after finalization so their records can carry the resolved `trace_id`, `actor`, and optional `calling_peer`.
+
+**Trace correlation contract**:
+
+- `SecurityContext.TraceID` is the single authority for request correlation.
+- When a valid span exists, `SecurityContext.TraceID` equals the span trace ID.
+- When tracing is disabled or no valid span exists, the broker mints a `crypto/rand` fallback trace ID.
+- The global `traceresponse` header uses W3C form `00-<trace-id>-<child-id>-<flags>`, and its `<trace-id>` field matches the `trace_id` written to logs for that request.
+- The response header is additive and non-breaking; it is enabled by default and suppressed only via `request_context.trace.response_enabled: false`.
+
+**Token-exchange effective perimeter**:
+
+`SecurityContextMiddleware` finalizes the `SecurityContext` immediately for ordinary HTTP requests, but defers every `POST /oauth2/token`: it cannot read `grant_type` to distinguish a delegated exchange from an ordinary grant without consuming the one-shot request body, so it installs a capture holder and leaves finalization to the request's effective perimeter:
+
+- **Non-RFC 8693 grants** (`client_credentials`, `authorization_code`) finalize in `OAuth2TokenHandler` at the `/oauth2/token` seam, before the grant handler runs, so its context-aware `TokenIssued` audit logs already carry `Actor` and `TraceID`. These requests have no distinct calling peer.
+- **Delegated RFC 8693 token exchange** finalizes at the post-validation token-exchange seam (`tokenexchange.Exchange`), the only seam with a distinct authenticated peer. There the broker finalizes the immutable `SecurityContext` exactly once from the previously captured transport metadata, the validated subject-token principal as `Actor`, and `client_assertion.sub` as `CallingPeer`. Finalization precedes the privileged-client authorization decision, so a denied exchange whose tokens validated still carries `Actor`/`CallingPeer` on the failure audit path.
+
+A last-resort net in `LoggingMiddleware` finalizes any still-open holder after the handler returns, so perimeter access logs and early-error `/oauth2/token` responses still carry a finalized context. `CallingPeer` is omitted when unavailable or when it resolves to the same identity as `Actor`.
+
+**Security and performance constraints**:
+
+- **SR-001 / FR-011**: capture is always enabled; operators may only tune trusted-proxy behavior and response-header emission.
+- **SR-002 / FR-003**: trace IDs reuse the distributed-tracing identifier when present and otherwise use a `crypto/rand` fallback.
+- **SR-003 / FR-009**: the feature is fail-open for observability but does not change fail-closed authentication and authorization behavior.
+- **SR-004 / FR-006**: security-relevant logs carry `trace_id`, `actor`, and optional `calling_peer`.
+- **SR-005 / FR-012**: credentials, cookies, authorization codes, and query strings are not copied into the security context or its logs.
+- **SR-006 / FR-010**: forwarding headers are ignored unless trusted proxy mode is explicitly enabled; when enabled, the broker treats the right-most configured forwarded-header entry as authoritative.
+- **SC-008**: the design budget is under 1 ms median per-request overhead with no additional heap allocations beyond one context value and one response header on the hot path.
+
 #### 3.1.5. Encryption Vault for OAuth Tokens (Feature 012)
 
 **Purpose**: Secure at-rest encryption of OAuth2 tokens using envelope encryption with AWS Encryption SDK, protecting tokens from unauthorized access while maintaining developer transparency.
@@ -1104,6 +1155,7 @@ This section lists all architectural decisions made for this project. ADRs docum
 ### Observability
 
 - [ADR 011: OpenTelemetry Provider Pattern](adrs/011-opentelemetry-provider-pattern.md) - App-layer OTel provider, otelchi middleware choice, context-based span propagation
+- [ADR 033: Request Security Context Propagation](adrs/033-request-security-context-propagation.md) - Perimeter security-context capture, additive `traceresponse` response header, and delegated `calling_peer` semantics
 
 ### Client ID Metadata Document (CIMD)
 
@@ -1163,6 +1215,18 @@ Define any project-specific terms or acronyms.)
 **AAD**: Additional Authenticated Data. Data that is authenticated but not encrypted as part of AEAD (Authenticated Encryption with Associated Data) schemes. Used in encryption context to prevent cross-context token usage.
 
 **AESGCMSIV**: AES in Galois/Counter Mode with Synthetic Initialization Vector. A misuse-resistant authenticated encryption mode that provides both confidentiality and authenticity. Used for DEK-based token encryption with deterministic nonce generation.
+
+### Request Security Context
+
+**SecurityContext**: Immutable request-scoped value object carrying the request Trace ID, Actor, optional CallingPeer, client IP, user agent, request method, request target, and receipt timestamp. Built exactly once at the perimeter, propagated through `context.Context`, never persisted, and never mutated after construction.
+
+**Actor**: Authenticated identity on whose behalf the request is acting. Always populated on `SecurityContext`; when no authenticated identity is available, the broker uses the sentinel `anonymous`.
+
+**CallingPeer**: Authenticated peer that directly wielded the request when it is distinct from `Actor` (for example, a validated token-exchange `client_assertion.sub`). Omitted when unavailable or equal to `Actor`.
+
+**anonymous**: Sentinel actor value recorded for unauthenticated or degraded requests. It is a forensic label only and never grants access to protected routes.
+
+**Trace ID**: Request correlation identifier stored on `SecurityContext.TraceID`. It is always a 32-character lower-case hex value, reused from the active span when possible and otherwise generated as a fallback. The `<trace-id>` field in the W3C `traceresponse` response header matches this value.
 
 ### Session Management Domain
 

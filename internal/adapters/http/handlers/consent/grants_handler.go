@@ -257,7 +257,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if errors.Is(err, consent.ErrUnconnectedServices) {
-			h.logger.Warn("grant submission includes services without active sessions (FR-020)",
+			h.logger.WarnContext(r.Context(), "grant submission includes services without active sessions (FR-020)",
 				"agent_id", agentID,
 				"principal", principalValue,
 				"error", err)
@@ -266,7 +266,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if errors.Is(err, consent.ErrGrantValidation) {
-			h.logger.Warn("grant validation failed",
+			h.logger.WarnContext(r.Context(), "grant validation failed",
 				"agent_id", agentID,
 				"principal", principalValue,
 				"error", err)
@@ -274,7 +274,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		h.logger.Error("failed to grant consent",
+		h.logger.ErrorContext(r.Context(), "failed to grant consent",
 			"agent_id", agentID,
 			"principal", principalValue,
 			"error", err)
@@ -288,13 +288,13 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if grant == nil {
-		h.logger.Error("grant consent returned nil grant without error", "agent_id", agentID)
+		h.logger.ErrorContext(r.Context(), "grant consent returned nil grant without error", "agent_id", agentID)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return
 	}
 
 	// Audit logging
-	h.logger.Info("grant created",
+	h.logger.InfoContext(r.Context(), "grant created",
 		"principal", principalValue,
 		"agent_id", agentID,
 		"grant_id", grant.ID)

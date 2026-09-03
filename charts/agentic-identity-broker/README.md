@@ -165,6 +165,9 @@ See [values.yaml](values.yaml) for the complete list of configuration options.
 | `broker.telemetry.exporter.timeout` | Export request timeout | `10s` |
 | `broker.telemetry.exporter.compression` | Payload compression (`none` or `gzip`) | `none` |
 | `broker.telemetry.exporter.insecure` | Disable TLS for the OTLP connection (never use in production) | `false` |
+| `broker.requestContext.trustedProxy.enabled` | Trust forwarded headers from an upstream proxy for caller-IP derivation | `false` |
+| `broker.requestContext.trustedProxy.forwardedHeader` | Forwarded header to inspect when trusted proxy mode is enabled | `X-Forwarded-For` |
+| `broker.requestContext.trace.responseEnabled` | Emit the additive W3C `traceresponse` response header | `true` |
 
 ### Custom Values File
 
@@ -494,6 +497,22 @@ broker:
 ```
 
 > **Tip**: Store the authentication token in a Kubernetes Secret and inject it into the pod environment so that `${OTEL_EXPORTER_AUTH_TOKEN}` is resolved at runtime by the broker's configuration loader, which expands `${VAR}` references from the process environment. The env var `IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT` can also be used to override the endpoint without modifying the ConfigMap (useful in multi-environment Helm releases).
+
+### Request Security Context Behind a Trusted Proxy
+
+Use this when your ingress or reverse proxy appends `X-Forwarded-For` and you want the broker to return the additive W3C `traceresponse` header to callers:
+
+```yaml
+broker:
+  requestContext:
+    trustedProxy:
+      enabled: true
+      forwardedHeader: X-Forwarded-For
+    trace:
+      responseEnabled: true
+```
+
+> **Note**: Request-security-context capture is always enabled. Setting `responseEnabled: false` suppresses only the response header; request-scoped `trace_id` logging remains active.
 
 ## License
 

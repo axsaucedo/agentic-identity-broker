@@ -206,6 +206,28 @@ token_exchange:
 
 > **Breaking change (Feature 021)**: `agent_id_expression: "subject_token.azp"` is no longer valid. Update to `resolveAgentIdByClientId(subject_token.azp)`. See [docs/changelog.md](../../docs/changelog.md).
 
+### `request-context.yaml`
+
+Request security-context configuration. Demonstrates:
+- Secure-by-default trusted-proxy handling (`trusted_proxy.enabled: false`)
+- Configurable forwarded-header name for deployments behind a trusted ingress or reverse proxy
+- Additive W3C `traceresponse` response-header emission (`trace.response_enabled: true`)
+- The fact that request capture and log correlation stay enabled even if the response header is suppressed
+
+**Usage:**
+```bash
+# Copy the request_context block into your main configuration file, or merge it as an overlay.
+./agentic-identity-broker --config ./examples/config/config.development.yaml
+```
+
+**Key Features:**
+- Capture is always enabled; there is no feature-level off switch
+- Forwarding headers are ignored unless trusted proxy mode is explicitly enabled
+- The broker treats the right-most forwarded entry as authoritative when proxy trust is enabled
+- The `traceresponse` header is additive and does not change request or response body schemas
+
+See [`request-context.yaml`](request-context.yaml) for the documented example block.
+
 ### `extproc-telemetry.yaml`
 
 OpenTelemetry configuration example for the **ExtProc Token Exchange service**. Demonstrates:

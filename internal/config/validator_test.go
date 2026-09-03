@@ -62,6 +62,15 @@ func validTestConfig() *ports.Config {
 				UpstreamTokenEndpoint:     "https://auth.example.com/token",
 			},
 		},
+		RequestContext: ports.RequestContextConfig{
+			TrustedProxy: ports.RequestContextTrustedProxyConfig{
+				Enabled:         false,
+				ForwardedHeader: "X-Forwarded-For",
+			},
+			Trace: ports.RequestContextTraceConfig{
+				ResponseEnabled: true,
+			},
+		},
 		Security: ports.SecurityConfig{},
 	}
 }
@@ -780,5 +789,98 @@ func TestValidateCORSConfig(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestValidateRequestContextConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		cfg       ports.RequestContextConfig
+		wantErr   bool
+		wantField string
+	}{
+		{
+			name: "trusted proxy disabled allows empty forwarded header",
+			cfg: ports.RequestContextConfig{
+				TrustedProxy: ports.RequestContextTrustedProxyConfig{
+					Enabled: false,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "trusted proxy enabled with forwarded header passes",
+			cfg: ports.RequestContextConfig{
+				TrustedProxy: ports.RequestContextTrustedProxyConfig{
+					Enabled:         true,
+					ForwardedHeader: "X-Forwarded-For",
+				},
+				Trace: ports.RequestContextTraceConfig{
+					ResponseEnabled: false,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "trusted proxy enabled requires a forwarded header",
+			cfg: ports.RequestContextConfig{
+				TrustedProxy: ports.RequestContextTrustedProxyConfig{
+					Enabled: true,
+				},
+			},
+			wantErr:   true,
+			wantField: "request_context.trusted_proxy.forwarded_header",
+		},
+		{
+			name: "trusted proxy enabled rejects whitespace-only forwarded header",
+			cfg: ports.RequestContextConfig{
+				TrustedProxy: ports.RequestContextTrustedProxyConfig{
+					Enabled:         true,
+					ForwardedHeader: "   ",
+				},
+			},
+			wantErr:   true,
+			wantField: "request_context.trusted_proxy.forwarded_header",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateRequestContextConfig(&tt.cfg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateRequestContextConfig() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if err != nil {
+				configErr, ok := err.(*config.ConfigError)
+				if !ok {
+					t.Errorf("validateRequestContextConfig() error type = %T, want *config.ConfigError", err)
+					return
+				}
+				if configErr.Field != tt.wantField {
+					t.Errorf("validateRequestContextConfig() error field = %q, want %q", configErr.Field, tt.wantField)
+				}
+			}
+		})
+	}
+}
+
+func TestValidate_WithRequestContextConfig(t *testing.T) {
+	cfg := validTestConfig()
+	cfg.RequestContext.TrustedProxy.Enabled = true
+	cfg.RequestContext.TrustedProxy.ForwardedHeader = ""
+
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("expected validation error for missing trusted proxy forwarded header, got nil")
+	}
+	if !strings.Contains(err.Error(), "request_context.trusted_proxy.forwarded_header") {
+		t.Errorf("expected request_context.trusted_proxy.forwarded_header in error, got: %v", err)
+	}
+	if configErr, ok := err.(*config.ConfigError); !ok {
+		t.Errorf("Validate() error type = %T, want *config.ConfigError", err)
+	} else if configErr.Field != "request_context.trusted_proxy.forwarded_header" {
+		t.Errorf("Validate() error field = %q, want %q", configErr.Field, "request_context.trusted_proxy.forwarded_header")
 	}
 }

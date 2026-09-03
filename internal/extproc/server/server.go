@@ -8,6 +8,8 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -25,6 +27,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -87,6 +90,10 @@ type requestState struct {
 	finishObservation     func(outcome, resourceURI, errorType string)
 }
 
+type requestLoggerKey struct{}
+
+type requestTraceIDKey struct{}
+
 // NewServer creates a new ExtProc Server without OPA authorization.
 // cfg provides the service configuration; exchanger performs token exchange;
 // logger is used for structured logging.
@@ -129,7 +136,92 @@ func (s *Server) extractTraceContext(ctx context.Context, headers *extprocv3.Htt
 	if !s.cfg.Telemetry.Enabled {
 		return ctx
 	}
+	normalizeTraceparentHeaders(headers)
 	return otel.GetTextMapPropagator().Extract(ctx, (*headerCarrier)(headers))
+}
+
+func normalizeTraceparentHeaders(headers *extprocv3.HttpHeaders) {
+	if headers == nil || headers.Headers == nil {
+		return
+	}
+
+	var selected *corev3.HeaderValue
+	for _, header := range headers.Headers.Headers {
+		if !strings.EqualFold(header.Key, "traceparent") || selected != nil {
+			continue
+		}
+		value := header.Value
+		if len(header.RawValue) > 0 {
+			value = string(header.RawValue)
+		}
+		candidate := propagation.TraceContext{}.Extract(context.Background(), propagation.MapCarrier{"traceparent": value})
+		if trace.SpanContextFromContext(candidate).IsValid() {
+			selected = header
+		}
+	}
+
+	normalized := headers.Headers.Headers[:0]
+	for _, header := range headers.Headers.Headers {
+		if !strings.EqualFold(header.Key, "traceparent") || header == selected {
+			normalized = append(normalized, header)
+		}
+	}
+	headers.Headers.Headers = normalized
+}
+
+func (s *Server) withRequestLogger(ctx context.Context, actor, callingPeer string) (context.Context, *slog.Logger) {
+	if logger, ok := ctx.Value(requestLoggerKey{}).(*slog.Logger); ok && logger != nil {
+		return ctx, logger
+	}
+
+	if actor == "" {
+		actor = "anonymous"
+	}
+
+	traceID := traceIDFromContext(ctx)
+	if traceID == "" {
+		traceID = generateFallbackTraceID()
+	}
+
+	ctx = context.WithValue(ctx, requestTraceIDKey{}, traceID)
+
+	logger := s.logger.With("trace_id", traceID, "actor", actor)
+	if callingPeer != "" {
+		logger = logger.With("calling_peer", callingPeer)
+	}
+
+	ctx = context.WithValue(ctx, requestLoggerKey{}, logger)
+	return ctx, logger
+}
+
+func loggerFromContext(ctx context.Context, fallback *slog.Logger) *slog.Logger {
+	if logger, ok := ctx.Value(requestLoggerKey{}).(*slog.Logger); ok && logger != nil {
+		return logger
+	}
+
+	return fallback
+}
+
+func traceIDFromContext(ctx context.Context) string {
+	if traceID, ok := ctx.Value(requestTraceIDKey{}).(string); ok && traceID != "" {
+		return traceID
+	}
+
+	spanContext := trace.SpanContextFromContext(ctx)
+	if spanContext.IsValid() {
+		return spanContext.TraceID().String()
+	}
+
+	return ""
+}
+
+func generateFallbackTraceID() string {
+	var traceID [16]byte
+	if _, err := rand.Read(traceID[:]); err != nil {
+		return strings.ReplaceAll(uuid.NewString(), "-", "")
+	}
+
+	return hex.EncodeToString(traceID[:])
 }
 
 func (s *Server) beginTokenExchangeObservation(ctx context.Context) (context.Context, func(outcome, resourceURI, errorType string)) {
@@ -188,6 +280,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 	// ExtProc stream. It remains nil for OPA-disabled requests, Bearer-less passthrough,
 	// and any RequestBody message that arrives without an earlier headers phase.
 	var state *requestState
+	activeCtx := stream.Context()
 
 	for {
 		req, err := stream.Recv()
@@ -198,7 +291,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 			if status.Code(err) == codes.Canceled {
 				return nil
 			}
-			s.logger.DebugContext(stream.Context(), "stream recv error", "error", err)
+			loggerFromContext(activeCtx, s.logger).DebugContext(activeCtx, "stream recv error", "error", err)
 			return err
 		}
 
@@ -206,8 +299,10 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 
 		switch msg := req.Request.(type) {
 		case *extprocv3.ProcessingRequest_RequestHeaders:
+			activeCtx = s.extractTraceContext(stream.Context(), msg.RequestHeaders)
+			activeCtx, _ = s.withRequestLogger(activeCtx, "", "")
 			if s.authorizer != nil {
-				resp, state = s.processRequestHeadersOPA(stream.Context(), msg.RequestHeaders.EndOfStream, req, msg.RequestHeaders)
+				resp, state = s.processRequestHeadersOPA(activeCtx, msg.RequestHeaders.EndOfStream, req, msg.RequestHeaders)
 				if state != nil && msg.RequestHeaders.EndOfStream {
 					// No body phase will follow. For MCP only GET (SSE streams) and POST
 					// (JSON-RPC) are valid transports. POST without a body is malformed (400).
@@ -238,15 +333,16 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 					}
 				}
 			} else {
-				resp = s.processRequestHeaders(stream.Context(), req, msg.RequestHeaders)
+				resp = s.processRequestHeaders(activeCtx, req, msg.RequestHeaders)
 			}
 
 		case *extprocv3.ProcessingRequest_RequestBody:
 			if state != nil {
-				bodyCtx := stream.Context()
+				bodyCtx := activeCtx
 				if state.requestContext != nil {
 					bodyCtx = state.requestContext
 				}
+				activeCtx = bodyCtx
 				resp = s.processRequestBody(bodyCtx, state, msg.RequestBody)
 				state = nil // consumed
 			} else {
@@ -273,7 +369,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 		}
 
 		if err := stream.Send(resp); err != nil {
-			s.logger.InfoContext(stream.Context(), "stream send error", "error", err)
+			loggerFromContext(activeCtx, s.logger).InfoContext(activeCtx, "stream send error", "error", err)
 			return err
 		}
 
@@ -301,15 +397,9 @@ func (s *Server) processRequestHeaders(ctx context.Context, req *extprocv3.Proce
 	tracesEnabled := telemetryEnabled && s.cfg.Telemetry.Traces.Enabled
 	metricsEnabled := telemetryEnabled && s.cfg.Telemetry.Metrics.Enabled
 
-	// Extract trace context from incoming request headers before starting span.
-	// In ExtProc, traceparent/baggage live in HttpHeaders, not gRPC stream context.
-	// Use the globally registered propagator so all configured formats (tracecontext,
-	// b3, b3multi, ottrace, baggage) are honoured, not just the hard-coded defaults.
-	if telemetryEnabled {
-		carrier := (*headerCarrier)(headers)
-		ctx = otel.GetTextMapPropagator().Extract(ctx, carrier)
-	}
-
+	// Extract tracing context from incoming request headers before starting a span.
+	// In ExtProc, traceparent and baggage live in HttpHeaders, not the gRPC stream context.
+	ctx = s.extractTraceContext(ctx, headers)
 	// FR-003: Start span for token exchange with extracted trace context.
 	// When traces are disabled, use a no-op span so downstream span.SetAttributes
 	// calls remain safe without additional guards throughout the function.
@@ -319,6 +409,7 @@ func (s *Server) processRequestHeaders(ctx context.Context, req *extprocv3.Proce
 	} else {
 		span = trace.SpanFromContext(ctx)
 	}
+	ctx, logger := s.withRequestLogger(ctx, "", "")
 	defer func() {
 		span.SetAttributes(attribute.String("outcome", outcome))
 		span.End()
@@ -340,7 +431,7 @@ func (s *Server) processRequestHeaders(ctx context.Context, req *extprocv3.Proce
 	if bearerToken == "" {
 		// FR-009: No Bearer token — pass through without modification.
 		outcome = "passthrough"
-		s.logger.DebugContext(ctx, "no Bearer token — passing through")
+		logger.DebugContext(ctx, "no Bearer token — passing through")
 		return passThrough()
 	}
 
@@ -353,7 +444,7 @@ func (s *Server) processRequestHeaders(ctx context.Context, req *extprocv3.Proce
 	sanitizedURI := sanitizeURIForTelemetry(resourceURI)
 
 	if err := validateResourceURI(resourceURI); err != nil {
-		s.logger.WarnContext(ctx, "extproc: invalid resource URI — rejecting with 503",
+		logger.WarnContext(ctx, "extproc: invalid resource URI — rejecting with 503",
 			"scheme", scheme,
 			"authority", authority,
 			"resource_uri", sanitizedURI,
@@ -384,7 +475,7 @@ func (s *Server) processRequestHeaders(ctx context.Context, req *extprocv3.Proce
 		span.SetAttributes(attribute.String("error.type", mappedErrorType))
 		return resp
 	}
-	s.logger.DebugContext(ctx, "token exchanged successfully", "resource", sanitizedURI)
+	logger.DebugContext(ctx, "token exchanged successfully", "resource", sanitizedURI)
 	return replaceAuthorizationHeader("Bearer " + result.Token)
 }
 
@@ -401,14 +492,15 @@ func (s *Server) processRequestHeaders(ctx context.Context, req *extprocv3.Proce
 // Returns (ImmediateResponse, nil) on validation/exchange error, or (response, state).
 func (s *Server) processRequestHeadersOPA(ctx context.Context, endOfStream bool, req *extprocv3.ProcessingRequest, headers *extprocv3.HttpHeaders) (*extprocv3.ProcessingResponse, *requestState) {
 	ctx = s.extractTraceContext(ctx, headers)
-
 	bearerToken := extractBearerToken(headers)
 	if bearerToken == "" {
-		s.logger.DebugContext(ctx, "OPA mode: no Bearer token — passing through")
+		ctx, logger := s.withRequestLogger(ctx, "", "")
+		logger.DebugContext(ctx, "OPA mode: no Bearer token — passing through")
 		return passThrough(), nil
 	}
 
 	ctx, finishObservation := s.beginTokenExchangeObservation(ctx)
+	ctx, logger := s.withRequestLogger(ctx, "", "")
 	finishNow := true
 	outcome := "success"
 	errorType := ""
@@ -425,7 +517,7 @@ func (s *Server) processRequestHeadersOPA(ctx context.Context, endOfStream bool,
 	if err := validateResourceURI(resourceURI); err != nil {
 		outcome = "invalid_resource"
 		errorType = "invalid_resource"
-		s.logger.WarnContext(ctx, "extproc OPA: invalid resource URI — rejecting with 503",
+		logger.WarnContext(ctx, "extproc OPA: invalid resource URI — rejecting with 503",
 			"path", path, "scheme", scheme, "authority", authority,
 			"resource_uri", sanitizeURIForTelemetry(resourceURI), "error", err)
 		return immediateResponse(httpv3.StatusCode_ServiceUnavailable,
@@ -436,7 +528,7 @@ func (s *Server) processRequestHeadersOPA(ctx context.Context, endOfStream bool,
 	if !ok {
 		outcome = "authorization_denied"
 		errorType = "missing_protocol_metadata"
-		s.logger.WarnContext(ctx, "OPA: protocol metadata absent — rejecting with 403 (misconfiguration)",
+		logger.WarnContext(ctx, "OPA: protocol metadata absent — rejecting with 403 (misconfiguration)",
 			"resource", sanitizeURIForTelemetry(resourceURI))
 		return immediateResponse(httpv3.StatusCode_Forbidden,
 			`{"error":"access_denied","error_description":"protocol metadata is required when authorization is enabled"}`), nil
@@ -474,7 +566,7 @@ func (s *Server) processRequestHeadersOPA(ctx context.Context, endOfStream bool,
 		return resp, nil
 	}
 	state.grantedPermissionSets = exchangeResult.GrantedPermissionSets
-	s.logger.DebugContext(ctx, "OPA: token exchanged in headers phase, buffering body for OPA evaluation",
+	logger.DebugContext(ctx, "OPA: token exchanged in headers phase, buffering body for OPA evaluation",
 		"resource", sanitizeURIForTelemetry(resourceURI))
 	return requestBodyBufferingResponseWithAuth("Bearer " + exchangeResult.Token), state
 }
@@ -485,6 +577,7 @@ func (s *Server) processRequestHeadersOPA(ctx context.Context, endOfStream bool,
 //   - allow: echo the request body unchanged (Authorization was already set)
 //   - deny: 403 ImmediateResponse with JSON access_denied body
 func (s *Server) processRequestBody(ctx context.Context, state *requestState, body *extprocv3.HttpBody) *extprocv3.ProcessingResponse {
+	ctx, logger := s.withRequestLogger(ctx, "", "")
 	var bodyBytes []byte
 	if body != nil {
 		bodyBytes = body.Body
@@ -499,7 +592,7 @@ func (s *Server) processRequestBody(ctx context.Context, state *requestState, bo
 
 	maxSize := s.cfg.Authorization.MaxBodySize
 	if maxSize > 0 && len(bodyBytes) > maxSize {
-		s.logger.WarnContext(ctx, "OPA: request body exceeds max_body_size — rejecting",
+		logger.WarnContext(ctx, "OPA: request body exceeds max_body_size — rejecting",
 			"resource", sanitizedURI, "body_size", len(bodyBytes), "max_body_size", maxSize)
 		return immediateResponse(httpv3.StatusCode_Forbidden,
 			`{"error":"request_too_large","error_description":"request body exceeds maximum allowed size"}`)
@@ -513,24 +606,24 @@ func (s *Server) processRequestBody(ctx context.Context, state *requestState, bo
 
 	opaInput, buildErr := authorization.BuildOPAInput(state.protocol, bodyBytes, state.headers, state.grantedPermissionSets)
 	if buildErr != nil {
-		s.logger.WarnContext(ctx, "OPA: failed to parse request body — denying", "resource", sanitizedURI, "error", buildErr)
+		logger.WarnContext(ctx, "OPA: failed to parse request body — denying", "resource", sanitizedURI, "error", buildErr)
 		return immediateResponse(httpv3.StatusCode_Forbidden,
 			`{"error":"access_denied","error_description":"failed to parse request protocol"}`)
 	}
 
 	decision, err := s.authorizer.Evaluate(ctx, opaInput)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "OPA evaluation error — denying", "resource", sanitizedURI, "error", err)
+		logger.ErrorContext(ctx, "OPA evaluation error — denying", "resource", sanitizedURI, "error", err)
 		return immediateResponse(httpv3.StatusCode_Forbidden,
 			`{"error":"access_denied","error_description":"authorization evaluation failed"}`)
 	}
 
 	if decision.Action != "allow" {
-		s.logger.InfoContext(ctx, "OPA denied request", "reasons", decision.Reasons, "resource", sanitizedURI)
+		logger.InfoContext(ctx, "OPA denied request", "reasons", decision.Reasons, "resource", sanitizedURI)
 		return accessDeniedResponse(decision.Reasons)
 	}
 
-	s.logger.DebugContext(ctx, "OPA allowed request, echoing body", "resource", sanitizedURI)
+	logger.DebugContext(ctx, "OPA allowed request, echoing body", "resource", sanitizedURI)
 	return echoRequestBody(body)
 }
 
@@ -539,6 +632,7 @@ func (s *Server) processRequestBody(ctx context.Context, state *requestState, bo
 // body and performs token exchange, returning a headers-phase response on success.
 // Deny and exchange errors return ImmediateResponse, identical to the body path.
 func (s *Server) processHeadersOnlyOPA(ctx context.Context, state *requestState) *extprocv3.ProcessingResponse {
+	ctx, logger := s.withRequestLogger(ctx, "", "")
 	outcome := "success"
 	errorType := ""
 	if state.finishObservation != nil {
@@ -552,7 +646,7 @@ func (s *Server) processHeadersOnlyOPA(ctx context.Context, state *requestState)
 	if buildErr != nil {
 		outcome = "authorization_denied"
 		errorType = "invalid_request"
-		s.logger.WarnContext(ctx, "OPA: failed to build input for header-only request — denying", "resource", sanitizedURI, "error", buildErr)
+		logger.WarnContext(ctx, "OPA: failed to build input for header-only request — denying", "resource", sanitizedURI, "error", buildErr)
 		return immediateResponse(httpv3.StatusCode_Forbidden,
 			`{"error":"access_denied","error_description":"failed to parse request protocol"}`)
 	}
@@ -561,7 +655,7 @@ func (s *Server) processHeadersOnlyOPA(ctx context.Context, state *requestState)
 	if err != nil {
 		outcome = "authorization_denied"
 		errorType = "evaluation_error"
-		s.logger.ErrorContext(ctx, "OPA evaluation error — denying", "resource", sanitizedURI, "error", err)
+		logger.ErrorContext(ctx, "OPA evaluation error — denying", "resource", sanitizedURI, "error", err)
 		return immediateResponse(httpv3.StatusCode_Forbidden,
 			`{"error":"access_denied","error_description":"authorization evaluation failed"}`)
 	}
@@ -569,7 +663,7 @@ func (s *Server) processHeadersOnlyOPA(ctx context.Context, state *requestState)
 	if decision.Action != "allow" {
 		outcome = "authorization_denied"
 		errorType = "access_denied"
-		s.logger.InfoContext(ctx, "OPA denied header-only request", "reasons", decision.Reasons, "resource", sanitizedURI)
+		logger.InfoContext(ctx, "OPA denied header-only request", "reasons", decision.Reasons, "resource", sanitizedURI)
 		return accessDeniedResponse(decision.Reasons)
 	}
 
@@ -580,7 +674,7 @@ func (s *Server) processHeadersOnlyOPA(ctx context.Context, state *requestState)
 		errorType = mappedErrorType
 		return resp
 	}
-	s.logger.DebugContext(ctx, "OPA allowed header-only request, token exchanged successfully", "resource", sanitizedURI)
+	logger.DebugContext(ctx, "OPA allowed header-only request, token exchanged successfully", "resource", sanitizedURI)
 	return replaceAuthorizationHeader("Bearer " + exchangeResult.Token)
 }
 
@@ -589,15 +683,16 @@ func (s *Server) processHeadersOnlyOPA(ctx context.Context, state *requestState)
 // with a 403 response that aggregates reasons from all denying messages.
 // Original raw JSON bytes are passed to BuildOPAInput to preserve any extra top-level fields.
 func (s *Server) processRequestBodyBatch(ctx context.Context, state *requestState, bodyBytes []byte, body *extprocv3.HttpBody) *extprocv3.ProcessingResponse {
+	ctx, logger := s.withRequestLogger(ctx, "", "")
 	var rawMessages []json.RawMessage
 	sanitizedURI := sanitizeURIForTelemetry(state.resourceURI)
 	if err := json.Unmarshal(bodyBytes, &rawMessages); err != nil {
-		s.logger.WarnContext(ctx, "OPA: failed to parse batch body — denying", "resource", sanitizedURI, "error", err)
+		logger.WarnContext(ctx, "OPA: failed to parse batch body — denying", "resource", sanitizedURI, "error", err)
 		return immediateResponse(httpv3.StatusCode_Forbidden,
 			`{"error":"access_denied","error_description":"failed to parse batch request"}`)
 	}
 	if len(rawMessages) == 0 {
-		s.logger.WarnContext(ctx, "OPA: empty batch body — rejecting as malformed", "resource", sanitizedURI)
+		logger.WarnContext(ctx, "OPA: empty batch body — rejecting as malformed", "resource", sanitizedURI)
 		return immediateResponse(httpv3.StatusCode_Forbidden,
 			`{"error":"access_denied","error_description":"empty batch is not valid JSON-RPC 2.0"}`)
 	}
@@ -608,21 +703,21 @@ func (s *Server) processRequestBodyBatch(ctx context.Context, state *requestStat
 	)
 	for i, raw := range rawMessages {
 		if _, err := authorization.ParseMCPMessage(raw); err != nil {
-			s.logger.WarnContext(ctx, "OPA: invalid batch element — denying", "resource", sanitizedURI, "index", i, "error", err)
+			logger.WarnContext(ctx, "OPA: invalid batch element — denying", "resource", sanitizedURI, "index", i, "error", err)
 			denied = true
 			denyReasons = append(denyReasons, "batch element could not be evaluated")
 			continue
 		}
 		opaInput, buildErr := authorization.BuildOPAInput(state.protocol, raw, state.headers, state.grantedPermissionSets)
 		if buildErr != nil {
-			s.logger.WarnContext(ctx, "OPA: failed to build input for batch element — denying", "resource", sanitizedURI, "index", i, "error", buildErr)
+			logger.WarnContext(ctx, "OPA: failed to build input for batch element — denying", "resource", sanitizedURI, "index", i, "error", buildErr)
 			denied = true
 			denyReasons = append(denyReasons, "failed to parse batch element")
 			continue
 		}
 		decision, evalErr := s.authorizer.Evaluate(ctx, opaInput)
 		if evalErr != nil {
-			s.logger.ErrorContext(ctx, "OPA evaluation error for batch element — denying", "resource", sanitizedURI, "index", i, "error", evalErr)
+			logger.ErrorContext(ctx, "OPA evaluation error for batch element — denying", "resource", sanitizedURI, "index", i, "error", evalErr)
 			denied = true
 			denyReasons = append(denyReasons, "authorization evaluation failed")
 			continue
@@ -638,11 +733,11 @@ func (s *Server) processRequestBodyBatch(ctx context.Context, state *requestStat
 	}
 
 	if denied {
-		s.logger.InfoContext(ctx, "OPA denied batch request", "reasons", denyReasons, "resource", sanitizedURI)
+		logger.InfoContext(ctx, "OPA denied batch request", "reasons", denyReasons, "resource", sanitizedURI)
 		return accessDeniedResponse(denyReasons)
 	}
 
-	s.logger.DebugContext(ctx, "OPA allowed batch, echoing body", "resource", sanitizedURI)
+	logger.DebugContext(ctx, "OPA allowed batch, echoing body", "resource", sanitizedURI)
 	return echoRequestBody(body)
 }
 
@@ -650,20 +745,21 @@ func (s *Server) processRequestBodyBatch(ctx context.Context, state *requestStat
 // Handles ErrAssertionExpired (503), ErrCircuitOpen (503), and generic failures (500).
 // BrokerExchangeError with error_uri is handled by callers before reaching this function.
 func (s *Server) tokenExchangeErrorResponse(ctx context.Context, err error, resourceURI string) *extprocv3.ProcessingResponse {
+	logger := loggerFromContext(ctx, s.logger)
 	sanitizedURI := sanitizeURIForTelemetry(resourceURI)
 	if errors.Is(err, ErrAssertionExpired) {
-		s.logger.ErrorContext(ctx, "token exchange failed: client assertion expired — background refresh may have failed",
+		logger.ErrorContext(ctx, "token exchange failed: client assertion expired — background refresh may have failed",
 			"resource", sanitizedURI)
 		return immediateResponse(httpv3.StatusCode_ServiceUnavailable,
 			`{"error":"service_unavailable","error_description":"client assertion expired"}`)
 	}
 	if errors.Is(err, ErrCircuitOpen) {
-		s.logger.WarnContext(ctx, "token exchange rejected: circuit breaker is open",
+		logger.WarnContext(ctx, "token exchange rejected: circuit breaker is open",
 			"resource", sanitizedURI)
 		return immediateResponse(httpv3.StatusCode_ServiceUnavailable,
 			`{"error":"service_unavailable","error_description":"circuit breaker is open"}`)
 	}
-	s.logger.ErrorContext(ctx, "token exchange failed", "resource", sanitizedURI, "error", err)
+	logger.ErrorContext(ctx, "token exchange failed", "resource", sanitizedURI, "error", err)
 	return immediateResponse(httpv3.StatusCode_InternalServerError,
 		`{"error":"token_exchange_failed","error_description":"token exchange request failed"}`)
 }
@@ -677,6 +773,7 @@ func accessDeniedResponse(reasons []string) *extprocv3.ProcessingResponse {
 }
 
 func (s *Server) exchangeErrorResponse(ctx context.Context, phase, protocol, resourceURI string, err error) (*extprocv3.ProcessingResponse, string, string) {
+	logger := loggerFromContext(ctx, s.logger)
 	sanitizedURI := sanitizeURIForTelemetry(resourceURI)
 	var brokerErr *BrokerExchangeError
 	if errors.As(err, &brokerErr) && brokerErr.ErrorURI != "" && !isTransientBrokerError(err) {
@@ -685,7 +782,7 @@ func (s *Server) exchangeErrorResponse(ctx context.Context, phase, protocol, res
 			if phase != "" {
 				msg = phase + " token exchange requires re-auth — returning URLElicitationRequiredError"
 			}
-			s.logger.InfoContext(ctx, msg,
+			logger.InfoContext(ctx, msg,
 				"resource", sanitizedURI,
 				"code", brokerErr.Code,
 				"error_uri", brokerErr.ErrorURI)
@@ -696,7 +793,7 @@ func (s *Server) exchangeErrorResponse(ctx context.Context, phase, protocol, res
 		if phase != "" {
 			msg = phase + " token exchange requires re-auth but protocol is non-MCP — returning 503"
 		}
-		s.logger.WarnContext(ctx, msg, "resource", sanitizedURI, "protocol", protocol)
+		logger.WarnContext(ctx, msg, "resource", sanitizedURI, "protocol", protocol)
 		return immediateResponse(httpv3.StatusCode_ServiceUnavailable,
 			`{"error":"service_unavailable","error_description":"token exchange requires re-authentication"}`), "exchange_failure", brokerErr.Code
 	}
@@ -929,22 +1026,14 @@ func (c *headerCarrier) Keys() []string {
 	return keys
 }
 
-// sanitizeURIForTelemetry removes query strings and fragments from a URI
-// before recording it in telemetry, to prevent leaking tokens or other
-// sensitive parameters in violation of SR-001.
-// On parse failure it strips everything from '?' or '#' onwards conservatively,
-// rather than returning the raw URI which may contain sensitive query parameters.
+// sanitizeURIForTelemetry removes caller-controlled credentials, query strings, and
+// fragments before recording a URI in telemetry or logs.
 func sanitizeURIForTelemetry(resourceURI string) string {
 	u, err := url.ParseRequestURI(resourceURI)
 	if err != nil {
-		// Conservative fallback: strip query string and fragment by truncating at
-		// the first '?' or '#' to avoid leaking sensitive parameters in span attributes.
-		if i := strings.IndexAny(resourceURI, "?#"); i >= 0 {
-			return resourceURI[:i]
-		}
-		return resourceURI
+		return "[invalid resource URI]"
 	}
-	// Create a copy with no query or fragment
+	u.User = nil
 	u.RawQuery = ""
 	u.Fragment = ""
 	return u.String()

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -361,4 +362,93 @@ func TestConfigLoader_UpstreamTimeout(t *testing.T) {
 	t.Run("float YAML upstream timeout is rejected", func(t *testing.T) {
 		assertLoaderRejectsInvalidUpstreamTimeout(t, "30.5")
 	})
+}
+
+func TestRequestContextConfigurationDefaults(t *testing.T) {
+	setMinimalConfigEnv(t)
+
+	loader := NewLoader()
+	cfg, err := loader.GetConfig(context.Background())
+
+	require.NoError(t, err)
+	assert.False(t, cfg.RequestContext.TrustedProxy.Enabled)
+	assert.Equal(t, "X-Forwarded-For", cfg.RequestContext.TrustedProxy.ForwardedHeader)
+	assert.True(t, cfg.RequestContext.Trace.ResponseEnabled)
+}
+
+func TestRequestContextConfigurationEnvOverrides(t *testing.T) {
+	setMinimalConfigEnv(t)
+	t.Setenv("IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_ENABLED", "true")
+	t.Setenv("IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_FORWARDED_HEADER", "X-Real-IP")
+	t.Setenv("IDENTITY_BROKER_REQUEST_CONTEXT_TRACE_RESPONSE_ENABLED", "false")
+
+	loader := NewLoader()
+	cfg, err := loader.GetConfig(context.Background())
+
+	require.NoError(t, err)
+	assert.True(t, cfg.RequestContext.TrustedProxy.Enabled)
+	assert.Equal(t, "X-Real-IP", cfg.RequestContext.TrustedProxy.ForwardedHeader)
+	assert.False(t, cfg.RequestContext.Trace.ResponseEnabled)
+}
+
+func TestRequestContextConfigurationSources(t *testing.T) {
+	setMinimalConfigEnv(t)
+
+	loader := NewLoader()
+	_, err := loader.GetConfig(context.Background())
+	require.NoError(t, err)
+
+	for _, source := range loader.GetSources() {
+		if source.Type != ports.SourceTypeDefault {
+			continue
+		}
+
+		assert.Contains(t, source.Keys, "request_context.trusted_proxy.enabled")
+		assert.Contains(t, source.Keys, "request_context.trusted_proxy.forwarded_header")
+		assert.Contains(t, source.Keys, "request_context.trace.response_enabled")
+		return
+	}
+
+	t.Fatal("defaults source not found")
+}
+
+func TestRequestContextConfigurationCLIOverridesEnvironment(t *testing.T) {
+	setMinimalConfigEnv(t)
+	t.Setenv("IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_ENABLED", "false")
+	t.Setenv("IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_FORWARDED_HEADER", "X-Forwarded-For")
+	t.Setenv("IDENTITY_BROKER_REQUEST_CONTEXT_TRACE_RESPONSE_ENABLED", "true")
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().Bool("request_context.trusted_proxy.enabled", false, "")
+	cmd.Flags().String("request_context.trusted_proxy.forwarded_header", "", "")
+	cmd.Flags().Bool("request_context.trace.response_enabled", true, "")
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--request_context.trusted_proxy.enabled=true",
+		"--request_context.trusted_proxy.forwarded_header=X-Real-IP",
+		"--request_context.trace.response_enabled=false",
+	}))
+
+	loader := NewLoader()
+	loader.SetCommand(cmd)
+	cfg, err := loader.GetConfig(context.Background())
+
+	require.NoError(t, err)
+	assert.True(t, cfg.RequestContext.TrustedProxy.Enabled)
+	assert.Equal(t, "X-Real-IP", cfg.RequestContext.TrustedProxy.ForwardedHeader)
+	assert.False(t, cfg.RequestContext.Trace.ResponseEnabled)
+
+	for _, source := range loader.GetSources() {
+		if source.Type != ports.SourceTypeCLI {
+			continue
+		}
+
+		assert.ElementsMatch(t, []string{
+			"request_context.trusted_proxy.enabled",
+			"request_context.trusted_proxy.forwarded_header",
+			"request_context.trace.response_enabled",
+		}, source.Keys)
+		return
+	}
+
+	t.Fatal("CLI source not found")
 }

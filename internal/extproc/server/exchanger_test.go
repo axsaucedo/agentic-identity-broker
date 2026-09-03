@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	extprocconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/server"
@@ -828,16 +829,10 @@ func TestTokenExchanger_Exchange_PropagatesTraceContext(t *testing.T) {
 // Spec: US1 S6 — When telemetry.enabled=true but traces.enabled=false,
 // trace context is still forwarded without creating client spans
 func TestTokenExchanger_Exchange_PropagatesWithoutLocalSpans(t *testing.T) {
-	// Install a NeverSample tracer provider so no local spans are created,
-	// but propagation still injects traceparent from the incoming context.
-	spanRecorder := tracetest.NewSpanRecorder()
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSpanProcessor(spanRecorder),
-		sdktrace.WithSampler(sdktrace.NeverSample()),
-	)
+	// A noop provider must preserve a remote parent context without recording spans.
 	prevTP := otel.GetTracerProvider()
 	prevProp := otel.GetTextMapPropagator()
-	otel.SetTracerProvider(tp)
+	otel.SetTracerProvider(noop.NewTracerProvider())
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	t.Cleanup(func() {
 		otel.SetTracerProvider(prevTP)
@@ -888,30 +883,71 @@ func TestTokenExchanger_Exchange_PropagatesWithoutLocalSpans(t *testing.T) {
 	require.NoError(t, err)
 	defer te.Shutdown()
 
-	// Clear constructor spans and reset captured header.
-	tp.ForceFlush(context.Background()) //nolint:errcheck
-	spanRecorder.Ended()                // drain
+	// Reset the captured header after constructor traffic.
 	mu.Lock()
 	capturedTraceparent = ""
 	mu.Unlock()
 
-	// Create a sampled-out parent span context — propagation should still forward it.
-	ctx, parentSpan := tp.Tracer("test").Start(context.Background(), "test-parent")
-	expectedTraceID := parentSpan.SpanContext().TraceID().String()
+	// Extract a remote parent context — propagation should forward it unchanged.
+	const expectedTraceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+	ctx := propagation.TraceContext{}.Extract(context.Background(), propagation.MapCarrier{
+		"traceparent": "00-" + expectedTraceID + "-00f067aa0ba902b7-01",
+	})
 
 	result, err := te.Exchange(ctx, "propagation-test-token", "https://example.com/resource")
-	parentSpan.End()
 	require.NoError(t, err)
 	assert.Equal(t, "token-data", result.Token, "exchange should return the access token regardless of trace collection state")
 
-	// Verify propagation occurred (traceparent forwarded) but no local spans were recorded.
-	tp.ForceFlush(context.Background()) //nolint:errcheck
-	localSpans := spanRecorder.Ended()
-	assert.Empty(t, localSpans, "no local spans should be recorded when sampler is NeverSample")
+	// Verify propagation occurred with a noop provider.
 	mu.Lock()
 	tp2 := capturedTraceparent
 	mu.Unlock()
 	assert.NotEmpty(t, tp2, "traceparent must still be propagated even without local spans")
 	assert.Contains(t, tp2, expectedTraceID,
 		"propagated traceparent must carry the original trace ID")
+}
+
+// TestTokenExchanger_Exchange_SanitizesResourceURIInLogs guards the perimeter
+// secret-scrubbing contract below the ExtProc perimeter sanitizer: the exchanger
+// logs the resource URI on the request, shared-result, broker-error, and non-200
+// paths. The resource URI is caller-controlled and its query string can carry
+// tokens, so every logged occurrence must be stripped of query/fragment even
+// though the outgoing broker form retains the raw value.
+func TestTokenExchanger_Exchange_SanitizesResourceURIInLogs(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+	mocks.exchangeStatus = http.StatusForbidden
+	mocks.exchangeErrCode = "access_denied"
+
+	cfg := configForMocks(mocks)
+	logger, capture := newJSONTestLogger()
+	exchanger, err := server.NewTokenExchanger(cfg, logger)
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const rawResource = "http://mcp-server:9003/mcp?access_token=SUPERSECRET"
+	const sanitized = "http://mcp-server:9003/mcp"
+
+	_, err = exchanger.Exchange(context.Background(), "subject-token", rawResource)
+	require.Error(t, err, "forbidden broker response must return an error")
+
+	records := capture.records(t)
+	require.NotEmpty(t, records, "exchanger must emit logs on the broker-error path")
+
+	sawResourceField := false
+	for _, record := range records {
+		raw, err := json.Marshal(record)
+		require.NoError(t, err)
+		assert.NotContains(t, string(raw), "SUPERSECRET",
+			"no log line may contain the resource query-string secret")
+		if res, ok := record["resource"]; ok {
+			sawResourceField = true
+			assert.Equal(t, sanitized, res, "logged resource field must be sanitized")
+		}
+	}
+	require.True(t, sawResourceField, "at least one log line must carry the resource field for this assertion to be meaningful")
+
+	// The outgoing broker request must still carry the raw resource per RFC 8693.
+	assert.Equal(t, rawResource, mocks.lastExchangeForm.Get("resource"),
+		"outgoing broker form must retain the raw resource")
 }

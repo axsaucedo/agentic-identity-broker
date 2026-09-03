@@ -2,11 +2,15 @@
 package http
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"strings"
 	"time"
+
+	httpmiddleware "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/security"
 )
 
 // LoggingMiddleware logPrefixes defines a whitelist of path prefixes that should be logged (e.g. "/api/").
@@ -38,15 +42,18 @@ func LoggingMiddleware(logger *slog.Logger, logPrefixes ...string) func(next htt
 
 			// Call the next handler
 			next.ServeHTTP(wrapped, r)
+			httpmiddleware.FinalizeRequestSecurityContext(r.Context())
 
 			// Log after the request completes
 			duration := time.Since(start)
-			logger.Info("HTTP request",
+			clientIP := clientIPFromContext(r.Context(), r.RemoteAddr)
+			logger.InfoContext(r.Context(), "HTTP request",
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", wrapped.statusCode,
 				"duration_ms", duration.Milliseconds(),
-				"remote_addr", r.RemoteAddr,
+				"remote_addr", clientIP,
+				"client_ip", clientIP,
 			)
 		})
 	}
@@ -54,22 +61,25 @@ func LoggingMiddleware(logger *slog.Logger, logPrefixes ...string) func(next htt
 
 // RecoveryMiddleware returns a middleware that recovers from panics and logs them.
 // Prevents the entire server from crashing due to a single request panic.
-func RecoveryMiddleware(logger *slog.Logger) func(next http.Handler) http.Handler {
+// traceResponseEnabled gates the traceresponse header on the recovered 500 path so
+// operators who set trace.response_enabled=false are honored on panics too.
+func RecoveryMiddleware(logger *slog.Logger, traceResponseEnabled bool) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if err := recover(); err != nil {
-					// Log the panic with stack trace
 					stack := debug.Stack()
-					logger.Error("Panic recovered",
+					clientIP := clientIPFromContext(r.Context(), r.RemoteAddr)
+					writeTraceResponseHeaderIfPresent(w, r.Context(), traceResponseEnabled)
+					logger.ErrorContext(r.Context(), "Panic recovered",
 						"error", err,
 						"method", r.Method,
 						"path", r.URL.Path,
-						"remote_addr", r.RemoteAddr,
+						"remote_addr", clientIP,
+						"client_ip", clientIP,
 						"stack", string(stack),
 					)
 
-					// Return 500 Internal Server Error
 					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				}
 			}()
@@ -77,6 +87,10 @@ func RecoveryMiddleware(logger *slog.Logger) func(next http.Handler) http.Handle
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func ContextRecoveryMiddleware(logger *slog.Logger, traceResponseEnabled bool) func(next http.Handler) http.Handler {
+	return RecoveryMiddleware(logger, traceResponseEnabled)
 }
 
 // responseWriter is a wrapper around http.ResponseWriter that captures the status code.
@@ -89,4 +103,22 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+func clientIPFromContext(ctx context.Context, fallback string) string {
+	if sc, ok := security.FromContext(ctx); ok && sc.ClientIP != "" {
+		return sc.ClientIP
+	}
+
+	return fallback
+}
+
+func writeTraceResponseHeaderIfPresent(w http.ResponseWriter, ctx context.Context, traceResponseEnabled bool) {
+	httpmiddleware.FinalizeRequestSecurityContext(ctx)
+	if !traceResponseEnabled {
+		return
+	}
+	if sc, ok := security.FromContext(ctx); ok {
+		w.Header().Set("traceresponse", httpmiddleware.TraceResponseValue(ctx, sc.TraceID))
+	}
 }

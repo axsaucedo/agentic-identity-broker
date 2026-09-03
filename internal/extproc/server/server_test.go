@@ -1,12 +1,15 @@
 package server_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
 	"os"
+	"regexp"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +23,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -28,6 +32,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	httpv3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/authorization"
@@ -88,6 +93,119 @@ func (m *mockExchanger) Exchange(ctx context.Context, subjectToken, resourceURI 
 
 func (m *mockExchanger) Shutdown() {
 	m.shutdownCalled = true
+}
+
+type logCapture struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (c *logCapture) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.buf.Write(p)
+}
+
+func (c *logCapture) records(t *testing.T) []map[string]any {
+	t.Helper()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	raw := bytes.TrimSpace(c.buf.Bytes())
+	if len(raw) == 0 {
+		return nil
+	}
+
+	lines := bytes.Split(raw, []byte("\n"))
+	records := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		record := map[string]any{}
+		require.NoError(t, json.Unmarshal(line, &record), "expected JSON log line: %s", string(line))
+		records = append(records, record)
+	}
+
+	return records
+}
+
+func newJSONTestLogger() (*slog.Logger, *logCapture) {
+	capture := &logCapture{}
+	logger := slog.New(slog.NewJSONHandler(capture, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	return logger, capture
+}
+
+func startTestServerWithConfigAndLogger(t *testing.T, cfg *extprocconfig.Config, exchanger server.Exchanger, logger *slog.Logger) (extprocv3.ExternalProcessorClient, func()) {
+	t.Helper()
+
+	svc := server.NewServer(cfg, exchanger, logger)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	grpcSrv := grpc.NewServer()
+	extprocv3.RegisterExternalProcessorServer(grpcSrv, svc)
+
+	go func() {
+		_ = grpcSrv.Serve(listener)
+	}()
+
+	conn, err := grpc.NewClient(listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+
+	client := extprocv3.NewExternalProcessorClient(conn)
+
+	cleanup := func() {
+		_ = conn.Close()
+		grpcSrv.GracefulStop()
+	}
+	return client, cleanup
+}
+
+func startTestServerWithAuthorizerConfigAndLogger(t *testing.T, cfg *extprocconfig.Config, exchanger server.Exchanger, auth authorization.Authorizer, logger *slog.Logger) (extprocv3.ExternalProcessorClient, func()) {
+	t.Helper()
+
+	svc := server.NewServerWithAuthorizer(cfg, exchanger, auth, logger)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	grpcSrv := grpc.NewServer()
+	extprocv3.RegisterExternalProcessorServer(grpcSrv, svc)
+
+	go func() {
+		_ = grpcSrv.Serve(listener)
+	}()
+
+	conn, err := grpc.NewClient(listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+
+	client := extprocv3.NewExternalProcessorClient(conn)
+
+	cleanup := func() {
+		_ = conn.Close()
+		grpcSrv.GracefulStop()
+	}
+	return client, cleanup
+}
+
+func requireLogRecord(t *testing.T, capture *logCapture, message string) map[string]any {
+	t.Helper()
+
+	records := capture.records(t)
+	for _, record := range records {
+		if record["msg"] == message {
+			return record
+		}
+	}
+
+	require.Failf(t, "missing log message", "expected log message %q in records %#v", message, records)
+	return nil
 }
 
 // startTestServer registers the Server on a random in-process port and returns
@@ -2415,6 +2533,305 @@ func TestServer_OPA_HeadersOnly_Deny_RecordsAuthorizationOutcome(t *testing.T) {
 	assert.True(t, foundHistogramWithOutcome, "OPA header-only deny path must record histogram with outcome=authorization_denied")
 }
 
+// Spec: FR-014 — OPA-disabled requests must log the propagated trace_id with anonymous actor semantics.
+func TestServer_RequestContext_DirectPath_LogsPropagatedTraceIDAndAnonymousActor(t *testing.T) {
+	const traceparentHeader = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	const expectedTraceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+
+	logger, capture := newJSONTestLogger()
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (server.ExchangeResult, error) {
+			return server.ExchangeResult{Token: "exchanged-token"}, nil
+		},
+	}
+
+	client, cleanup := startTestServerWithConfigAndLogger(t, testConfigWithTelemetry(), exchanger, logger)
+	defer cleanup()
+
+	resp, err := sendRequestHeaders(t, client, map[string]string{
+		":scheme":       "https",
+		":authority":    "example.com",
+		":path":         "/mcp",
+		"authorization": "Bearer test-token",
+		"traceparent":   traceparentHeader,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	record := requireLogRecord(t, capture, "token exchanged successfully")
+	traceID, ok := record["trace_id"].(string)
+	require.True(t, ok, "expected trace_id field in log record: %#v", record)
+	assert.Equal(t, expectedTraceID, traceID)
+
+	actor, ok := record["actor"].(string)
+	require.True(t, ok, "expected actor field in log record: %#v", record)
+	assert.Equal(t, "anonymous", actor)
+
+	_, hasCallingPeer := record["calling_peer"]
+	assert.False(t, hasCallingPeer, "calling_peer should be omitted when unavailable")
+}
+
+func TestServer_RequestContext_DirectPath_ReusesInboundTraceWhenTracingDisabled(t *testing.T) {
+	const inboundTraceID = "55555555555555555555555555555555"
+
+	previousPropagator := otel.GetTextMapPropagator()
+	previousProvider := otel.GetTracerProvider()
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	otel.SetTracerProvider(noop.NewTracerProvider())
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previousProvider)
+		otel.SetTextMapPropagator(previousPropagator)
+	})
+
+	cfg := testConfigWithTelemetry()
+	cfg.Telemetry.Traces.Enabled = false
+	logger, capture := newJSONTestLogger()
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (server.ExchangeResult, error) {
+			return server.ExchangeResult{Token: "exchanged-token"}, nil
+		},
+	}
+	client, cleanup := startTestServerWithConfigAndLogger(t, cfg, exchanger, logger)
+	defer cleanup()
+
+	resp, err := sendRequestHeaders(t, client, map[string]string{
+		":scheme":       "https",
+		":authority":    "example.com",
+		":path":         "/mcp",
+		"authorization": "Bearer test-token",
+		"traceparent":   "00-" + inboundTraceID + "-bbbbbbbbbbbbbbbb-01",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	record := requireLogRecord(t, capture, "token exchanged successfully")
+	traceID, ok := record["trace_id"].(string)
+	require.True(t, ok)
+	assert.Equal(t, inboundTraceID, traceID)
+	assert.Regexp(t, regexp.MustCompile("^[0-9a-f]{32}$"), traceID)
+}
+
+// Spec: FR-014 — OPA body-bearing requests must generate a trace_id when none is supplied.
+func TestServer_RequestContext_OPABodyBearingPath_LogsGeneratedTraceIDAndAnonymousActor(t *testing.T) {
+	logger, capture := newJSONTestLogger()
+	auth := &mockAuthorizer{
+		evaluateFunc: func(_ context.Context, _ authorization.OPAInput) (*authorization.OPADecision, error) {
+			return &authorization.OPADecision{Action: "allow"}, nil
+		},
+	}
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (server.ExchangeResult, error) {
+			return server.ExchangeResult{Token: "exchanged-token"}, nil
+		},
+	}
+
+	client, cleanup := startTestServerWithAuthorizerConfigAndLogger(t, testConfig(), exchanger, auth, logger)
+	defer cleanup()
+
+	headersResp, bodyResp := sendHeadersThenBodyWithProtocol(t, client, map[string]string{
+		":method":       "POST",
+		":path":         "https://example.com/mcp",
+		"authorization": "Bearer test-token",
+	}, []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"list_files"}}`), "mcp")
+	require.NotNil(t, headersResp)
+	require.NotNil(t, bodyResp)
+
+	record := requireLogRecord(t, capture, "OPA: token exchanged in headers phase, buffering body for OPA evaluation")
+	traceID, ok := record["trace_id"].(string)
+	require.True(t, ok, "expected trace_id field in log record: %#v", record)
+	assert.Regexp(t, regexp.MustCompile("^[0-9a-f]{32}$"), traceID)
+
+	actor, ok := record["actor"].(string)
+	require.True(t, ok, "expected actor field in log record: %#v", record)
+	assert.Equal(t, "anonymous", actor)
+
+	_, hasCallingPeer := record["calling_peer"]
+	assert.False(t, hasCallingPeer, "calling_peer should be omitted when unavailable")
+}
+
+// Spec: FR-014 — OPA header-only requests must preserve propagated trace_id and omit calling_peer.
+func TestServer_RequestContext_OPAHeadersOnlyPath_LogsPropagatedTraceIDAndAnonymousActor(t *testing.T) {
+	const traceparentHeader = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+	const expectedTraceID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+	logger, capture := newJSONTestLogger()
+	auth := &mockAuthorizer{
+		evaluateFunc: func(_ context.Context, _ authorization.OPAInput) (*authorization.OPADecision, error) {
+			return &authorization.OPADecision{Action: "allow"}, nil
+		},
+	}
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (server.ExchangeResult, error) {
+			return server.ExchangeResult{Token: "exchanged-token"}, nil
+		},
+	}
+
+	client, cleanup := startTestServerWithAuthorizerConfigAndLogger(t, testConfigWithTelemetry(), exchanger, auth, logger)
+	defer cleanup()
+
+	resp, err := sendRequestHeadersWithProtocolEOS(t, client, map[string]string{
+		":method":       "GET",
+		":path":         "https://example.com/mcp",
+		"authorization": "Bearer test-token",
+		"traceparent":   traceparentHeader,
+	}, "mcp")
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	record := requireLogRecord(t, capture, "OPA allowed header-only request, token exchanged successfully")
+	traceID, ok := record["trace_id"].(string)
+	require.True(t, ok, "expected trace_id field in log record: %#v", record)
+	assert.Equal(t, expectedTraceID, traceID)
+
+	actor, ok := record["actor"].(string)
+	require.True(t, ok, "expected actor field in log record: %#v", record)
+	assert.Equal(t, "anonymous", actor)
+
+	_, hasCallingPeer := record["calling_peer"]
+	assert.False(t, hasCallingPeer, "calling_peer should be omitted when unavailable")
+}
+
+// Spec: FR-014 — a direct-path exchange failure must still log the propagated trace_id.
+func TestServer_RequestContext_DirectPath_ExchangeFailureLogsTraceID(t *testing.T) {
+	const traceparentHeader = "00-99999999999999999999999999999999-1111111111111111-01"
+	const expectedTraceID = "99999999999999999999999999999999"
+
+	prevProp := otel.GetTextMapPropagator()
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() { otel.SetTextMapPropagator(prevProp) })
+
+	logger, capture := newJSONTestLogger()
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (server.ExchangeResult, error) {
+			return server.ExchangeResult{}, errors.New("broker unreachable")
+		},
+	}
+	client, cleanup := startTestServerWithConfigAndLogger(t, testConfigWithTelemetry(), exchanger, logger)
+	defer cleanup()
+
+	resp, err := sendRequestHeaders(t, client, map[string]string{
+		":scheme":       "https",
+		":authority":    "example.com",
+		":path":         "/mcp",
+		"authorization": "Bearer test-token",
+		"traceparent":   traceparentHeader,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	record := requireLogRecord(t, capture, "token exchange failed")
+	assert.Equal(t, expectedTraceID, record["trace_id"], "exchange-failure log must retain the propagated trace_id")
+	assert.Equal(t, "anonymous", record["actor"])
+}
+
+// Spec: FR-014 — an OPA deny must still log the propagated trace_id.
+func TestServer_RequestContext_OPADeny_LogsTraceID(t *testing.T) {
+	const traceparentHeader = "00-88888888888888888888888888888888-2222222222222222-01"
+	const expectedTraceID = "88888888888888888888888888888888"
+
+	prevProp := otel.GetTextMapPropagator()
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() { otel.SetTextMapPropagator(prevProp) })
+
+	logger, capture := newJSONTestLogger()
+	auth := &mockAuthorizer{
+		evaluateFunc: func(_ context.Context, _ authorization.OPAInput) (*authorization.OPADecision, error) {
+			return &authorization.OPADecision{Action: "deny", Reasons: []string{"policy forbids tool"}}, nil
+		},
+	}
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (server.ExchangeResult, error) {
+			return server.ExchangeResult{Token: "exchanged-token"}, nil
+		},
+	}
+	client, cleanup := startTestServerWithAuthorizerConfigAndLogger(t, testConfigWithTelemetry(), exchanger, auth, logger)
+	defer cleanup()
+
+	_, bodyResp := sendHeadersThenBodyWithProtocol(t, client, map[string]string{
+		":method":       "POST",
+		":path":         "https://example.com/mcp",
+		"authorization": "Bearer test-token",
+		"traceparent":   traceparentHeader,
+	}, []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"list_files"}}`), "mcp")
+	require.NotNil(t, bodyResp)
+
+	record := requireLogRecord(t, capture, "OPA denied request")
+	assert.Equal(t, expectedTraceID, record["trace_id"], "OPA-deny log must retain the propagated trace_id")
+	assert.Equal(t, "anonymous", record["actor"])
+}
+
+// Spec: FR-014 — an OPA evaluation error must still log the propagated trace_id.
+func TestServer_RequestContext_OPAEvaluationError_LogsTraceID(t *testing.T) {
+	const traceparentHeader = "00-77777777777777777777777777777777-3333333333333333-01"
+	const expectedTraceID = "77777777777777777777777777777777"
+
+	prevProp := otel.GetTextMapPropagator()
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() { otel.SetTextMapPropagator(prevProp) })
+
+	logger, capture := newJSONTestLogger()
+	auth := &mockAuthorizer{
+		evaluateFunc: func(_ context.Context, _ authorization.OPAInput) (*authorization.OPADecision, error) {
+			return nil, errors.New("rego runtime error")
+		},
+	}
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (server.ExchangeResult, error) {
+			return server.ExchangeResult{Token: "exchanged-token"}, nil
+		},
+	}
+	client, cleanup := startTestServerWithAuthorizerConfigAndLogger(t, testConfigWithTelemetry(), exchanger, auth, logger)
+	defer cleanup()
+
+	_, bodyResp := sendHeadersThenBodyWithProtocol(t, client, map[string]string{
+		":method":       "POST",
+		":path":         "https://example.com/mcp",
+		"authorization": "Bearer test-token",
+		"traceparent":   traceparentHeader,
+	}, []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"list_files"}}`), "mcp")
+	require.NotNil(t, bodyResp)
+
+	record := requireLogRecord(t, capture, "OPA evaluation error — denying")
+	assert.Equal(t, expectedTraceID, record["trace_id"], "OPA-evaluation-error log must retain the propagated trace_id")
+	assert.Equal(t, "anonymous", record["actor"])
+}
+
+// Spec: FR-014 — a request whose body cannot be parsed for OPA must still log the propagated trace_id.
+func TestServer_RequestContext_OPAInvalidInput_LogsTraceID(t *testing.T) {
+	const traceparentHeader = "00-66666666666666666666666666666666-4444444444444444-01"
+	const expectedTraceID = "66666666666666666666666666666666"
+
+	prevProp := otel.GetTextMapPropagator()
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() { otel.SetTextMapPropagator(prevProp) })
+
+	logger, capture := newJSONTestLogger()
+	auth := &mockAuthorizer{
+		evaluateFunc: func(_ context.Context, _ authorization.OPAInput) (*authorization.OPADecision, error) {
+			return &authorization.OPADecision{Action: "allow"}, nil
+		},
+	}
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (server.ExchangeResult, error) {
+			return server.ExchangeResult{Token: "exchanged-token"}, nil
+		},
+	}
+	client, cleanup := startTestServerWithAuthorizerConfigAndLogger(t, testConfigWithTelemetry(), exchanger, auth, logger)
+	defer cleanup()
+
+	_, bodyResp := sendHeadersThenBodyWithProtocol(t, client, map[string]string{
+		":method":       "POST",
+		":path":         "https://example.com/mcp",
+		"authorization": "Bearer test-token",
+		"traceparent":   traceparentHeader,
+	}, []byte(`this is not valid json-rpc`), "mcp")
+	require.NotNil(t, bodyResp)
+
+	record := requireLogRecord(t, capture, "OPA: failed to parse request body — denying")
+	assert.Equal(t, expectedTraceID, record["trace_id"], "invalid-input deny log must retain the propagated trace_id")
+	assert.Equal(t, "anonymous", record["actor"])
+}
+
 // attributeMap converts a slice of key-value attributes to a map for easy assertions.
 func attributeMap(attrs []attribute.KeyValue) map[string]string {
 	m := make(map[string]string, len(attrs))
@@ -2422,4 +2839,92 @@ func attributeMap(attrs []attribute.KeyValue) map[string]string {
 		m[string(a.Key)] = a.Value.String()
 	}
 	return m
+}
+
+type failingProcessStream struct {
+	ctx      context.Context
+	requests []*extprocv3.ProcessingRequest
+	recvErr  error
+	sendErr  error
+	next     int
+}
+
+func (s *failingProcessStream) Send(*extprocv3.ProcessingResponse) error {
+	return s.sendErr
+}
+
+func (s *failingProcessStream) Recv() (*extprocv3.ProcessingRequest, error) {
+	if s.next < len(s.requests) {
+		req := s.requests[s.next]
+		s.next++
+		return req, nil
+	}
+	return nil, s.recvErr
+}
+
+func (s *failingProcessStream) SetHeader(metadata.MD) error { return nil }
+
+func (s *failingProcessStream) SendHeader(metadata.MD) error { return nil }
+
+func (s *failingProcessStream) SetTrailer(metadata.MD) {}
+
+func (s *failingProcessStream) Context() context.Context { return s.ctx }
+
+func (s *failingProcessStream) SendMsg(any) error { return nil }
+
+func (s *failingProcessStream) RecvMsg(any) error { return nil }
+
+func TestServer_Process_TransportFailuresRetainRequestContext(t *testing.T) {
+	request := &extprocv3.ProcessingRequest{
+		Request: &extprocv3.ProcessingRequest_RequestHeaders{
+			RequestHeaders: &extprocv3.HttpHeaders{
+				Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
+					{Key: ":path", RawValue: []byte("https://example.com/mcp")},
+					{Key: "authorization", RawValue: []byte("Bearer test-token")},
+				}},
+			},
+		},
+	}
+	tests := []struct {
+		name    string
+		message string
+		stream  *failingProcessStream
+	}{
+		{
+			name:    "send failure",
+			message: "stream send error",
+			stream: &failingProcessStream{
+				ctx:      context.Background(),
+				requests: []*extprocv3.ProcessingRequest{request},
+				sendErr:  errors.New("send failed"),
+			},
+		},
+		{
+			name:    "receive failure after response",
+			message: "stream recv error",
+			stream: &failingProcessStream{
+				ctx:      context.Background(),
+				requests: []*extprocv3.ProcessingRequest{request},
+				recvErr:  errors.New("receive failed"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger, capture := newJSONTestLogger()
+			srv := server.NewServer(testConfig(), &mockExchanger{
+				exchangeFunc: func(context.Context, string, string) (server.ExchangeResult, error) {
+					return server.ExchangeResult{Token: "exchanged-token"}, nil
+				},
+			}, logger)
+
+			err := srv.Process(tt.stream)
+			require.Error(t, err)
+
+			record := requireLogRecord(t, capture, tt.message)
+			assert.Regexp(t, regexp.MustCompile("^[0-9a-f]{32}$"), record["trace_id"])
+			assert.Equal(t, "anonymous", record["actor"])
+		})
+	}
 }

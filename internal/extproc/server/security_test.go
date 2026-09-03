@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -8,6 +9,11 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
+
+	extprocconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/config"
 )
 
 // SR-001 regression: validateResourceURI must not echo raw URI (including
@@ -42,6 +48,46 @@ func TestValidateResourceURI_DoesNotLeakScheme(t *testing.T) {
 		assert.NotContains(t, errLower, tc.scheme,
 			"SR-001: error must not contain the parsed scheme %q in any form", tc.scheme)
 	}
+}
+
+func TestSanitizeURIForTelemetry_RedactsCredentialsAndParseFailures(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"userinfo stripped", "https://user:secret@example.com/resource?access_token=SECRET", "https://example.com/resource"},
+		{"unparsable userinfo redacted", "https://user:secret@example.com/%zz", "[invalid resource URI]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeURIForTelemetry(tt.in)
+			assert.Equal(t, tt.want, got)
+			assert.NotContains(t, got, "user:secret")
+			assert.NotContains(t, got, "SECRET")
+		})
+	}
+}
+
+func TestExtractTraceContext_SelectsFirstValidDuplicateTraceparent(t *testing.T) {
+	previousPropagator := otel.GetTextMapPropagator()
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() { otel.SetTextMapPropagator(previousPropagator) })
+
+	const validTraceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+	s := &Server{cfg: &extprocconfig.Config{Telemetry: extprocconfig.TelemetryConfig{
+		Enabled: true,
+		Traces:  extprocconfig.TracesConfig{Enabled: true},
+	}}}
+	headers := &extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
+		{Key: "traceparent", Value: "not-a-valid-traceparent"},
+		{Key: "traceparent", Value: validTraceparent},
+	}}}
+
+	ctx := s.extractTraceContext(context.Background(), headers)
+	spanContext := trace.SpanContextFromContext(ctx)
+	require.True(t, spanContext.IsValid())
+	assert.Equal(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", spanContext.TraceID().String())
 }
 
 func TestHeaderCarrier_Get_DuplicateTraceparent_ReturnsFirst(t *testing.T) {

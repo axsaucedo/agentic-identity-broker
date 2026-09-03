@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/httpctx"
+	httpmiddleware "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/impersonation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
@@ -86,6 +87,15 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleTokenExchange(w, r, formData)
 		return
 	}
+	// Finalize the request security context at the /oauth2/token seam before
+	// delegating to the grant handler. SecurityContextMiddleware defers finalization
+	// for every POST /oauth2/token (it cannot read grant_type without consuming the
+	// one-shot request body), so non-RFC8693 grants must finalize here — the
+	// downstream grant handler emits context-aware TokenIssued audit logs that must
+	// carry actor and trace_id, and the perimeter safety net only finalizes after
+	// ServeHTTP returns. Delegated token exchange finalizes later at its own seam
+	// with the calling peer (see tokenexchange.Exchange).
+	httpmiddleware.FinalizeRequestSecurityContext(r.Context())
 
 	rawClientID := formData.Get("client_id")
 	if rawClientID == "" {
@@ -139,7 +149,7 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 
 	if h.TokenExchange == nil {
 		if h.Logger != nil {
-			h.Logger.Warn("token exchange not wired, returning unsupported_grant_type")
+			h.Logger.WarnContext(r.Context(), "token exchange not wired, returning unsupported_grant_type")
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -163,7 +173,7 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 	// Per FR-008: resource parameter is mandatory and validation occurs at HTTP layer
 	if req.Resource == "" {
 		if h.Logger != nil {
-			h.Logger.Warn("Resource parameter missing")
+			h.Logger.WarnContext(r.Context(), "Resource parameter missing")
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -174,10 +184,11 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 		return
 	}
 
+	sanitizedResource := sanitizeResourceURI(req.Resource)
 	ctx, span := otel.Tracer("tokenexchange").Start(r.Context(), "tokenexchange.exchange")
 	defer span.End()
 	span.SetAttributes(
-		attribute.String("token_exchange.resource", req.Resource),
+		attribute.String("token_exchange.resource", sanitizedResource),
 		attribute.String("token_exchange.grant_type", req.GrantType),
 	)
 	response, err := h.TokenExchange.Exchange(ctx, req)
@@ -198,7 +209,7 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 			logAttrs := []any{
 				"error", err.Error(),
 				"error_type", fmt.Sprintf("%T", err),
-				"resource", req.Resource,
+				"resource", sanitizedResource,
 			}
 			var tokenErrForLog *tokenexchange.TokenExchangeError
 			if errors.As(err, &tokenErrForLog) {
@@ -209,7 +220,7 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 					logAttrs = append(logAttrs, "details", details)
 				}
 			}
-			h.Logger.Error("Token exchange failed", logAttrs...)
+			h.Logger.ErrorContext(ctx, "Token exchange failed", logAttrs...)
 		}
 		h.handleTokenExchangeError(w, err)
 		return
@@ -218,7 +229,7 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 	body, err := json.Marshal(response)
 	if err != nil {
 		if h.Logger != nil {
-			h.Logger.Error("failed to encode token exchange response", "error", err)
+			h.Logger.ErrorContext(ctx, "failed to encode token exchange response", "error", err)
 		}
 		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
 		return
@@ -228,8 +239,8 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 	_, _ = w.Write(body)
 
 	if h.Logger != nil {
-		h.Logger.InfoContext(r.Context(), "token_exchange_succeeded",
-			"resource", req.Resource,
+		h.Logger.InfoContext(ctx, "token_exchange_succeeded",
+			"resource", sanitizedResource,
 			"issued_token_type", response.IssuedTokenType,
 		)
 	}
@@ -410,4 +421,19 @@ func truncateSpanAttribute(s string, maxRunes int) string {
 		}
 	}
 	return string(result)
+}
+
+// sanitizeResourceURI strips caller-controlled credentials, query strings, and fragments
+// before recording an RFC 8693 resource in telemetry or logs.
+func sanitizeResourceURI(resource string) string {
+	if i := strings.IndexByte(resource, '#'); i >= 0 {
+		resource = resource[:i]
+	}
+	u, err := url.ParseRequestURI(resource)
+	if err != nil {
+		return "[invalid resource URI]"
+	}
+	u.User = nil
+	u.RawQuery = ""
+	return u.String()
 }

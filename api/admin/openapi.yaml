@@ -55,6 +55,17 @@ info:
     - **Disabled**: Requires manual `token_endpoint` and `authorize_endpoint` configuration
     - **Metadata URL**: Optional override for non-standard discovery locations
 
+    
+    ## Trace Correlation
+
+    By default, every HTTP response from this API includes the additive W3C
+    `traceresponse` response header.
+
+    - The header applies globally across this API, including successful responses and error responses.
+    - Its `<trace-id>` field is the request correlation identifier operators can use to find matching logs.
+    - The header is additive only; no request or response body schema changes are introduced by this feature.
+    - Emission is enabled by default and can be disabled only through `request_context.trace.response_enabled`.
+
     ## Error Handling
 
     All error responses follow a consistent format with appropriate HTTP status codes.

@@ -14,6 +14,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtclaims"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/permissionset"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/security"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -188,6 +189,14 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	if err != nil {
 		return nil, err
 	}
+
+	// ADR 033 §3: finalize the request security context at the post-validation
+	// token-exchange seam. The subject-token principal (Actor) and the validated
+	// client_assertion subject (CallingPeer) are both known here. Finalizing before
+	// the authorization decision guarantees a denied exchange still carries
+	// actor/calling_peer on the security-sensitive failure audit path.
+	callingPeer, _ := clientAssertionJWT.Subject()
+	_, _ = security.FinalizeCaptureHolder(ctx, principal, callingPeer)
 
 	// Step 5: Extract agent_id from subject_token via CEL
 	agentID, err := s.celEvaluator.ExtractAgentID(subjectTokenClaims)

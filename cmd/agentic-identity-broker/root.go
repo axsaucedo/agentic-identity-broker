@@ -85,8 +85,7 @@ func run(cmd *cobra.Command, args []string) error {
 	// Create route setup function for admin server
 	adminRouteSetup := func(r chi.Router) {
 		routing.SetupAdminRoutes(r, application.AdminHandlers, routing.AdminRouteConfig{
-			CORS:      cfg.Server.Admin.CORS,
-			Telemetry: cfg.Telemetry,
+			CORS: cfg.Server.Admin.CORS,
 		})
 	}
 
@@ -96,7 +95,7 @@ func run(cmd *cobra.Command, args []string) error {
 			Authentication:               cfg.Server.EndUser.Authentication,
 			JWTAuthenticator:             application.JWTAuthenticator,
 			ApprovalRequestAuthenticator: application.ApprovalRequestAuthenticator,
-			Logger:                       logger,
+			Logger:                       application.Logger,
 			CORS:                         cfg.Server.EndUser.CORS,
 			Telemetry:                    cfg.Telemetry,
 		})
@@ -108,10 +107,13 @@ func run(cmd *cobra.Command, args []string) error {
 			Port:           cfg.Server.Admin.Port,
 			Bind:           cfg.Server.Admin.Bind,
 			PublicURL:      cfg.Server.Admin.PublicURL,
+			Name:           "admin",
+			Telemetry:      cfg.Telemetry,
+			RequestContext: &cfg.RequestContext,
 			Authentication: cfg.Server.Admin.Authentication,
 		},
 		adminRouteSetup,
-		logger,
+		application.Logger,
 	)
 
 	enduserServer := httpAdapter.NewServer(
@@ -119,12 +121,15 @@ func run(cmd *cobra.Command, args []string) error {
 			Port:             cfg.Server.EndUser.Port,
 			Bind:             cfg.Server.EndUser.Bind,
 			PublicURL:        cfg.Server.EndUser.PublicURL,
+			Name:             "enduser",
+			Telemetry:        cfg.Telemetry,
+			RequestContext:   &cfg.RequestContext,
 			Authentication:   cfg.Server.EndUser.Authentication,
 			JWTAuthenticator: application.JWTAuthenticator,
 			HealthComponents: application.EnduserHealthComponents,
 		},
 		enduserRouteSetup,
-		logger,
+		application.Logger,
 	)
 
 	// Setup signal handling for graceful shutdown
@@ -434,4 +439,9 @@ func init() {
 	rootCmd.PersistentFlags().Int("server.admin.port", 0, "admin server port (default: 14000)")
 	rootCmd.PersistentFlags().String("server.admin.bind", "", "admin server bind address (default: ::)")
 	rootCmd.PersistentFlags().Duration("server.shutdown.timeout", 0, "graceful shutdown timeout (default: 30s)")
+
+	// Request security-context configuration flags
+	rootCmd.PersistentFlags().Bool("request_context.trusted_proxy.enabled", false, "trust configured forwarded header for client IP derivation")
+	rootCmd.PersistentFlags().String("request_context.trusted_proxy.forwarded_header", "", "forwarded header name for client IP derivation")
+	rootCmd.PersistentFlags().Bool("request_context.trace.response_enabled", true, "emit traceresponse header on HTTP responses")
 }

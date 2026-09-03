@@ -35,6 +35,10 @@ func Validate(cfg *ports.Config) error {
 		return err
 	}
 
+	if err := validateRequestContextConfig(&cfg.RequestContext); err != nil {
+		return err
+	}
+
 	// Validate storage configuration
 	if err := validateStorageConfig(&cfg.Storage); err != nil {
 		return err
@@ -85,6 +89,27 @@ func validateServerConfig(sc *ports.ServerConfig, security *ports.SecurityConfig
 	// Validate Admin server
 	if err := validateServerInstance(&sc.Admin, "server.admin", security); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func validateRequestContextConfig(cfg *ports.RequestContextConfig) error {
+	if cfg == nil {
+		return nil
+	}
+
+	if !cfg.TrustedProxy.Enabled {
+		return nil
+	}
+
+	if strings.TrimSpace(cfg.TrustedProxy.ForwardedHeader) == "" {
+		return formatValidationError(
+			"request_context.trusted_proxy.forwarded_header",
+			cfg.TrustedProxy.ForwardedHeader,
+			"non-empty header name when trusted proxy is enabled",
+			nil,
+		)
 	}
 
 	return nil

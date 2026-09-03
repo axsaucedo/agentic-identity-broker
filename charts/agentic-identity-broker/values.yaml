@@ -383,6 +383,17 @@ broker:
       # -- Graceful shutdown timeout
       timeout: 30s
 
+  # Request security context configuration
+  requestContext:
+    trustedProxy:
+      # -- Trust forwarded headers from an upstream proxy when deriving caller IPs
+      enabled: false
+      # -- Forwarded header to inspect when trustedProxy.enabled is true
+      forwardedHeader: X-Forwarded-For
+    trace:
+      # -- Emit the additive W3C traceresponse response header on HTTP responses
+      responseEnabled: true
+
   # OAuth2 configuration
   thirdPartyOauth2:
     # -- JWE signing key for state tokens (required, load from secret)

@@ -152,6 +152,51 @@ func GenerateJWKSFromPublicKey(publicKeyPEM string) (map[string]interface{}, err
 	return jwksSet, nil
 }
 
+// TokenExchangeJWTs contains the signed JWT pair used by delegated token-exchange tests.
+type TokenExchangeJWTs struct {
+	SubjectToken    string
+	ClientAssertion string
+}
+
+// BuildTokenExchangeJWTs signs a subject token plus client assertion for RFC 8693 test flows.
+func BuildTokenExchangeJWTs(
+	privateKeyPEM string,
+	issuer string,
+	audience string,
+	subjectPrincipal string,
+	agentID string,
+	clientAssertionSubject string,
+	now time.Time,
+) (*TokenExchangeJWTs, error) {
+	subjectToken, err := SignTestJWT(map[string]interface{}{
+		"sub": subjectPrincipal,
+		"azp": agentID,
+		"iss": issuer,
+		"aud": audience,
+		"exp": now.Add(1 * time.Hour).Unix(),
+		"iat": now.Unix(),
+	}, privateKeyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign subject_token: %w", err)
+	}
+
+	clientAssertion, err := SignTestJWT(map[string]interface{}{
+		"sub": clientAssertionSubject,
+		"iss": issuer,
+		"aud": audience,
+		"exp": now.Add(1 * time.Hour).Unix(),
+		"iat": now.Unix(),
+	}, privateKeyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign client_assertion: %w", err)
+	}
+
+	return &TokenExchangeJWTs{
+		SubjectToken:    subjectToken,
+		ClientAssertion: clientAssertion,
+	}, nil
+}
+
 // CreateUnsignedJWT creates an unsigned JWT (alg: "none") with the provided claims.
 // Used for testing unsigned JWT pre-auth in service mesh environments.
 // Returns the JWT string in the format: base64(header).base64(payload).

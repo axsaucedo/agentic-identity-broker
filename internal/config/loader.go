@@ -124,6 +124,11 @@ func (l *Loader) setDefaults() {
 	l.v.SetDefault("storage.timeouts.read", "5s")
 	l.v.SetDefault("storage.timeouts.write", "10s")
 
+	requestContextDefaults := ports.DefaultRequestContextConfig()
+	l.v.SetDefault("request_context.trusted_proxy.enabled", requestContextDefaults.TrustedProxy.Enabled)
+	l.v.SetDefault("request_context.trusted_proxy.forwarded_header", requestContextDefaults.TrustedProxy.ForwardedHeader)
+	l.v.SetDefault("request_context.trace.response_enabled", requestContextDefaults.Trace.ResponseEnabled)
+
 	// Bind environment variables explicitly
 	// This ensures env vars override YAML config (proper precedence)
 	// Note: BindEnv errors are not critical - viper will continue with defaults
@@ -143,6 +148,9 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("server.admin.cors.max_age", "IDENTITY_BROKER_SERVER_ADMIN_CORS_MAX_AGE")
 	_ = l.v.BindEnv("storage.backend", "IDENTITY_BROKER_STORAGE_BACKEND")
 	_ = l.v.BindEnv("storage.postgres.connection_url", "IDENTITY_BROKER_STORAGE_POSTGRES_URL")
+	_ = l.v.BindEnv("request_context.trusted_proxy.enabled", "IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_ENABLED")
+	_ = l.v.BindEnv("request_context.trusted_proxy.forwarded_header", "IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_FORWARDED_HEADER")
+	_ = l.v.BindEnv("request_context.trace.response_enabled", "IDENTITY_BROKER_REQUEST_CONTEXT_TRACE_RESPONSE_ENABLED")
 	_ = l.v.BindEnv("third_party_oauth2.jwe_signing_key", "IDENTITY_BROKER_JWE_SIGNING_KEY")
 	_ = l.v.BindEnv("third_party_oauth2.state_token_ttl", "IDENTITY_BROKER_STATE_TOKEN_TTL")
 	_ = l.v.BindEnv("third_party_oauth2.pkce_verifier_length", "IDENTITY_BROKER_PKCE_VERIFIER_LENGTH")
@@ -267,6 +275,9 @@ func (l *Loader) setDefaults() {
 			"server.admin.port", "server.admin.bind", "server.admin.public_url",
 			"server.shutdown.timeout",
 			"storage.backend", "storage.timeouts.read", "storage.timeouts.write",
+			"request_context.trusted_proxy.enabled",
+			"request_context.trusted_proxy.forwarded_header",
+			"request_context.trace.response_enabled",
 			"third_party_oauth2.state_token_ttl", "third_party_oauth2.pkce_verifier_length",
 			"security.skip_thirdparty_https_validation",
 			"telemetry.enabled", "telemetry.service_name",
@@ -676,6 +687,27 @@ func (l *Loader) bindFlags() error {
 		timeout, _ := l.cmd.Flags().GetDuration("server.shutdown.timeout")
 		l.v.Set("server.shutdown.timeout", timeout)
 		cliKeys = append(cliKeys, "server.shutdown.timeout")
+	}
+
+	// Bind request_context.trusted_proxy.enabled flag
+	if l.cmd.Flags().Changed("request_context.trusted_proxy.enabled") {
+		enabled, _ := l.cmd.Flags().GetBool("request_context.trusted_proxy.enabled")
+		l.v.Set("request_context.trusted_proxy.enabled", enabled)
+		cliKeys = append(cliKeys, "request_context.trusted_proxy.enabled")
+	}
+
+	// Bind request_context.trusted_proxy.forwarded_header flag
+	if l.cmd.Flags().Changed("request_context.trusted_proxy.forwarded_header") {
+		header, _ := l.cmd.Flags().GetString("request_context.trusted_proxy.forwarded_header")
+		l.v.Set("request_context.trusted_proxy.forwarded_header", header)
+		cliKeys = append(cliKeys, "request_context.trusted_proxy.forwarded_header")
+	}
+
+	// Bind request_context.trace.response_enabled flag
+	if l.cmd.Flags().Changed("request_context.trace.response_enabled") {
+		enabled, _ := l.cmd.Flags().GetBool("request_context.trace.response_enabled")
+		l.v.Set("request_context.trace.response_enabled", enabled)
+		cliKeys = append(cliKeys, "request_context.trace.response_enabled")
 	}
 
 	// Record CLI source if any flags were set

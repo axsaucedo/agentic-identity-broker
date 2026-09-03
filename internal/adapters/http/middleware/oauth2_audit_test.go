@@ -6,10 +6,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/telemetry"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/security"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestOAuth2AuditMiddleware_LogsRequestID tests that middleware extracts and logs request ID
@@ -233,6 +237,33 @@ func TestOAuth2AuditMiddleware_PreservesRequestPath(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "/oauth2/authorize", capturedPath)
+}
+
+func TestOAuth2AuditMiddleware_UsesBoundedSecurityContextUserAgent(t *testing.T) {
+	var records []slog.Record
+	testHandler := &testLogHandler{
+		records: &records,
+		wrapped: slog.NewTextHandler(io.Discard, nil),
+	}
+	logger := slog.New(telemetry.NewContextHandler(testHandler))
+	userAgent := strings.Repeat("a", security.MaxUserAgentByte+1)
+	req := httptest.NewRequest(http.MethodGet, "https://broker.example.com/oauth2/authorize", nil)
+	req.Header.Set("User-Agent", userAgent)
+	req = req.WithContext(security.WithSecurityContext(req.Context(), security.SecurityContext{
+		UserAgent: security.TruncateUserAgent(userAgent),
+	}))
+
+	OAuth2AuditMiddleware(logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(httptest.NewRecorder(), req)
+
+	require.Len(t, records, 1)
+	attrs := make(map[string]any, records[0].NumAttrs())
+	records[0].Attrs(func(attr slog.Attr) bool {
+		attrs[attr.Key] = attr.Value.Any()
+		return true
+	})
+	assert.Equal(t, security.TruncateUserAgent(userAgent), attrs["user_agent"])
 }
 
 // testLogHandler is a test slog.Handler that captures log records

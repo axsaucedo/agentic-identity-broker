@@ -2,6 +2,8 @@ package enduser
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,14 +14,31 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/telemetry"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/security"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockTokenMintingStrategy is a configurable test double for ports.TokenMintingStrategy.
@@ -551,6 +570,7 @@ func TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming(t *testing.T) {
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Custom-Response-Header", "custom-value")
+		w.Header().Set("traceresponse", "00-upstream-trace-id-upstream-span-id-01")
 		w.WriteHeader(http.StatusOK)
 		// Return large response to test streaming
 		_, _ = w.Write([]byte(`{"access_token": "verylongtoken123456789", "token_type": "Bearer", "expires_in": 3600, "scope": "openid profile email"}`))
@@ -566,11 +586,13 @@ func TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming(t *testing.T) {
 	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", reqBody)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
+	w.Header().Set("traceresponse", "00-broker-trace-id-broker-span-id-01")
 
 	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "custom-value", w.Header().Get("X-Custom-Response-Header"))
+	assert.Equal(t, []string{"00-broker-trace-id-broker-span-id-01"}, w.Header().Values("traceresponse"))
 
 	respBody, _ := io.ReadAll(w.Body)
 	assert.Contains(t, string(respBody), "access_token")
@@ -1058,7 +1080,7 @@ func TestHandleMintingError_RFC6749StatusCodes(t *testing.T) {
 			s := &localGrantStrategy{}
 			w := httptest.NewRecorder()
 
-			s.handleMintingError(w, tt.err, "client_credentials", "broker_test")
+			s.handleMintingError(w, context.Background(), tt.err, "client_credentials", "broker_test")
 
 			assert.Equal(t, tt.wantStatus, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -1076,7 +1098,7 @@ func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
 		s := &localGrantStrategy{}
 		w := httptest.NewRecorder()
 
-		s.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_scope", "scope not allowed", http.StatusBadRequest, oauth2server.ErrInvalidScope)), "client_credentials", "broker_test")
+		s.handleMintingError(w, context.Background(), fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_scope", "scope not allowed", http.StatusBadRequest, oauth2server.ErrInvalidScope)), "client_credentials", "broker_test")
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		body, _ := io.ReadAll(w.Body)
@@ -1089,7 +1111,7 @@ func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
 		s := &localGrantStrategy{}
 		w := httptest.NewRecorder()
 
-		s.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant)), "authorization_code", "broker_test")
+		s.handleMintingError(w, context.Background(), fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant)), "authorization_code", "broker_test")
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		body, _ := io.ReadAll(w.Body)
@@ -1109,12 +1131,85 @@ func TestHandleMintingError_LogDoesNotLeakErrorChain(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	wrapped := fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_client", "client auth failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient))
-	s.handleMintingError(w, wrapped, "client_credentials", "broker_test")
+	s.handleMintingError(w, context.Background(), wrapped, "client_credentials", "broker_test")
 
 	logLine := buf.String()
 	assert.NotContains(t, logLine, internalDetail)
 	assert.Contains(t, logLine, "invalid_client")
 	assert.Contains(t, logLine, "client auth failed")
+}
+
+func TestLocalGrantStrategy_MintingFailureLogCarriesRequestContext(t *testing.T) {
+	base := newTokenEndpointLogCaptureHandler(slog.LevelInfo)
+	logger := slog.New(telemetry.NewContextHandler(base))
+	strategy := NewLocalGrantStrategy(fixedMinting(nil,
+		oauth2server.NewRFC6749Error("invalid_client", "client authentication failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient),
+	), logger)
+	want := security.SecurityContext{
+		TraceID: "0123456789abcdef0123456789abcdef",
+		Actor:   "service-account@example.com",
+	}
+	req := httptest.NewRequest(http.MethodPost, "/oauth2/token", nil).WithContext(
+		security.WithSecurityContext(context.Background(), want),
+	)
+
+	strategy.HandleTokenGrant(httptest.NewRecorder(), req, "client_credentials", url.Values{
+		"client_id":     {"broker_test"},
+		"client_secret": {"secret"},
+	}, nil)
+
+	record, ok := findTokenEndpointLogRecord(*base.records, "TokenRequestFailed")
+	require.True(t, ok)
+	assert.Equal(t, want.TraceID, record.attrs["trace_id"])
+	assert.Equal(t, want.Actor, record.attrs["actor"])
+}
+
+func TestLocalGrantStrategy_RefreshTokenLogsCarryRequestContext(t *testing.T) {
+	want := security.SecurityContext{
+		TraceID:     "0123456789abcdef0123456789abcdef",
+		Actor:       "service-account@example.com",
+		CallingPeer: "gateway-client-1",
+	}
+	tests := []struct {
+		name     string
+		response *ports.TokenResponse
+		err      error
+		message  string
+	}{
+		{
+			name:     "success",
+			response: &ports.TokenResponse{AccessToken: "access-token", TokenType: "Bearer", ExpiresIn: 3600},
+			message:  "TokenIssued",
+		},
+		{
+			name:    "failure",
+			err:     oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant),
+			message: "refresh_token grant failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			base := newTokenEndpointLogCaptureHandler(slog.LevelInfo)
+			logger := slog.New(telemetry.NewContextHandler(base))
+			strategy := NewLocalGrantStrategy(fixedMinting(tt.response, tt.err), logger)
+			req := httptest.NewRequest(http.MethodPost, "/oauth2/token", nil).WithContext(
+				security.WithSecurityContext(context.Background(), want),
+			)
+
+			strategy.HandleTokenGrant(httptest.NewRecorder(), req, "refresh_token", url.Values{
+				"client_id":     {"broker_test"},
+				"client_secret": {"secret"},
+				"refresh_token": {"refresh-token"},
+			}, nil)
+
+			record, ok := findTokenEndpointLogRecord(*base.records, tt.message)
+			require.True(t, ok)
+			assert.Equal(t, want.TraceID, record.attrs["trace_id"])
+			assert.Equal(t, want.Actor, record.attrs["actor"])
+			assert.Equal(t, want.CallingPeer, record.attrs["calling_peer"])
+		})
+	}
 }
 
 // mockTokenGrantStrategy captures HandleTokenGrant arguments for dispatch assertion.
@@ -1124,6 +1219,19 @@ type mockTokenGrantStrategy struct {
 
 func (m *mockTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, _ *http.Request, _ string, formData url.Values, _ *ports.TokenGrantResolution) {
 	m.capturedFormData = formData
+	w.WriteHeader(http.StatusOK)
+}
+
+// securityContextRecordingGrantStrategy records the SecurityContext visible to the
+// downstream grant handler at dispatch time, proving the /oauth2/token seam
+// finalized it before HandleTokenGrant ran.
+type securityContextRecordingGrantStrategy struct {
+	observedSC security.SecurityContext
+	observedOK bool
+}
+
+func (s *securityContextRecordingGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, _ string, _ url.Values, _ *ports.TokenGrantResolution) {
+	s.observedSC, s.observedOK = security.FromContext(r.Context())
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -1523,4 +1631,453 @@ func TestTokenEndpointStatus_RFC6749Mapping(t *testing.T) {
 			assert.Equal(t, tt.want, got, "tokenEndpointStatus(%q)", tt.code)
 		})
 	}
+}
+
+type tokenEndpointLogRecord struct {
+	level   slog.Level
+	message string
+	attrs   map[string]any
+}
+
+type tokenEndpointLogCaptureHandler struct {
+	minLevel slog.Level
+	records  *[]tokenEndpointLogRecord
+	attrs    []slog.Attr
+	groups   []string
+}
+
+func newTokenEndpointLogCaptureHandler(minLevel slog.Level) *tokenEndpointLogCaptureHandler {
+	records := make([]tokenEndpointLogRecord, 0, 4)
+	return &tokenEndpointLogCaptureHandler{minLevel: minLevel, records: &records}
+}
+
+func (h *tokenEndpointLogCaptureHandler) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= h.minLevel
+}
+
+func (h *tokenEndpointLogCaptureHandler) Handle(_ context.Context, record slog.Record) error {
+	attrs := make(map[string]any, record.NumAttrs()+len(h.attrs))
+	for _, attr := range h.attrs {
+		h.storeAttr(attrs, attr)
+	}
+	record.Attrs(func(attr slog.Attr) bool {
+		h.storeAttr(attrs, attr)
+		return true
+	})
+	*h.records = append(*h.records, tokenEndpointLogRecord{
+		level:   record.Level,
+		message: record.Message,
+		attrs:   attrs,
+	})
+	return nil
+}
+
+func (h *tokenEndpointLogCaptureHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	clone := *h
+	clone.attrs = append(append([]slog.Attr{}, h.attrs...), attrs...)
+	return &clone
+}
+
+func (h *tokenEndpointLogCaptureHandler) WithGroup(name string) slog.Handler {
+	clone := *h
+	clone.groups = append(append([]string{}, h.groups...), name)
+	return &clone
+}
+
+func (h *tokenEndpointLogCaptureHandler) storeAttr(dst map[string]any, attr slog.Attr) {
+	key := attr.Key
+	if len(h.groups) > 0 {
+		key = strings.Join(append(append([]string{}, h.groups...), attr.Key), ".")
+	}
+	dst[key] = attr.Value.Any()
+}
+
+func findTokenEndpointLogRecord(records []tokenEndpointLogRecord, message string) (tokenEndpointLogRecord, bool) {
+	for _, record := range records {
+		if record.message == message {
+			return record, true
+		}
+	}
+	return tokenEndpointLogRecord{}, false
+}
+
+type oauth2TokenJWKSProvider struct {
+	keySet jwk.Set
+}
+
+func (p *oauth2TokenJWKSProvider) GetKeySet(context.Context) (jwk.Set, error) {
+	return p.keySet, nil
+}
+
+func (p *oauth2TokenJWKSProvider) GetKey(_ context.Context, kid string) (jwk.Key, error) {
+	key, ok := p.keySet.LookupKeyID(kid)
+	if !ok {
+		return nil, errors.New("key not found")
+	}
+	return key, nil
+}
+
+type oauth2TokenPassthroughEncryption struct{}
+
+func (e *oauth2TokenPassthroughEncryption) Encrypt(_ context.Context, plaintext []byte, _ map[string]string) ([]byte, error) {
+	return append([]byte(nil), plaintext...), nil
+}
+
+func (e *oauth2TokenPassthroughEncryption) Decrypt(_ context.Context, ciphertext []byte, _ map[string]string) ([]byte, error) {
+	return append([]byte(nil), ciphertext...), nil
+}
+
+type oauth2TokenNoopBranchKeyManager struct{}
+
+func (m *oauth2TokenNoopBranchKeyManager) Create(_ context.Context, _ domainencryption.BranchKeySubject) (string, error) {
+	return "", nil
+}
+
+type oauth2TokenProviderRepo struct {
+	seenSC security.SecurityContext
+	seenOK bool
+}
+
+func (r *oauth2TokenProviderRepo) Create(context.Context, *model.ThirdpartyOAuth2ProviderEntity) error {
+	return nil
+}
+
+func (r *oauth2TokenProviderRepo) Get(context.Context, id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	return nil, ports.ErrNotFound
+}
+
+func (r *oauth2TokenProviderRepo) Update(context.Context, *model.ThirdpartyOAuth2ProviderEntity, *int64) error {
+	return nil
+}
+
+func (r *oauth2TokenProviderRepo) Delete(context.Context, id.ServiceID) error {
+	return nil
+}
+
+func (r *oauth2TokenProviderRepo) List(context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
+	return nil, nil
+}
+
+func (r *oauth2TokenProviderRepo) CountGrantsReferencingService(context.Context, id.ServiceID) (int, error) {
+	return 0, nil
+}
+
+func (r *oauth2TokenProviderRepo) FindByProtectedResource(ctx context.Context, _ string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	r.seenSC, r.seenOK = security.FromContext(ctx)
+	return nil, tokenexchange.NewInvalidTargetError("no service configured for the requested resource")
+}
+
+func (*oauth2TokenProviderRepo) AddProtectedResource(context.Context, id.ServiceID, string) (ports.ProtectedResourceMutationResult, error) {
+	return ports.ProtectedResourceMutationResult{}, nil
+}
+
+func (*oauth2TokenProviderRepo) RemoveProtectedResource(context.Context, id.ServiceID, string) (ports.ProtectedResourceMutationResult, error) {
+	return ports.ProtectedResourceMutationResult{}, nil
+}
+
+func (*oauth2TokenProviderRepo) RenameProtectedResource(context.Context, id.ServiceID, string, string) (ports.ProtectedResourceMutationResult, error) {
+	return ports.ProtectedResourceMutationResult{}, nil
+}
+
+func (*oauth2TokenProviderRepo) ListProtectedResources(context.Context, id.ServiceID) ([]string, int64, error) {
+	return nil, 0, nil
+}
+
+func generateOAuth2TokenExchangeKeySet(t *testing.T) (*rsa.PrivateKey, jwk.Set) {
+	t.Helper()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	publicKey, err := jwk.Import[jwk.Key](&privateKey.PublicKey)
+	require.NoError(t, err)
+	require.NoError(t, publicKey.Set(jwk.KeyIDKey, "test-key"))
+	require.NoError(t, publicKey.Set(jwk.AlgorithmKey, jwa.RS256()))
+
+	keySet := jwk.NewSet()
+	require.NoError(t, keySet.AddKey(publicKey))
+	return privateKey, keySet
+}
+
+func signOAuth2TokenExchangeJWT(t *testing.T, privateKey *rsa.PrivateKey, claims map[string]any) string {
+	t.Helper()
+
+	tok := jwt.New()
+	for key, value := range claims {
+		require.NoError(t, tok.Set(key, value))
+	}
+
+	privateJWK, err := jwk.Import[jwk.Key](privateKey)
+	require.NoError(t, err)
+	require.NoError(t, privateJWK.Set(jwk.KeyIDKey, "test-key"))
+
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256(), privateJWK))
+	require.NoError(t, err)
+	return string(signed)
+}
+
+func newTokenExchangeServiceForContextPropagationTest(t *testing.T, keySet jwk.Set, repo ports.ThirdpartyOAuth2ProviderRepository) *tokenexchange.TokenExchangeService {
+	t.Helper()
+
+	validator, err := tokenexchange.NewJWTValidator(
+		&oauth2TokenJWKSProvider{keySet: keySet},
+		"https://auth.example.com",
+		"agentic-identity-broker",
+		60,
+	)
+	require.NoError(t, err)
+
+	celEvaluator, err := tokenexchange.NewCELEvaluator(tokenexchange.CELEvaluatorConfig{
+		PrincipalExpression:     "subject_token.sub",
+		AgentIDExpression:       "subject_token.azp",
+		AuthorizationExpression: "true",
+		EvaluationTimeout:       100 * time.Millisecond,
+	})
+	require.NoError(t, err)
+
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(
+		repo,
+		&oauth2TokenPassthroughEncryption{},
+		&oauth2TokenNoopBranchKeyManager{},
+		nil,
+		false,
+		nil,
+	)
+
+	service, err := tokenexchange.NewTokenExchangeService(
+		validator,
+		celEvaluator,
+		providerService,
+		&oauth2session.OAuth2SessionService{},
+		&consent.Service{},
+		nil,
+		newStubAgentRepo(id.NewAgentID(), "upstream-client-id"),
+		&ports.TokenExchangeConfig{
+			ClaimExtraction: ports.ClaimExtractionConfig{
+				PrincipalExpression: "subject_token.sub",
+				AgentIDExpression:   "subject_token.azp",
+			},
+			Authorization: ports.AuthorizationConfig{
+				Type: "cel",
+				CEL:  ports.CELAuthorizationConfig{Expression: "true"},
+			},
+		},
+	)
+	require.NoError(t, err)
+	return service
+}
+
+func TestOAuth2TokenHandler_TokenExchangeErrorLogCarriesFinalSecurityContext(t *testing.T) {
+	t.Parallel()
+
+	privateKey, keySet := generateOAuth2TokenExchangeKeySet(t)
+	providerRepo := &oauth2TokenProviderRepo{}
+	logCapture := newTokenEndpointLogCaptureHandler(slog.LevelInfo)
+	logger := slog.New(telemetry.NewContextHandler(logCapture))
+	handler := &OAuth2TokenHandler{
+		TokenExchange: newTokenExchangeServiceForContextPropagationTest(t, keySet, providerRepo),
+		Logger:        logger,
+	}
+
+	want := security.SecurityContext{
+		TraceID:     "0123456789abcdef0123456789abcdef",
+		Actor:       "user@example.com",
+		CallingPeer: "privileged-client-1",
+	}
+	now := time.Now()
+	subjectToken := signOAuth2TokenExchangeJWT(t, privateKey, map[string]any{
+		"iss": "https://auth.example.com",
+		"aud": "agentic-identity-broker",
+		"sub": want.Actor,
+		"azp": id.NewAgentID().String(),
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Unix(),
+	})
+	clientAssertion := signOAuth2TokenExchangeJWT(t, privateKey, map[string]any{
+		"iss": "https://auth.example.com",
+		"aud": "agentic-identity-broker",
+		"sub": want.CallingPeer,
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Unix(),
+	})
+
+	form := url.Values{
+		"grant_type":            {tokenexchange.TokenExchangeGrantType},
+		"subject_token":         {subjectToken},
+		"subject_token_type":    {tokenexchange.AccessTokenType},
+		"client_assertion":      {clientAssertion},
+		"client_assertion_type": {tokenexchange.JWTBearerType},
+		"resource":              {"https://api.example.com/resource"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/oauth2/token", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(security.WithSecurityContext(req.Context(), want))
+	res := httptest.NewRecorder()
+
+	handler.ServeHTTP(res, req)
+
+	require.Equal(t, http.StatusBadRequest, res.Code)
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
+	assert.Equal(t, "invalid_target", body["error"])
+
+	require.True(t, providerRepo.seenOK, "handler must preserve the final SecurityContext into downstream token-exchange service calls")
+	assert.Equal(t, want.TraceID, providerRepo.seenSC.TraceID)
+	assert.Equal(t, want.Actor, providerRepo.seenSC.Actor)
+	assert.Equal(t, want.CallingPeer, providerRepo.seenSC.CallingPeer)
+
+	record, ok := findTokenEndpointLogRecord(*logCapture.records, "Token exchange failed")
+	require.True(t, ok, "token-exchange failures must be logged")
+	assert.Equal(t, want.TraceID, record.attrs["trace_id"], "handler logs must remain bound to the request trace")
+	assert.Equal(t, want.Actor, record.attrs["actor"], "handler logs must include the finalized actor")
+	assert.Equal(t, want.CallingPeer, record.attrs["calling_peer"], "handler logs must include the finalized calling_peer")
+}
+
+// TestOAuth2TokenHandler_FinalizesSecurityContextBeforeGrantHandler is a regression
+// guard for architecture-review Finding 4: on POST /oauth2/token with a non-RFC8693
+// grant, the request SecurityContext MUST be finalized at the handler seam before
+// control reaches the downstream grant handler. That grant handler emits
+// context-aware TokenIssued audit logs (slog InfoContext) that must carry actor and
+// trace_id, and the LoggingMiddleware perimeter safety net only finalizes AFTER
+// ServeHTTP returns — too late for in-handler logs. SecurityContextMiddleware defers
+// finalization for every POST /oauth2/token, so the handler must finalize the still-open
+// deferred capture holder itself before dispatch.
+func TestOAuth2TokenHandler_FinalizesSecurityContextBeforeGrantHandler(t *testing.T) {
+	t.Parallel()
+
+	stub := &securityContextRecordingGrantStrategy{}
+	handler := &OAuth2TokenHandler{
+		OAuth2Service: newLocalModeOAuth2Service(),
+		GrantHandler:  stub,
+	}
+
+	holder := security.NewCaptureHolder(security.TransportCapture{
+		TraceID:       "0123456789abcdef0123456789abcdef",
+		ClientIP:      "203.0.113.9",
+		UserAgent:     "cc-client/1.0",
+		RequestMethod: "POST",
+		RequestTarget: "/oauth2/token",
+		ReceivedAt:    time.Date(2026, time.July, 4, 12, 0, 0, 0, time.UTC),
+	})
+	ctx := principal.WithPrincipal(security.WithCaptureHolder(context.Background(), holder), "svc-account@example.com")
+
+	form := "grant_type=client_credentials&client_id=" + id.NewAgentID().String() + "&client_secret=secret"
+	req := httptest.NewRequest(http.MethodPost, "/oauth2/token", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(ctx)
+
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	require.True(t, stub.observedOK, "grant handler must observe a finalized SecurityContext — non-exchange grants finalize at the /oauth2/token seam before dispatch so in-handler TokenIssued audit logs carry actor/trace_id")
+	assert.Equal(t, "svc-account@example.com", stub.observedSC.Actor)
+	assert.Equal(t, "0123456789abcdef0123456789abcdef", stub.observedSC.TraceID)
+	assert.Empty(t, stub.observedSC.CallingPeer, "non-delegated grants carry no calling peer")
+
+	sc, ok := holder.Finalized()
+	require.True(t, ok)
+	assert.Equal(t, "svc-account@example.com", sc.Actor)
+}
+
+func TestSanitizeResourceURI(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain uri unchanged", "https://api.example.com/resource", "https://api.example.com/resource"},
+		{"query stripped", "https://api.example.com/resource?access_token=SECRET", "https://api.example.com/resource"},
+		{"fragment stripped", "https://api.example.com/resource#SECRET", "https://api.example.com/resource"},
+		{"query and fragment stripped", "https://api.example.com/r?token=SECRET#frag", "https://api.example.com/r"},
+		{"unparseable with query redacted", "not a uri?token=SECRET", "[invalid resource URI]"},
+		{"unparseable with fragment redacted", "not a uri#SECRET", "[invalid resource URI]"},
+		{"userinfo stripped", "https://user:secret@example.com/resource", "https://example.com/resource"},
+		{"unparseable userinfo redacted", "https://user:secret@example.com/%zz", "[invalid resource URI]"},
+		{"empty redacted", "", "[invalid resource URI]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := sanitizeResourceURI(tt.in)
+			assert.Equal(t, tt.want, got)
+			assert.NotContains(t, got, "SECRET", "sanitized resource must never retain query/fragment secrets")
+			assert.NotContains(t, got, "user:secret", "sanitized resource must never retain URI credentials")
+		})
+	}
+}
+
+// TestOAuth2TokenHandler_TokenExchangeResourceSanitizedInLogsAndSpan guards the
+// secret-scrubbing contract: the RFC 8693 resource is caller-controlled and its
+// query string / fragment can carry tokens. The handler MUST NOT emit the raw
+// resource into span attributes or structured logs.
+func TestOAuth2TokenHandler_TokenExchangeResourceSanitizedInLogsAndSpan(t *testing.T) {
+	spanRecorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+	prevTP := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() { otel.SetTracerProvider(prevTP) })
+
+	privateKey, keySet := generateOAuth2TokenExchangeKeySet(t)
+	providerRepo := &oauth2TokenProviderRepo{}
+	logCapture := newTokenEndpointLogCaptureHandler(slog.LevelInfo)
+	logger := slog.New(telemetry.NewContextHandler(logCapture))
+	handler := &OAuth2TokenHandler{
+		TokenExchange: newTokenExchangeServiceForContextPropagationTest(t, keySet, providerRepo),
+		Logger:        logger,
+	}
+
+	const rawResource = "https://api.example.com/resource?access_token=SUPERSECRET#frag"
+	const sanitized = "https://api.example.com/resource"
+	now := time.Now()
+	subjectToken := signOAuth2TokenExchangeJWT(t, privateKey, map[string]any{
+		"iss": "https://auth.example.com",
+		"aud": "agentic-identity-broker",
+		"sub": "user@example.com",
+		"azp": id.NewAgentID().String(),
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Unix(),
+	})
+	clientAssertion := signOAuth2TokenExchangeJWT(t, privateKey, map[string]any{
+		"iss": "https://auth.example.com",
+		"aud": "agentic-identity-broker",
+		"sub": "privileged-client-1",
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Unix(),
+	})
+
+	form := url.Values{
+		"grant_type":            {tokenexchange.TokenExchangeGrantType},
+		"subject_token":         {subjectToken},
+		"subject_token_type":    {tokenexchange.AccessTokenType},
+		"client_assertion":      {clientAssertion},
+		"client_assertion_type": {tokenexchange.JWTBearerType},
+		"resource":              {rawResource},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/oauth2/token", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	record, ok := findTokenEndpointLogRecord(*logCapture.records, "Token exchange failed")
+	require.True(t, ok, "token-exchange failures must be logged")
+	assert.Equal(t, sanitized, record.attrs["resource"], "error log resource must be sanitized")
+	assert.NotContains(t, fmt.Sprintf("%v", record.attrs["resource"]), "SUPERSECRET")
+
+	spans := spanRecorder.Ended()
+	var resourceAttr string
+	var sawSpan bool
+	for _, s := range spans {
+		if s.Name() != "tokenexchange.exchange" {
+			continue
+		}
+		sawSpan = true
+		for _, kv := range s.Attributes() {
+			if string(kv.Key) == "token_exchange.resource" {
+				resourceAttr = kv.Value.AsString()
+			}
+		}
+	}
+	require.True(t, sawSpan, "tokenexchange.exchange span must be recorded")
+	assert.Equal(t, sanitized, resourceAttr, "span resource attribute must be sanitized")
+	assert.NotContains(t, resourceAttr, "SUPERSECRET")
 }

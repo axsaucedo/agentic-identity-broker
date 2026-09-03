@@ -2,6 +2,7 @@
 package bootstrap
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,15 +10,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
+	"sync"
 	"time"
+	"unsafe"
 
 	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
-	httpMiddleware "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/routing"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/security"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 )
 
 // TestServer wraps production app with HTTP test interface.
@@ -35,10 +40,233 @@ import (
 // - Provides convenience methods for authenticated requests
 // - Handles principal injection via X-Remote-User header
 type TestServer struct {
-	app    *app.App
-	server *httptest.Server
-	logger *slog.Logger
-	client *http.Client
+	app                     *app.App
+	server                  *httptest.Server
+	logger                  *slog.Logger
+	client                  *http.Client
+	requestSecurityObserver *SecurityContextObserver
+}
+
+// SecurityContextObservation captures a test-only request-security-context observation.
+type SecurityContextObservation struct {
+	Layer         string
+	TraceID       string
+	Actor         string
+	CallingPeer   string
+	ClientIP      string
+	UserAgent     string
+	RequestMethod string
+	RequestTarget string
+}
+
+// SecurityContextObserver is a bootstrap seam for observing downstream propagation.
+type SecurityContextObserver struct {
+	mu           sync.RWMutex
+	observations []SecurityContextObservation
+}
+
+// NewSecurityContextObserver creates an empty observer.
+func NewSecurityContextObserver() *SecurityContextObserver {
+	return &SecurityContextObserver{}
+}
+
+// Record appends a propagation observation.
+func (o *SecurityContextObserver) Record(observation SecurityContextObservation) {
+	if o == nil {
+		return
+	}
+
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.observations = append(o.observations, observation)
+}
+
+// Snapshot returns a copy of the recorded observations.
+func (o *SecurityContextObserver) Snapshot() []SecurityContextObservation {
+	if o == nil {
+		return nil
+	}
+
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	snapshot := make([]SecurityContextObservation, len(o.observations))
+	copy(snapshot, o.observations)
+	return snapshot
+}
+
+// Last returns the most recent observation, if any.
+func (o *SecurityContextObserver) Last() (SecurityContextObservation, bool) {
+	if o == nil {
+		return SecurityContextObservation{}, false
+	}
+
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	if len(o.observations) == 0 {
+		return SecurityContextObservation{}, false
+	}
+
+	return o.observations[len(o.observations)-1], true
+}
+
+type observingThirdpartyOAuth2ProviderRepository struct {
+	layer    string
+	observer *SecurityContextObserver
+	next     ports.ThirdpartyOAuth2ProviderRepository
+}
+
+func (r *observingThirdpartyOAuth2ProviderRepository) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
+	recordObservedSecurityContext(r.observer, r.layer, ctx)
+	return r.next.Create(ctx, entity)
+}
+
+func (r *observingThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, serviceID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	recordObservedSecurityContext(r.observer, r.layer, ctx)
+	return r.next.Get(ctx, serviceID)
+}
+
+func (r *observingThirdpartyOAuth2ProviderRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, expectedVersion *int64) error {
+	recordObservedSecurityContext(r.observer, r.layer, ctx)
+	return r.next.Update(ctx, entity, expectedVersion)
+}
+
+func (r *observingThirdpartyOAuth2ProviderRepository) Delete(ctx context.Context, serviceID id.ServiceID) error {
+	recordObservedSecurityContext(r.observer, r.layer, ctx)
+	return r.next.Delete(ctx, serviceID)
+}
+
+func (r *observingThirdpartyOAuth2ProviderRepository) List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
+	recordObservedSecurityContext(r.observer, r.layer, ctx)
+	return r.next.List(ctx)
+}
+
+func (r *observingThirdpartyOAuth2ProviderRepository) CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error) {
+	recordObservedSecurityContext(r.observer, r.layer, ctx)
+	return r.next.CountGrantsReferencingService(ctx, serviceID)
+}
+
+func (r *observingThirdpartyOAuth2ProviderRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	recordObservedSecurityContext(r.observer, r.layer, ctx)
+	return r.next.FindByProtectedResource(ctx, resourceURI)
+}
+
+func (r *observingThirdpartyOAuth2ProviderRepository) AddProtectedResource(ctx context.Context, serviceID id.ServiceID, resourceURI string) (ports.ProtectedResourceMutationResult, error) {
+	recordObservedSecurityContext(r.observer, r.layer, ctx)
+	return r.next.AddProtectedResource(ctx, serviceID, resourceURI)
+}
+
+func (r *observingThirdpartyOAuth2ProviderRepository) RemoveProtectedResource(ctx context.Context, serviceID id.ServiceID, resourceURI string) (ports.ProtectedResourceMutationResult, error) {
+	recordObservedSecurityContext(r.observer, r.layer, ctx)
+	return r.next.RemoveProtectedResource(ctx, serviceID, resourceURI)
+}
+
+func (r *observingThirdpartyOAuth2ProviderRepository) RenameProtectedResource(ctx context.Context, serviceID id.ServiceID, fromURI, toURI string) (ports.ProtectedResourceMutationResult, error) {
+	recordObservedSecurityContext(r.observer, r.layer, ctx)
+	return r.next.RenameProtectedResource(ctx, serviceID, fromURI, toURI)
+}
+
+func (r *observingThirdpartyOAuth2ProviderRepository) ListProtectedResources(ctx context.Context, serviceID id.ServiceID) ([]string, int64, error) {
+	recordObservedSecurityContext(r.observer, r.layer, ctx)
+	return r.next.ListProtectedResources(ctx, serviceID)
+}
+
+func recordObservedSecurityContext(observer *SecurityContextObserver, layer string, ctx context.Context) {
+	if observer == nil {
+		return
+	}
+
+	sc, ok := security.FromContext(ctx)
+	if !ok {
+		return
+	}
+
+	observer.Record(SecurityContextObservation{
+		Layer:         layer,
+		TraceID:       sc.TraceID,
+		Actor:         sc.Actor,
+		CallingPeer:   sc.CallingPeer,
+		ClientIP:      sc.ClientIP,
+		UserAgent:     sc.UserAgent,
+		RequestMethod: sc.RequestMethod,
+		RequestTarget: sc.RequestTarget,
+	})
+}
+
+// attachRequestSecurityObserver wraps the built ProviderService's repository with
+// observing decorators so grey-box E2E tests can assert the SecurityContext that
+// reaches the service and repository layers (invisible at the HTTP boundary).
+//
+// It reaches into the unexported repo field via reflection because
+// ThirdpartyOAuth2ProviderService exposes no supported repo-injection seam, and
+// adding one would be a test-only production API forbidden by AGENTS.md. The
+// alternative — wrapping at storage-adapter construction — is likewise blocked:
+// Adapter.providers is unexported with no injection constructor. Until a
+// production change is independently justified, reflection is the only test-side
+// seam. It therefore fails loudly (rather than silently no-op'ing) when the field
+// can no longer be found, so a future refactor surfaces a precise error here
+// instead of a mysterious empty-observations failure in a downstream assertion.
+func attachRequestSecurityObserver(app *app.App, observer *SecurityContextObserver) error {
+	if observer == nil {
+		return nil
+	}
+	if app == nil || app.ProviderService == nil {
+		return fmt.Errorf("request security observer requested but app.ProviderService is nil")
+	}
+
+	repo, ok := currentProviderRepo(app.ProviderService)
+	if !ok {
+		return fmt.Errorf("request security observer seam is stale: could not read the unexported \"repo\" field on *thirdparty.ThirdpartyOAuth2ProviderService via reflection — a production refactor likely renamed or removed it; update currentProviderRepo/setProviderRepo in tests/e2e/bootstrap/test_server.go")
+	}
+
+	repositoryObserved := &observingThirdpartyOAuth2ProviderRepository{
+		layer:    "repository",
+		observer: observer,
+		next:     repo,
+	}
+	serviceObserved := &observingThirdpartyOAuth2ProviderRepository{
+		layer:    "service",
+		observer: observer,
+		next:     repositoryObserved,
+	}
+	if !setProviderRepo(app.ProviderService, serviceObserved) {
+		return fmt.Errorf("request security observer seam is stale: could not set the unexported \"repo\" field on *thirdparty.ThirdpartyOAuth2ProviderService via reflection — update setProviderRepo in tests/e2e/bootstrap/test_server.go")
+	}
+	return nil
+}
+
+// currentProviderRepo reads the unexported repo field via reflection. See
+// attachRequestSecurityObserver for why this reflection-based seam is used.
+func currentProviderRepo(providerService any) (ports.ThirdpartyOAuth2ProviderRepository, bool) {
+	value := reflect.ValueOf(providerService)
+	if value.Kind() != reflect.Pointer || value.IsNil() {
+		return nil, false
+	}
+
+	field := value.Elem().FieldByName("repo")
+	if !field.IsValid() {
+		return nil, false
+	}
+
+	repo, ok := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Interface().(ports.ThirdpartyOAuth2ProviderRepository)
+	return repo, ok
+}
+
+// setProviderRepo writes the unexported repo field via reflection. See
+// attachRequestSecurityObserver for why this reflection-based seam is used.
+func setProviderRepo(providerService any, repo ports.ThirdpartyOAuth2ProviderRepository) bool {
+	value := reflect.ValueOf(providerService)
+	if value.Kind() != reflect.Pointer || value.IsNil() {
+		return false
+	}
+
+	field := value.Elem().FieldByName("repo")
+	if !field.IsValid() {
+		return false
+	}
+
+	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(repo))
+	return true
 }
 
 // TestServerConfig holds parameters for building a TestServer that needs URL alignment.
@@ -68,9 +296,10 @@ type TestServerOption func(*testServerOptions)
 
 // testServerOptions holds configuration for building a TestServer.
 type testServerOptions struct {
-	serverType ServerType
-	port       int  // 0 for random port, non-zero for fixed port
-	fixedPort  bool // true to use fixed port
+	serverType              ServerType
+	port                    int  // 0 for random port, non-zero for fixed port
+	fixedPort               bool // true to use fixed port
+	requestSecurityObserver *SecurityContextObserver
 }
 
 // validate checks that the options are internally consistent.
@@ -124,6 +353,13 @@ func WithDevMode() TestServerOption {
 	}
 }
 
+// WithRequestSecurityObserver attaches a test-only observer seam for request-context assertions.
+func WithRequestSecurityObserver(observer *SecurityContextObserver) TestServerOption {
+	return func(o *testServerOptions) {
+		o.requestSecurityObserver = observer
+	}
+}
+
 // NewTestServerV2 creates a test server with the specified options.
 // This replaces NewTestServer() and provides separate end-user and admin servers.
 //
@@ -170,6 +406,9 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 	if err := options.validate(); err != nil {
 		return nil, fmt.Errorf("invalid options: %w", err)
 	}
+	if err := attachRequestSecurityObserver(app, options.requestSecurityObserver); err != nil {
+		return nil, err
+	}
 
 	// Determine route setup and server config based on server type.
 	// Use production NewHandler to align bootstrap with production server path.
@@ -178,8 +417,8 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 		healthComponents func() map[string]string
 	)
 	serverCfg := httpAdapter.ServerConfig{
-		Authentication:   app.Config.Server.EndUser.Authentication,
-		JWTAuthenticator: app.JWTAuthenticator,
+		Telemetry:      app.Config.Telemetry,
+		RequestContext: &app.Config.RequestContext,
 	}
 
 	switch options.serverType {
@@ -195,7 +434,7 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 				Authentication:               app.Config.Server.EndUser.Authentication,
 				JWTAuthenticator:             app.JWTAuthenticator,
 				ApprovalRequestAuthenticator: app.ApprovalRequestAuthenticator,
-				Logger:                       logger,
+				Logger:                       app.Logger,
 				CORS:                         app.Config.Server.EndUser.CORS,
 				Telemetry:                    app.Config.Telemetry,
 			})
@@ -203,6 +442,9 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 				r.Handle("/*", spaSaved)
 			}
 		}
+		serverCfg.Name = "enduser"
+		serverCfg.Authentication = app.Config.Server.EndUser.Authentication
+		serverCfg.JWTAuthenticator = app.JWTAuthenticator
 
 	case ServerTypeAdmin:
 		if app.AdminHandlers == nil {
@@ -210,23 +452,24 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 		}
 		routeSetup = func(r chi.Router) {
 			routing.SetupAdminRoutes(r, app.AdminHandlers, routing.AdminRouteConfig{
-				CORS:      app.Config.Server.Admin.CORS,
-				Telemetry: app.Config.Telemetry,
+				CORS: app.Config.Server.Admin.CORS,
 			})
 		}
+		serverCfg.Name = "admin"
+		serverCfg.Authentication = app.Config.Server.Admin.Authentication
 
 	default:
 		return nil, fmt.Errorf("unknown server type: %d", options.serverType)
 	}
 
 	// Build router using the production NewHandler (same middleware stack as production).
-	router := httpAdapter.NewHandler(serverCfg, routeSetup, logger)
+	router := httpAdapter.NewHandler(serverCfg, routeSetup, app.Logger)
 
 	router.Get("/health", httpAdapter.NewHealthHandler(
 		func() ports.HealthState { return ports.HealthStateHealthy },
 		time.Now(),
 		healthComponents,
-		logger,
+		app.Logger,
 	))
 
 	// Create httptest server with appropriate port configuration
@@ -255,9 +498,10 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 	}
 
 	return &TestServer{
-		app:    app,
-		server: server,
-		logger: logger,
+		app:                     app,
+		server:                  server,
+		logger:                  logger,
+		requestSecurityObserver: options.requestSecurityObserver,
 		client: &http.Client{
 			Timeout: 5 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -328,6 +572,11 @@ func (ts *TestServer) Close() {
 // for building test fixtures (e.g. JWE tokens via OAuth2Service).
 func (ts *TestServer) App() *app.App {
 	return ts.app
+}
+
+// RequestSecurityObserver returns the test-only propagation observer attached at bootstrap time.
+func (ts *TestServer) RequestSecurityObserver() *SecurityContextObserver {
+	return ts.requestSecurityObserver
 }
 
 // BaseURL returns the server's base URL for requests.
@@ -627,32 +876,12 @@ type TestServerBuilderImpl struct {
 //   - *TestServer: Fully configured and ready to use
 //   - error: If any step fails
 func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
-	// Step 1: Create chi.Mux with standard middleware
-	router := chi.NewRouter()
-	router.Use(middleware.RequestID)
-	router.Use(middleware.Logger)
-	router.Use(middleware.Recoverer)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen for test server: %w", err)
+	}
 
-	// Apply optional principal middleware to all routes.
-	// Must be added before any route registration (chi requires Use() before Get()/Post()/etc.).
-	// TestServerBuilderImpl is used only for tests without JWT config, so nil JWTAuthenticator is safe.
-	router.Use(httpMiddleware.OptionalPrincipalMiddleware(b.config.Server.EndUser.Authentication, nil, b.logger))
-
-	// Add health endpoint (available immediately)
-	router.Get("/health", httpAdapter.NewHealthHandler(
-		func() ports.HealthState { return ports.HealthStateHealthy },
-		time.Now(),
-		nil,
-		b.logger,
-	))
-
-	// Step 2: Create httptest server with the mux (this assigns a random port)
-	testServer := httptest.NewServer(router)
-
-	// Step 3: Get the actual server URL (includes the random port)
-	actualURL := testServer.URL
-
-	// Step 4: Update config with the actual server URL
+	actualURL := "http://" + listener.Addr().String()
 	b.logger.Info(
 		"Updating PublicURL for test server alignment",
 		"configured_url", b.config.Server.EndUser.PublicURL,
@@ -660,31 +889,54 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 	)
 	b.config.Server.EndUser.PublicURL = actualURL
 
-	// Step 5: Build the app with the correct URL
-	// Now services (OAuth2Service, etc.) will be initialized with the correct PublicURL
 	appInstance, err := b.factory.BuildApp(b.storage)
 	if err != nil {
-		testServer.Close()
+		_ = listener.Close()
 		return nil, fmt.Errorf("failed to build app: %w", err)
 	}
 
-	// Step 6: Register production routes on the existing mux
-	// This adds all the actual endpoints while keeping the same httptest server
-	routing.SetupEnduserRoutes(router, appInstance.EnduserHandlers, routing.EnduserRouteConfig{
-		Authentication:               appInstance.Config.Server.EndUser.Authentication,
-		JWTAuthenticator:             appInstance.JWTAuthenticator,
-		ApprovalRequestAuthenticator: appInstance.ApprovalRequestAuthenticator,
-		Logger:                       b.logger,
-		Telemetry:                    appInstance.Config.Telemetry,
-	})
+	routeSetup := func(r chi.Router) {
+		routing.SetupEnduserRoutes(r, appInstance.EnduserHandlers, routing.EnduserRouteConfig{
+			Authentication:               appInstance.Config.Server.EndUser.Authentication,
+			JWTAuthenticator:             appInstance.JWTAuthenticator,
+			ApprovalRequestAuthenticator: appInstance.ApprovalRequestAuthenticator,
+			Logger:                       appInstance.Logger,
+			CORS:                         appInstance.Config.Server.EndUser.CORS,
+			Telemetry:                    appInstance.Config.Telemetry,
+		})
+		if appInstance.EnduserHandlers.SPA != nil {
+			r.Handle("/*", appInstance.EnduserHandlers.SPA)
+		}
+	}
 
-	b.logger.Info("Test server created and configured", "url", testServer.URL)
+	serverCfg := httpAdapter.ServerConfig{
+		Name:             "enduser",
+		Telemetry:        appInstance.Config.Telemetry,
+		RequestContext:   &appInstance.Config.RequestContext,
+		Authentication:   appInstance.Config.Server.EndUser.Authentication,
+		JWTAuthenticator: appInstance.JWTAuthenticator,
+	}
+	router := httpAdapter.NewHandler(serverCfg, routeSetup, appInstance.Logger)
+	router.Get("/health", httpAdapter.NewHealthHandler(
+		func() ports.HealthState { return ports.HealthStateHealthy },
+		time.Now(),
+		nil,
+		appInstance.Logger,
+	))
 
-	// Step 7: Return the TestServer with aligned URL
+	testServer := &httptest.Server{
+		Listener: listener,
+		Config:   &http.Server{Handler: router},
+	}
+	testServer.Start()
+
+	appInstance.Logger.Info("Test server created and configured", "url", testServer.URL)
+
 	return &TestServer{
-		app:    appInstance,
-		server: testServer,
-		logger: b.logger,
+		app:                     appInstance,
+		server:                  testServer,
+		logger:                  appInstance.Logger,
+		requestSecurityObserver: nil,
 		client: &http.Client{
 			Timeout: 5 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {

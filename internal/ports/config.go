@@ -44,6 +44,7 @@ type Config struct {
 	Security         SecurityConfig         `mapstructure:"security"`
 	Encryption       EncryptionConfig       `mapstructure:"encryption"`
 	Telemetry        TelemetryConfig        `mapstructure:"telemetry"`
+	RequestContext   RequestContextConfig   `mapstructure:"request_context"`
 	Approvals        ApprovalsConfig        `mapstructure:"approvals"`
 }
 
@@ -83,6 +84,20 @@ type CORSConfig struct {
 	// MaxAge sets the cache duration for preflight responses in seconds.
 	// Defaults to 86400 (24 hours) when CORS is enabled.
 	MaxAge int `mapstructure:"max_age"`
+}
+
+type RequestContextConfig struct {
+	TrustedProxy RequestContextTrustedProxyConfig `mapstructure:"trusted_proxy"`
+	Trace        RequestContextTraceConfig        `mapstructure:"trace"`
+}
+
+type RequestContextTrustedProxyConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	ForwardedHeader string `mapstructure:"forwarded_header"`
+}
+
+type RequestContextTraceConfig struct {
+	ResponseEnabled bool `mapstructure:"response_enabled"`
 }
 
 // AuthenticationConfig holds authentication configuration for a server.
@@ -192,6 +207,18 @@ func DefaultServerConfig() ServerConfig {
 		},
 		Shutdown: ShutdownConfig{
 			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+func DefaultRequestContextConfig() RequestContextConfig {
+	return RequestContextConfig{
+		TrustedProxy: RequestContextTrustedProxyConfig{
+			Enabled:         false,
+			ForwardedHeader: "X-Forwarded-For",
+		},
+		Trace: RequestContextTraceConfig{
+			ResponseEnabled: true,
 		},
 	}
 }

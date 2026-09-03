@@ -26,6 +26,8 @@ import (
 
 	"github.com/sony/gobreaker/v2"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 
 	extprocconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/config"
 )
@@ -210,6 +212,7 @@ func (te *TokenExchanger) isAssertionExpired() bool {
 // Results are cached; concurrent requests for the same key are deduplicated via singleflight.
 func (te *TokenExchanger) Exchange(ctx context.Context, subjectToken, resourceURI string) (ExchangeResult, error) {
 	key := tokenCacheKey{subjectToken: subjectToken, resourceURI: resourceURI}
+	logger := loggerFromContext(ctx, te.logger)
 
 	// Fast path: cache hit before expiry.
 	// Skip entirely on assertion expiry so ErrAssertionExpired reaches callers immediately,
@@ -335,8 +338,8 @@ func (te *TokenExchanger) Exchange(ctx context.Context, subjectToken, resourceUR
 		return ExchangeResult{}, err
 	}
 	if res.Shared {
-		te.logger.DebugContext(ctx, "singleflight: exchange result shared across concurrent callers",
-			"resource", resourceURI)
+		logger.DebugContext(ctx, "singleflight: exchange result shared across concurrent callers",
+			"resource", sanitizeURIForTelemetry(resourceURI))
 	}
 	if res.Err != nil {
 		return ExchangeResult{}, res.Err
@@ -393,24 +396,25 @@ func (te *TokenExchanger) Shutdown() {
 // Returns the exchanged access token, any granted permission sets, and the TTL to cache it for.
 // Fails fast with ErrAssertionExpired if the stored assertion has expired.
 func (te *TokenExchanger) doExchange(ctx context.Context, subjectToken, resourceURI string) (string, map[string][]string, time.Duration, error) {
+	logger := loggerFromContext(ctx, te.logger)
 	s := te.assertion.Load()
 	if s == nil || s.value == "" {
-		te.logger.ErrorContext(ctx, "client assertion unavailable: no assertion stored")
+		logger.ErrorContext(ctx, "client assertion unavailable: no assertion stored")
 		return "", nil, 0, ErrAssertionExpired
 	}
 	if !s.expiresAt.IsZero() && time.Now().After(s.expiresAt) {
-		te.logger.ErrorContext(ctx, "client assertion expired: background refresh did not complete in time",
+		logger.ErrorContext(ctx, "client assertion expired: background refresh did not complete in time",
 			"expired_at", s.expiresAt.Format(time.RFC3339))
 		return "", nil, 0, ErrAssertionExpired
 	}
 	assertion := s.value
 
 	// Log the full exchange request parameters for observability.
-	te.logger.DebugContext(ctx, "extproc: token exchange request",
+	logger.DebugContext(ctx, "extproc: token exchange request",
 		"token_endpoint", te.cfg.OAuth2.TokenEndpoint,
 		"grant_type", "urn:ietf:params:oauth:grant-type:token-exchange",
 		"subject_token_type", "urn:ietf:params:oauth:token-type:access_token",
-		"resource", resourceURI,
+		"resource", sanitizeURIForTelemetry(resourceURI),
 		"client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
 	)
 
@@ -432,6 +436,7 @@ func (te *TokenExchanger) doExchange(ctx context.Context, subjectToken, resource
 		return "", nil, 0, fmt.Errorf("building token exchange request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	otel.GetTextMapPropagator().Inject(exchangeCtx, propagation.HeaderCarrier(req.Header))
 
 	resp, err := te.client.Do(req)
 	if err != nil {
@@ -448,10 +453,10 @@ func (te *TokenExchanger) doExchange(ctx context.Context, subjectToken, resource
 		var errBody brokerErrorBody
 		_ = json.Unmarshal(body, &errBody)
 		if errBody.Code != "" {
-			te.logger.WarnContext(ctx, "token exchange returned broker error",
+			logger.WarnContext(ctx, "token exchange returned broker error",
 				"status", resp.StatusCode,
 				"code", errBody.Code,
-				"resource", resourceURI,
+				"resource", sanitizeURIForTelemetry(resourceURI),
 				"has_error_uri", errBody.ErrorURI != "")
 			return "", nil, 0, &BrokerExchangeError{
 				StatusCode:  resp.StatusCode,
@@ -463,12 +468,12 @@ func (te *TokenExchanger) doExchange(ctx context.Context, subjectToken, resource
 		// Body is absent or not an RFC 8693 error — still return a typed error
 		// carrying the HTTP status code so isServerError can correctly classify
 		// 4xx responses without a parseable error body as client errors.
-		te.logger.DebugContext(ctx, "token exchange non-200 response body is not RFC 8693 JSON",
+		logger.DebugContext(ctx, "token exchange non-200 response body is not RFC 8693 JSON",
 			"status", resp.StatusCode,
-			"resource", resourceURI)
-		te.logger.WarnContext(ctx, "token exchange returned non-200",
+			"resource", sanitizeURIForTelemetry(resourceURI))
+		logger.WarnContext(ctx, "token exchange returned non-200",
 			"status", resp.StatusCode,
-			"resource", resourceURI)
+			"resource", sanitizeURIForTelemetry(resourceURI))
 		return "", nil, 0, &BrokerExchangeError{
 			StatusCode: resp.StatusCode,
 			Code:       fmt.Sprintf("http_%d", resp.StatusCode),

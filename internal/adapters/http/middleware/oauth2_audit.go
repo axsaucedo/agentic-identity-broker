@@ -9,6 +9,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/httpctx"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/security"
 )
 
 // OAuth2AuditMiddleware creates audit logging middleware for OAuth2 endpoints
@@ -42,15 +43,15 @@ func OAuth2AuditMiddleware(logger *slog.Logger) func(http.Handler) http.Handler 
 
 			// Log audit information
 			duration := time.Since(startTime).Milliseconds()
-			logAuditEvent(logger, &auditEvent{
+			logAuditEvent(ctx, logger, &auditEvent{
 				RequestID:  requestID,
 				Principal:  principalValue,
 				Method:     r.Method,
 				Path:       r.URL.Path,
 				StatusCode: wrapped.statusCode,
 				Duration:   duration,
-				RemoteAddr: r.RemoteAddr,
-				UserAgent:  r.Header.Get("User-Agent"),
+				RemoteAddr: auditRemoteAddr(ctx, r.RemoteAddr),
+				UserAgent:  auditUserAgent(ctx, r.UserAgent()),
 			})
 		})
 	}
@@ -84,7 +85,7 @@ type auditEvent struct {
 }
 
 // logAuditEvent logs an audit event with structured logging
-func logAuditEvent(logger *slog.Logger, event *auditEvent) {
+func logAuditEvent(ctx context.Context, logger *slog.Logger, event *auditEvent) {
 	// Determine log level based on status code
 	level := slog.LevelInfo
 	if event.StatusCode >= 400 && event.StatusCode < 500 {
@@ -100,7 +101,7 @@ func logAuditEvent(logger *slog.Logger, event *auditEvent) {
 	}
 
 	logger.Log(
-		context.Background(),
+		ctx,
 		level,
 		"OAuth2 Authorization Request",
 		slog.String("request_id", event.RequestID),
@@ -112,6 +113,22 @@ func logAuditEvent(logger *slog.Logger, event *auditEvent) {
 		slog.String("remote_host", host),
 		slog.String("user_agent", event.UserAgent),
 	)
+}
+
+func auditRemoteAddr(ctx context.Context, fallback string) string {
+	if sc, ok := security.FromContext(ctx); ok && sc.ClientIP != "" {
+		return sc.ClientIP
+	}
+
+	return fallback
+}
+
+func auditUserAgent(ctx context.Context, fallback string) string {
+	if sc, ok := security.FromContext(ctx); ok {
+		return sc.UserAgent
+	}
+
+	return security.TruncateUserAgent(fallback)
 }
 
 // generateRequestID generates a simple request ID

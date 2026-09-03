@@ -1,0 +1,28 @@
+# Request security context configuration
+#
+# Capture itself is always enabled. This block controls only:
+#   1. whether the broker trusts an upstream proxy for client-IP resolution
+#   2. whether HTTP responses emit the W3C traceresponse correlation header
+
+request_context:
+  trusted_proxy:
+    # Secure default: do not trust client-supplied forwarding headers.
+    enabled: false
+
+    # When trusted_proxy.enabled is true, the broker reads this header and uses
+    # the right-most entry as the trusted caller IP.
+    forwarded_header: X-Forwarded-For
+
+  trace:
+    # Return the request Trace ID to callers via the W3C traceresponse response
+    # header. Disabling this suppresses only the response header; trace_id
+    # logging and in-process context propagation remain enabled.
+    response_enabled: true
+
+# Example production override behind a trusted ingress or reverse proxy:
+# request_context:
+#   trusted_proxy:
+#     enabled: true
+#     forwarded_header: X-Forwarded-For
+#   trace:
+#     response_enabled: true

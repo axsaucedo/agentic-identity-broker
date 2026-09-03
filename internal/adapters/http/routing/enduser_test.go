@@ -175,7 +175,7 @@ func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
 		func(r chi.Router) {
 			routing.SetupEnduserRoutes(r, application.EnduserHandlers, routing.EnduserRouteConfig{
 				Authentication:               application.Config.Server.EndUser.Authentication,
-				Logger:                       logger,
+				Logger:                       application.Logger,
 				ApprovalRequestAuthenticator: application.ApprovalRequestAuthenticator,
 				CORS:                         application.Config.Server.EndUser.CORS,
 				Telemetry:                    application.Config.Telemetry,

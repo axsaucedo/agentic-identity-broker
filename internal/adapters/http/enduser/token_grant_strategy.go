@@ -1,6 +1,7 @@
 package enduser
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -103,7 +104,7 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 	span.SetAttributes(attribute.Int("http.status_code", upstreamResp.StatusCode))
 
 	for key, values := range upstreamResp.Header {
-		if isHopByHopHeader(key) {
+		if isHopByHopHeader(key) || strings.EqualFold(key, "traceresponse") {
 			continue
 		}
 		for _, value := range values {
@@ -116,7 +117,7 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 		responseBody, readErr := io.ReadAll(upstreamResp.Body)
 		if readErr != nil {
 			if s.logger != nil {
-				s.logger.Error("AgentIDClaimMissing",
+				s.logger.ErrorContext(r.Context(), "AgentIDClaimMissing",
 					"agent_id", agentID.String(),
 					"reason", "failed to read upstream response body",
 					"error", readErr,
@@ -131,13 +132,13 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 		if verifyErr := s.multiAgentVerifier.VerifyAgentIDClaim(r.Context(), responseBody, agentID); verifyErr != nil {
 			if s.logger != nil {
 				if mismatch, ok := verifyErr.(*oauth2.AgentIDMismatchError); ok {
-					s.logger.Error("AgentIDClaimMismatch",
+					s.logger.ErrorContext(r.Context(), "AgentIDClaimMismatch",
 						"expected_agent_id", mismatch.Expected,
 						"received_agent_id", mismatch.Received,
 						"claim_name", mismatch.ClaimName,
 					)
 				} else {
-					s.logger.Error("AgentIDClaimMissing",
+					s.logger.ErrorContext(r.Context(), "AgentIDClaimMissing",
 						"agent_id", agentID.String(),
 						"error", verifyErr.Error(),
 					)
@@ -150,7 +151,7 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 		}
 
 		if s.logger != nil {
-			s.logger.Info("AgentIDClaimVerified",
+			s.logger.InfoContext(r.Context(), "AgentIDClaimVerified",
 				"agent_id", agentID.String(),
 			)
 		}
@@ -195,14 +196,14 @@ func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Req
 		resp, err := s.minting.HandleClientCredentials(r.Context(), id.ClientID(rawClientID), clientSecret, scope)
 		if err != nil {
 			if s.logger != nil {
-				s.logger.Error("client_credentials grant failed", "error", err, "client_id", rawClientID)
+				s.logger.ErrorContext(r.Context(), "client_credentials grant failed", "error", err, "client_id", rawClientID)
 			}
-			s.handleMintingError(w, err, "client_credentials", rawClientID)
+			s.handleMintingError(w, r.Context(), err, "client_credentials", rawClientID)
 			return
 		}
 
 		if s.logger != nil {
-			s.logger.Info("TokenIssued",
+			s.logger.InfoContext(r.Context(), "TokenIssued",
 				"event", "TokenIssued",
 				"grant_type", "client_credentials",
 				"client_id", rawClientID,
@@ -231,14 +232,14 @@ func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Req
 		resp, err := s.minting.HandleAuthorizationCodeExchange(r.Context(), id.ClientID(rawClientID), clientSecret, code, redirectURI, codeVerifier)
 		if err != nil {
 			if s.logger != nil {
-				s.logger.Error("authorization_code exchange failed", "error", err, "client_id", rawClientID)
+				s.logger.ErrorContext(r.Context(), "authorization_code exchange failed", "error", err, "client_id", rawClientID)
 			}
-			s.handleMintingError(w, err, "authorization_code", rawClientID)
+			s.handleMintingError(w, r.Context(), err, "authorization_code", rawClientID)
 			return
 		}
 
 		if s.logger != nil {
-			s.logger.Info("TokenIssued",
+			s.logger.InfoContext(r.Context(), "TokenIssued",
 				"event", "TokenIssued",
 				"grant_type", "authorization_code",
 				"client_id", rawClientID,
@@ -265,14 +266,14 @@ func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Req
 		resp, err := s.minting.HandleRefreshToken(r.Context(), id.ClientID(rawClientID), clientSecret, refreshToken, scope)
 		if err != nil {
 			if s.logger != nil {
-				s.logger.Error("refresh_token grant failed", "error", err, "client_id", rawClientID)
+				s.logger.ErrorContext(r.Context(), "refresh_token grant failed", "error", err, "client_id", rawClientID)
 			}
-			s.handleMintingError(w, err, "refresh_token", rawClientID)
+			s.handleMintingError(w, r.Context(), err, "refresh_token", rawClientID)
 			return
 		}
 
 		if s.logger != nil {
-			s.logger.Info("TokenIssued",
+			s.logger.InfoContext(r.Context(), "TokenIssued",
 				"event", "TokenIssued",
 				"grant_type", "refresh_token",
 				"client_id", rawClientID,
@@ -288,7 +289,7 @@ func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Req
 	}
 }
 
-func (s *localGrantStrategy) handleMintingError(w http.ResponseWriter, err error, grantType, clientID string) {
+func (s *localGrantStrategy) handleMintingError(w http.ResponseWriter, ctx context.Context, err error, grantType, clientID string) {
 	var errorCode, errorDesc string
 	var statusCode int
 
@@ -314,9 +315,9 @@ func (s *localGrantStrategy) handleMintingError(w http.ResponseWriter, err error
 			"client_id", clientID,
 		}
 		if statusCode >= http.StatusInternalServerError {
-			s.logger.Error("TokenRequestFailed", attrs...)
+			s.logger.ErrorContext(ctx, "TokenRequestFailed", attrs...)
 		} else {
-			s.logger.Warn("TokenRequestFailed", attrs...)
+			s.logger.WarnContext(ctx, "TokenRequestFailed", attrs...)
 		}
 	}
 }

@@ -428,6 +428,36 @@ server {
 }
 ```
 
+#### Request Context Configuration
+
+The broker captures a request security context for every inbound HTTP request. Capture itself is always enabled;
+this section controls only trusted-proxy caller-IP derivation and whether the broker returns the request Trace ID
+to callers via the additive W3C `traceresponse` response header.
+
+| Option | Type | Default Value | Valid Values | Required? | Environment Variable | CLI Flag | Description |
+|--------|------|---------------|--------------|-----------|----------------------|----------|-------------|
+| `request_context.trusted_proxy.enabled` | boolean | `false` | `true`, `false` | No | `IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_ENABLED` | `--request_context.trusted_proxy.enabled` | Trust the configured forwarded header for caller-IP derivation. When `false`, the broker ignores client-supplied forwarding headers and uses the direct connection address. |
+| `request_context.trusted_proxy.forwarded_header` | string | `X-Forwarded-For` | Any HTTP header name | No | `IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_FORWARDED_HEADER` | `--request_context.trusted_proxy.forwarded_header` | Header inspected when trusted proxy mode is enabled. The broker treats the right-most entry as authoritative. |
+| `request_context.trace.response_enabled` | boolean | `true` | `true`, `false` | No | `IDENTITY_BROKER_REQUEST_CONTEXT_TRACE_RESPONSE_ENABLED` | `--request_context.trace.response_enabled` | Emit the additive W3C `traceresponse` response header on HTTP responses. Disabling this suppresses only the response header; request capture and log correlation remain enabled. |
+
+**Request Context Notes:**
+
+- Security-context capture is always on; there is no feature-level disable switch.
+- When `request_context.trusted_proxy.enabled=false`, forwarding headers are ignored to prevent IP spoofing.
+- When trusted proxy mode is enabled, the broker reads the configured header and takes the **right-most** entry as the trusted caller IP.
+- `request_context.trace.response_enabled=false` suppresses only the response header. Structured logs still carry the request `trace_id`.
+
+**Example YAML:**
+
+```yaml
+request_context:
+  trusted_proxy:
+    enabled: false
+    forwarded_header: X-Forwarded-For
+  trace:
+    response_enabled: true
+```
+
 **Notes:**
 
 - All configuration options have built-in defaults and are optional unless marked "Required"
@@ -691,6 +721,75 @@ encryption:
 | Development | Memory backend | `encryption.memory.raw_key` from `IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY` |
 | CI/CD | Memory backend | `encryption.memory.raw_key` from CI/CD secrets |
 | Testing | Memory backend | Random generated key per test |
+
+
+### Request Context Configuration
+
+The request-context configuration defines how the broker derives caller IP metadata and whether it returns the
+W3C `traceresponse` response header. The security-context capture itself is always enabled.
+
+#### request_context.trusted_proxy.enabled
+
+**Description**: Enables trusted-proxy caller-IP derivation.
+
+**Valid Values**: `true`, `false`
+
+**Default**: `false`
+
+**Environment Variable**: `IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_ENABLED`
+
+**CLI Flag**: None
+
+**Behavior**:
+
+- `false`: use the direct connection address and ignore client-supplied forwarding headers.
+- `true`: inspect `request_context.trusted_proxy.forwarded_header` and use the right-most forwarded entry as the trusted caller IP.
+
+#### request_context.trusted_proxy.forwarded_header
+
+**Description**: Names the HTTP header that carries the forwarded caller-IP chain when trusted proxy mode is enabled.
+
+**Default**: `X-Forwarded-For`
+
+**Environment Variable**: `IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_FORWARDED_HEADER`
+
+**CLI Flag**: None
+
+**Notes**:
+
+- This value matters only when `request_context.trusted_proxy.enabled=true`.
+- The broker treats the right-most entry as authoritative to avoid trusting attacker-controlled left-most values.
+
+#### request_context.trace.response_enabled
+
+**Description**: Controls emission of the additive W3C `traceresponse` response header.
+
+**Valid Values**: `true`, `false`
+
+**Default**: `true`
+
+**Environment Variable**: `IDENTITY_BROKER_REQUEST_CONTEXT_TRACE_RESPONSE_ENABLED`
+
+**CLI Flag**: None
+
+**Notes**:
+
+- When enabled, every HTTP response may carry `traceresponse: 00-<trace-id>-<child-id>-<flags>`.
+- The `<trace-id>` field matches the request `trace_id` used in structured logs.
+- Disabling this option suppresses only the response header. Trace capture and log correlation remain active.
+
+**Example**:
+
+```yaml
+request_context:
+  trusted_proxy:
+    enabled: true
+    forwarded_header: X-Forwarded-For
+  trace:
+    response_enabled: true
+```
+
+See [`examples/config/request-context.yaml`](../examples/config/request-context.yaml) for a documented overlay example.
 
 ## Security Best Practices
 

@@ -6,8 +6,6 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/riandyrn/otelchi"
-	"go.opentelemetry.io/otel"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
@@ -17,12 +15,7 @@ import (
 
 // EnduserRouteConfig provides optional configuration for enduser route setup.
 type EnduserRouteConfig struct {
-	// AuthenticationConfig for principal extraction
-	Authentication ports.AuthenticationConfig
-
-	// JWTAuthenticator is an optional JWT authenticator for JWT-based pre-authentication.
-	// When nil, only plain-header pre-auth is used (backward-compatible).
-	// When set, JWT is used for authentication; absent JWT header is rejected with 401 (fail-closed).
+	Authentication   ports.AuthenticationConfig
 	JWTAuthenticator jwtauth.JWTAuthenticator
 
 	ApprovalRequestAuthenticator *middleware.ApprovalRequestAuthenticator
@@ -80,17 +73,6 @@ type EnduserRouteConfig struct {
 //	SPA Serving (optional):
 //	GET    /*                                         - Serve static SPA files
 func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteConfig) {
-	// Register OTel HTTP tracing middleware when enabled (ADR-011, T031).
-	// Propagators are passed explicitly so the middleware always uses the globally
-	// registered propagator and correctly attaches to any configured inbound trace
-	// context instead of unconditionally creating new root traces.
-	if cfg.Telemetry.Enabled {
-		r.Use(otelchi.Middleware("enduser",
-			otelchi.WithChiRoutes(r),
-			otelchi.WithRequestMethodInSpanName(true),
-			otelchi.WithPropagators(otel.GetTextMapPropagator()),
-		))
-	}
 
 	// Register API routes with CORS middleware
 	r.Route("/api", func(r chi.Router) {

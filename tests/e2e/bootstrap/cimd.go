@@ -67,42 +67,53 @@ func NewCIMDTestFetcherFromClient(client *http.Client, maxResponseBytes int64) (
 //  2. Update sf.config.Server.EndUser.PublicURL with that port, then build the app.
 //  3. Register end-user routes on the already-started router.
 func NewCIMDEndUserTestServer(storage interface{}, sf *ServerFactory, cimdFetcher ports.CIMDFetcher, logger *slog.Logger) (*TestServer, error) {
-	serverCfg := httpAdapter.ServerConfig{
-		Authentication:   sf.config.Server.EndUser.Authentication,
-		JWTAuthenticator: nil,
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen for CIMD test server: %w", err)
 	}
 
-	// Phase 1: start a bare router (with production middleware) to claim a random port.
-	router := httpAdapter.NewHandler(serverCfg, func(r chi.Router) {}, logger)
+	sf.config.Server.EndUser.PublicURL = "http://" + listener.Addr().String()
+	appInstance, err := sf.BuildAppWithCIMDFetcher(storage, cimdFetcher)
+	if err != nil {
+		_ = listener.Close()
+		return nil, fmt.Errorf("failed to build CIMD app: %w", err)
+	}
+
+	serverCfg := httpAdapter.ServerConfig{
+		Name:             "enduser",
+		Telemetry:        appInstance.Config.Telemetry,
+		RequestContext:   &appInstance.Config.RequestContext,
+		Authentication:   appInstance.Config.Server.EndUser.Authentication,
+		JWTAuthenticator: appInstance.JWTAuthenticator,
+	}
+	routeSetup := func(r chi.Router) {
+		routing.SetupEnduserRoutes(r, appInstance.EnduserHandlers, routing.EnduserRouteConfig{
+			Authentication:               appInstance.Config.Server.EndUser.Authentication,
+			JWTAuthenticator:             appInstance.JWTAuthenticator,
+			ApprovalRequestAuthenticator: appInstance.ApprovalRequestAuthenticator,
+			Logger:                       appInstance.Logger,
+			CORS:                         appInstance.Config.Server.EndUser.CORS,
+			Telemetry:                    appInstance.Config.Telemetry,
+		})
+		if appInstance.EnduserHandlers.SPA != nil {
+			r.Handle("/*", appInstance.EnduserHandlers.SPA)
+		}
+	}
+
+	router := httpAdapter.NewHandler(serverCfg, routeSetup, appInstance.Logger)
 	router.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"healthy"}`))
 	})
-	testServer := httptest.NewServer(router)
 
-	// Phase 2: align PublicURL with the actual listening address, then build the app.
-	sf.config.Server.EndUser.PublicURL = testServer.URL
-	appInstance, err := sf.BuildAppWithCIMDFetcher(storage, cimdFetcher)
-	if err != nil {
-		testServer.Close()
-		return nil, fmt.Errorf("failed to build CIMD app: %w", err)
+	testServer := &httptest.Server{
+		Listener: listener,
+		Config:   &http.Server{Handler: router},
 	}
+	testServer.Start()
 
-	// Phase 3: register end-user routes on the already-started router.
-	routing.SetupEnduserRoutes(router, appInstance.EnduserHandlers, routing.EnduserRouteConfig{
-		Authentication:               appInstance.Config.Server.EndUser.Authentication,
-		JWTAuthenticator:             appInstance.JWTAuthenticator,
-		ApprovalRequestAuthenticator: appInstance.ApprovalRequestAuthenticator,
-		Logger:                       logger,
-		CORS:                         appInstance.Config.Server.EndUser.CORS,
-		Telemetry:                    appInstance.Config.Telemetry,
-	})
-	if appInstance.EnduserHandlers.SPA != nil {
-		router.Handle("/*", appInstance.EnduserHandlers.SPA)
-	}
+	appInstance.Logger.Info("CIMD test server listening on fixed listener", "url", testServer.URL, "type", "end-user")
 
-	logger.Info("CIMD test server listening on random port", "url", testServer.URL, "type", "end-user")
-
-	return &TestServer{app: appInstance, server: testServer, logger: logger}, nil
+	return &TestServer{app: appInstance, server: testServer, logger: appInstance.Logger}, nil
 }

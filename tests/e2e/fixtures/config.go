@@ -92,7 +92,8 @@ func DefaultOAuth2Config() *ports.Config {
 				MaxRequestsPerMinute: 10,
 			},
 		},
-		Security: ports.SecurityConfig{},
+		Security:       ports.SecurityConfig{},
+		RequestContext: ports.DefaultRequestContextConfig(),
 	}
 }
 
@@ -130,6 +131,47 @@ func OAuth2ConfigWithTokenExchange(upstreamURL string) *ports.Config {
 			},
 		},
 	}
+	return config
+}
+
+// OAuth2ConfigWithTelemetry returns an OAuth2 config with tracing enabled for HTTP E2E tests.
+func OAuth2ConfigWithTelemetry(upstreamURL string) *ports.Config {
+	return EnableTelemetryTracing(OAuth2ConfigWithUpstream(upstreamURL))
+}
+
+// OAuth2ConfigWithTrustedProxy returns an OAuth2 config with trusted-proxy handling enabled.
+func OAuth2ConfigWithTrustedProxy(upstreamURL, forwardedHeader string) *ports.Config {
+	return EnableTrustedProxy(OAuth2ConfigWithUpstream(upstreamURL), forwardedHeader)
+}
+
+// EnableTelemetryTracing toggles the production telemetry gate on an existing config.
+func EnableTelemetryTracing(config *ports.Config) *ports.Config {
+	if config == nil {
+		return nil
+	}
+
+	config.Telemetry = TelemetryEnabledConfig().Telemetry
+	return config
+}
+
+// EnableTrustedProxy enables request-context trusted proxy handling on an existing config.
+func EnableTrustedProxy(config *ports.Config, forwardedHeader string) *ports.Config {
+	if config == nil {
+		return nil
+	}
+
+	config.RequestContext.TrustedProxy.Enabled = true
+	config.RequestContext.TrustedProxy.ForwardedHeader = forwardedHeader
+	return config
+}
+
+// SetTraceResponseEnabled toggles request_context.trace.response_enabled on an existing config.
+func SetTraceResponseEnabled(config *ports.Config, enabled bool) *ports.Config {
+	if config == nil {
+		return nil
+	}
+
+	config.RequestContext.Trace.ResponseEnabled = enabled
 	return config
 }
 

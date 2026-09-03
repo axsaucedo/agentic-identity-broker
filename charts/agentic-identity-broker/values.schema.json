@@ -565,6 +565,40 @@
             }
           }
         },
+        "requestContext": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Request security context configuration. Capture is always enabled; this block only controls trusted-proxy handling and traceresponse emission.",
+          "properties": {
+            "trustedProxy": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Trusted-proxy configuration for caller IP resolution",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Trust the configured forwarded header when deriving caller IPs"
+                },
+                "forwardedHeader": {
+                  "type": "string",
+                  "description": "Forwarded header to inspect when trusted proxy mode is enabled"
+                }
+              }
+            },
+            "trace": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Trace-response configuration",
+              "properties": {
+                "responseEnabled": {
+                  "type": "boolean",
+                  "description": "Emit the additive W3C traceresponse response header on HTTP responses"
+                }
+              }
+            }
+          }
+        },
+
         "thirdPartyOauth2": {
           "type": "object",
           "additionalProperties": false,

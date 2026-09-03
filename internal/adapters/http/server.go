@@ -14,6 +14,10 @@ import (
 	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
+	"github.com/riandyrn/otelchi"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ServerConfig contains the configuration for a Server instance.
@@ -21,6 +25,9 @@ type ServerConfig struct {
 	Port             int
 	Bind             string
 	PublicURL        string
+	Name             string
+	Telemetry        ports.TelemetryConfig
+	RequestContext   *ports.RequestContextConfig
 	Authentication   ports.AuthenticationConfig
 	JWTAuthenticator domjwtauth.JWTAuthenticator // nil when JWT not configured
 	HealthComponents func() map[string]string
@@ -63,6 +70,38 @@ func NewServer(config ServerConfig, routeSetup func(r chi.Router), logger *slog.
 		healthState: int32(HealthStateStarting),
 		logger:      logger,
 	}
+}
+
+func TraceContextNormalizationMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			values := r.Header.Values("traceparent")
+			if len(values) > 1 {
+				if traceparent, ok := firstValidTraceparent(r.Header.Clone(), values); ok {
+					r.Header.Del("traceparent")
+					r.Header.Set("traceparent", traceparent)
+				} else {
+					r.Header.Del("traceparent")
+				}
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func firstValidTraceparent(header http.Header, values []string) (string, bool) {
+	for _, value := range values {
+		candidate := header.Clone()
+		candidate.Del("traceparent")
+		candidate.Set("traceparent", value)
+		ctx := propagation.TraceContext{}.Extract(context.Background(), propagation.HeaderCarrier(candidate))
+		if trace.SpanContextFromContext(ctx).IsValid() {
+			return value, true
+		}
+	}
+
+	return "", false
 }
 
 // Listen binds to the configured address and port and returns a listener.
@@ -115,10 +154,25 @@ func (s *Server) Listen() (net.Listener, error) {
 // Does not register /health — the caller adds a context-appropriate health endpoint.
 // Used by Server.Serve() and directly by tests.
 func NewHandler(config ServerConfig, routeSetup func(chi.Router), logger *slog.Logger) *chi.Mux {
+	requestContext := middleware.ResolveRequestContextConfig(config.RequestContext)
 	router := chi.NewRouter()
-	router.Use(RecoveryMiddleware(logger))
-	router.Use(LoggingMiddleware(logger, "/api/", "/oauth2/", "/.well-known/"))
+	router.Use(RecoveryMiddleware(logger, requestContext.Trace.ResponseEnabled))
+	router.Use(TraceContextNormalizationMiddleware())
+	if config.Telemetry.Enabled {
+		name := config.Name
+		if name == "" {
+			name = "http"
+		}
+		router.Use(otelchi.Middleware(name,
+			otelchi.WithChiRoutes(router),
+			otelchi.WithRequestMethodInSpanName(true),
+			otelchi.WithPropagators(otel.GetTextMapPropagator()),
+		))
+	}
 	router.Use(middleware.OptionalPrincipalMiddleware(config.Authentication, config.JWTAuthenticator, logger))
+	router.Use(middleware.SecurityContextMiddleware(requestContext, config.Telemetry.Enabled && config.Telemetry.Traces.Enabled))
+	router.Use(LoggingMiddleware(logger, "/api/", "/oauth2/", "/.well-known/", "/health"))
+	router.Use(ContextRecoveryMiddleware(logger, requestContext.Trace.ResponseEnabled))
 	routeSetup(router)
 	return router
 }

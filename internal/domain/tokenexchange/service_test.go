@@ -21,6 +21,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/permissionset"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/security"
 	storagedomain "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -1312,6 +1313,14 @@ func signServiceTestJWT(t *testing.T, privateKey *rsa.PrivateKey, claims map[str
 //   - The supplied agentRepo for step 9 (the code under test)
 func newServiceForStep9Test(t *testing.T, keySet jwk.Set, agentRepo ports.AgentRepository) *TokenExchangeService {
 	t.Helper()
+	return newServiceForStep9TestWithAuthz(t, keySet, agentRepo, "true")
+}
+
+// newServiceForStep9TestWithAuthz is newServiceForStep9Test parameterized by the CEL
+// privileged-client authorization expression, threaded into both the CELEvaluator config
+// and the TokenExchangeConfig authorization policy so allow/deny behavior stays consistent.
+func newServiceForStep9TestWithAuthz(t *testing.T, keySet jwk.Set, agentRepo ports.AgentRepository, authzExpr string) *TokenExchangeService {
+	t.Helper()
 	jwtValidator, err := NewJWTValidator(
 		&MockJWKSProvider{keySet: keySet},
 		"https://auth.example.com",
@@ -1323,7 +1332,7 @@ func newServiceForStep9Test(t *testing.T, keySet jwk.Set, agentRepo ports.AgentR
 	celEvaluator, err := NewCELEvaluator(CELEvaluatorConfig{
 		PrincipalExpression:     "subject_token.sub",
 		AgentIDExpression:       "subject_token.azp",
-		AuthorizationExpression: "true",
+		AuthorizationExpression: authzExpr,
 		EvaluationTimeout:       100 * time.Millisecond,
 	})
 	require.NoError(t, err)
@@ -1360,7 +1369,7 @@ func newServiceForStep9Test(t *testing.T, keySet jwk.Set, agentRepo ports.AgentR
 			},
 			Authorization: ports.AuthorizationConfig{
 				Type: "cel",
-				CEL:  ports.CELAuthorizationConfig{Expression: "true"},
+				CEL:  ports.CELAuthorizationConfig{Expression: authzExpr},
 			},
 		},
 	)
@@ -1748,4 +1757,170 @@ func TestExchange_PSAgentNoSRs_EmptyGrantGuard(t *testing.T) {
 		"empty-grant guard must fire for PS-backed agent with no SRs and empty grant")
 	assert.Contains(t, tokenErr.Description(), "re-consent",
 		"error description must mention re-consent")
+}
+
+func TestExchange_FinalizesSecurityContextWithDistinctCallingPeer(t *testing.T) {
+	t.Parallel()
+
+	privateKey, keySet := generateTestRSAKeySet(t)
+	agentUUID := id.NewAgentID()
+	svc := newServiceForStep9Test(t, keySet, &trackingAgentRepository{})
+	receivedAt := time.Date(2026, time.July, 3, 16, 45, 0, 0, time.UTC)
+	holder := security.NewCaptureHolder(security.TransportCapture{
+		TraceID:       "0123456789abcdef0123456789abcdef",
+		ClientIP:      "203.0.113.44",
+		UserAgent:     "delegated-client/1.0",
+		RequestMethod: "POST",
+		RequestTarget: "/oauth2/token",
+		ReceivedAt:    receivedAt,
+	})
+	ctx := security.WithCaptureHolder(context.Background(), holder)
+
+	now := time.Now()
+	subjectClaims := map[string]interface{}{
+		"iss": "https://auth.example.com",
+		"aud": "agentic-identity-broker",
+		"sub": "user@example.com",
+		"azp": agentUUID.String(),
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+	clientAssertionClaims := map[string]interface{}{
+		"iss": "https://auth.example.com",
+		"aud": "agentic-identity-broker",
+		"sub": "privileged-client-1",
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+
+	req := NewTokenExchangeRequest(
+		TokenExchangeGrantType,
+		signServiceTestJWT(t, privateKey, subjectClaims),
+		AccessTokenType,
+		signServiceTestJWT(t, privateKey, clientAssertionClaims),
+		JWTBearerType,
+		"https://api.example.com/resource",
+		"",
+	)
+
+	_, _ = svc.Exchange(ctx, req)
+
+	sc, ok := holder.Finalized()
+	require.True(t, ok, "validated delegated exchanges must finalize the captured transport context")
+	assert.Equal(t, "0123456789abcdef0123456789abcdef", sc.TraceID)
+	assert.Equal(t, "user@example.com", sc.Actor)
+	assert.Equal(t, "privileged-client-1", sc.CallingPeer)
+	assert.Equal(t, "203.0.113.44", sc.ClientIP)
+	assert.Equal(t, "delegated-client/1.0", sc.UserAgent)
+	assert.Equal(t, "/oauth2/token", sc.RequestTarget)
+	assert.Equal(t, receivedAt, sc.ReceivedAt)
+}
+
+func TestExchange_FinalizesSecurityContextWithoutDuplicatingCallingPeer(t *testing.T) {
+	t.Parallel()
+
+	privateKey, keySet := generateTestRSAKeySet(t)
+	agentUUID := id.NewAgentID()
+	svc := newServiceForStep9Test(t, keySet, &trackingAgentRepository{})
+	holder := security.NewCaptureHolder(security.TransportCapture{
+		TraceID:       "fedcba9876543210fedcba9876543210",
+		ClientIP:      "198.51.100.19",
+		UserAgent:     "delegated-client/2.0",
+		RequestMethod: "POST",
+		RequestTarget: "/oauth2/token",
+		ReceivedAt:    time.Date(2026, time.July, 3, 17, 0, 0, 0, time.UTC),
+	})
+	ctx := security.WithCaptureHolder(context.Background(), holder)
+
+	now := time.Now()
+	claims := map[string]interface{}{
+		"iss": "https://auth.example.com",
+		"aud": "agentic-identity-broker",
+		"sub": "same-identity@example.com",
+		"azp": agentUUID.String(),
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+
+	req := NewTokenExchangeRequest(
+		TokenExchangeGrantType,
+		signServiceTestJWT(t, privateKey, claims),
+		AccessTokenType,
+		signServiceTestJWT(t, privateKey, claims),
+		JWTBearerType,
+		"https://api.example.com/resource",
+		"",
+	)
+
+	_, _ = svc.Exchange(ctx, req)
+
+	sc, ok := holder.Finalized()
+	require.True(t, ok, "validated delegated exchanges must always finalize the security context")
+	assert.Equal(t, "same-identity@example.com", sc.Actor)
+	assert.Empty(t, sc.CallingPeer, "calling_peer must collapse to empty when it resolves to the actor")
+	assert.Equal(t, "fedcba9876543210fedcba9876543210", sc.TraceID)
+}
+
+// TestExchange_FinalizesSecurityContextWhenAuthorizationDenied is the regression guard for a
+// security-audit finding: when subject_token and client_assertion both validate but the CEL
+// privileged-client policy DENIES the exchange, the request SecurityContext must still be
+// finalized so downstream audit logging retains actor + calling_peer on this failure path.
+func TestExchange_FinalizesSecurityContextWhenAuthorizationDenied(t *testing.T) {
+	t.Parallel()
+
+	privateKey, keySet := generateTestRSAKeySet(t)
+	agentUUID := id.NewAgentID()
+	svc := newServiceForStep9TestWithAuthz(t, keySet, &trackingAgentRepository{}, "false")
+	receivedAt := time.Date(2026, time.July, 3, 18, 15, 0, 0, time.UTC)
+	holder := security.NewCaptureHolder(security.TransportCapture{
+		TraceID:       "aaaabbbbccccddddeeeeffff00001111",
+		ClientIP:      "192.0.2.77",
+		UserAgent:     "delegated-client/3.0",
+		RequestMethod: "POST",
+		RequestTarget: "/oauth2/token",
+		ReceivedAt:    receivedAt,
+	})
+	ctx := security.WithCaptureHolder(context.Background(), holder)
+
+	now := time.Now()
+	subjectClaims := map[string]interface{}{
+		"iss": "https://auth.example.com",
+		"aud": "agentic-identity-broker",
+		"sub": "user@example.com",
+		"azp": agentUUID.String(),
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+	clientAssertionClaims := map[string]interface{}{
+		"iss": "https://auth.example.com",
+		"aud": "agentic-identity-broker",
+		"sub": "privileged-client-1",
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+
+	req := NewTokenExchangeRequest(
+		TokenExchangeGrantType,
+		signServiceTestJWT(t, privateKey, subjectClaims),
+		AccessTokenType,
+		signServiceTestJWT(t, privateKey, clientAssertionClaims),
+		JWTBearerType,
+		"https://api.example.com/resource",
+		"",
+	)
+
+	resp, err := svc.Exchange(ctx, req)
+
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	tokenErr, ok := err.(*TokenExchangeError)
+	require.True(t, ok, "error must be *TokenExchangeError, got %T: %v", err, err)
+	assert.Equal(t, "access_denied", tokenErr.Code(),
+		"CEL privileged-client denial must surface as access_denied")
+
+	sc, ok := holder.Finalized()
+	require.True(t, ok, "a denied delegated exchange whose tokens validated MUST still finalize the security context for the audit trail")
+	assert.Equal(t, "user@example.com", sc.Actor)
+	assert.Equal(t, "privileged-client-1", sc.CallingPeer)
+	assert.Equal(t, "aaaabbbbccccddddeeeeffff00001111", sc.TraceID)
 }
