@@ -5,6 +5,7 @@
 FROM golang:1.26.8-alpine
 
 WORKDIR /app
+ENV GOEXPERIMENT=jsonv2
 
 # Install build dependencies, bash for wrapper scripts, curl for health checks, jq for seed script JSON parsing
 RUN apk add --no-cache bash git ca-certificates curl jq

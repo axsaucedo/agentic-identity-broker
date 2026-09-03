@@ -8,6 +8,7 @@ FROM container-registry.zalando.net/library/alpine-3:latest AS default
 FROM golang:1.26.8-alpine AS builder
 
 WORKDIR /app
+ENV GOEXPERIMENT=jsonv2
 
 RUN apk add --no-cache git ca-certificates
 
