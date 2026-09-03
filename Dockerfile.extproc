@@ -13,6 +13,9 @@ RUN apk add --no-cache git ca-certificates
 
 # Download dependencies first (layer cache)
 COPY go.mod go.sum ./
+# Work around QEMU < 7.1.0 handling of Go 1.26's MADV_DONTNEED in multi-architecture builds.
+ENV GODEBUG=madvdontneed=0
+
 RUN go mod download
 
 # Copy full source
