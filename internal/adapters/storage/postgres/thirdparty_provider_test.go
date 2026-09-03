@@ -9,6 +9,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -189,4 +190,150 @@ func TestPostgresThirdpartyOAuth2ProviderRepository_UpdatePreservesCanonicalID(t
 	require.NoError(t, err)
 	require.NotNil(t, stored.CanonicalID)
 	assert.Equal(t, canonicalID, *stored.CanonicalID)
+}
+
+func TestPostgresThirdpartyOAuth2ProviderRepository_DeleteUnreferencedProvider(t *testing.T) {
+	adapter, cleanup := setupMigratedAdapter(t)
+	defer cleanup()
+
+	repo := NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	provider := newTestEntity()
+	provider.ID = id.NewServiceID()
+	provider.ProtectedResources = nil
+	require.NoError(t, repo.Create(context.Background(), provider))
+
+	require.NoError(t, repo.Delete(context.Background(), provider.ID))
+	_, err := repo.Get(context.Background(), provider.ID)
+	require.ErrorIs(t, err, ports.ErrNotFound)
+}
+
+func TestPostgresThirdpartyOAuth2ProviderRepository_DeleteProviderReferencedByActiveGrant(t *testing.T) {
+	adapter, cleanup := setupMigratedAdapter(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	repo := NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	provider := newTestEntity()
+	provider.ID = id.NewServiceID()
+	provider.ProtectedResources = nil
+	require.NoError(t, repo.Create(ctx, provider))
+
+	agent := createUserGrantTestAgent(t, NewAgentRepository(adapter), "provider-reference")
+	grant := newUserGrant(
+		id.Principal("grant-user@example.com"),
+		agent.ID,
+		newGrantedPermissionSetEntry(t, adapter, provider.ID),
+	)
+	require.NoError(t, NewUserGrantRepository(adapter).Create(ctx, grant))
+
+	err := repo.Delete(ctx, provider.ID)
+	var storageErr *storage.StorageError
+	require.ErrorAs(t, err, &storageErr)
+	assert.Equal(t, storage.ErrorKindConflict, storageErr.Kind)
+	assert.Contains(t, storageErr.Error(), "user grant")
+	_, err = repo.Get(ctx, provider.ID)
+	require.NoError(t, err)
+}
+
+func TestPostgresThirdpartyOAuth2ProviderRepository_DeleteProviderWithSessionReturnsConflict(t *testing.T) {
+	adapter, cleanup := setupMigratedAdapter(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	repo := NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	provider := newTestEntity()
+	provider.ID = id.NewServiceID()
+	provider.ProtectedResources = nil
+	require.NoError(t, repo.Create(ctx, provider))
+
+	now := time.Now().UTC()
+	session := &storage.UserSession{
+		ID:                   id.NewSessionID(),
+		Principal:            id.Principal("session-user@example.com"),
+		ServiceID:            provider.ID,
+		EncryptedAccessToken: []byte("encrypted-token"),
+		TokenType:            "Bearer",
+		Scope:                []string{"read"},
+		EncryptionContext:    storage.EncryptionContext{ServiceID: provider.ID},
+		InitiatedAt:          now,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}
+	require.NoError(t, NewUserSessionRepository(adapter).Create(ctx, session))
+
+	err := repo.Delete(ctx, provider.ID)
+	var storageErr *storage.StorageError
+	require.ErrorAs(t, err, &storageErr)
+	assert.Equal(t, storage.ErrorKindConflict, storageErr.Kind)
+	_, err = repo.Get(ctx, provider.ID)
+	require.NoError(t, err)
+}
+
+func TestPostgresThirdpartyOAuth2ProviderRepository_DeleteProviderReferencedByPermissionSet(t *testing.T) {
+	adapter, cleanup := setupMigratedAdapter(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	repo := NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	provider := newTestEntity()
+	provider.ID = id.NewServiceID()
+	provider.ProtectedResources = nil
+	require.NoError(t, repo.Create(ctx, provider))
+
+	now := time.Now().UTC()
+	permissionSet := &storage.PermissionSet{
+		ID:          id.NewPermissionSetID(),
+		Name:        "Provider reference permission set",
+		Description: "Prevents provider deletion while referenced",
+		ServiceScopes: []storage.ServiceScope{{
+			ServiceID:       provider.ID,
+			Scopes:          []string{"read"},
+			RequirementType: storage.RequirementTypeMandatory,
+		}},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	require.NoError(t, NewPermissionSetRepository(adapter).Create(ctx, permissionSet))
+
+	err := repo.Delete(ctx, provider.ID)
+	var storageErr *storage.StorageError
+	require.ErrorAs(t, err, &storageErr)
+	assert.Equal(t, storage.ErrorKindConflict, storageErr.Kind)
+	_, err = repo.Get(ctx, provider.ID)
+	require.NoError(t, err)
+}
+
+func TestPostgresThirdpartyOAuth2ProviderRepository_DeleteProviderReferencedByAgent(t *testing.T) {
+	adapter, cleanup := setupMigratedAdapter(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	repo := NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	provider := newTestEntity()
+	provider.ID = id.NewServiceID()
+	provider.ProtectedResources = nil
+	require.NoError(t, repo.Create(ctx, provider))
+
+	now := time.Now().UTC()
+	clientID := id.ClientID("provider-reference-agent")
+	agent := &storage.Agent{
+		ClientID:    &clientID,
+		DisplayName: "Provider Reference Agent",
+		Description: "Prevents provider deletion while referenced",
+		ServiceRequirements: []storage.ServiceRequirement{{
+			ServiceID:       provider.ID,
+			RequirementType: storage.RequirementTypeMandatory,
+			RequiredScopes:  []string{"read"},
+		}},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	require.NoError(t, NewAgentRepository(adapter).Create(ctx, agent))
+
+	err := repo.Delete(ctx, provider.ID)
+	var storageErr *storage.StorageError
+	require.ErrorAs(t, err, &storageErr)
+	assert.Equal(t, storage.ErrorKindConflict, storageErr.Kind)
+	_, err = repo.Get(ctx, provider.ID)
+	require.NoError(t, err)
 }

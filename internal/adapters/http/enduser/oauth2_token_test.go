@@ -1758,10 +1758,6 @@ func (r *oauth2TokenProviderRepo) List(context.Context) ([]*model.ThirdpartyOAut
 	return nil, nil
 }
 
-func (r *oauth2TokenProviderRepo) CountGrantsReferencingService(context.Context, id.ServiceID) (int, error) {
-	return 0, nil
-}
-
 func (r *oauth2TokenProviderRepo) FindByProtectedResource(ctx context.Context, _ string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	r.seenSC, r.seenOK = security.FromContext(ctx)
 	return nil, tokenexchange.NewInvalidTargetError("no service configured for the requested resource")

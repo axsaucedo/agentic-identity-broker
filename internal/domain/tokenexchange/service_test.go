@@ -273,10 +273,6 @@ func (m *MockServiceRepository) Delete(ctx context.Context, serviceID id.Service
 	return nil
 }
 
-func (m *MockServiceRepository) CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error) {
-	return 0, nil
-}
-
 func (m *MockServiceRepository) List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
 }

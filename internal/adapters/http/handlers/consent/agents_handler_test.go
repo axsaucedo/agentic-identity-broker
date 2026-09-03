@@ -289,10 +289,6 @@ func (m *mockServiceRepoForAgents) List(ctx context.Context) ([]*model.Thirdpart
 	return nil, nil
 }
 
-func (m *mockServiceRepoForAgents) CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error) {
-	return 0, nil
-}
-
 func (m *mockServiceRepoForAgents) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
 }

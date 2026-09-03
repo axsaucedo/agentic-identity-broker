@@ -87,11 +87,6 @@ func (m *MockProviderRepository) List(ctx context.Context) ([]*model.ThirdpartyO
 	return args.Get(0).([]*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
-func (m *MockProviderRepository) CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error) {
-	args := m.Called(ctx, serviceID)
-	return args.Int(0), args.Error(1)
-}
-
 func (m *MockProviderRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	args := m.Called(ctx, resourceURI)
 	if args.Get(0) == nil {

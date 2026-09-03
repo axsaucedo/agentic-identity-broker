@@ -141,11 +141,6 @@ func (r *observingThirdpartyOAuth2ProviderRepository) List(ctx context.Context) 
 	return r.next.List(ctx)
 }
 
-func (r *observingThirdpartyOAuth2ProviderRepository) CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error) {
-	recordObservedSecurityContext(r.observer, r.layer, ctx)
-	return r.next.CountGrantsReferencingService(ctx, serviceID)
-}
-
 func (r *observingThirdpartyOAuth2ProviderRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	recordObservedSecurityContext(r.observer, r.layer, ctx)
 	return r.next.FindByProtectedResource(ctx, resourceURI)

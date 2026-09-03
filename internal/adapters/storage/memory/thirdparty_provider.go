@@ -215,11 +215,6 @@ func (r *InMemoryThirdpartyOAuth2ProviderRepository) List(_ context.Context) ([]
 	return result, nil
 }
 
-// CountGrantsReferencingService always returns 0 because this adapter does not track grants.
-func (r *InMemoryThirdpartyOAuth2ProviderRepository) CountGrantsReferencingService(_ context.Context, _ id.ServiceID) (int, error) {
-	return 0, nil
-}
-
 // FindByProtectedResource resolves a normalized resource through the authoritative owner index.
 func (r *InMemoryThirdpartyOAuth2ProviderRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	select {

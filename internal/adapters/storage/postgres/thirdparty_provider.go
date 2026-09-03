@@ -213,13 +213,6 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Delete(ctx context.Context,
 	if serviceID.IsZero() {
 		return storage.NewStorageError("DeleteThirdpartyOAuth2Provider", storage.ErrorKindValidation, nil, "provider ID cannot be empty")
 	}
-	count, err := r.CountGrantsReferencingService(ctx, serviceID)
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		return storage.NewStorageError("DeleteThirdpartyOAuth2Provider", storage.ErrorKindConflict, nil, fmt.Sprintf("cannot delete provider: %d grants reference it", count))
-	}
 	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
 	defer cancel()
 	tx, err := r.adapter.db.BeginTx(execCtx, nil)
@@ -243,8 +236,23 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Delete(ctx context.Context,
 	if referenced {
 		return storage.NewStorageError("DeleteThirdpartyOAuth2Provider", storage.ErrorKindConflict, nil, "cannot delete provider: agent service requirements reference it")
 	}
+	var grantReferenced bool
+	if err := tx.QueryRowContext(execCtx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM user_grants ug,
+			     jsonb_array_elements(ug.granted_permission_sets) AS entry
+			WHERE entry->'included_service_ids' @> to_jsonb($1::text)
+			  AND (ug.valid_until IS NULL OR ug.valid_until > NOW())
+		)
+	`, serviceID.String()).Scan(&grantReferenced); err != nil {
+		return providerStorageError("DeleteThirdpartyOAuth2Provider", err, "failed to check active user grant references")
+	}
+	if grantReferenced {
+		return storage.NewStorageError("DeleteThirdpartyOAuth2Provider", storage.ErrorKindConflict, nil, "cannot delete provider: active user grants reference it")
+	}
 	if _, err := tx.ExecContext(execCtx, `DELETE FROM thirdparty_oauth2_services WHERE id = $1`, serviceID); err != nil {
-		return providerStorageError("DeleteThirdpartyOAuth2Provider", err, "failed to delete provider")
+		return providerStorageError("DeleteThirdpartyOAuth2Provider", err, "cannot delete provider: it is still referenced")
 	}
 	if err := tx.Commit(); err != nil {
 		return providerStorageError("DeleteThirdpartyOAuth2Provider", err, "failed to commit transaction")
@@ -279,20 +287,6 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) List(ctx context.Context) (
 		return nil, providerStorageError("ListThirdpartyOAuth2Providers", err, "failed to iterate providers")
 	}
 	return entities, nil
-}
-
-func (r *PostgresThirdpartyOAuth2ProviderRepository) CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error) {
-	if err := r.requireDB("CountGrantsReferencingProvider"); err != nil {
-		return 0, err
-	}
-	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
-	defer cancel()
-	var count int
-	err := r.adapter.db.QueryRowContext(queryCtx, `SELECT COUNT(*) FROM user_grants WHERE delegated_oauth2_tokens @> $1::jsonb`, fmt.Sprintf(`[{"thirdparty_oauth2_service_id": "%s"}]`, serviceID)).Scan(&count)
-	if err != nil {
-		return 0, providerStorageError("CountGrantsReferencingProvider", err, "failed to count grants")
-	}
-	return count, nil
 }
 
 func (r *PostgresThirdpartyOAuth2ProviderRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
@@ -492,7 +486,7 @@ func providerStorageError(operation string, err error, message string) error {
 		return storage.NewStorageError(operation, storage.ErrorKindTimeout, err, "operation exceeded timeout")
 	}
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+	if errors.As(err, &pgErr) && (pgErr.Code == "23505" || pgErr.Code == "23503") {
 		return storage.NewStorageError(operation, storage.ErrorKindConflict, err, message)
 	}
 	return storage.NewStorageError(operation, storage.ErrorKindConnection, err, message)

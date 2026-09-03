@@ -34,7 +34,6 @@ type ThirdpartyOAuth2ProviderRepository interface {
 	Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, expectedVersion *int64) error
 	Delete(ctx context.Context, id id.ServiceID) error
 	List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error)
-	CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error)
 	FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error)
 	AddProtectedResource(ctx context.Context, serviceID id.ServiceID, resourceURI string) (ProtectedResourceMutationResult, error)
 	RemoveProtectedResource(ctx context.Context, serviceID id.ServiceID, resourceURI string) (ProtectedResourceMutationResult, error)

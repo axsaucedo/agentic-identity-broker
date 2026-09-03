@@ -388,14 +388,6 @@ func (s *ThirdpartyOAuth2ProviderService) ListProtectedResources(ctx context.Con
 	return s.repo.ListProtectedResources(ctx, serviceID)
 }
 
-// CountGrantsReferencingService returns the number of grants referencing this provider.
-func (s *ThirdpartyOAuth2ProviderService) CountGrantsReferencingService(
-	ctx context.Context,
-	serviceID id.ServiceID,
-) (int, error) {
-	return s.repo.CountGrantsReferencingService(ctx, serviceID)
-}
-
 // ValidateServiceRequirements validates that all service_ids in the requirements exist and
 // that all required_scopes are valid for the referenced service. This enforces referential
 // integrity between agents and their declared service requirements.
