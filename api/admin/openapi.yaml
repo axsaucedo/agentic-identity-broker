@@ -55,7 +55,7 @@ info:
     - **Disabled**: Requires manual `token_endpoint` and `authorize_endpoint` configuration
     - **Metadata URL**: Optional override for non-standard discovery locations
 
-    
+
     ## Trace Correlation
 
     By default, every HTTP response from this API includes the additive W3C

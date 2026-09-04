@@ -78,7 +78,7 @@ info:
     - **RFC 7230**: HTTP Semantics (hop-by-hop header filtering)
     - **RFC 7636**: PKCE (Proof Key for Public Clients)
     - **RFC 8414**: OAuth 2.0 Authorization Server Metadata
-    
+
     ## Trace Correlation
 
     By default, every HTTP response from this API includes the additive W3C

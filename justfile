@@ -236,11 +236,11 @@ install-tools:
     @command -v golangci-lint > /dev/null || bash scripts/golangci-lint-install.sh -b /usr/local/bin v2.11.4
     @golangci-lint --version 2>/dev/null | grep -q "version 2.11" || bash scripts/golangci-lint-install.sh -b /usr/local/bin v2.11.4
     @command -v go-junit-report > /dev/null || go install github.com/jstemmer/go-junit-report/v2@v2.1.0
-    @command -v ginkgo       > /dev/null || go install github.com/onsi/ginkgo/v2/ginkgo@v2.29.0
-    @if [ -d "$HOME/.cache/ms-playwright" ] && [ -n "$(ls -A "$HOME/.cache/ms-playwright" 2>/dev/null)" ] && [ -f "$HOME/.cache/ms-playwright-go/1.61.1/package/cli.js" ]; then \
+    @go install github.com/onsi/ginkgo/v2/ginkgo@v2.32.1
+    @if [ -d "$HOME/.cache/ms-playwright" ] && [ -n "$(ls -A "$HOME/.cache/ms-playwright" 2>/dev/null)" ] && [ -f "$HOME/.cache/ms-playwright-go/1.62.1/package/cli.js" ]; then \
         echo "Playwright driver and browsers already installed, skipping download"; \
     else \
-        go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6100.0 install --with-deps; \
+        go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install --with-deps; \
     fi
     @echo "Tools installation complete"
 

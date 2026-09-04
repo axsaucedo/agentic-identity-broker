@@ -65,11 +65,11 @@ jobs:
 
       - name: Install Ginkgo
         if: steps.skip-check.outputs.skip != 'true'
-        run: go install github.com/onsi/ginkgo/v2/ginkgo@v2.29.0
+        run: go install github.com/onsi/ginkgo/v2/ginkgo@v2.32.1
 
       - name: Install Playwright browsers
         if: steps.skip-check.outputs.skip != 'true'
-        run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6100.0 install --with-deps
+        run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install --with-deps
 
       - name: Install web dependencies
         if: steps.skip-check.outputs.skip != 'true'

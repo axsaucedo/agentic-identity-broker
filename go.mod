@@ -27,9 +27,9 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/mark3labs/mcp-go v0.58.0
 	github.com/moby/moby/api v1.54.1
-	github.com/mxschmitt/playwright-go v0.6100.0
-	github.com/onsi/ginkgo/v2 v2.29.0
-	github.com/onsi/gomega v1.40.0
+	github.com/mxschmitt/playwright-go v0.6201.1
+	github.com/onsi/ginkgo/v2 v2.32.1
+	github.com/onsi/gomega v1.43.0
 	github.com/open-policy-agent/opa v1.20.1
 	github.com/open-policy-agent/opa-envoy-plugin v1.20.1-envoy
 	github.com/ory/fosite v0.49.0
