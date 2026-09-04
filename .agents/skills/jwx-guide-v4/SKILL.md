@@ -5,7 +5,7 @@ description: Guide for developing Go applications with github.com/lestrrat-go/jw
 
 # jwx-guide-v4
 
-This skill helps you assist Go developers who are **using** `github.com/lestrrat-go/jwx/v4` in their own projects. It is scoped to **v4** only — for v3 or v2, install the corresponding `jwx-dev-v3` / `jwx-dev-v2` plugin.
+This skill helps you assist Go developers who are **using** `github.com/lestrrat-go/jwx/v4` in their own projects. It is scoped to **v4** only. There is no equivalent skill for v3 or v2; for those, work from the version's own `docs/` directory and pkg.go.dev. Do not apply v4 rules to a v3 or v2 codebase — the `jwa` identifiers are constants there, not functions, and the `jwk` and error APIs differ.
 
 ## Where to look things up
 
@@ -40,7 +40,7 @@ Sub-package map:
 
 | Package | Role |
 |---------|------|
-| `jwa` | Algorithm identifiers as **functions**: `jwa.RS256()`, `jwa.ES256()`, `jwa.HS256()`, `jwa.A256GCM()`, `jwa.RSA_OAEP_256()`, `jwa.EdDSA()`, etc. |
+| `jwa` | Algorithm identifiers as **functions**: `jwa.RS256()`, `jwa.ES256()`, `jwa.HS256()`, `jwa.A256GCM()`, `jwa.RSA_OAEP_256()`, `jwa.EdDSAEd25519()`, etc. |
 | `jwk` | JSON Web Keys: parsing, generating, import/export between `jwk.Key` and `crypto.*` keys, key sets. |
 | `jws` | Sign and verify arbitrary payloads (compact or JSON serialization). |
 | `jwe` | Encrypt and decrypt arbitrary payloads. |
@@ -56,7 +56,8 @@ Sub-package map:
 5. **`kid` matching is enforced when verifying with a JWK Set.** Override the requirement with `jwt.WithKeySet(set, jws.WithRequireKid(false))` only when you understand the consequences.
 6. **`jku` (key URL in the JWS header) is attacker-controlled.** Use `jwt.WithVerifyAuto` only with a `jwkfetch.Client` configured with a `jwkfetch.NewMapWhitelist()` of allowed URLs.
 7. **HMAC keys are `[]byte`, not `string`.** Pass `[]byte("secret")`, or better, a `jwk.Key` imported from those bytes.
-8. **Generic functions require explicit type parameters.** `jwk.ParseKey[jwk.Key](data)`, `jwk.Import[jwk.Key](raw)`, `jwk.Export[*rsa.PublicKey](key)`. Bare `jwk.ParseKey(data)` does **not** compile.
+8. **`jwk.Import` and `jwk.Export` require explicit type parameters.** `jwk.Import[jwk.Key](raw)`, `jwk.Export[*rsa.PublicKey](key)`. Their type argument is not inferable from the call, so bare `jwk.Import(raw)` does **not** compile.
+9. **`jwk.ParseKey` is not generic.** `jwk.ParseKey(data)` returns `(jwk.Key, error)`. Use `jwk.ParseKeyAs[jwk.RSAPublicKey](data)` when a concrete JWK type is required.
 
 ## Verifying a JWT (the 90% case)
 
@@ -90,7 +91,9 @@ if err != nil { return err }
 tok, err := jwt.Parse(raw, jwt.WithKeySet(set))
 ```
 
-If the JWS header has a `kid`, the matching key is selected from the set. The algorithm comes from each key's `alg` field or is inferred from the key type. To opt out of kid-required matching: `jwt.WithKeySet(set, jws.WithRequireKid(false))`.
+If the JWS header has a `kid`, the matching key is selected from the set. The algorithm comes from each key's `alg` field. To opt out of kid-required matching: `jwt.WithKeySet(set, jws.WithRequireKid(false))`.
+
+**A key with no `alg` field is skipped, not guessed at.** Inference from the key type is opt-in via `jwt.WithKeySet(set, jws.WithInferAlgorithmFromKey(true))`, and it is a fallback, not a default. It tries every algorithm compatible with the key type, so it is slower and weaker than an explicit `alg`; combined with `jws.WithRequireKid(false)` against a large JWKS it also multiplies out to `N_keys × N_algs_per_keytype` verification attempts. The right fix is almost always to add `alg` to the keys in the JWKS. If a user reports that verification against a JWKS silently finds no usable key, check for missing `alg` fields first.
 
 ### Verifying via JWKS endpoint
 
@@ -132,19 +135,20 @@ Match algorithm to key type:
 | `RS256` / `RS384` / `RS512` | RSA, widest interop. |
 | `PS256` / `PS384` / `PS512` | RSA-PSS, prefer over `RS*` for new systems. |
 | `ES256` / `ES384` / `ES512` | ECDSA, smaller signatures than RSA. |
-| `EdDSA` | Ed25519, fastest verify; preferred for new systems where supported. |
+| `Ed25519` (`jwa.EdDSAEd25519()`) | Ed25519, fastest verify; preferred for new systems where supported. |
+| `EdDSA` (`jwa.EdDSA()`) | The pre-RFC-9864 polymorphic identifier. **Deprecated.** Use it only to interoperate with a producer or consumer that still emits or expects `alg: EdDSA`. |
 | `none` | **Never.** jwx refuses by default. |
 
 ## JWK basics
 
-All generic accessors require the type parameter:
+`jwk.Import` and `jwk.Export` require the type parameter. The parsers do not: `jwk.ParseKey` and `jwk.Parse` are non-generic, and `jwk.ParseKeyAs[T]` is the typed variant.
 
 ```go
 // Parse a single JWK (returns jwk.Key):
-key, err := jwk.ParseKey[jwk.Key](jwkBytes)
+key, err := jwk.ParseKey(jwkBytes)
 
 // Parse a single JWK with a concrete type (fails if not that type):
-rsaKey, err := jwk.ParseKey[jwk.RSAPublicKey](jwkBytes)
+rsaKey, err := jwk.ParseKeyAs[jwk.RSAPublicKey](jwkBytes)
 
 // Parse a JWK Set (returns jwk.Set, not generic):
 set, err := jwk.Parse(jwksBytes)
@@ -191,6 +195,14 @@ payload, err := jws.Verify(sig, jws.WithKey(jwa.ES256(), publicKey))
 
 `jws.Parse` only parses the structure — it does **not** verify. Use `jws.Verify` (which returns the verified payload) for verification.
 
+### The protected `alg` must match the verifying algorithm exactly
+
+`jws.Verify` rejects a message whose protected header advertises one algorithm while it is verified under another. The comparison is plain string equality with no aliasing, and it applies to every key source (`jws.WithKey`, `jws.WithKeySet`, `jws.WithVerifyAuto`, custom `jws.WithKeyProvider`). The check only fires when the protected header actually carries an `alg`.
+
+The practical consequence involves EdDSA. Per RFC 9864, `EdDSA`, `Ed25519` and `Ed448` are three distinct `alg` values, so a token whose header says `alg: Ed25519` does **not** verify under `jws.WithKey(jwa.EdDSA(), key)`, and vice versa. Match the identifier the producer actually emitted.
+
+`jws.WithSkipAlgorithmMatch(true)` bypasses the check. It exists for interop with non-conforming producers, and it weakens a real safety guard, so treat it the way you treat `jws.WithRequireKid(false)`.
+
 ## JWE (encrypting payloads)
 
 ```go
@@ -209,14 +221,14 @@ plain, err := jwe.Decrypt(enc, jwe.WithKey(jwa.RSA_OAEP_256(), recipientPrivateK
 
 Beyond the core `github.com/lestrrat-go/jwx/v4` module, the project ships companion modules under `github.com/jwx-go`. The agent should know **what's available and when to reach for each one** — depth lives in each module's godoc.
 
-For algorithm and HPKE modules: **import for side effects** (`import _ "..."`). They register themselves in `init()` and panic at import time if registration fails (intentional — surfaces problems early).
+For algorithm and HPKE modules: **import for side effects** (`import _ "..."`). They register themselves in `init()` and panic at import time if registration fails (intentional — surfaces problems early). The one case that used to panic in normal use no longer does: see the ML-DSA note below.
 
 ### Signature algorithms (extension)
 
 | Module | What it enables | When to use |
 |--------|-----------------|-------------|
 | `github.com/jwx-go/mldsa/v4` | ML-DSA-44/65/87 (FIPS 204 post-quantum) | Forward-looking post-quantum signing. AKP key type, `"alg"` field required on keys. |
-| `github.com/jwx-go/ed448/v4` | EdDSA (Ed448 curve) | When Ed25519 isn't strong enough or interop requires Ed448. |
+| `github.com/jwx-go/ed448/v4` | `Ed448`, via `ed448.EdDSAEd448()` | When Ed25519 isn't strong enough or interop requires Ed448. |
 | `github.com/jwx-go/es256k/v4` | ES256K (secp256k1) | Web3/crypto ecosystem interop. Uses ECDSA with the secp256k1 curve. |
 | `github.com/jwx-go/compsig/v4` | ML-DSA composite signatures (PQ + classical) per draft-ietf-jose-pq-composite-sigs | **Experimental, draft-spec.** Hybrid signing during PQ transition. |
 
@@ -233,6 +245,7 @@ For algorithm and HPKE modules: **import for side effects** (`import _ "..."`). 
 | Module | What it does | When to use |
 |--------|--------------|-------------|
 | `github.com/jwx-go/jwkfetch/v4` | HTTP JWK Set retrieval — `Client` (one-shot) and `Cache` (background-refreshed, backed by `httprc`) | **Always**, whenever you fetch JWKS over HTTP. Core jwx has no HTTP dependency; this is the entry point. |
+| `github.com/jwx-go/jwxfilter/v4` | Filter and introspection helpers for `jwt.Token`, `jws.Headers`, `jwe.Headers`, `jwk.Key`, and `openid.Token` | Selecting or redacting fields on a token, header, or key. Extracted from core in v4, so a user porting v3 filter code needs this module. |
 | `github.com/jwx-go/asmbase64/v4` | Assembly-optimized base64 backend (via `segmentio/asm`) | High-throughput JWS verify/decode paths where base64 is hot. Drop-in import. |
 | `github.com/jwx-go/jwxmigrate` | Machine-readable v3→v4 migration rules and automated checking | A user porting an app from jwx/v3 to jwx/v4. |
 | `github.com/jwx-go/examples` | Runnable usage patterns covering JWT/JWS/JWE/JWK/extensions; `README.md` is a topical index by package and sub-topic | Pointing the user at canonical example code — fetch the README first to find the right file by topic, then fetch the linked test file. Also importable via `go.work` in local development. |
@@ -246,7 +259,9 @@ For algorithm and HPKE modules: **import for side effects** (`import _ "..."`). 
 
 Default jwx supports the common RFC 7518 algorithms (RS*, PS*, ES*, HS*, EdDSA, A*GCM, RSA-OAEP-*, etc.) out of the box. For everything in the tables above, the user must add the companion module to their `go.mod` *and* import it for side effects. If a user reports an `algorithm not registered` or similar error for ES256K/Ed448/ML-DSA/ML-KEM/X448, they almost certainly missed the side-effect import.
 
-ML-DSA is the one exception, and it depends on the toolchain. From Go 1.27 on, `crypto/mldsa` is in the standard library, so jwx registers `jwa.MLDSA44()`/`MLDSA65()`/`MLDSA87()` natively and no companion module or side-effect import is needed. On Go 1.26 the algorithms are not registered at all, and `github.com/jwx-go/mldsa/v4` is still required. Canonical owner: `docs/10-extensions.md`, section "Which implementation you get".
+ML-DSA is the one exception, and it depends on the toolchain. From Go 1.27 on, `crypto/mldsa` is in the standard library, so jwx registers `jwa.MLDSA44()`/`MLDSA65()`/`MLDSA87()` natively and no companion module or side-effect import is needed. On Go 1.26 the algorithms are not registered at all, and `github.com/jwx-go/mldsa/v4` is still required.
+
+Keeping the extension imported on Go 1.27 is harmless. From `jwx-go/mldsa` v4.0.5 on it detects jwx's native registration and bridges `filippo.io/mldsa` keys onto it instead of registering the algorithms a second time, so code mid-migration keeps working. Only versions before v4.0.5 panic at startup on that combination, because the duplicate registration is rejected. If a user hits that panic, tell them to upgrade the extension, not to drop the import. Canonical owner: `docs/10-extensions.md`, section "Which implementation you get".
 
 ## Errors
 
@@ -296,14 +311,15 @@ When reviewing or writing jwx-using code, watch for these:
 
 1. `jwt.Parse(data)` with no key option — errors out; if the intent was to read claims without verifying, that's a security bug unless the source is already trusted, in which case use `jwt.ParseInsecure`.
 2. `jwa.RS256` instead of `jwa.RS256()` — these are functions in v4.
-3. `jwk.ParseKey(data)` or `jwk.Import(raw)` without the type parameter — won't compile.
-4. Type-asserting a `jwk.Key` to a `crypto.*` type. Use `jwk.Export[*rsa.PublicKey](key)` instead.
-5. Hardcoding the alg from the JWS header (or token contents) to pick a verifier — always pin the expected algorithm on the verify side.
-6. Reusing a single `jwt.Builder` across goroutines — builders aren't safe to share.
-7. Verifying by passing a *private* key — works but leaks intent. Use the public key on the verify side.
-8. Manually building JWS compact strings via concatenation — always go through `jws.Sign`/`jwt.Sign`.
-9. `tok.Get("exp")` — the method is `tok.Field("exp")` (or just `tok.Expiration()`).
-10. Disabling kid matching as a "make it work" shortcut. Understand why the kid doesn't match before adding `jws.WithRequireKid(false)`.
+3. `jwk.Import(raw)` or `jwk.Export(key)` without the type parameter — won't compile.
+4. `jwk.ParseKey[jwk.RSAPublicKey](data)` — `ParseKey` is not generic; the typed parser is `jwk.ParseKeyAs[T]`.
+5. Type-asserting a `jwk.Key` to a `crypto.*` type. Use `jwk.Export[*rsa.PublicKey](key)` instead.
+6. Hardcoding the alg from the JWS header (or token contents) to pick a verifier — always pin the expected algorithm on the verify side.
+7. Reusing a single `jwt.Builder` across goroutines — builders aren't safe to share.
+8. Verifying by passing a *private* key — works but leaks intent. Use the public key on the verify side.
+9. Manually building JWS compact strings via concatenation — always go through `jws.Sign`/`jwt.Sign`.
+10. `tok.Get("exp")` — the method is `tok.Field("exp")` (or just `tok.Expiration()`).
+11. Disabling kid matching as a "make it work" shortcut. Understand why the kid doesn't match before adding `jws.WithRequireKid(false)`.
 
 ## What NOT to suggest
 

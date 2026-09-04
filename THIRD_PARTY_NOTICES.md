@@ -7,5 +7,5 @@
 ## JWX Guide v4 Agent Skill
 * Local Path: .agents/skills/jwx-guide-v4
 * Upstream Source: https://github.com/lestrrat-go/jwx
-* Upstream Commit: a779fbabc144bc578bc4a30e65556f9169f987ba
+* Upstream Commit: 1d2d0514d7e9a21c4aae26baf414c875b97fb7a2
 * License: MIT License (c) lestrrat
