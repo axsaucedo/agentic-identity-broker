@@ -1512,6 +1512,41 @@ func TestService_GetAgentDelegations(t *testing.T) {
 			},
 		},
 		{
+			name:      "multiple agents are ordered by display name and agent ID",
+			principal: id.Principal("user@example.com"),
+			grants: map[id.GrantID]*storage.UserGrant{
+				id.NewGrantID(): {Principal: id.Principal("user@example.com"), AgentID: id.MustParseAgentID("00000000-0000-0000-0000-000000000004"), ValidUntil: &future},
+				id.NewGrantID(): {Principal: id.Principal("user@example.com"), AgentID: id.MustParseAgentID("00000000-0000-0000-0000-000000000003"), ValidUntil: &future},
+				id.NewGrantID(): {Principal: id.Principal("user@example.com"), AgentID: id.MustParseAgentID("00000000-0000-0000-0000-000000000005"), ValidUntil: &future},
+				id.NewGrantID(): {Principal: id.Principal("user@example.com"), AgentID: id.MustParseAgentID("00000000-0000-0000-0000-000000000002"), ValidUntil: &future},
+				id.NewGrantID(): {Principal: id.Principal("user@example.com"), AgentID: id.MustParseAgentID("00000000-0000-0000-0000-000000000001"), ValidUntil: &future},
+			},
+			agents: map[id.AgentID]*storage.Agent{
+				id.MustParseAgentID("00000000-0000-0000-0000-000000000004"): {ID: id.MustParseAgentID("00000000-0000-0000-0000-000000000004"), DisplayName: "Zebra Agent"},
+				id.MustParseAgentID("00000000-0000-0000-0000-000000000003"): {ID: id.MustParseAgentID("00000000-0000-0000-0000-000000000003"), DisplayName: "Shared Name"},
+				id.MustParseAgentID("00000000-0000-0000-0000-000000000005"): {ID: id.MustParseAgentID("00000000-0000-0000-0000-000000000005"), DisplayName: "Alpha Agent"},
+				id.MustParseAgentID("00000000-0000-0000-0000-000000000002"): {ID: id.MustParseAgentID("00000000-0000-0000-0000-000000000002"), DisplayName: "Shared Name"},
+				id.MustParseAgentID("00000000-0000-0000-0000-000000000001"): {ID: id.MustParseAgentID("00000000-0000-0000-0000-000000000001"), DisplayName: "Shared Name"},
+			},
+			expectedCount: 5,
+			expectError:   false,
+			validate: func(t *testing.T, delegations []AgentDelegation) {
+				assert.Equal(t, []id.AgentID{
+					id.MustParseAgentID("00000000-0000-0000-0000-000000000005"),
+					id.MustParseAgentID("00000000-0000-0000-0000-000000000001"),
+					id.MustParseAgentID("00000000-0000-0000-0000-000000000002"),
+					id.MustParseAgentID("00000000-0000-0000-0000-000000000003"),
+					id.MustParseAgentID("00000000-0000-0000-0000-000000000004"),
+				}, []id.AgentID{
+					delegations[0].AgentID,
+					delegations[1].AgentID,
+					delegations[2].AgentID,
+					delegations[3].AgentID,
+					delegations[4].AgentID,
+				})
+			},
+		},
+		{
 			name:      "expired grants are filtered out",
 			principal: id.Principal("user@example.com"),
 			grants: map[id.GrantID]*storage.UserGrant{
@@ -1576,6 +1611,56 @@ func TestService_GetAgentDelegations(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSortAgentDelegations(t *testing.T) {
+	t.Parallel()
+
+	oldest := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	newest := oldest.Add(4 * time.Hour)
+	delegations := []AgentDelegation{
+		{
+			AgentID:        id.MustParseAgentID("00000000-0000-0000-0000-000000000004"),
+			DisplayName:    "Zebra Agent",
+			LastModifiedAt: newest,
+		},
+		{
+			AgentID:        id.MustParseAgentID("00000000-0000-0000-0000-000000000003"),
+			DisplayName:    "Shared Name",
+			LastModifiedAt: oldest.Add(time.Hour),
+		},
+		{
+			AgentID:        id.MustParseAgentID("00000000-0000-0000-0000-000000000001"),
+			DisplayName:    "Shared Name",
+			LastModifiedAt: oldest.Add(3 * time.Hour),
+		},
+		{
+			AgentID:        id.MustParseAgentID("00000000-0000-0000-0000-000000000002"),
+			DisplayName:    "Shared Name",
+			LastModifiedAt: oldest.Add(2 * time.Hour),
+		},
+		{
+			AgentID:        id.MustParseAgentID("00000000-0000-0000-0000-000000000005"),
+			DisplayName:    "Alpha Agent",
+			LastModifiedAt: oldest,
+		},
+	}
+
+	sortAgentDelegations(delegations)
+
+	assert.Equal(t, []id.AgentID{
+		id.MustParseAgentID("00000000-0000-0000-0000-000000000005"),
+		id.MustParseAgentID("00000000-0000-0000-0000-000000000001"),
+		id.MustParseAgentID("00000000-0000-0000-0000-000000000002"),
+		id.MustParseAgentID("00000000-0000-0000-0000-000000000003"),
+		id.MustParseAgentID("00000000-0000-0000-0000-000000000004"),
+	}, []id.AgentID{
+		delegations[0].AgentID,
+		delegations[1].AgentID,
+		delegations[2].AgentID,
+		delegations[3].AgentID,
+		delegations[4].AgentID,
+	})
 }
 
 func TestService_GetAgentConsentDetail_WithPermissionSets(t *testing.T) {

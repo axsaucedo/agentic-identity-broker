@@ -262,7 +262,7 @@ paths:
 
         - Returns empty array if user has no active delegations
         - Only includes agents with at least one active grant
-        - Ordered by last modified date (newest first)
+        - Ordered by display name in ascending order. Agents with the same display name are ordered by agent ID in ascending order.
 
         **Use Cases**:
 

@@ -730,6 +730,15 @@ type AgentDelegation struct {
 	ExpiresAt        *time.Time `json:"expiresAt,omitempty"`
 }
 
+func sortAgentDelegations(delegations []AgentDelegation) {
+	sort.Slice(delegations, func(i, j int) bool {
+		if delegations[i].DisplayName != delegations[j].DisplayName {
+			return delegations[i].DisplayName < delegations[j].DisplayName
+		}
+		return delegations[i].AgentID.String() < delegations[j].AgentID.String()
+	})
+}
+
 // GetUserGrants retrieves all grants for a specific principal and agent.
 // This is used for User Story 2 to display what permissions the user has already granted to an agent.
 // Returns empty slice if no grants exist (not an error).
@@ -817,6 +826,8 @@ func (s *Service) GetAgentDelegations(ctx context.Context, principal id.Principa
 	for _, delegation := range agentMap {
 		delegations = append(delegations, *delegation)
 	}
+
+	sortAgentDelegations(delegations)
 
 	return delegations, nil
 }
