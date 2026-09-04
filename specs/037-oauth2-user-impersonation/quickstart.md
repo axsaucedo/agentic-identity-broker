@@ -109,7 +109,7 @@ observable proof.
 ### Edge cases (additional `It()` blocks)
 
 - `scope=read` for a target allowing `read` → 200 with `scope: "read"` in the JWT and response; an unlisted scope → 400 `invalid_scope` with no token; an empty target allow-list is unrestricted. `resource` → 400 `invalid_request`.
-- Bare/malformed/noncanonical target suffix → 400 `invalid_request`; unknown canonical target → 400 `invalid_target`.
+- A bare suffix or a suffix matching neither identifier form → 400 `invalid_request`; an unknown target of either form → 400 `invalid_target`.
 - `requested_token_type` present but ≠ access-token type → 400 `invalid_request`.
 - actor identity equals subject identity → permitted; `act.sub == sub`.
 - signing-key metadata for an issuer unavailable → rules depending on it fall through; if none match, fail closed.
@@ -133,6 +133,8 @@ curl -s -X POST http://localhost:8000/oauth2/token \
 # Decode access_token: sub == subject; agent_id and policy agent fields equal target; act.iss == validated actor-token issuer; act.sub == actor;
 # aud follows local token_claims_expression; scope == "read" when the target allows it.
 ```
+
+Use `audience=$IMPERSONATION_AUDIENCE_PREFIX/$TARGET_AGENT_CANONICAL_ID` to address the same target by canonical ID.
 
 ## Done criteria
 

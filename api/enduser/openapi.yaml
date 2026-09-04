@@ -1302,16 +1302,15 @@ paths:
 
         The routing-only `oauth2_authorization_server.impersonation.audience_prefix` activates
         impersonation only when exactly one request `audience` is
-        `<audience_prefix>/<canonical lower-case AgentID UUID>`—the target agent's `id` UUID,
-        not its optional `canonical_id`. The suffix selects a registered target agent, which
-        supplies minted `agent_id` and local-token CEL `agent.*`. A signed client assertion
-        is the privileged-client identity for authorization and audit only. The routing audience
-        is never copied into issued `aud`; the existing local `token_claims_expression` emits `aud`
-        or leaves it absent exactly as normal local issuance does. Activation precedes the
-        third-party mandatory-`resource` check.
+        `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`. Both forms resolve
+        the same registered target agent, which supplies minted UUID `agent_id` and local-token CEL
+        `agent.*`. A signed client assertion is the privileged-client identity for authorization and
+        audit only. The routing audience is never copied into issued `aud`; the existing local
+        `token_claims_expression` emits `aud` or leaves it absent exactly as normal local issuance
+        does. Activation precedes the third-party mandatory-`resource` check.
 
         - `grant_type`: `urn:ietf:params:oauth:grant-type:token-exchange`
-        - `audience`: one `<audience_prefix>/<canonical lower-case AgentID UUID>` URI
+        - `audience`: one `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>` URI
         - `client_assertion_type`: `urn:ietf:params:oauth:client-assertion-type:jwt-bearer`
         - `client_assertion`: signed JWT authenticating the privileged client
         - `actor_token_type`: `urn:ietf:params:oauth:token-type:jwt`
@@ -1327,8 +1326,9 @@ paths:
         `offline` and `offline_access` are always permitted refresh-token scopes. An out-of-list
         non-reserved value returns `invalid_scope`. The normal local JWT and response carry non-empty granted scope.
         Signed credentials are validated for signature, issuer, audience, expiry, and not-before
-        before a CEL authorization predicate decides the request. Malformed/bare/noncanonical target
-        suffixes return `invalid_request`; a canonical unknown target returns `invalid_target`.
+        before a CEL authorization predicate decides the request. Bare suffixes and suffixes matching
+        neither identifier form return `invalid_request`; a well-formed UUID or canonical-ID suffix
+        whose target is unknown returns `invalid_target`.
         No-match precedence is `access_denied` > `invalid_request` > `invalid_client`.
       operationId: tokenExchange
       tags:
@@ -1370,6 +1370,18 @@ paths:
                 value:
                   grant_type: "urn:ietf:params:oauth:grant-type:token-exchange"
                   audience: "https://broker.example.com/impersonation/550e8400-e29b-41d4-a716-446655440000"
+                  client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+                  client_assertion: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  actor_token_type: "urn:ietf:params:oauth:token-type:jwt"
+                  actor_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  subject_token_type: "urn:ietf:params:oauth:token-type:jwt"
+                  subject_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  scope: "read"
+              token_exchange_impersonation_canonical:
+                summary: User Impersonation Request Addressed by Canonical ID
+                value:
+                  grant_type: "urn:ietf:params:oauth:grant-type:token-exchange"
+                  audience: "https://broker.example.com/impersonation/research-agent"
                   client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
                   client_assertion: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
                   actor_token_type: "urn:ietf:params:oauth:token-type:jwt"
@@ -3202,7 +3214,7 @@ components:
         **authorization_code** (local/hybrid): requires client_id, code, redirect_uri. client_secret required for confidential clients, optional for public clients. Optional: code_verifier.
         **authorization_code** (proxy): requires client_id, client_secret, code, redirect_uri.
         **token-exchange** (RFC 8693): requires subject_token, subject_token_type, resource, client_assertion_type, client_assertion.
-        **token-exchange (user impersonation)** (RFC 8693, local mode only): activated only by one `audience` equal to `<audience_prefix>/<canonical lower-case AgentID UUID>`, which must resolve to a registered target. That target supplies issued `agent_id`, local-policy `agent.*`, and optional scope policy through `allowed_scopes`; an empty allow-list is unrestricted, while the reserved refresh-token scopes `offline` and `offline_access` are always permitted. Required credentials are client assertion, actor token, and subject token. `resource` MUST be absent; a target-disallowed non-reserved optional scope is `invalid_scope`.
+        **token-exchange (user impersonation)** (RFC 8693, local mode only): activated only by one `audience` equal to `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`, which must resolve to a registered target. Both forms retain the target UUID as issued `agent_id`; that target supplies local-policy `agent.*`, and optional scope policy through `allowed_scopes`; an empty allow-list is unrestricted, while the reserved refresh-token scopes `offline` and `offline_access` are always permitted. Required credentials are client assertion, actor token, and subject token. `resource` MUST be absent; a target-disallowed non-reserved optional scope is `invalid_scope`.
       required:
         - grant_type
       properties:
@@ -3327,8 +3339,8 @@ components:
           format: uri
           description: |
             Optional token-exchange audience. For local impersonation it must be exactly one
-            `<audience_prefix>/<canonical lower-case AgentID UUID>` URI. The suffix selects the
-            registered target agent; the routing audience never sets issued-token `aud`.
+            `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>` URI. The suffix
+            selects the registered target agent; the routing audience never sets issued-token `aud`.
           example: "https://broker.example.com/impersonation/550e8400-e29b-41d4-a716-446655440000"
     TokenExchangeResponse:
       type: object

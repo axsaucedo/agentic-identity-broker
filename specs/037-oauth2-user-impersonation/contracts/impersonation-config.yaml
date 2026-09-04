@@ -26,8 +26,8 @@ oauth2_authorization_server:
 
   impersonation:
     # CR-001: routing-only URI prefix for the RFC 8693 request `audience`.
-    # A request activates impersonation only with exactly one canonical target suffix:
-    # <audience_prefix>/<canonical AgentID>. This prefix is distinct from each signed
+    # A request activates impersonation only with exactly one target suffix that is the target
+    # agent's canonical lower-case UUID or canonical_id. This prefix is distinct from each signed
     # credential's `expected_audience` and is never copied to an issued token's `aud`.
     audience_prefix: "https://broker.example.com/impersonation"
 
@@ -115,8 +115,8 @@ oauth2_authorization_server:
 # ---------------------------------------------------------------------------
 # Startup validation contract (fail-closed):
 #   CR-001  audience_prefix is an absolute HTTP(S) URI with host, no userinfo/query/fragment,
-#           and no trailing slash. It routes `<audience_prefix>/<canonical AgentID>` requests.
-#   CR-002  rules non-empty, ordered.
+#           and no trailing slash. It routes `<audience_prefix>/<agent UUID or canonical ID>`
+#           requests.
 #   CR-003  each rule: unique name; roles map keys subset of {client_assertion, actor, subject};
 #           MUST define client_assertion, actor, and subject; each role requires
 #           principal_expression; email_expression and verification allowed on subject only

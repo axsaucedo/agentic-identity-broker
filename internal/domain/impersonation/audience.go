@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/canonical"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
@@ -32,21 +33,29 @@ func (s *Service) ResolveTarget(ctx context.Context, audiences []string) (*Targe
 		return nil, false, nil
 	}
 	if audiences[0] == s.audiencePrefix {
-		return nil, true, invalidRequest("audience target must be a canonical agent ID", "audience_target_invalid")
+		return nil, true, invalidTargetSuffix()
 	}
 	if !strings.HasPrefix(audiences[0], s.audiencePrefix+"/") {
 		return nil, false, nil
 	}
 
 	suffix := audiences[0][len(s.audiencePrefix)+1:]
-	targetID, err := id.ParseAgentID(suffix)
-	if err != nil || targetID.String() != suffix {
-		return nil, true, invalidRequest("audience target must be a canonical agent ID", "audience_target_invalid")
-	}
 
-	agent, err := s.agents.Get(ctx, targetID)
-	if err != nil {
-		if ports.IsNotFoundErr(err) {
+	var agent *storage.Agent
+	var lookupErr error
+	if targetID, parseErr := id.ParseAgentID(suffix); parseErr == nil {
+		if targetID.String() != suffix {
+			return nil, true, invalidTargetSuffix()
+		}
+		agent, lookupErr = s.agents.Get(ctx, targetID)
+	} else {
+		if canonical.Validate(&suffix) != nil {
+			return nil, true, invalidTargetSuffix()
+		}
+		agent, lookupErr = s.canonicalAgents.GetByCanonicalID(ctx, suffix)
+	}
+	if lookupErr != nil {
+		if ports.IsNotFoundErr(lookupErr) {
 			return nil, true, tokenexchange.NewInvalidTargetErrorWithDetails("audience target agent was not found", "target_agent_not_found")
 		}
 		return nil, true, serverError("audience target agent lookup failed", "target_agent_lookup_failed")
@@ -55,4 +64,8 @@ func (s *Service) ResolveTarget(ctx context.Context, audiences []string) (*Targe
 		return nil, true, serverError("audience target agent lookup returned an invalid agent", "target_agent_lookup_failed")
 	}
 	return &Target{Agent: agent}, true, nil
+}
+
+func invalidTargetSuffix() *tokenexchange.TokenExchangeError {
+	return invalidRequest("audience target must be an agent UUID or canonical ID", "audience_target_invalid")
 }

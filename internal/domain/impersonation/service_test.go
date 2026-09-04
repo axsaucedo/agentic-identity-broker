@@ -38,7 +38,8 @@ func (s *stubIssuer) IssueImpersonationToken(_ context.Context, input ports.Impe
 
 type stubAgentRepository struct {
 	ports.AgentRepository
-	get func(context.Context, id.AgentID) (*storage.Agent, error)
+	get          func(context.Context, id.AgentID) (*storage.Agent, error)
+	getCanonical func(context.Context, string) (*storage.Agent, error)
 }
 
 func (s stubAgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
@@ -46,6 +47,13 @@ func (s stubAgentRepository) Get(ctx context.Context, agentID id.AgentID) (*stor
 		return nil, assert.AnError
 	}
 	return s.get(ctx, agentID)
+}
+
+func (s stubAgentRepository) GetByCanonicalID(ctx context.Context, canonicalID string) (*storage.Agent, error) {
+	if s.getCanonical == nil {
+		return nil, assert.AnError
+	}
+	return s.getCanonical(ctx, canonicalID)
 }
 
 func testTarget() *Target {
@@ -88,6 +96,16 @@ func newTestService(t *testing.T, cfg *ports.ImpersonationConfig) (*Service, *st
 	svc, err := NewService(cfg, factory, stubAgentRepository{}, issuer, 0, nil)
 	require.NoError(t, err)
 	return svc, issuer
+}
+
+type uuidOnlyAgentRepository struct{ ports.AgentRepository }
+
+func TestNewService_RequiresCanonicalIDResolution(t *testing.T) {
+	_, err := NewService(testImpersonationConfig(), func(ports.TrustedTokenIssuerConfig) (tokenexchange.JWKSProvider, error) {
+		return stubJWKSProvider{}, nil
+	}, uuidOnlyAgentRepository{}, &stubIssuer{}, 0, nil)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "canonical ID resolution")
 }
 
 func TestNewService_CompilesRules(t *testing.T) {

@@ -29,9 +29,9 @@ touch or reuse.
 
 - **Decision**: `(*enduser.OAuth2TokenHandler).handleTokenExchange` resolves target routing after
   form parsing and before the legacy mandatory-resource guard. Activation is exactly one
-  `<impersonation.audience_prefix>/<canonical AgentID>` audience. A bare/malformed suffix returns
-  `invalid_request`; an unknown canonical target returns `invalid_target`; absent/different/multiple
-  audiences retain third-party routing.
+  `<impersonation.audience_prefix>/<agent UUID or canonical ID>` audience. A bare suffix or one
+  matching neither identifier form returns `invalid_request`; an unknown target of either form
+  returns `invalid_target`; absent/different/multiple audiences retain third-party routing.
 - **Rationale**: Target resolution must precede generic guards while preserving unselected exchange
   behavior. The target agent supplies minted `agent_id` and local CEL `agent.*`; the assertion is
   privileged-client authorization/audit identity only.

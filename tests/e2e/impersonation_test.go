@@ -148,16 +148,17 @@ func (s *syncBuffer) String() string {
 
 var _ = Describe("OAuth2 User Impersonation", func() {
 	var (
-		logger         *slog.Logger
-		logBuf         *syncBuffer
-		storageFactory *bootstrap.StorageFactory
-		testStorage    *storageadapter.Adapter
-		adminServer    *bootstrap.TestServer
-		enduserServer  *bootstrap.TestServer
-		issuer         *helpers.MockJWKSServer
-		targetAgent    = fixtures.AgentWithClientID("impersonation-target")
-		targetAudience string
-		now            time.Time
+		logger            *slog.Logger
+		logBuf            *syncBuffer
+		storageFactory    *bootstrap.StorageFactory
+		testStorage       *storageadapter.Adapter
+		adminServer       *bootstrap.TestServer
+		enduserServer     *bootstrap.TestServer
+		issuer            *helpers.MockJWKSServer
+		targetAgent       = fixtures.AgentWithClientID("impersonation-target")
+		targetAudience    string
+		canonicalAudience string
+		now               time.Time
 	)
 
 	BeforeEach(func() {
@@ -171,8 +172,11 @@ var _ = Describe("OAuth2 User Impersonation", func() {
 		testStorage, err = storageFactory.NewTestStorage()
 		Expect(err).ToNot(HaveOccurred())
 		targetAgent = fixtures.AgentWithClientID("impersonation-target")
+		canonicalID := "impersonation-target"
+		targetAgent.CanonicalID = &canonicalID
 		targetAgent.AllowedScopes = []string{"read", "write"}
 		targetAudience = imperAudience + "/" + targetAgent.ID.String()
+		canonicalAudience = imperAudience + "/" + canonicalID
 		Expect(testStorage.Agents().Create(context.Background(), targetAgent)).To(Succeed())
 	})
 
@@ -301,6 +305,18 @@ var _ = Describe("OAuth2 User Impersonation", func() {
 		})
 
 		// Scenario US1.1 from specs/037-oauth2-user-impersonation/spec.md
+		It("should mint an equivalent token when the audience addresses the target by canonical ID", func() {
+			req := baseRequest()
+			req.Set("audience", canonicalAudience)
+			resp := postImpersonation(req)
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusOK))
+			claims := decodeJWTClaims(decodeBody(resp)["access_token"].(string))
+			Expect(claims["agent_id"]).To(Equal(targetAgent.ID.String()))
+			Expect(claims["sub"]).To(Equal("user-1"))
+			Expect(claims["act"].(map[string]any)["sub"]).To(Equal("actor-1"))
+		})
+
+		// Scenario US1.1 from specs/037-oauth2-user-impersonation/spec.md
 		It("mints the requested scope allowed by the target agent", func() {
 			req := baseRequest()
 			req.Set("scope", "read")
@@ -395,6 +411,8 @@ var _ = Describe("OAuth2 User Impersonation", func() {
 			}{
 				{imperAudience, "invalid_request"},
 				{imperAudience + "/550e8400-e29b-41d4-a716-446655440000", "invalid_target"},
+				{imperAudience + "/unknown-canonical-target", "invalid_target"},
+				{imperAudience + "/not a canonical id", "invalid_request"},
 			} {
 				req := baseRequest()
 				req.Set("audience", tc.audience)

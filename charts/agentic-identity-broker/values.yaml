@@ -493,7 +493,7 @@ broker:
     # verbatim into config.yaml. See examples/config/impersonation.yaml for a full
     # annotated example.
     # impersonation:
-    #   # CR-001: routing-only prefix. Requests append one canonical registered AgentID.
+    #   # CR-001: routing-only prefix. Requests append one target agent's canonical lower-case UUID or canonical_id.
     #   audience_prefix: "https://broker.example.com/impersonation"
     #   # CR-002: non-empty, ordered; first-match.
     #   rules:

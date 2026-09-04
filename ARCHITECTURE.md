@@ -798,8 +798,8 @@ OAuth2 /authorize request
 
 ```
 POST /oauth2/token (grant_type=urn:ietf:params:oauth:grant-type:token-exchange)
-  ↓ Activate: exactly one audience == <audience_prefix>/<canonical AgentID>; resolve registered target
-  ↓   malformed/bare suffix → invalid_request; missing target → invalid_target; validate optional non-reserved scope against target AllowedScopes (`offline` and `offline_access` are always permitted); reject resource
+  ↓ Activate: exactly one audience == <audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>; resolve registered target
+  ↓   bare suffix or suffix matching neither identifier form → invalid_request; missing target of either form → invalid_target; validate optional non-reserved scope against target AllowedScopes (`offline` and `offline_access` are always permitted); reject resource
   ↓ Walk oauth2_authorization_server.impersonation.rules in configured order, first-match:
   ↓   ├─ Validate signed client_assertion, actor, and subject against the rule's per-issuer JWKS
   ↓   │    (signature, algorithm allow-list, iss, per-role expected audience, exp, nbf)

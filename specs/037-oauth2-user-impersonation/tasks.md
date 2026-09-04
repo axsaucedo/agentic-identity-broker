@@ -387,6 +387,19 @@ token values (T024 covers S1–S3).
       allow-list is unrestricted; unit, HTTP, and E2E coverage prove the contract.
 
 
+## Amendment 2026-09-04: canonical-ID audience targets
+
+- [X] T086 Resolve an audience suffix that is either the target agent's canonical lower-case UUID or
+      its `canonical_id` in `internal/domain/impersonation/audience.go`; require canonical-ID
+      resolution capability at `NewService` startup.
+- [X] T087 Cover both addressing forms and the grammar/not-found error split in
+      `internal/domain/impersonation/audience_test.go` and `service_test.go`.
+- [X] T088 Add the canonical-ID audience minting scenario and rejection cases to
+      `tests/e2e/impersonation_test.go`.
+- [X] T089 Update the two-form activation contract in spec 037, `api/enduser/openapi.yaml`,
+      `docs/`, `examples/config/`, `charts/`, and `ARCHITECTURE.md`.
+
+
 ---
 
 ## Dependencies & Execution Order

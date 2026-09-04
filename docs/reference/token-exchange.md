@@ -259,17 +259,18 @@ The issued token carries both a subject (`sub`) and an actor (`act`) claim, whic
 ### Activation and request
 
 The request activates impersonation only when it carries exactly one `audience` equal to
-`<impersonation.audience_prefix>/<canonical lower-case AgentID UUID>`. The suffix must resolve
-to a registered target agent. That target supplies the minted token's `agent_id`, the local
-token policy's `agent.*` context, and the optional-scope allow-list. The routing audience never
-becomes the issued token's `aud`; `token_claims_expression` alone controls that claim.
+`<impersonation.audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`. The suffix
+must resolve to a registered target agent. It may equally be the target's `canonical_id`; both forms
+retain the target UUID as minted `agent_id`. That target supplies the local token policy's `agent.*`
+context and the optional-scope allow-list. The routing audience never becomes the issued token's
+`aud`; `token_claims_expression` alone controls that claim.
 
 Send these form fields:
 
 | Parameter | Value | Requirement |
 |---|---|---|
 | `grant_type` | `urn:ietf:params:oauth:grant-type:token-exchange` | Required. |
-| `audience` | `<audience_prefix>/<canonical lower-case AgentID UUID>` | Required; exactly one value. |
+| `audience` | `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>` | Required; exactly one value. |
 | `client_assertion_type` | `urn:ietf:params:oauth:client-assertion-type:jwt-bearer` | Required. |
 | `client_assertion` | Signed JWT | Required; authenticates the privileged client. |
 | `actor_token_type` | `urn:ietf:params:oauth:token-type:jwt` | Required. |
@@ -279,8 +280,8 @@ Send these form fields:
 | `scope` | Literal-space-separated scopes | Optional; each non-reserved value must be permitted by the target agent's `allowed_scopes`, unless its allow-list is empty. The reserved refresh-token scopes `offline` and `offline_access` are always permitted. |
 | `requested_token_type` | `urn:ietf:params:oauth:token-type:access_token` | Optional; any other value is `invalid_request`. |
 
-`resource` MUST be absent. A malformed, bare, or noncanonical audience suffix returns
-`invalid_request`; a canonical suffix for an unregistered target returns `invalid_target`.
+`resource` MUST be absent. A bare suffix or suffix matching neither identifier form returns
+`invalid_request`; a well-formed UUID or canonical-ID suffix for an unregistered target returns `invalid_target`.
 
 ```bash
 curl -X POST http://localhost:8000/oauth2/token \

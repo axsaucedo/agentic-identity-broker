@@ -70,9 +70,10 @@ matching, and audit.
 
 ### ImpersonationRequest
 Parsed only after target resolution from a single audience exactly equal to
-`<impersonation.audience_prefix>/<canonical AgentID>`. A bare/malformed/noncanonical suffix is
-`invalid_request`; a canonical missing agent is `invalid_target`. The resolved `Target{Agent}`
-supplies target policy context and minted `agent_id`.
+`<impersonation.audience_prefix>/<agent UUID or canonical ID>`. A bare suffix or one matching
+neither identifier form is `invalid_request`; a well-formed UUID or canonical-ID suffix whose
+agent is absent is `invalid_target`. The resolved `Target{Agent}` supplies target policy context
+and minted `agent_id`, which remains the agent UUID regardless of the requested identifier form.
 
 | Field | Source param | Rules |
 |---|---|---|
@@ -164,8 +165,8 @@ sequenceDiagram
     participant V as SignedValidator
     participant E as CEL Evaluator
     participant I as Local Issuer
-    C->>H: POST /oauth2/token (audience=<audience_prefix>/<canonical AgentID>)
-    H->>H: resolve registered Target{Agent}; reject malformed or missing targets
+    C->>H: POST /oauth2/token (audience=<audience_prefix>/<agent UUID or canonical ID>)
+    H->>H: resolve registered Target{Agent}; reject a suffix matching neither identifier form or a missing target
     H->>S: ImpersonationRequest + Target
     loop rules in order
         S->>V: validate client_assertion, actor, signed subject

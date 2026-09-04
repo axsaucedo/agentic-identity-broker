@@ -7,8 +7,8 @@
 ## Summary
 
 Add RFC 8693 user impersonation to `POST /oauth2/token`, active only in `local` mode when exactly
-one request audience is `<oauth2_authorization_server.impersonation.audience_prefix>/<canonical
-AgentID>`. The suffix resolves a registered target agent. The broker validates and authorizes a
+one request audience is `<oauth2_authorization_server.impersonation.audience_prefix>/<agent UUID
+or canonical ID>`. The suffix resolves a registered target agent. The broker validates and authorizes a
 privileged client assertion, actor, and subject through ordered rules, validates an optional requested
 scope against the selected target agent's `allowed_scopes`, then mints through the normal local access-token
 path with target-derived `agent_id`, target-backed local CEL `agent.*`, extracted `sub`, and validated

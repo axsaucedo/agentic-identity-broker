@@ -10,7 +10,7 @@ The broker supports two distinct RFC 8693 flows on `POST /oauth2/token`:
 | Flow | Activation | Result |
 |---|---|---|
 | Third-party token exchange | Standard exchange parameters, including `resource` | A provider credential held in the encrypted token vault. |
-| User impersonation | One `audience` equal to `<impersonation.audience_prefix>/<canonical lower-case AgentID UUID>` in local mode | A locally issued broker token with an impersonated `sub`, target-derived `agent_id`, and accountable `act.iss`/`act.sub`. |
+| User impersonation | One `audience` equal to `<impersonation.audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>` in local mode | A locally issued broker token with an impersonated `sub`, target-derived UUID `agent_id`, and accountable `act.iss`/`act.sub`. |
 
 This page explains third-party token exchange. User impersonation neither resolves a third-party
 resource nor returns a provider credential; its target agent owns optional scope policy and its

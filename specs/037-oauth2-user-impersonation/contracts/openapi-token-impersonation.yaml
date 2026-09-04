@@ -24,8 +24,8 @@ x-token-endpoint-addendum: |
 
   The routing-only `oauth2_authorization_server.impersonation.audience_prefix` selects this flow
   only when the request contains exactly one `audience` of
-  `<audience_prefix>/<canonical AgentID>`. The suffix resolves a registered target agent. The
-  target supplies issued `agent_id` and local-token CEL `agent.*`; a validated client assertion
+  `<audience_prefix>/<agent UUID or canonical ID>`. The suffix resolves a registered target agent.
+  The target supplies issued `agent_id` and local-token CEL `agent.*`; a validated client assertion
   remains privileged-client authorization and audit material. The routing audience is never copied
   to issued `aud`, which remains controlled by the existing local `token_claims_expression`.
 
@@ -35,7 +35,7 @@ x-token-endpoint-addendum: |
 
   Required parameters:
   - `grant_type`: `urn:ietf:params:oauth:grant-type:token-exchange`
-  - `audience`: `<audience_prefix>/<canonical AgentID>` (single value)
+  - `audience`: `<audience_prefix>/<agent UUID or canonical ID>` (single value)
   - `client_assertion_type`: `urn:ietf:params:oauth:client-assertion-type:jwt-bearer`
   - `client_assertion`: signed JWT authenticating the privileged client
   - `actor_token_type`: `urn:ietf:params:oauth:token-type:jwt`
@@ -87,7 +87,7 @@ components:
       #   - "urn:ietf:params:oauth:token-type:jwt" (signed or unsigned unverified subject)
       # The matching rule's verification mode selects the subject path.
       # audience (existing property) becomes the target-routing selector:
-      # <audience_prefix>/<canonical AgentID>. Do not add an agent_id request property.
+      # <audience_prefix>/<agent UUID or canonical ID>. Do not add an agent_id request property.
       # For impersonation, scope is optional and constrained by the resolved target's allowed_scopes;
       # resource MUST NOT be present.
 
@@ -111,12 +111,13 @@ components:
 # ---------------------------------------------------------------------------
     OAuth2Error_impersonation_mapping:
       description: |
-        invalid_request (400): malformed/missing/repeated params; malformed/bare/noncanonical
-          target audience; resource present; invalid/expired/unsigned actor or subject; identity extraction
-          failure; requested_token_type mismatch.
+        invalid_request (400): malformed/missing/repeated params; bare target or target matching
+          neither identifier form; resource present; invalid/expired/unsigned actor or subject;
+          identity extraction failure; requested_token_type mismatch.
         invalid_scope (400): a requested scope is outside the resolved target agent's non-empty
           allowed_scopes list.
-        invalid_target (400): syntactically valid audience target is not a registered agent.
+        invalid_target (400): a syntactically valid UUID or canonical-ID audience target is not a
+          registered agent.
         invalid_client (401): client assertion fails signature/issuer/audience/expiry/nbf, or no
           rule trusts it.
         access_denied (403): a rule validated all credentials but no predicate permitted the

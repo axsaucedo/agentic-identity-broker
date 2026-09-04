@@ -3,6 +3,7 @@ package impersonation
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,37 +17,46 @@ import (
 
 func TestResolveTarget(t *testing.T) {
 	targetID := id.NewAgentID()
-	targetAgent := &storage.Agent{ID: targetID, DisplayName: "Target", Description: "Target agent"}
+	canonicalID := "impersonation-target"
+	targetAgent := &storage.Agent{ID: targetID, CanonicalID: &canonicalID, DisplayName: "Target", Description: "Target agent"}
 	lookupErr := errors.New("storage unavailable")
 
 	tests := []struct {
-		name      string
-		audiences []string
-		lookup    func(context.Context, id.AgentID) (*storage.Agent, error)
-		activated bool
-		code      string
+		name            string
+		audiences       []string
+		lookup          func(context.Context, id.AgentID) (*storage.Agent, error)
+		canonicalLookup func(context.Context, string) (*storage.Agent, error)
+		activated       bool
+		code            string
 	}{
-		{"absent audience", nil, nil, false, ""},
-		{"different audience", []string{"https://elsewhere.example.com"}, nil, false, ""},
-		{"multiple audiences", []string{"https://broker/impersonation/" + targetID.String(), "https://elsewhere.example.com"}, nil, false, ""},
-		{"bare prefix", []string{"https://broker/impersonation"}, nil, true, tokenexchange.InvalidRequestError},
-		{"empty suffix", []string{"https://broker/impersonation/"}, nil, true, tokenexchange.InvalidRequestError},
-		{"malformed suffix", []string{"https://broker/impersonation/not-a-uuid"}, nil, true, tokenexchange.InvalidRequestError},
-		{"noncanonical suffix", []string{"https://broker/impersonation/" + targetID.String()[0:35] + "A"}, nil, true, tokenexchange.InvalidRequestError},
-		{"multi-segment suffix", []string{"https://broker/impersonation/" + targetID.String() + "/extra"}, nil, true, tokenexchange.InvalidRequestError},
-		{"missing target", []string{"https://broker/impersonation/" + targetID.String()}, func(context.Context, id.AgentID) (*storage.Agent, error) { return nil, ports.ErrNotFound }, true, tokenexchange.InvalidTargetError},
-		{"lookup failure", []string{"https://broker/impersonation/" + targetID.String()}, func(context.Context, id.AgentID) (*storage.Agent, error) { return nil, lookupErr }, true, tokenexchange.ServerErrorCode},
-		{"registered target", []string{"https://broker/impersonation/" + targetID.String()}, func(_ context.Context, got id.AgentID) (*storage.Agent, error) {
+		{name: "absent audience", activated: false},
+		{name: "different audience", audiences: []string{"https://elsewhere.example.com"}, activated: false},
+		{name: "multiple audiences", audiences: []string{"https://broker/impersonation/" + targetID.String(), "https://elsewhere.example.com"}, activated: false},
+		{name: "bare prefix", audiences: []string{"https://broker/impersonation"}, activated: true, code: tokenexchange.InvalidRequestError},
+		{name: "empty suffix", audiences: []string{"https://broker/impersonation/"}, activated: true, code: tokenexchange.InvalidRequestError},
+		{name: "unknown canonical target", audiences: []string{"https://broker/impersonation/not-a-uuid"}, canonicalLookup: func(context.Context, string) (*storage.Agent, error) { return nil, ports.ErrNotFound }, activated: true, code: tokenexchange.InvalidTargetError},
+		{name: "invalid canonical grammar", audiences: []string{"https://broker/impersonation/not a canonical id"}, activated: true, code: tokenexchange.InvalidRequestError},
+		{name: "oversized canonical suffix", audiences: []string{"https://broker/impersonation/" + strings.Repeat("a", 129)}, activated: true, code: tokenexchange.InvalidRequestError},
+		{name: "noncanonical suffix", audiences: []string{"https://broker/impersonation/" + targetID.String()[0:35] + "A"}, activated: true, code: tokenexchange.InvalidRequestError},
+		{name: "multi-segment suffix", audiences: []string{"https://broker/impersonation/" + targetID.String() + "/extra"}, activated: true, code: tokenexchange.InvalidRequestError},
+		{name: "missing target", audiences: []string{"https://broker/impersonation/" + targetID.String()}, lookup: func(context.Context, id.AgentID) (*storage.Agent, error) { return nil, ports.ErrNotFound }, activated: true, code: tokenexchange.InvalidTargetError},
+		{name: "lookup failure", audiences: []string{"https://broker/impersonation/" + targetID.String()}, lookup: func(context.Context, id.AgentID) (*storage.Agent, error) { return nil, lookupErr }, activated: true, code: tokenexchange.ServerErrorCode},
+		{name: "canonical target", audiences: []string{"https://broker/impersonation/impersonation-target"}, canonicalLookup: func(_ context.Context, got string) (*storage.Agent, error) {
+			assert.Equal(t, "impersonation-target", got)
+			return targetAgent, nil
+		}, activated: true},
+		{name: "canonical lookup failure", audiences: []string{"https://broker/impersonation/impersonation-target"}, canonicalLookup: func(context.Context, string) (*storage.Agent, error) { return nil, lookupErr }, activated: true, code: tokenexchange.ServerErrorCode},
+		{name: "registered target", audiences: []string{"https://broker/impersonation/" + targetID.String()}, lookup: func(_ context.Context, got id.AgentID) (*storage.Agent, error) {
 			assert.Equal(t, targetID, got)
 			return targetAgent, nil
-		}, true, ""},
+		}, activated: true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			svc, err := NewService(testImpersonationConfig(), func(ports.TrustedTokenIssuerConfig) (tokenexchange.JWKSProvider, error) {
 				return stubJWKSProvider{}, nil
-			}, stubAgentRepository{get: tc.lookup}, &stubIssuer{}, 0, nil)
+			}, stubAgentRepository{get: tc.lookup, getCanonical: tc.canonicalLookup}, &stubIssuer{}, 0, nil)
 			require.NoError(t, err)
 
 			target, activated, err := svc.ResolveTarget(context.Background(), tc.audiences)

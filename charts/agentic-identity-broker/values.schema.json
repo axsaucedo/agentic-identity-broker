@@ -851,7 +851,7 @@
                 "audience_prefix": {
                   "type": "string",
                   "minLength": 1,
-                  "description": "Routing-only HTTP(S) URI prefix. A request must append exactly one canonical registered AgentID; this value never sets issued-token aud (CR-001)."
+                  "description": "Routing-only HTTP(S) URI prefix. A request must append exactly one target agent's canonical lower-case UUID or canonical_id; this value never sets issued-token aud (CR-001)."
                 },
                 "rules": {
                   "type": "array",

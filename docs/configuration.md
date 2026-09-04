@@ -1098,13 +1098,13 @@ See [OAuth2 server modes](/docs/concepts/oauth2-server-modes) for how the broker
 
 #### oauth2_authorization_server.impersonation
 
-**Description**: Configures RFC 8693 user impersonation on `POST /oauth2/token`. In `local` mode only, exactly one request `audience` of `<impersonation.audience_prefix>/<canonical lower-case AgentID UUID>`—the target agent's `id` UUID, not its optional `canonical_id`—selects a registered target agent before the third-party `resource` guard. The target supplies minted `agent_id` and local-token CEL `agent.*`; the validated client assertion remains privileged-client authorization and audit material. The routing prefix is never copied to an issued `aud`: `token_claims_expression` controls `aud`, including omission, exactly as normal local issuance. The subject role supports signed (`verification: jwks`) and broker-profile unverified (`verification: none`, ADR 031) subject modes.
+**Description**: Configures RFC 8693 user impersonation on `POST /oauth2/token`. In `local` mode only, exactly one request `audience` of `<impersonation.audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>` selects a registered target agent before the third-party `resource` guard. Both forms resolve the same target and retain its UUID as minted `agent_id`; the target supplies local-token CEL `agent.*`, while the validated client assertion remains privileged-client authorization and audit material. The routing prefix is never copied to an issued `aud`: `token_claims_expression` controls `aud`, including omission, exactly as normal local issuance. The subject role supports signed (`verification: jwks`) and broker-profile unverified (`verification: none`, ADR 031) JWTs.
 
 **Configuration block** (nested under `oauth2_authorization_server`, `local` mode only):
 
 | Option | Type | Default | Valid Values | Required | Description |
 |--------|------|---------|--------------|----------|-------------|
-| `impersonation.audience_prefix` | URI | — | Absolute HTTP(S) URI; host required; no userinfo/query/fragment/trailing slash | Yes (CR-001) | Routing-only prefix. Exactly one `<audience_prefix>/<canonical lower-case AgentID UUID>`—the target agent's `id` UUID, not its optional `canonical_id`—selects a registered target agent; it never sets the issued token `aud`. |
+| `impersonation.audience_prefix` | URI | — | Absolute HTTP(S) URI; host required; no userinfo/query/fragment/trailing slash | Yes (CR-001) | Routing-only prefix. Exactly one `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>` selects a registered target agent; it never sets the issued token `aud`. |
 | `impersonation.rules` | list | — | Non-empty, ordered | Yes (CR-002) | Ordered rules evaluated first-match. |
 | `impersonation.rules[].name` | string | — | Unique across rules | Yes (CR-003) | Operator-facing rule identifier. |
 | `impersonation.rules[].roles` | map | — | Keys `client_assertion`, `actor`, `subject` | Yes (CR-003) | Role semantics keyed by role name; all three roles MUST be defined. |
@@ -1126,7 +1126,7 @@ See [OAuth2 server modes](/docs/concepts/oauth2-server-modes) for how the broker
 
 **Startup validation** (fail-closed; every failure yields a `ConfigError` with an indexed field path, e.g. `oauth2_authorization_server.impersonation.rules[1].trusted_issuers[0].allowed_algorithms`):
 
-- **CR-001**: `audience_prefix` is an absolute HTTP(S) routing URI with a host and no userinfo, query, fragment, or trailing slash. Only one exact `<audience_prefix>/<canonical lower-case AgentID UUID>` activates impersonation; malformed/bare targets are `invalid_request`, absent registered targets are `invalid_target`.
+- **CR-001**: `audience_prefix` is an absolute HTTP(S) routing URI with a host and no userinfo, query, fragment, or trailing slash. Only one exact `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>` activates impersonation; bare suffixes and suffixes matching neither form are `invalid_request`, and unknown targets of either well-formed form are `invalid_target`.
 - **CR-002**: `rules` is non-empty and ordered; evaluated first-match.
 - **CR-003**: each rule has a unique `name`; `roles` keys are a subset of `{client_assertion, actor, subject}` and MUST define all three; each role requires `principal_expression`; `expected_audience` is required for signed roles and MUST be absent for an unverified subject; `verification` and `email_expression` are allowed on `subject` only.
 - **CR-004**: the local `issuer_uri` MUST NOT be a trusted issuer that signs the `client_assertion` role.
@@ -1199,7 +1199,7 @@ oauth2_authorization_server:
             evaluation_timeout: "100ms"
 ```
 
-**Request contract** (`POST /oauth2/token`): send `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`, `audience=<impersonation.audience_prefix>/<canonical lower-case AgentID UUID>`, client assertion and actor/subject credentials. The suffix must identify a registered target agent. `requested_token_type` is optional and must equal the access-token type. `resource` must be absent; `scope` is optional and literal-space-separated. Every non-reserved value must be allowed by the resolved target's `allowed_scopes` unless that allow-list is empty; the reserved refresh-token scopes `offline` and `offline_access` are always permitted. A non-empty granted scope is returned in the response and minted token. Target-derived `agent_id` and local CEL `agent.*` are supplied to no other grant type; the routing audience does not set issued-token `aud`.
+**Request contract** (`POST /oauth2/token`): send `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`, `audience=<impersonation.audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`, client assertion and actor/subject credentials. The suffix must identify a registered target agent. `requested_token_type` is optional and must equal the access-token type. `resource` must be absent; `scope` is optional and literal-space-separated. Every non-reserved value must be allowed by the resolved target's `allowed_scopes` unless that allow-list is empty; the reserved refresh-token scopes `offline` and `offline_access` are always permitted. A non-empty granted scope is returned in the response and minted token. Target-derived `agent_id` and local CEL `agent.*` always use the target UUID and agent, regardless of the requested identifier form; `aud` remains owned by local policy.
 
 **Unverified subject rule** (broker profile extension, ADR 031): the subject role sets `verification: none`, omits `expected_audience`, and is absent from every issuer's `signs_roles`; the authorization predicate MUST reference `subject_token` and binds `subject_token.email` so the caller-supplied email may be minted:
 

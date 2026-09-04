@@ -48,6 +48,13 @@ func (r handlerAgentRepository) Get(context.Context, id.AgentID) (*storage.Agent
 	return r.agent, nil
 }
 
+func (r handlerAgentRepository) GetByCanonicalID(_ context.Context, canonicalID string) (*storage.Agent, error) {
+	if r.agent == nil || r.agent.CanonicalID == nil || *r.agent.CanonicalID != canonicalID {
+		return nil, ports.ErrNotFound
+	}
+	return r.agent, nil
+}
+
 type handlerIssuer struct {
 	called bool
 	input  ports.ImpersonationMintInput

@@ -9,8 +9,8 @@
 # locally signed access token whose `sub` is the impersonated subject and whose
 # `act` claim records the actor.
 #
-# when its single `audience` is `<audience_prefix>/<canonical lower-case AgentID UUID>`. The prefix routes
-# to the registered target agent; it is not copied to the issued token's `aud` claim.
+# when its single `audience` is `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`. Both forms resolve
+# to the same registered target agent; its UUID, not the requested identifier, supplies issued `agent_id`.
 # Local `token_claims_expression` controls `aud` exactly as it does for normal local issuance.
 # This example is a COMPLETE, bootable local-mode configuration: it can be run
 # directly with `--config ./examples/config/impersonation.yaml`.
@@ -77,8 +77,8 @@ oauth2_authorization_server:
   # RFC 8693 user impersonation (signed subject).
   impersonation:
     # CR-001: routing-only URI prefix. Requests must use
-    # `<audience_prefix>/<canonical AgentID>`; the target must be registered. This does not
-    # set the issued token's `aud`; local token_claims_expression remains authoritative.
+    # `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`; the target must be
+    # registered. This does not set the issued token's `aud`; local token_claims_expression remains authoritative.
     audience_prefix: "https://broker.example.com/impersonation"
 
     # CR-002: non-empty, ordered; evaluated first-match (FR-004a). Both rules
@@ -250,7 +250,7 @@ oauth2_authorization_server:
 # Startup validation contract (fail-closed); every failure yields an actionable
 # config error with an indexed field path, e.g.
 #   oauth2_authorization_server.impersonation.rules[1].trusted_issuers[0].allowed_algorithms
-#   CR-001  audience_prefix is a valid routing URI prefix; requests require a canonical AgentID suffix.
+#   CR-001  audience_prefix is a valid routing URI prefix; requests require a canonical lower-case AgentID UUID or canonical_id suffix.
 #   CR-002  rules non-empty, ordered.
 #   CR-003  each rule: unique name; roles map keys subset of
 #           {client_assertion, actor, subject}; all three required; each role

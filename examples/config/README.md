@@ -398,10 +398,10 @@ Key settings:
 
 ### `impersonation.yaml` — RFC 8693 User Impersonation
 
-Complete, bootable `local`-mode configuration demonstrating RFC 8693 user impersonation. A privileged client presents client-assertion, actor, and subject JWT credentials; the broker authorizes that client, resolves the registered target agent from the suffixed routing audience, and mints a token whose `sub` represents the impersonated subject and whose `act` records the actor. A request activates only when its single `audience` is `<audience_prefix>/<canonical AgentID>`.
+Complete, bootable `local`-mode configuration demonstrating RFC 8693 user impersonation. A privileged client presents client-assertion, actor, and subject JWT credentials; the broker authorizes that client, resolves the registered target agent from the suffixed routing audience, and mints a token whose `sub` represents the impersonated subject and whose `act` records the actor. A request activates only when its single `audience` is `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`.
 
 Key settings (`oauth2_authorization_server.impersonation`):
-- `audience_prefix` — routing-only HTTP(S) URI prefix; requests append one canonical registered AgentID. It is not an issued-token audience.
+- `audience_prefix` — routing-only HTTP(S) URI prefix; requests append one target agent's canonical lower-case UUID or `canonical_id`. It is not an issued-token audience.
 - `rules[]` — ordered, first-match list of impersonation rules (CR-002)
 - `rules[].roles.{client_assertion,actor,subject}` — per-role `expected_audience` and `principal_expression` (subject also `email_expression`) (CR-003)
 - `rules[].trusted_issuers[]` — trust anchors: `issuer_uri`, JWKS refresh bounds, `allowed_algorithms` (asymmetric only), and `signs_roles` (CR-007/CR-008)

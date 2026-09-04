@@ -16,11 +16,12 @@ import (
 // Service orchestrates impersonation rule selection, credential validation, authorization,
 // target-agent context, and local token minting. It is safe for concurrent use.
 type Service struct {
-	audiencePrefix string
-	rules          []*compiledRule
-	agents         ports.AgentRepository
-	issuer         ports.ImpersonationTokenIssuer
-	logger         *slog.Logger
+	audiencePrefix  string
+	rules           []*compiledRule
+	agents          ports.AgentRepository
+	canonicalAgents ports.AgentCanonicalIDRepository
+	issuer          ports.ImpersonationTokenIssuer
+	logger          *slog.Logger
 }
 
 // NewService compiles the impersonation rules at startup and validates direct construction.
@@ -37,6 +38,10 @@ func NewService(
 	}
 	if agents == nil {
 		return nil, fmt.Errorf("impersonation agent repository is nil")
+	}
+	canonicalAgents, ok := agents.(ports.AgentCanonicalIDRepository)
+	if !ok {
+		return nil, fmt.Errorf("impersonation agent repository must support canonical ID resolution")
 	}
 	if issuer == nil {
 		return nil, fmt.Errorf("impersonation token issuer is nil")
@@ -63,7 +68,7 @@ func NewService(
 		}
 		rules = append(rules, rule)
 	}
-	return &Service{audiencePrefix: cfg.AudiencePrefix, rules: rules, agents: agents, issuer: issuer, logger: logger}, nil
+	return &Service{audiencePrefix: cfg.AudiencePrefix, rules: rules, agents: agents, canonicalAgents: canonicalAgents, issuer: issuer, logger: logger}, nil
 }
 
 // AudiencePrefix returns the configured routing prefix for audit fallback only.
