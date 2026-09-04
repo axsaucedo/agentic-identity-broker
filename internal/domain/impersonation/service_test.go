@@ -512,3 +512,94 @@ func TestNewService_RejectsInvalidConfigs(t *testing.T) {
 		})
 	}
 }
+
+func TestNewService_AudienceRequirementAbsent(t *testing.T) {
+	newConfig := func() *ports.ImpersonationConfig {
+		cfg := testImpersonationConfig()
+		clientAssertion := cfg.Rules[0].Roles["client_assertion"]
+		clientAssertion.ExpectedAudience = ""
+		clientAssertion.AudienceRequirement = ports.ImpersonationAudienceRequirementAbsent
+		cfg.Rules[0].Roles["client_assertion"] = clientAssertion
+		cfg.Rules[0].Authorization.CEL.Expression = `client_assertion.sub == "subject"`
+		cfg.Rules[0].TrustedIssuers[0].AllowedAlgorithms = []string{"ES256"}
+		return cfg
+	}
+
+	t.Run("compiles an audience-less client assertion rule", func(t *testing.T) {
+		_, err := NewService(newConfig(), func(ports.TrustedTokenIssuerConfig) (tokenexchange.JWKSProvider, error) {
+			return stubJWKSProvider{}, nil
+		}, stubAgentRepository{}, &stubIssuer{}, 0, nil)
+		require.NoError(t, err)
+	})
+
+	t.Run("accepts an audience-less client assertion", func(t *testing.T) {
+		signingKey, keySet := signedValidationKey(t, "es256")
+		issuer := &stubIssuer{}
+		svc, err := NewService(newConfig(), func(ports.TrustedTokenIssuerConfig) (tokenexchange.JWKSProvider, error) {
+			return configurableJWKSProvider{set: keySet}, nil
+		}, stubAgentRepository{}, issuer, 0, nil)
+		require.NoError(t, err)
+
+		validAudience := "aud"
+		outcome, err := svc.Impersonate(context.Background(), &Request{
+			ClientAssertion:  signedValidationTokenWithoutAudience(t, jwa.ES256(), signingKey, "https://idp.example.com", time.Now().Add(time.Hour), time.Now().Add(-time.Minute)),
+			ActorToken:       signedValidationToken(t, jwa.ES256(), signingKey, "https://idp.example.com", validAudience, time.Now().Add(time.Hour), time.Now().Add(-time.Minute)),
+			SubjectToken:     signedValidationToken(t, jwa.ES256(), signingKey, "https://idp.example.com", validAudience, time.Now().Add(time.Hour), time.Now().Add(-time.Minute)),
+			SubjectTokenType: JWTTokenType,
+		}, testTarget())
+		require.NoError(t, err)
+		require.NotNil(t, outcome.Response)
+		assert.Equal(t, "success", outcome.Audit.Outcome)
+		assert.Equal(t, 1, issuer.calls)
+	})
+
+	t.Run("rejects an unbound audience-less role", func(t *testing.T) {
+		cfg := newConfig()
+		cfg.Rules[0].Authorization.CEL.Expression = `actor_token.sub == "subject"`
+		_, err := NewService(cfg, func(ports.TrustedTokenIssuerConfig) (tokenexchange.JWKSProvider, error) {
+			return stubJWKSProvider{}, nil
+		}, stubAgentRepository{}, &stubIssuer{}, 0, nil)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "audience_requirement")
+		assert.ErrorContains(t, err, "client_assertion")
+	})
+}
+
+func TestNewService_RejectsInvalidAudienceRequirement(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*ports.ImpersonationConfig)
+	}{
+		{"both expected audience and absent requirement", func(cfg *ports.ImpersonationConfig) {
+			role := cfg.Rules[0].Roles["actor"]
+			role.AudienceRequirement = ports.ImpersonationAudienceRequirementAbsent
+			cfg.Rules[0].Roles["actor"] = role
+		}},
+		{"unknown audience requirement", func(cfg *ports.ImpersonationConfig) {
+			role := cfg.Rules[0].Roles["actor"]
+			role.ExpectedAudience = ""
+			role.AudienceRequirement = "optional"
+			cfg.Rules[0].Roles["actor"] = role
+		}},
+		{"unverified subject audience requirement", func(cfg *ports.ImpersonationConfig) {
+			role := cfg.Rules[0].Roles["subject"]
+			role.AudienceRequirement = ports.ImpersonationAudienceRequirementAbsent
+			cfg.Rules[0].Roles["subject"] = role
+		}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := testImpersonationConfig()
+			if tc.name == "unverified subject audience requirement" {
+				cfg = unverifiedSubjectConfig()
+			}
+			tc.mutate(cfg)
+			_, err := NewService(cfg, func(ports.TrustedTokenIssuerConfig) (tokenexchange.JWKSProvider, error) {
+				return stubJWKSProvider{}, nil
+			}, stubAgentRepository{}, &stubIssuer{}, 0, nil)
+			require.Error(t, err)
+			assert.ErrorContains(t, err, "audience_requirement")
+		})
+	}
+}

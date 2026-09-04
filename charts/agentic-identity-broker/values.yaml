@@ -508,6 +508,9 @@ broker:
     #           principal_expression: "actor_token.sub"
     #         subject:
     #           expected_audience: "https://broker.example.com/impersonation"
+    #           # A signed role whose IdP mints credentials without an aud claim can instead set
+    #           # audience_requirement: absent and omit expected_audience. The authorization predicate
+    #           # must reference that role's token (CR-009). The client assertion rule follows.
     #           principal_expression: "subject_token.sub"
     #           email_expression: "has(subject_token.email) ? subject_token.email : ''"
     #       # CR-007/CR-008: trust anchors; asymmetric algorithms only.
@@ -552,6 +555,28 @@ broker:
     #             subject_token.sub != "" &&
     #             has(subject_token.email) && subject_token.email.endsWith("@example.com")
     #           evaluation_timeout: "100ms"
+    #     # Audience-less client assertion (CR-009): omit expected_audience only when the IdP omits aud.
+    #     - name: "audienceless-gateway"
+    #       roles:
+    #         client_assertion:
+    #           audience_requirement: absent
+    #           principal_expression: "client_assertion.sub"
+    #         actor:
+    #           expected_audience: "https://broker.example.com/impersonation"
+    #           principal_expression: "actor_token.sub"
+    #         subject:
+    #           expected_audience: "https://broker.example.com/impersonation"
+    #           principal_expression: "subject_token.sub"
+    #       trusted_issuers:
+    #         - issuer_uri: "https://idp.internal.example.com"
+    #           allowed_algorithms: ["ES256", "RS256"]
+    #           signs_roles: ["client_assertion", "actor", "subject"]
+    #       authorization:
+    #         type: cel
+    #         cel:
+    #           expression: 'client_assertion.sub == "audienceless-gateway"'
+    #           evaluation_timeout: "100ms"
+
 
     # Multi-agent client sharing (Feature 021)
     # When enabled, multiple agents may share the same upstream OAuth2 client_id.

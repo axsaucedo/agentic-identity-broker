@@ -876,12 +876,18 @@
                           "client_assertion": {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": ["expected_audience", "principal_expression"],
+                            "required": ["principal_expression"],
+                            "oneOf": [{"required": ["expected_audience"], "not": {"required": ["audience_requirement"]}}, {"required": ["audience_requirement"], "not": {"required": ["expected_audience"]}}],
                             "properties": {
                               "expected_audience": {
                                 "type": "string",
                                 "minLength": 1,
-                                "description": "aud each signed client assertion must carry"
+                                "description": "aud each signed client assertion must carry; omit when audience_requirement is 'absent'"
+                              },
+                              "audience_requirement": {
+                                "type": "string",
+                                "enum": ["absent"],
+                                "description": "Set to 'absent' to accept only a credential that carries no aud claim; mutually exclusive with expected_audience (CR-009)"
                               },
                               "principal_expression": {
                                 "type": "string",
@@ -893,12 +899,18 @@
                           "actor": {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": ["expected_audience", "principal_expression"],
+                            "required": ["principal_expression"],
+                            "oneOf": [{"required": ["expected_audience"], "not": {"required": ["audience_requirement"]}}, {"required": ["audience_requirement"], "not": {"required": ["expected_audience"]}}],
                             "properties": {
                               "expected_audience": {
                                 "type": "string",
                                 "minLength": 1,
-                                "description": "aud each signed actor token must carry"
+                                "description": "aud each signed actor token must carry; omit when audience_requirement is 'absent'"
+                              },
+                              "audience_requirement": {
+                                "type": "string",
+                                "enum": ["absent"],
+                                "description": "Set to 'absent' to accept only a credential that carries no aud claim; mutually exclusive with expected_audience (CR-009)"
                               },
                               "principal_expression": {
                                 "type": "string",
@@ -911,6 +923,28 @@
                             "type": "object",
                             "additionalProperties": false,
                             "required": ["principal_expression"],
+                            "allOf": [
+                              {
+                                "if": {
+                                  "properties": {"verification": {"const": "none"}},
+                                  "required": ["verification"]
+                                },
+                                "then": {
+                                  "not": {
+                                    "anyOf": [
+                                      {"required": ["expected_audience"]},
+                                      {"required": ["audience_requirement"]}
+                                    ]
+                                  }
+                                },
+                                "else": {
+                                  "oneOf": [
+                                    {"required": ["expected_audience"], "not": {"required": ["audience_requirement"]}},
+                                    {"required": ["audience_requirement"], "not": {"required": ["expected_audience"]}}
+                                  ]
+                                }
+                              }
+                            ],
                             "properties": {
                               "verification": {
                                 "type": "string",
@@ -919,7 +953,12 @@
                               },
                               "expected_audience": {
                                 "type": "string",
-                                "description": "aud a signed subject token must carry; required when verification is 'jwks', MUST be omitted when 'none'"
+                                "description": "aud a signed subject token must carry; required when verification is 'jwks', MUST be omitted when 'none' or when audience_requirement is 'absent'"
+                              },
+                              "audience_requirement": {
+                                "type": "string",
+                                "enum": ["absent"],
+                                "description": "Set to 'absent' to accept only a credential that carries no aud claim; mutually exclusive with expected_audience (CR-009)"
                               },
                               "principal_expression": {
                                 "type": "string",

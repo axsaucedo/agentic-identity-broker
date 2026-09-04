@@ -32,6 +32,15 @@ type signedValidator struct {
 // not explicitly allowed for the issuer BEFORE attempting signature verification (CR-007), so a
 // symmetric or none algorithm can never be accepted for a signed role (FR-005).
 func (v *signedValidator) validate(ctx context.Context, tokenString, expectedAudience string) (map[string]interface{}, error) {
+	return v.validateCredential(ctx, tokenString, expectedAudience, false)
+}
+
+// validateWithoutAudience verifies the token and rejects any credential that carries an aud claim (CR-009).
+func (v *signedValidator) validateWithoutAudience(ctx context.Context, tokenString string) (map[string]interface{}, error) {
+	return v.validateCredential(ctx, tokenString, "", true)
+}
+
+func (v *signedValidator) validateCredential(ctx context.Context, tokenString, expectedAudience string, requireAbsentAudience bool) (map[string]interface{}, error) {
 	alg, err := protectedHeaderAlgorithm(tokenString)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read token algorithm: %w", err)
@@ -48,18 +57,36 @@ func (v *signedValidator) validate(ctx context.Context, tokenString, expectedAud
 		return nil, fmt.Errorf("jwks unavailable for issuer: %w", err)
 	}
 
-	token, err := jwt.ParseString(
-		tokenString,
-		jwt.WithVerify(true),
-		jwt.WithKeySet(keyset),
-		jwt.WithRequiredClaim(jwt.ExpirationKey),
-		jwt.WithValidate(true),
-		jwt.WithIssuer(v.issuerURI),
-		jwt.WithAudience(expectedAudience),
-		jwt.WithAcceptableSkew(v.clockSkew),
-	)
+	var token jwt.Token
+	if requireAbsentAudience {
+		token, err = jwt.ParseString(
+			tokenString,
+			jwt.WithVerify(true),
+			jwt.WithKeySet(keyset),
+			jwt.WithRequiredClaim(jwt.ExpirationKey),
+			jwt.WithValidate(true),
+			jwt.WithIssuer(v.issuerURI),
+			jwt.WithAcceptableSkew(v.clockSkew),
+		)
+	} else {
+		token, err = jwt.ParseString(
+			tokenString,
+			jwt.WithVerify(true),
+			jwt.WithKeySet(keyset),
+			jwt.WithRequiredClaim(jwt.ExpirationKey),
+			jwt.WithValidate(true),
+			jwt.WithIssuer(v.issuerURI),
+			jwt.WithAudience(expectedAudience),
+			jwt.WithAcceptableSkew(v.clockSkew),
+		)
+	}
 	if err != nil {
 		return nil, err
+	}
+	if requireAbsentAudience {
+		if _, ok := token.Audience(); ok {
+			return nil, fmt.Errorf("token must not contain an audience claim")
+		}
 	}
 	return jwtclaims.FromToken(token), nil
 }

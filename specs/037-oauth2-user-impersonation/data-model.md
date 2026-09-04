@@ -44,7 +44,8 @@ issuer so a per-role `expected_audience`/extraction is not duplicated per issuer
 | Field | mapstructure | Type | Rules |
 |---|---|---|---|
 | Verification | `verification` | string | `subject` role only. `jwks` (default) = signed subject validated against a trusted issuer; `none` = unsigned unverified subject (FR-003d, ADR 031). Rejected on `client_assertion`/`actor`. |
-| ExpectedAudience | `expected_audience` | string | REQUIRED when `verification` is `jwks` (per-role expected `aud`, may differ per role); FORBIDDEN when `none` (CR-003). |
+| ExpectedAudience | `expected_audience` | string | REQUIRED when `verification` is `jwks` and `audience_requirement` is unset; FORBIDDEN when `none` or when `audience_requirement` is `absent` (CR-003, CR-009). |
+| AudienceRequirement | `audience_requirement` | string | Signed roles only. The only value is `absent`: the credential MUST carry no `aud`; it is mutually exclusive with `expected_audience`, forbidden on an unverified subject, and requires the predicate to reference the role (CR-009). |
 | PrincipalExpression | `principal_expression` | string (CEL) | REQUIRED. Extracts the non-empty identity from claims (FR-006). Matches `ClaimExtractionConfig.PrincipalExpression`. |
 | EmailExpression | `email_expression` | string (CEL) | Optional, `subject` role only. Extracts optional email (FR-006a). |
 

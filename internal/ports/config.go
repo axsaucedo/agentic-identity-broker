@@ -698,6 +698,13 @@ const (
 	SubjectVerificationNone = "none"
 )
 
+// Impersonation audience-requirement policy values (ImpersonationRoleConfig.AudienceRequirement).
+const (
+	// ImpersonationAudienceRequirementAbsent accepts a signed credential only when it carries
+	// no aud claim; any credential presenting an aud is rejected (CR-009).
+	ImpersonationAudienceRequirementAbsent = "absent"
+)
+
 // ImpersonationConfig is the optional oauth2_authorization_server.impersonation subtree.
 // It activates an RFC 8693 user-impersonation flow in local mode (data-model §1).
 type ImpersonationConfig struct {
@@ -726,6 +733,11 @@ type ImpersonationRoleConfig struct {
 	// ExpectedAudience is the aud each signed credential must carry; required for signed roles,
 	// forbidden when Verification is "none" (CR-003).
 	ExpectedAudience string `mapstructure:"expected_audience"`
+	// AudienceRequirement is an exceptional audience policy for a signed role. The only value is
+	// "absent" (ImpersonationAudienceRequirementAbsent): the credential MUST carry no aud claim
+	// and any credential presenting an aud is rejected. Mutually exclusive with ExpectedAudience;
+	// forbidden on an unverified subject (verification: none) (CR-009).
+	AudienceRequirement string `mapstructure:"audience_requirement"`
 	// PrincipalExpression extracts the non-empty role identity from claims (required, FR-006).
 	PrincipalExpression string `mapstructure:"principal_expression"`
 	// EmailExpression optionally extracts a subject email; subject role only (FR-006a).

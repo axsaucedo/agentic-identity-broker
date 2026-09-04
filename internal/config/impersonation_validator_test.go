@@ -1,11 +1,13 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	domconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -132,6 +134,70 @@ func TestValidateImpersonationConfig_Rejections(t *testing.T) {
 			err := validateImpersonationConfig(cfg, tc.mode, &ports.SecurityConfig{})
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantField)
+		})
+	}
+}
+
+func TestValidateImpersonationConfig_AudienceRequirementAbsent(t *testing.T) {
+	for _, roleName := range []string{"client_assertion", "actor", "subject"} {
+		t.Run("accepts "+roleName, func(t *testing.T) {
+			cfg := validImpersonationConfig()
+			role := cfg.Rules[0].Roles[roleName]
+			role.ExpectedAudience = ""
+			role.AudienceRequirement = ports.ImpersonationAudienceRequirementAbsent
+			cfg.Rules[0].Roles[roleName] = role
+			require.NoError(t, validateImpersonationConfig(cfg, servermode.Local, &ports.SecurityConfig{}))
+		})
+	}
+
+	tests := []struct {
+		name      string
+		config    func() *ports.ImpersonationConfig
+		mutate    func(*ports.ImpersonationConfig)
+		wantField string
+	}{
+		{
+			name:   "rejects expected audience with absent requirement",
+			config: validImpersonationConfig,
+			mutate: func(cfg *ports.ImpersonationConfig) {
+				role := cfg.Rules[0].Roles["actor"]
+				role.AudienceRequirement = ports.ImpersonationAudienceRequirementAbsent
+				cfg.Rules[0].Roles["actor"] = role
+			},
+			wantField: ".expected_audience",
+		},
+		{
+			name:   "rejects unknown audience requirement",
+			config: validImpersonationConfig,
+			mutate: func(cfg *ports.ImpersonationConfig) {
+				role := cfg.Rules[0].Roles["actor"]
+				role.ExpectedAudience = ""
+				role.AudienceRequirement = "optional"
+				cfg.Rules[0].Roles["actor"] = role
+			},
+			wantField: ".audience_requirement",
+		},
+		{
+			name:   "rejects unverified subject audience requirement",
+			config: validUnverifiedImpersonationConfig,
+			mutate: func(cfg *ports.ImpersonationConfig) {
+				role := cfg.Rules[0].Roles["subject"]
+				role.AudienceRequirement = ports.ImpersonationAudienceRequirementAbsent
+				cfg.Rules[0].Roles["subject"] = role
+			},
+			wantField: ".audience_requirement",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := tc.config()
+			tc.mutate(cfg)
+			err := validateImpersonationConfig(cfg, servermode.Local, &ports.SecurityConfig{})
+			require.Error(t, err)
+			configErr, ok := err.(*domconfig.ConfigError)
+			require.True(t, ok, "expected ConfigError, got %T", err)
+			assert.True(t, strings.HasSuffix(configErr.Field, tc.wantField), "field %q must end in %q", configErr.Field, tc.wantField)
 		})
 	}
 }

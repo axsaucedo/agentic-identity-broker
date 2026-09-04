@@ -214,6 +214,38 @@ oauth2_authorization_server:
               has(subject_token.email) && subject_token.email.endsWith("@example.com")
             evaluation_timeout: "100ms"
 
+      # -------- Rule 4: audience-less client assertion (CR-009) --------
+      # The client-assertion IdP mints signed assertions without an aud claim. This role sets
+      # audience_requirement: absent instead of expected_audience. The broker accepts the
+      # credential only when it has no aud. The authorization predicate must reference
+      # client_assertion (CR-009).
+      - name: "audienceless-gateway"
+        roles:
+          client_assertion:
+            audience_requirement: absent
+            principal_expression: "client_assertion.sub"
+          actor:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "actor_token.sub"
+          subject:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "subject_token.sub"
+            email_expression: "has(subject_token.email) ? subject_token.email : ''"
+        trusted_issuers:
+          - issuer_uri: "https://idp.internal.example.com"
+            jwks_uri: "https://idp.internal.example.com/.well-known/jwks.json"
+            jwks_min_refresh: "15m"
+            jwks_max_refresh: "1h"
+            allowed_algorithms: ["ES256", "RS256"]
+            signs_roles: ["client_assertion", "actor", "subject"]
+        authorization:
+          type: cel
+          cel:
+            expression: |
+              client_assertion.iss == "https://idp.internal.example.com" &&
+              client_assertion.sub == "audienceless-gateway"
+            evaluation_timeout: "100ms"
+
 # ---------------------------------------------------------------------------
 # Startup validation contract (fail-closed); every failure yields an actionable
 # config error with an indexed field path, e.g.
@@ -238,4 +270,7 @@ oauth2_authorization_server:
 #           is a defined signed role; each SIGNED role is covered by at least one trusted
 #           issuer; a subject whose verification is "none" MUST NOT appear in any signs_roles.
 #           Duplicates across rules OK.
+#   CR-009  a signed role may set audience_requirement: absent (the only value) instead of
+#           expected_audience. These fields are mutually exclusive. This setting is forbidden
+#           on an unverified subject. The rule's predicate MUST reference the role.
 # ---------------------------------------------------------------------------

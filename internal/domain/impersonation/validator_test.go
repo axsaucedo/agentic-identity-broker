@@ -100,6 +100,15 @@ func signedValidationTokenWithSubject(t *testing.T, algorithm jwa.SignatureAlgor
 	require.NoError(t, err)
 	return string(signed)
 }
+
+func signedValidationTokenWithoutAudience(t *testing.T, algorithm jwa.SignatureAlgorithm, signingKey jwk.Key, issuer string, expiration, notBefore time.Time) string {
+	t.Helper()
+	token, err := jwt.NewBuilder().Issuer(issuer).Subject("subject").Expiration(expiration).NotBefore(notBefore).Build()
+	require.NoError(t, err)
+	signed, err := jwt.Sign(token, jwt.WithKey(algorithm, signingKey))
+	require.NoError(t, err)
+	return string(signed)
+}
 func signedValidationTokenWithoutExpiration(t *testing.T, algorithm jwa.SignatureAlgorithm, signingKey jwk.Key, issuer, audience string) string {
 	t.Helper()
 	token, err := jwt.NewBuilder().Issuer(issuer).Audience([]string{audience}).Subject("subject").NotBefore(time.Now().Add(-time.Minute)).Build()
@@ -120,6 +129,15 @@ func TestSignedValidator(t *testing.T) {
 		claims, err := validator.validate(context.Background(), valid, audience)
 		require.NoError(t, err)
 		assert.Equal(t, "subject", claims["sub"])
+	})
+	t.Run("requires absent audience", func(t *testing.T) {
+		withoutAudience := signedValidationTokenWithoutAudience(t, jwa.ES256(), signingKey, issuer, time.Now().Add(time.Hour), time.Now().Add(-time.Minute))
+		claims, err := validator.validateWithoutAudience(context.Background(), withoutAudience)
+		require.NoError(t, err)
+		assert.Equal(t, "subject", claims["sub"])
+
+		_, err = validator.validateWithoutAudience(context.Background(), valid)
+		require.Error(t, err)
 	})
 	t.Run("rejects signature key mismatch", func(t *testing.T) {
 		otherKey, _ := signedValidationKey(t, "other")

@@ -959,13 +959,28 @@ func validateImpersonationRule(rule *ports.ImpersonationRuleConfig, rbase string
 				"unset for the unverified subject mode (verification: none)", nil)
 		}
 	}
-	// Signed roles require an expected audience (CR-003); the unverified subject is exempt.
+	// CR-003 / CR-009: signed roles carry either expected_audience or audience_requirement: absent.
 	for _, roleName := range impersonationRoleKeys {
-		if roleName == string(ports.CredentialRoleSubject) && subjectUnverified {
+		role := rule.Roles[roleName]
+		pbase := rbase + ".roles." + roleName
+		unverifiedSubjectRole := roleName == string(ports.CredentialRoleSubject) && subjectUnverified
+		if role.AudienceRequirement != "" {
+			if unverifiedSubjectRole {
+				return formatValidationError(pbase+".audience_requirement", role.AudienceRequirement, "unset for the unverified subject mode", nil)
+			}
+			if role.AudienceRequirement != ports.ImpersonationAudienceRequirementAbsent {
+				return formatValidationError(pbase+".audience_requirement", role.AudienceRequirement, "'absent' or unset", nil)
+			}
+			if role.ExpectedAudience != "" {
+				return formatValidationError(pbase+".expected_audience", role.ExpectedAudience, "unset when audience_requirement is 'absent'", nil)
+			}
 			continue
 		}
-		if rule.Roles[roleName].ExpectedAudience == "" {
-			return formatValidationError(rbase+".roles."+roleName+".expected_audience", "", "non-empty expected_audience for a signed role", nil)
+		if unverifiedSubjectRole {
+			continue
+		}
+		if role.ExpectedAudience == "" {
+			return formatValidationError(pbase+".expected_audience", "", "non-empty expected_audience for a signed role", nil)
 		}
 	}
 

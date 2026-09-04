@@ -277,7 +277,15 @@ func (s *Service) validateCredential(
 	if issuer == nil {
 		return nil, nil, fmt.Errorf("no trusted issuer authorized to sign role %q for iss", role)
 	}
-	claims, err := issuer.validator.validate(ctx, token, rule.roles[role].expectedAudience)
+	credentialRole := rule.roles[role]
+	if credentialRole.requireAbsentAudience {
+		claims, err := issuer.validator.validateWithoutAudience(ctx, token)
+		if err != nil {
+			return nil, nil, err
+		}
+		return claims, issuer, nil
+	}
+	claims, err := issuer.validator.validate(ctx, token, credentialRole.expectedAudience)
 	if err != nil {
 		return nil, nil, err
 	}

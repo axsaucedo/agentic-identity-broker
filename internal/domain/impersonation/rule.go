@@ -17,11 +17,12 @@ type JWKSProviderFactory func(issuer ports.TrustedTokenIssuerConfig) (tokenexcha
 
 // compiledRole holds the resolved per-role semantics of a rule (data-model §1).
 type compiledRole struct {
-	role             ports.CredentialRole
-	expectedAudience string
-	principal        *extractionProgram
-	email            *extractionProgram // subject role only; nil when no email extraction
-	unverified       bool               // subject role only; true when verification is "none" (FR-003d)
+	role                  ports.CredentialRole
+	expectedAudience      string
+	requireAbsentAudience bool // signed role only; true when audience_requirement is "absent" (CR-009)
+	principal             *extractionProgram
+	email                 *extractionProgram // subject role only; nil when no email extraction
+	unverified            bool               // subject role only; true when verification is "none" (FR-003d)
 }
 
 // compiledIssuer pairs a trusted issuer with its signed-credential validator and the signed
@@ -69,10 +70,11 @@ func compileRule(cfg ports.ImpersonationRuleConfig, factory JWKSProviderFactory,
 			}
 		}
 		compiled := &compiledRole{
-			role:             role,
-			expectedAudience: roleCfg.ExpectedAudience,
-			principal:        principal,
-			unverified:       role == ports.CredentialRoleSubject && roleCfg.Verification == ports.SubjectVerificationNone,
+			role:                  role,
+			expectedAudience:      roleCfg.ExpectedAudience,
+			requireAbsentAudience: roleCfg.AudienceRequirement == ports.ImpersonationAudienceRequirementAbsent,
+			principal:             principal,
+			unverified:            role == ports.CredentialRoleSubject && roleCfg.Verification == ports.SubjectVerificationNone,
 		}
 		if role == ports.CredentialRoleSubject && roleCfg.EmailExpression != "" {
 			email, err := compileExtraction(ports.CredentialRoleSubject, roleCfg.EmailExpression, timeout)
@@ -137,6 +139,19 @@ func compileRule(cfg ports.ImpersonationRuleConfig, factory JWKSProviderFactory,
 		return nil, fmt.Errorf("rule %q: the unverified subject mode requires the authorization predicate to reference subject_token (FR-007a)", cfg.Name)
 	}
 
+	// CR-009: a role that drops the aud binding via audience_requirement: absent MUST be bound by the
+	// rule's authorization predicate, so an audience-less credential can never be accepted unconstrained.
+	for _, role := range []ports.CredentialRole{
+		ports.CredentialRoleClientAssertion,
+		ports.CredentialRoleActor,
+		ports.CredentialRoleSubject,
+	} {
+		if roles[role].requireAbsentAudience && !authz.References(extractionVariable(role)) {
+			return nil, fmt.Errorf("rule %q: role %q uses audience_requirement %q and requires the authorization predicate to reference %s (CR-009)",
+				cfg.Name, role, ports.ImpersonationAudienceRequirementAbsent, extractionVariable(role))
+		}
+	}
+
 	return &compiledRule{
 		name:    cfg.Name,
 		roles:   roles,
@@ -176,12 +191,24 @@ func validateRuleInvariants(cfg ports.ImpersonationRuleConfig) error {
 		if roleCfg.PrincipalExpression == "" {
 			return fmt.Errorf("rule %q role %q: principal_expression is required", cfg.Name, role)
 		}
+		absentAudience := roleCfg.AudienceRequirement == ports.ImpersonationAudienceRequirementAbsent
+		if roleCfg.AudienceRequirement != "" && !absentAudience {
+			return fmt.Errorf("rule %q role %q: audience_requirement must be %q or unset", cfg.Name, role, ports.ImpersonationAudienceRequirementAbsent)
+		}
 		unverifiedSubject := role == ports.CredentialRoleSubject && roleCfg.Verification == ports.SubjectVerificationNone
-		if unverifiedSubject {
+		switch {
+		case unverifiedSubject:
+			if absentAudience {
+				return fmt.Errorf("rule %q role %q: audience_requirement is not valid for the unverified subject mode", cfg.Name, role)
+			}
 			if roleCfg.ExpectedAudience != "" {
 				return fmt.Errorf("rule %q role %q: expected_audience must be empty for the unverified subject mode", cfg.Name, role)
 			}
-		} else if roleCfg.ExpectedAudience == "" {
+		case absentAudience:
+			if roleCfg.ExpectedAudience != "" {
+				return fmt.Errorf("rule %q role %q: expected_audience must be empty when audience_requirement is %q", cfg.Name, role, ports.ImpersonationAudienceRequirementAbsent)
+			}
+		case roleCfg.ExpectedAudience == "":
 			return fmt.Errorf("rule %q role %q: expected_audience is required for a signed role", cfg.Name, role)
 		}
 		if role != ports.CredentialRoleSubject {
