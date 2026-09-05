@@ -852,7 +852,7 @@ func opaAgentgwStartContainer(ctx context.Context, extprocPort, mcpPort int) str
 `, extprocPort, mcpPort)
 
 	req := testcontainers.ContainerRequest{
-		Image:           agentgatewayImage,
+		Image:           agentgatewayTestImage(),
 		ExposedPorts:    []string{"4000/tcp"},
 		Cmd:             []string{"-f", "/config.yaml"},
 		HostAccessPorts: []int{extprocPort, mcpPort},

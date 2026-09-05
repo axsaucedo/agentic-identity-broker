@@ -62,13 +62,21 @@ type agentgwContextKey string
 const agentgwAuthHeaderKey agentgwContextKey = "authorization"
 
 const (
-	agentgatewayImage = "cr.agentgateway.dev/agentgateway:v1.1.0"
+	defaultAgentgatewayImage = "cr.agentgateway.dev/agentgateway:v1.5.0"
 
 	// Test tokens used in agentgateway integration tests.
 	agentgwOriginalBearerToken = "original-agent-bearer-token-e2e"
 	agentgwExchangedToken      = "exchanged-downstream-token-e2e"
 	agentgwMockAccessToken     = "mock-client-assertion-access-token"
 )
+
+func agentgatewayTestImage() string {
+	if image := os.Getenv("AGENTGATEWAY_IMAGE"); image != "" {
+		return image
+	}
+
+	return defaultAgentgatewayImage
+}
 
 // Agentgateway Integration describes the end-to-end flow through a real agentgateway
 // Docker container: MCP client → agentgateway → ExtProc (SUT) → mock identity broker.
@@ -364,6 +372,8 @@ func startAgentgwExtProc(
 // --- agentgateway Docker Container ---
 
 func startAgentgwContainer(ctx context.Context, extprocPort, mcpPort int) string {
+	image := agentgatewayTestImage()
+
 	// Generate agentgateway config pointing to host services
 	configYAML := fmt.Sprintf(`binds:
 - port: 4000
@@ -384,7 +394,7 @@ func startAgentgwContainer(ctx context.Context, extprocPort, mcpPort int) string
 	agentgwLogger.Info("agentgateway config", "yaml", configYAML)
 
 	req := testcontainers.ContainerRequest{
-		Image:           agentgatewayImage,
+		Image:           image,
 		ExposedPorts:    []string{"4000/tcp"},
 		Cmd:             []string{"-f", "/config.yaml"},
 		HostAccessPorts: []int{extprocPort, mcpPort},
@@ -398,7 +408,7 @@ func startAgentgwContainer(ctx context.Context, extprocPort, mcpPort int) string
 		WaitingFor: wait.ForListeningPort("4000/tcp").WithStartupTimeout(30 * time.Second),
 	}
 
-	agentgwLogger.Info("starting agentgateway container", "image", agentgatewayImage)
+	agentgwLogger.Info("starting agentgateway container", "image", image)
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,

@@ -200,7 +200,7 @@ services:
 
   # Agentgateway routes MCP calls through ExtProc for token exchange.
   agentgateway:
-    image: cr.agentgateway.dev/agentgateway:v1.1.0
+    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.5.0}
     container_name: aib-agentgateway
     ports:
       - "4000:4000"
