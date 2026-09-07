@@ -250,7 +250,7 @@ func (a *OPAAuthorizer) finalizeDecision(ctx context.Context, resultMap map[stri
 }
 
 func traceDecision(ctx context.Context, input OPAInput, action, resultCode string, durationMS int64) {
-	protocol, toolName := auditDimensions(input)
+	protocol, toolName, method := auditDimensions(input)
 	attrs := []attribute.KeyValue{
 		attribute.String("authorization.action", action),
 		attribute.String("authorization.result_code", resultCode),
@@ -260,13 +260,16 @@ func traceDecision(ctx context.Context, input OPAInput, action, resultCode strin
 	if toolName != "" {
 		attrs = append(attrs, attribute.String("authorization.tool_name", toolName))
 	}
+	if method != "" {
+		attrs = append(attrs, attribute.String("authorization.method", method))
+	}
 	trace.SpanFromContext(ctx).SetAttributes(attrs...)
 }
 
-func auditDimensions(input OPAInput) (protocol, toolName string) {
+func auditDimensions(input OPAInput) (protocol, toolName, method string) {
 	protocol = "unknown"
 	if input == nil {
-		return protocol, ""
+		return protocol, "", ""
 	}
 	if t, ok := input["type"].(string); ok {
 		switch {
@@ -278,17 +281,19 @@ func auditDimensions(input OPAInput) (protocol, toolName string) {
 	}
 	if mcp, ok := input["mcp"].(*MCPInput); ok && mcp != nil {
 		toolName = mcp.ToolName
+		method = mcp.Method
 	}
-	return protocol, toolName
+	return protocol, toolName, method
 }
 
 // logAudit emits a structured audit log entry per SR-004.
 func (a *OPAAuthorizer) logAudit(ctx context.Context, action string, reasons []string, durationMS int64, input OPAInput, resultCode string) {
-	protocol, toolName := auditDimensions(input)
+	protocol, toolName, method := auditDimensions(input)
 	a.logger.InfoContext(ctx, "opa authorization decision",
 		"action", action,
 		"reasons", reasons,
 		"tool_name", toolName,
+		"method", method,
 		"protocol", protocol,
 		"duration_ms", durationMS,
 		"result_code", resultCode,
