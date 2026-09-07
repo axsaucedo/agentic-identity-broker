@@ -3,19 +3,20 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-OPA_IMAGE="openpolicyagent/opa:latest"
-BUNDLE_MOUNT="-v $(pwd)/bundle:/bundle:ro"
+OPA_IMAGE="${OPA_IMAGE:-openpolicyagent/opa:latest}"
+BUNDLE_DIR="$(pwd)/bundle"
+OUTPUT_DIR="$(pwd)/bundles"
 
 echo "Checking..."
-docker run --rm $BUNDLE_MOUNT $OPA_IMAGE check --bundle /bundle
+docker run --rm -v "${BUNDLE_DIR}:/bundle:ro" "$OPA_IMAGE" check --bundle /bundle
 
-mkdir -p "$(pwd)/bundles"
+mkdir -p "$OUTPUT_DIR"
 
 echo "Building..."
 docker run --rm \
   -w /bundle \
-  -v "$(pwd)/bundle:/bundle:ro" \
-  -v "$(pwd)/bundles:/output" \
-  $OPA_IMAGE build -o /output/mcp-authz.tar.gz .
+  -v "${BUNDLE_DIR}:/bundle:ro" \
+  -v "${OUTPUT_DIR}:/output" \
+  "$OPA_IMAGE" build -o /output/mcp-authz.tar.gz .
 
 echo "Done."
