@@ -11,19 +11,14 @@ POLL_INTERVAL=5
 fetch_agent_id_by_client_id() {
 	RESPONSE=$(curl -sf --connect-timeout 2 --max-time 5 "${ADMIN_API}/agents" \
 		-H "X-Remote-User: admin@example.com" 2>/dev/null) || return 1
-	# Response is a flat JSON array; each object has "id" as first field.
-	# Match objects containing the given client_id value and extract the id.
-	echo "$RESPONSE" | grep -o '"id":"[^"]*","client_id":"'"$1"'"' |
-		grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4
+	echo "$RESPONSE" | jq -r '.[] | select(.client_id == "'"$1"'") | .id' | head -1
 }
 
 # fetch_agent_id_by_display_name <display_name>
 fetch_agent_id_by_display_name() {
 	RESPONSE=$(curl -sf --connect-timeout 2 --max-time 5 "${ADMIN_API}/agents" \
 		-H "X-Remote-User: admin@example.com" 2>/dev/null) || return 1
-	# Agents without client_id have "id" immediately before "display_name" in the JSON.
-	echo "$RESPONSE" | grep -o '"id":"[^"]*","display_name":"'"$1"'"' |
-		grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4
+	echo "$RESPONSE" | jq -r '.[] | select(.display_name == "'"$1"'") | .id' | head -1
 }
 
 # fetch_cimd_client_uri — returns the first client_uri registered for the CIMD Demo Agent
@@ -31,8 +26,7 @@ fetch_cimd_client_uri() {
 	[ -z "$1" ] && return 1
 	RESPONSE=$(curl -sf --connect-timeout 2 --max-time 5 "${ADMIN_API}/agents/$1" \
 		-H "X-Remote-User: admin@example.com" 2>/dev/null) || return 1
-	echo "$RESPONSE" | grep -o '"client_uris":\["[^"]*"' |
-		grep -o '"[^"]*"$' | tr -d '"'
+	echo "$RESPONSE" | jq -r '.client_uris[0] // empty'
 }
 
 # fetch_all_uuids writes PROXY_ID, LOCAL_ID, CIMD_ID to stdout as "proxy:uuid local:uuid cimd:uuid"

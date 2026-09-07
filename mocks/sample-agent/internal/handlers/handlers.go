@@ -421,9 +421,14 @@ func (h *Handlers) CallMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 2: call MCP tools - whoami tool to demonstrate token exchange
+	// Step 2: call MCP tool — name from request body
+	var body struct {
+		Tool string `json:"tool"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
 	toolReq := mcp.CallToolRequest{}
-	toolReq.Params.Name = "whoami"
+	toolReq.Params.Name = body.Tool
 
 	toolResult, err := mcpClient.CallTool(ctx, toolReq)
 	if err != nil {
@@ -459,7 +464,7 @@ func (h *Handlers) CallMCP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("MCP call successful",
-		"tool", "whoami",
+		"tool", body.Tool,
 		"has_jwt_claims", jwtClaims != nil)
 
 	// Return success response
@@ -723,7 +728,7 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType, rawToken, k
         var result = document.getElementById('mcp-result');
         btn.disabled = true; btn.textContent = 'Calling...';
         result.style.display = 'none'; result.className = 'mcp-result';
-        fetch('/call-mcp', {method: 'POST'})
+        fetch('/call-mcp', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tool: 'whoami'})})
             .then(function(r) { return r.json(); })
             .then(function(d) {
                 result.style.display = 'block';
