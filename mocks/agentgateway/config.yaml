@@ -22,6 +22,9 @@ binds:
         extProc:
           host: "extproc-token-exchange:50051"
           failureMode: failClosed
+          metadataContext:
+            agentgateway:
+              protocol: "'mcp'"
       backends:
       - mcp:
           targets:

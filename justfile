@@ -175,7 +175,7 @@ test-e2e-watch:
 # Build and run the application
 run: build
     @echo "Running {{NAME}}..."
-    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` ./bin/{{NAME}}
+    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=`./scripts/generate-jwe-key.sh` ./bin/{{NAME}}
 
 # Run with Air for hot-reload development (requires air to be installed)
 dev:
@@ -1106,6 +1106,20 @@ mock-sample-agent-clean:
     @pkill -f 'sample-agent|bin/sample-agent' || true
     @rm -f bin/sample-agent
     @echo "✓ Mock cleanup complete"
+
+# =============================================================================
+# OPA Policy Targets
+# =============================================================================
+
+# Validate and build the OPA policy bundle (requires Docker)
+opa-check:
+    @echo "Checking OPA policy bundle..."
+    ./mocks/opa/test-bundle.sh
+    @echo "✓ OPA policy bundle OK"
+
+# Rebuild the OPA bundle in the running compose stack; nginx picks it up automatically
+opa-reload:
+    {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} run --rm opa-bundle-build
 
 # =============================================================================
 # CDK Infrastructure Targets

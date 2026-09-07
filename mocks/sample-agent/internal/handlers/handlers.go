@@ -421,9 +421,14 @@ func (h *Handlers) CallMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 2: call MCP tools - whoami tool to demonstrate token exchange
+	// Step 2: call MCP tool — name from request body
+	var body struct {
+		Tool string `json:"tool"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
 	toolReq := mcp.CallToolRequest{}
-	toolReq.Params.Name = "whoami"
+	toolReq.Params.Name = body.Tool
 
 	toolResult, err := mcpClient.CallTool(ctx, toolReq)
 	if err != nil {
@@ -459,7 +464,7 @@ func (h *Handlers) CallMCP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("MCP call successful",
-		"tool", "whoami",
+		"tool", body.Tool,
 		"has_jwt_claims", jwtClaims != nil)
 
 	// Return success response
@@ -695,6 +700,8 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType, rawToken, k
         .btn-mcp { background: #27ae60; color: white; width: 100%%; margin-bottom: 10px; font-size: 14px; }
         .btn-mcp:hover { background: #219a52; }
         .btn-mcp:disabled { background: #95a5a6; cursor: not-allowed; }
+        .btn-mcp-deny { background: #c0392b; }
+        .btn-mcp-deny:hover { background: #a93226; }
         .mcp-result { margin-top: 15px; padding: 15px; border-radius: 4px; display: none; }
         .mcp-result.success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
         .mcp-result.error   { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
@@ -711,19 +718,20 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType, rawToken, k
             <summary>Raw access token</summary>
             <div class="raw">%s</div>
         </details>
-        <button id="mcp-btn" class="btn-mcp" onclick="callMCPTool()">Call MCP Tool (Token Exchange)</button>
+        <button id="mcp-btn" class="btn-mcp" onclick="callMCPTool('whoami')">Call MCP Tool: whoami (allowed)</button>
+        <button id="mcp-deny-btn" class="btn-mcp btn-mcp-deny" onclick="callMCPTool('delete_repository')">Call MCP Tool: delete_repository (denied)</button>
         <div id="mcp-result" class="mcp-result"></div>
         <div class="buttons">
             <a href="/logout" class="btn-home">Switch Client</a>
         </div>
     </div>
     <script>
-    function callMCPTool() {
-        var btn = document.getElementById('mcp-btn');
+    function callMCPTool(tool) {
+        var btn = document.getElementById(tool === 'whoami' ? 'mcp-btn' : 'mcp-deny-btn');
         var result = document.getElementById('mcp-result');
         btn.disabled = true; btn.textContent = 'Calling...';
         result.style.display = 'none'; result.className = 'mcp-result';
-        fetch('/call-mcp', {method: 'POST'})
+        fetch('/call-mcp', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tool: tool})})
             .then(function(r) { return r.json(); })
             .then(function(d) {
                 result.style.display = 'block';
@@ -735,11 +743,11 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, clientType, rawToken, k
                     result.innerHTML = html;
                 } else {
                     result.classList.add('error');
-                    result.innerHTML = '<strong>MCP Call Failed</strong><pre>' + esc(d.error) + '\nGateway: ' + esc(d.gateway_url) + '</pre>';
+                    result.innerHTML = '<strong>MCP Call Failed</strong><pre>' + esc(d.error_description || d.error) + '\nGateway: ' + esc(d.gateway_url) + '</pre>';
                 }
             })
             .catch(function(e) { result.style.display='block'; result.classList.add('error'); result.innerHTML='<strong>Request Failed</strong><pre>'+esc(String(e))+'</pre>'; })
-            .finally(function() { btn.disabled=false; btn.textContent='Call MCP Tool (Token Exchange)'; });
+            .finally(function() { btn.disabled=false; btn.textContent=tool === 'whoami' ? 'Call MCP Tool: whoami (allowed)' : 'Call MCP Tool: delete_repository (denied)'; });
     }
     function formatJSON(obj) { return esc(JSON.stringify(obj, null, 2)); }
     function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }

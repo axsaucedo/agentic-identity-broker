@@ -492,6 +492,8 @@ func (s *Server) processRequestHeaders(ctx context.Context, req *extprocv3.Proce
 // Returns (ImmediateResponse, nil) on validation/exchange error, or (response, state).
 func (s *Server) processRequestHeadersOPA(ctx context.Context, endOfStream bool, req *extprocv3.ProcessingRequest, headers *extprocv3.HttpHeaders) (*extprocv3.ProcessingResponse, *requestState) {
 	ctx = s.extractTraceContext(ctx, headers)
+
+	s.logger.DebugContext(ctx, "OPA mode: Running .....")
 	bearerToken := extractBearerToken(headers)
 	if bearerToken == "" {
 		ctx, logger := s.withRequestLogger(ctx, "", "")
