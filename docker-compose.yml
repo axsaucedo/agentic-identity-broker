@@ -14,6 +14,8 @@ volumes:
   sample-agent-tmp:
   # Shared volume for the CIMD mock self-signed CA certificate.
   cimd-certs:
+  # OPA policy bundle volume — populated by opa-bundle-build, served by opa-bundle-server.
+  opa-bundles:
 
 services:
   # Primary application: Identity broker with hot-reload
@@ -158,6 +160,32 @@ services:
       identity-broker:
         condition: service_healthy
 
+  # Compiles mocks/opa/bundle/ into the opa-bundles volume at startup.
+  # For local policy development and testing, use `just opa-check` instead.
+  opa-bundle-build:
+    image: openpolicyagent/opa:latest
+    container_name: aib-opa-bundle-build
+    working_dir: /bundle
+    volumes:
+      - ./mocks/opa/bundle:/bundle:ro
+      - opa-bundles:/output
+    command: ["build", "-o", "/output/mcp-authz.tar.gz", "."]
+    restart: "no"
+
+  # Serves the compiled bundle as a static file for OPA to poll.
+  opa-bundle-server:
+    image: nginx:alpine
+    container_name: aib-opa-bundle-server
+    ports:
+      - "8080:80"  # exposed for local testing only; extproc uses container-internal port 80
+    volumes:
+      - opa-bundles:/usr/share/nginx/html:ro
+    networks:
+      - aib-network
+    depends_on:
+      opa-bundle-build:
+        condition: service_completed_successfully
+
   # ExtProc Token Exchange Service (gRPC, container-internal only)
   extproc-token-exchange:
     build:
@@ -166,10 +194,13 @@ services:
     container_name: aib-extproc
     volumes:
       - ./config.extproc.docker.yaml:/app/config.yaml:ro
+      - ./mocks/opa/opa-config.yaml:/etc/extproc/opa-config.yaml:ro
     environment:
       - EXTPROC_CONFIG_PATH=/app/config.yaml
       - EXTPROC_CLIENT_SECRET=${EXTPROC_CLIENT_SECRET:-extproc-dev-secret}
       - EXTPROC_LOG_LEVEL=${EXTPROC_LOG_LEVEL:-debug}
+      - EXTPROC_AUTHORIZATION_ENABLED=${EXTPROC_AUTHORIZATION_ENABLED:-false}
+      - EXTPROC_AUTHORIZATION_POLICY_CONFIG_FILE=${EXTPROC_AUTHORIZATION_POLICY_CONFIG_FILE:-}
     networks:
       - aib-network
     depends_on:
