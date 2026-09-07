@@ -1117,9 +1117,9 @@ opa-check:
     ./mocks/opa/test-bundle.sh
     @echo "✓ OPA policy bundle OK"
 
-# Rebuild and reload the OPA bundle server in the running compose stack
+# Rebuild the OPA bundle in the running compose stack; nginx picks it up automatically
 opa-reload:
-    {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} up --force-recreate opa-bundle-build opa-bundle-server
+    {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} run --rm opa-bundle-build
 
 # =============================================================================
 # CDK Infrastructure Targets

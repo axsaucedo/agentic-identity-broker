@@ -51,14 +51,14 @@ just opa-check
 This runs `opa check` (syntax + type check) and `opa build` (bundle compilation) via Docker — no
 local OPA install needed.
 
-3. Rebuild and reload the bundle server in the running stack:
+3. Rebuild the bundle in the running stack:
 
 ```bash
 just opa-reload
 ```
 
-ExtProc's OPA client polls the bundle server every 30–120 seconds and hot-reloads the policy
-without an extproc restart.
+This rewrites `mcp-authz.tar.gz` in the nginx volume — nginx serves the new bundle immediately.
+ExtProc's OPA client polls every 30–120 seconds and picks it up without an extproc restart.
 
 ## Testing the policy locally
 

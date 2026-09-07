@@ -169,7 +169,7 @@ services:
     volumes:
       - ./mocks/opa/bundle:/bundle:ro
       - opa-bundles:/output
-    command: ["build", "-o", "/output/mcp-authz.tar.gz", "."]
+    command: ["build", "--debug", "-o", "/output/mcp-authz.tar.gz", "."]
     restart: "no"
 
   # Serves the compiled bundle as a static file for OPA to poll.
