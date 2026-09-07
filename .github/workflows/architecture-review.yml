@@ -162,4 +162,4 @@ jobs:
             REACTION="-1"
           fi
           gh api repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
-            --method POST --field content="${REACTION}"
+            --method POST --raw-field content="${REACTION}"
