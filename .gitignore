@@ -78,3 +78,6 @@ imgdiff
 .pi/
 .pi-lens/
 .omp/
+
+# OPA build artifacts (from just opa-check)
+mocks/opa/bundles/

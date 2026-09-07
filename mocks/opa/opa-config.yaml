@@ -1,0 +1,14 @@
+services:
+  bundleserver:
+    url: http://opa-bundle-server:80/
+bundles:
+  extproc:
+    service: bundleserver
+    resource: "mcp-authz.tar.gz"
+    polling:
+      min_delay_seconds: 30
+      max_delay_seconds: 120
+decision_logs:
+  console: true
+status:
+  console: true
