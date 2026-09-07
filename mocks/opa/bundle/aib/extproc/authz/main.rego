@@ -20,8 +20,8 @@ deny contains {"reason": "destructive operations are not permitted"} if {
 	input.mcp.tool_name in {"delete_repository", "force_push"}
 }
 
-# Allow all non-MCP traffic (passthrough)
-deny contains {"reason": "non-MCP passthrough"} if {
+# Deny unknown / non-MCP traffic
+deny contains {"reason": "unknown request type"} if {
 	input.type == "unknown"
 }
 
