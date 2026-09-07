@@ -72,21 +72,22 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/mcp-authz.tar.gz
 # Expected: 200
 ```
 
-**Test the policy directly against the source using `opa eval`:**
+**Allow — read-only tool:**
 ```bash
-# Allow — read-only tool
 echo '{"type":"mcp_tool_call","mcp":{"tool_name":"whoami"}}' | \
   docker run --rm -i -v "$(pwd)/mocks/opa/bundle:/bundle:ro" \
   openpolicyagent/opa:latest eval \
   --bundle /bundle --input /dev/stdin \
   'data.aib.extproc.authz.result'
-# Expected: {"result": [{"expressions": [{"value": {"action": "allow"}, ...}]}]}
+```
+Expected: `{"result": [{"expressions": [{"value": {"action": "allow"}, ...}]}]}`
 
-# Deny — destructive tool
+**Deny — destructive tool:**
+```bash
 echo '{"type":"mcp_tool_call","mcp":{"tool_name":"delete_repository"}}' | \
   docker run --rm -i -v "$(pwd)/mocks/opa/bundle:/bundle:ro" \
   openpolicyagent/opa:latest eval \
   --bundle /bundle --input /dev/stdin \
   'data.aib.extproc.authz.result'
-# Expected: {"result": [{"expressions": [{"value": {"action": "deny", "reasons": ["destructive operations are not permitted"]}, ...}]}]}
 ```
+Expected: `{"result": [{"expressions": [{"value": {"action": "deny", "reasons": ["destructive operations are not permitted"]}, ...}]}]}`
