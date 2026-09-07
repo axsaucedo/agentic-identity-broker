@@ -108,7 +108,7 @@ jobs:
         run: |
           set +e
           copilot -p "You are an architectural reviewer. Read the agent instructions at .github/agents/architecture-review.agent.md for your full review rubric. The PR diff is in pr.diff and metadata in pr-details.json — read these files using the read tool. The full repository is checked out in the current directory, so read any existing source file directly with the read tool. Do not run shell commands or git commands — use only the read, write, and task tools. Follow the sub-agent delegation strategy described in the agent instructions. When finished, write your complete architectural review in markdown format to the file review-output.md using the write tool. PR #${PR_NUMBER} in ${GITHUB_REPOSITORY}." \
-            --model claude-opus-4.6 \
+            --model claude-opus-5 \
             --allow-tool=read \
             --allow-tool=write \
             --allow-tool=task \
