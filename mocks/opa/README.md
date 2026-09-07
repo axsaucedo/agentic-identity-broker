@@ -3,12 +3,11 @@
 Demo OPA policy for ExtProc MCP authorization. The bundle server is always started as part of
 `docker-compose up` but authorization is **off by default**.
 
-To enable, uncomment both vars in `.env.compose` or export them in your shell before bringing the stack up:
+To enable, uncomment both vars in `.env.compose`:
 
-```bash
-export EXTPROC_AUTHORIZATION_ENABLED=true
-export EXTPROC_AUTHORIZATION_POLICY_CONFIG_FILE=/etc/extproc/opa-config.yaml
-docker-compose up
+```
+EXTPROC_AUTHORIZATION_ENABLED=true
+EXTPROC_AUTHORIZATION_POLICY_CONFIG_FILE=/etc/extproc/opa-config.yaml
 ```
 
 ## Policy
