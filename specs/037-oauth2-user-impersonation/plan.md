@@ -17,6 +17,8 @@ identity only. Local
 `token_claims_expression` owns emitted `aud`, including omission. Every decision is credential-free
 audited.
 
+Every rule-authorized request additionally verifies the impersonated subject's active `UserGrant` for the resolved target agent before minting. The subject identity is the lookup `id.Principal`; the check is mandatory for signed and unverified subjects and has no opt-out. Missing or expired delegations stop evaluation with generic `access_denied` plus the existing RFC 6749 §5.2 `error_uri` to `<end-user-public-url>/consent/agent/<target-agent-id>`; storage failures return `server_error`. The port boundary and error signal are governed by proposed ADR [032](../../adrs/032-impersonation-requires-user-delegation.md).
+
 The design reuses existing machinery: the JWKS adapter (`internal/adapters/jwks`), the ADR-009 CEL
 pattern (`internal/domain/tokenexchange/cel_evaluator.go`), the signed-JWT validation pattern
 (`jwt_validator.go`), and the local issuer's signing key + `token_claims_expression` principal
@@ -84,8 +86,7 @@ method, 1 handler activation branch, 1 E2E suite
   ONLY on the bounded unverified subject role governed by ADR 031 with startup-enforced
   compensating controls; fail closed on every error/timeout
 - [x] **Architecture Docs**: `ARCHITECTURE.md` updated (new bounded context + impersonation flow)
-- [x] **ADRs**: ADR 031 is the accepted superseding decision paired with the Constitution Principle I
-  carve-out. No other new ADR required — reuses ADR 008/009/014/029 patterns
+- [x] **ADRs**: ADR 031 and ADR 032 are Accepted. ADR 031 governs unsigned unverified subjects. ADR 032 governs the mandatory user-delegation check, its port boundary, and the `error_uri` consent signal.
 - [x] **Library-First Security**: jwx for verify/sign, cel-go for policy; no custom crypto
 - [x] **Zalando Guidelines**: Additive OAuth2 params + RFC 8693-compliant response
 - [x] **End-User Docs**: `docs/api/` + `docs/configuration.md` updated
@@ -133,11 +134,12 @@ internal/
 │       └── strategies.go              # impersonation mint through normal local access-token path with protected act.iss/act.sub and granted scope (FR-006a/008)
 ├── ports/
 │   ├── config.go                      # + ImpersonationConfig subtree under OAuth2AuthServerConfig
-│   └── oauth2.go                      # + ImpersonationTokenIssuer port + ImpersonationMintInput
+│   └── oauth2.go                      # + ImpersonationTokenIssuer, UserDelegationVerifier + statuses
 ├── config/
-│   └── validator.go                   # + impersonation static validation (CR-001..CR-008)
+│   └── validator.go                   # + impersonation static validation (CR-001..CR-010)
 ├── app/
-│   └── builder.go                     # DI: build rules, JWKS, CEL, subject-binding, local-issuer exclusion
+│   ├── impersonation_delegation.go     # Consent-service classifier implementing UserDelegationVerifier
+│   └── builder.go                     # DI: rules, JWKS, CEL, delegation verifier, local issuer
 └── adapters/http/enduser/
     └── oauth2_token.go                # activation branch before resource guard + audit event
 
@@ -188,16 +190,17 @@ not extend the third-party exchange service, which would violate single-responsi
 
 | Spec Scenario | E2E Test Location | Test Description |
 |---|---|---|
-| US1 S1 | `impersonation_test.go` | `It("mints a token with sub=subject and act.iss/act.sub identifying the actor", ...)` |
+| US1 S1 | `impersonation_test.go` | `It("mints a token with sub=subject and act.iss/act.sub identifying the actor", ...)` with an active subject delegation |
 | US1 S2 | `impersonation_test.go` | `It("rejects absent/malformed/unsupported token types with invalid_request", ...)` |
 | US1 S3 | `impersonation_test.go` | `It("issues local-policy base claims, policy aud, and granted scope without credential leakage", ...)` |
 | US1 S4 | `impersonation_test.go` | `It("does not activate for a different/absent audience", ...)` |
 | US1 S5 | `impersonation_test.go` | `It("rejects impersonation in proxy/hybrid mode without forwarding", ...)` |
-| US1 S6 | `impersonation_test.go` | `It("mints from an unsigned unverified subject with email", ...)` |
+| US1 S6 | `impersonation_test.go` | `It("mints from an unsigned unverified subject with email", ...)` with an active subject delegation |
 | US2 S1–S5 | `impersonation_test.go` | rule validation, extraction, role/issuer mismatch, startup failure, first-match fall-through |
 | US3 S1–S5 | `impersonation_test.go` | unsigned signed-role rejection, credential-failure rejection, access_denied, extraction failure, unverified guards |
 | US4 S1–S3 | `impersonation_test.go` | success audit, failure audit, no-credential audit |
-| Edge cases | `impersonation_test.go` | target-allowed, target-rejected, unrestricted-empty-list, and absent scope; resource present, requested_token_type mismatch, actor==subject, JWKS unavailable |
+| US5 S1–S5 | `impersonation_test.go` | active delegation mint; missing/expired delegation returns 403 `access_denied` plus consent `error_uri`; unverified subject remains gated; lookup failure is 500 |
+| Edge cases | `impersonation_test.go` | target-allowed, target-rejected, unrestricted-empty-list, and absent scope; resource present, requested_token_type mismatch, actor==subject, JWKS unavailable; terminal delegation decision |
 
 **Red Phase Requirements**: tests compile with realistic assertions (status codes, decoded JWT
 `sub`/`aud`/`act.iss`/`act.sub`/`scope`, audit JSON fields, and response scope omission when none is granted) and
@@ -216,13 +219,16 @@ test; separate contexts for local vs proxy/hybrid mode to prove FR-001/US1-S5.
 resource/requested_token_type), target scope allow-list validation, per-issuer algorithm allow-list
 (approved accept, `none`/`HS*` reject), signed-role `alg:none` rejection, unverified unsigned parse
 (alg==none + empty sig required), CEL 5-var authorization + startup `subject_token` binding enumeration,
-identity/email extraction, first-match precedence + error taxonomy. Local issuer tests assert target-derived
-`agent_id`/`agent.*`, token-exchange grant context, policy-controlled `aud`, protected `act.iss`/`act.sub`, and
-normal local JWT scope output.
+identity/email extraction, first-match precedence + error taxonomy, and mandatory user-delegation
+verification. Service tests prove active delegation mints; missing and expired delegation return the
+same generic `access_denied` plus `error_uri`; a verifier failure is `server_error`; predicate denial
+does not query delegation; delegation rejection does not fall through. App tests cover the consent
+sentinel-to-port-status classifier.
 
 **Config** (`internal/config/validator_test.go`, `internal/ports/config_test.go`): table-driven
-CR-001..CR-008 with indexed `ConfigError` field-path assertions; proxy/hybrid rejection; local
-issuer excluded from client-assertion role; unverified predicate binding.
+CR-001..CR-010 with indexed `ConfigError` field-path assertions; proxy/hybrid rejection; local
+issuer excluded from client-assertion role; unverified predicate binding; delegation dependencies
+available when impersonation is configured.
 
 **Test Coverage Goals**: critical paths (validation, authorization, minting, audit) fully covered;
 E2E 100% of acceptance scenarios (Principle XIII).
@@ -232,4 +238,4 @@ E2E 100% of acceptance scenarios (Principle XIII).
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
 | Unsigned (`alg:none`) JWT accepted on the unverified subject role (deviates from Principle I) | Privileged clients bridging non-OIDC subjects (chat users) hold no signed subject token but must convey multi-attribute subjects (principal id + email) | Plaintext identifier can't carry multiple attributes (clarification); requiring a signed subject is impossible (no issuer). Bounded to the subject role, protected by a verified client assertion and subject-binding predicate, and governed by accepted ADR 031 plus its paired Constitution Principle I carve-out. |
-| New port `ImpersonationTokenIssuer` + target agent context | Domain mints target-backed `agent_id` and local policy context without depending on fosite concrete types | Treating the privileged client as a broker Agent conflates authorization identity with token ownership and gives CEL the wrong `agent.*` values. |
+| `ports.UserDelegationVerifier` + app-boundary consent classifier | Impersonation requires active user delegation without importing the consent bounded context | Calling `consent.Service` from impersonation leaks a sibling domain's concrete API and sentinels; reading `UserGrantRepository` directly duplicates consent's active-grant logic. |

@@ -3,6 +3,7 @@ package e2e_test
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -178,6 +180,9 @@ var _ = Describe("OAuth2 User Impersonation", func() {
 		targetAudience = imperAudience + "/" + targetAgent.ID.String()
 		canonicalAudience = imperAudience + "/" + canonicalID
 		Expect(testStorage.Agents().Create(context.Background(), targetAgent)).To(Succeed())
+		Expect(testStorage.UserGrants().Create(context.Background(), fixtures.ActiveGrant(
+			"user-1", targetAgent.ID.String(), fixtures.PlaceholderServiceID.String(), []string{"read"},
+		))).To(Succeed())
 	})
 
 	AfterEach(func() {
@@ -272,6 +277,12 @@ var _ = Describe("OAuth2 User Impersonation", func() {
 		var body map[string]any
 		Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
 		return body
+	}
+
+	seedDelegation := func(subject string) {
+		Expect(testStorage.UserGrants().Create(context.Background(), fixtures.ActiveGrant(
+			subject, targetAgent.ID.String(), fixtures.PlaceholderServiceID.String(), []string{"read"},
+		))).To(Succeed())
 	}
 
 	Context("local mode with a matching signed rule", func() {
@@ -671,6 +682,103 @@ var _ = Describe("OAuth2 User Impersonation", func() {
 		})
 	})
 
+	Context("user delegation enforcement", func() {
+		// Scenario US5.2 from specs/037-oauth2-user-impersonation/spec.md
+		It("should reject a rule-authorized subject without a delegation and provide the consent URL", func() {
+			config := validConfig()
+			Expect(boot(config)).To(Succeed())
+			req := baseRequest()
+			req.Set("subject_token", signCred("unconsented-user", "", imperAudience, now.Add(time.Hour)))
+
+			resp := postImpersonation(req)
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusForbidden))
+			body := decodeBody(resp)
+			Expect(body["error"]).To(Equal("access_denied"))
+			Expect(body["error_uri"]).To(Equal(config.Server.EndUser.PublicURL + "/consent/agent/" + targetAgent.ID.String()))
+			Expect(body).ToNot(HaveKey("access_token"))
+			Expect(logBuf.String()).To(ContainSubstring("user_grant_missing"))
+		})
+
+		// Scenario US5.3 from specs/037-oauth2-user-impersonation/spec.md
+		It("should reject an expired subject delegation without revealing its prior existence", func() {
+			config := validConfig()
+			Expect(testStorage.UserGrants().Create(context.Background(), fixtures.ExpiredGrant(
+				"expired-user", targetAgent.ID.String(), fixtures.PlaceholderServiceID.String(), []string{"read"},
+			))).To(Succeed())
+			Expect(boot(config)).To(Succeed())
+			req := baseRequest()
+			req.Set("subject_token", signCred("expired-user", "", imperAudience, now.Add(time.Hour)))
+
+			resp := postImpersonation(req)
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusForbidden))
+			body := decodeBody(resp)
+			Expect(body["error"]).To(Equal("access_denied"))
+			Expect(body["error_uri"]).To(Equal(config.Server.EndUser.PublicURL + "/consent/agent/" + targetAgent.ID.String()))
+			Expect(body).ToNot(HaveKey("access_token"))
+			Expect(logBuf.String()).To(ContainSubstring("user_grant_expired"))
+		})
+	})
+
+	Context("when delegation storage cannot be queried", func() {
+		var postgres *bootstrap.PostgresFixture
+
+		BeforeEach(func() {
+			if err := bootstrap.CanAccessContainerRuntime(); err != nil {
+				Skip("Skipping delegation-storage E2E scenario: " + err.Error())
+			}
+
+			ctx := context.Background()
+			Expect(storageFactory.CloseStorage(testStorage)).To(Succeed())
+			testStorage = nil
+
+			var err error
+			postgres, err = bootstrap.NewPostgresFixture(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			connectionURL := postgres.ConnectionURL
+
+			storageConfig := ports.StorageConfig{
+				Backend: "postgres",
+				Postgres: ports.PostgresConfig{
+					ConnectionURL: connectionURL,
+				},
+				Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 10 * time.Second},
+			}
+			testStorage, err = storageadapter.NewAdapter(&storageConfig)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(testStorage.Agents().Create(ctx, targetAgent)).To(Succeed())
+
+			config := validConfig()
+			config.Storage = storageConfig
+			Expect(boot(config)).To(Succeed())
+
+			db, err := sql.Open("pgx", connectionURL)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { Expect(db.Close()).To(Succeed()) }()
+			_, err = db.ExecContext(ctx, "ALTER TABLE user_grants RENAME TO user_grants_unavailable")
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			Expect(postgres.Close(context.Background())).To(Succeed())
+			postgres = nil
+		})
+
+		// Scenario US5.5 from specs/037-oauth2-user-impersonation/spec.md
+		It("should fail closed when delegation storage cannot be queried", func() {
+			req := baseRequest()
+			resp := postImpersonation(req)
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusInternalServerError))
+			body := decodeBody(resp)
+			Expect(body["error"]).To(Equal("server_error"))
+			Expect(body).ToNot(HaveKey("access_token"))
+			Expect(body).ToNot(HaveKey("error_uri"))
+			Expect(logBuf.String()).To(ContainSubstring(`"failure_category":"user_grant_lookup_failed"`))
+			Expect(logBuf.String()).ToNot(ContainSubstring(req.Get("client_assertion")))
+			Expect(logBuf.String()).ToNot(ContainSubstring(req.Get("actor_token")))
+			Expect(logBuf.String()).ToNot(ContainSubstring(req.Get("subject_token")))
+		})
+	})
+
 	Context("configuration validation at startup", func() {
 		// Scenario US2.4 from specs/037-oauth2-user-impersonation/spec.md
 		It("fails startup when a trusted issuer omits allowed_algorithms", func() {
@@ -767,6 +875,7 @@ var _ = Describe("OAuth2 User Impersonation", func() {
 		// Scenario US1.6 from specs/037-oauth2-user-impersonation/spec.md
 		It("mints a token from an unsigned unverified subject carrying principal id and email", func() {
 			Expect(boot(unverifiedConfig())).To(Succeed())
+			seedDelegation("chat-user-1")
 			resp := postImpersonation(unverifiedRequest(unverifiedSubjectToken("chat-user-1", "chat-user-1@example.com")))
 			Expect(resp).To(matchers.HaveStatusCode(http.StatusOK))
 			body := decodeBody(resp)
@@ -822,6 +931,7 @@ var _ = Describe("OAuth2 User Impersonation", func() {
 			config.OAuth2AuthServer.Impersonation.Rules[0].Authorization.CEL.Expression =
 				`client_assertion.sub == "gateway-prod" && subject_token.sub != ""`
 			Expect(boot(config)).To(Succeed())
+			seedDelegation("chat-user-1")
 			resp := postImpersonation(unverifiedRequest(unverifiedSubjectToken("chat-user-1", "chat-user-1@example.com")))
 			Expect(resp).To(matchers.HaveStatusCode(http.StatusOK))
 			claims := decodeJWTClaims(decodeBody(resp)["access_token"].(string))
@@ -829,6 +939,17 @@ var _ = Describe("OAuth2 User Impersonation", func() {
 			Expect(claims).ToNot(HaveKey("email"))
 		})
 
+		// Scenario US5.4 from specs/037-oauth2-user-impersonation/spec.md
+		It("should reject an unverified subject without a delegation", func() {
+			config := unverifiedConfig()
+			Expect(boot(config)).To(Succeed())
+			resp := postImpersonation(unverifiedRequest(unverifiedSubjectToken("unconsented-chat-user", "unconsented-chat-user@example.com")))
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusForbidden))
+			body := decodeBody(resp)
+			Expect(body["error"]).To(Equal("access_denied"))
+			Expect(body["error_uri"]).To(Equal(config.Server.EndUser.PublicURL + "/consent/agent/" + targetAgent.ID.String()))
+			Expect(body).ToNot(HaveKey("access_token"))
+		})
 	})
 
 	// Guard against unused import of context in some build configurations.

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
@@ -16,12 +17,14 @@ import (
 // Service orchestrates impersonation rule selection, credential validation, authorization,
 // target-agent context, and local token minting. It is safe for concurrent use.
 type Service struct {
-	audiencePrefix  string
-	rules           []*compiledRule
-	agents          ports.AgentRepository
-	canonicalAgents ports.AgentCanonicalIDRepository
-	issuer          ports.ImpersonationTokenIssuer
-	logger          *slog.Logger
+	audiencePrefix     string
+	rules              []*compiledRule
+	agents             ports.AgentRepository
+	canonicalAgents    ports.AgentCanonicalIDRepository
+	issuer             ports.ImpersonationTokenIssuer
+	delegationVerifier ports.UserDelegationVerifier
+	consentBaseURL     string
+	logger             *slog.Logger
 }
 
 // NewService compiles the impersonation rules at startup and validates direct construction.
@@ -32,6 +35,8 @@ func NewService(
 	issuer ports.ImpersonationTokenIssuer,
 	clockSkew time.Duration,
 	logger *slog.Logger,
+	delegationVerifier ports.UserDelegationVerifier,
+	consentBaseURL string,
 ) (*Service, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("impersonation config is nil")
@@ -45,6 +50,12 @@ func NewService(
 	}
 	if issuer == nil {
 		return nil, fmt.Errorf("impersonation token issuer is nil")
+	}
+	if delegationVerifier == nil {
+		return nil, fmt.Errorf("impersonation user delegation verifier is nil")
+	}
+	if consentBaseURL == "" {
+		return nil, fmt.Errorf("impersonation consent base URL is required")
 	}
 	if err := ValidateAudiencePrefix(cfg.AudiencePrefix); err != nil {
 		return nil, err
@@ -68,7 +79,7 @@ func NewService(
 		}
 		rules = append(rules, rule)
 	}
-	return &Service{audiencePrefix: cfg.AudiencePrefix, rules: rules, agents: agents, canonicalAgents: canonicalAgents, issuer: issuer, logger: logger}, nil
+	return &Service{audiencePrefix: cfg.AudiencePrefix, rules: rules, agents: agents, canonicalAgents: canonicalAgents, issuer: issuer, delegationVerifier: delegationVerifier, consentBaseURL: consentBaseURL, logger: logger}, nil
 }
 
 // AudiencePrefix returns the configured routing prefix for audit fallback only.
@@ -118,8 +129,8 @@ func (s *Service) Impersonate(ctx context.Context, req *Request, target *Target)
 		if res.matched {
 			return &Outcome{Response: res.response, Audit: successAudit(s.audiencePrefix, target.Agent.ID.String(), res)}, nil
 		}
-		if res.serverErr != nil {
-			return &Outcome{Audit: failureAudit(s.audiencePrefix, target.Agent.ID.String(), res, res.serverErr)}, res.serverErr
+		if res.abort != nil {
+			return &Outcome{Audit: failureAudit(s.audiencePrefix, target.Agent.ID.String(), res, res.abort)}, res.abort
 		}
 		results = append(results, res)
 	}
@@ -135,11 +146,11 @@ func (s *Service) Impersonate(ctx context.Context, req *Request, target *Target)
 
 // ruleResult captures the outcome of evaluating one rule, including audit-safe context.
 type ruleResult struct {
-	ruleName  string
-	matched   bool
-	response  *tokenexchange.TokenExchangeResponse
-	failure   *tokenexchange.TokenExchangeError // set when the rule did not match (fall-through)
-	serverErr *tokenexchange.TokenExchangeError // set on internal fail-closed error (abort)
+	ruleName string
+	matched  bool
+	response *tokenexchange.TokenExchangeResponse
+	failure  *tokenexchange.TokenExchangeError // set when the rule did not match (fall-through)
+	abort    *tokenexchange.TokenExchangeError // set on terminal fail-closed error
 
 	client      string
 	actor       string
@@ -238,11 +249,29 @@ func (s *Service) evaluateRule(ctx context.Context, rule *compiledRule, req *Req
 
 	authorized, err := rule.authz.evaluate(ctx, clientClaims, actorClaims, subjectClaims, subjectUnverified, request)
 	if err != nil {
-		res.serverErr = serverError("authorization evaluation failed", "authorization_error")
+		res.abort = serverError("authorization evaluation failed", "authorization_error")
 		return res
 	}
 	if !authorized {
 		res.failure = accessDenied("impersonation not authorized by policy", "authorization_denied")
+		return res
+	}
+
+	delegationStatus, err := s.delegationVerifier.VerifyUserDelegation(ctx, id.Principal(subjectID), targetAgent.ID)
+	if err != nil {
+		res.abort = serverError("user delegation verification failed", "user_grant_lookup_failed")
+		return res
+	}
+	switch delegationStatus {
+	case ports.UserDelegationActive:
+	case ports.UserDelegationMissing:
+		res.abort = consentRequired(strings.TrimRight(s.consentBaseURL, "/")+"/consent/agent/"+targetAgent.ID.String(), "user_grant_missing")
+		return res
+	case ports.UserDelegationExpired:
+		res.abort = consentRequired(strings.TrimRight(s.consentBaseURL, "/")+"/consent/agent/"+targetAgent.ID.String(), "user_grant_expired")
+		return res
+	default:
+		res.abort = serverError("user delegation verification returned an unknown status", "user_grant_lookup_failed")
 		return res
 	}
 
@@ -255,7 +284,7 @@ func (s *Service) evaluateRule(ctx context.Context, rule *compiledRule, req *Req
 		Scopes:      req.Scopes,
 	})
 	if err != nil {
-		res.serverErr = serverError("failed to mint impersonation token", "mint_failed")
+		res.abort = serverError("failed to mint impersonation token", "mint_failed")
 		return res
 	}
 

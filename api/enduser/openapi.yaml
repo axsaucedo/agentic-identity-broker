@@ -1330,6 +1330,13 @@ paths:
         neither identifier form return `invalid_request`; a well-formed UUID or canonical-ID suffix
         whose target is unknown returns `invalid_target`.
         No-match precedence is `access_denied` > `invalid_request` > `invalid_client`.
+
+        After a rule authorizes the request, the broker requires an active user delegation for the
+        extracted subject and target agent. A missing or expired delegation returns `403 access_denied`
+        with the existing RFC 6749 `error_uri` response member set to the authenticated user's
+        target-agent consent page. The response intentionally does not distinguish a missing delegation
+        from an expired one. An unverified subject has no exemption; a delegation lookup failure returns
+        `500 server_error` without `error_uri`.
       operationId: tokenExchange
       tags:
         - OAuth2 Token
@@ -1507,6 +1514,12 @@ paths:
                   value:
                     error: "access_denied"
                     error_description: "impersonation not permitted"
+                impersonation_consent_required:
+                  summary: Impersonation - user delegation required
+                  value:
+                    error: "access_denied"
+                    error_description: "user delegation is required before impersonation"
+                    error_uri: "https://broker.example.com/consent/agent/550e8400-e29b-41d4-a716-446655440000"
         "500":
           description: Internal Server Error
           content:
@@ -3419,7 +3432,7 @@ components:
         error_uri:
           type: string
           format: uri
-          description: URI pointing to human-readable error documentation.
+          description: URI directing a user to required broker action, such as re-authentication or the target-agent consent-management page for an impersonation request.
           example: "https://docs.example.com/errors/access_denied"
 
     # ---- Tool Approval Schemas ----

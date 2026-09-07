@@ -261,3 +261,18 @@ type ImpersonationTokenIssuer interface {
 	// IssueImpersonationToken returns the signed access token or an error.
 	IssueImpersonationToken(ctx context.Context, input ImpersonationMintInput) (string, error)
 }
+
+// UserDelegationStatus describes the active state of a principal's delegation to an agent.
+type UserDelegationStatus string
+
+const (
+	UserDelegationActive  UserDelegationStatus = "active"
+	UserDelegationMissing UserDelegationStatus = "missing"
+	UserDelegationExpired UserDelegationStatus = "expired"
+)
+
+// UserDelegationVerifier reports whether a principal has an active delegation to an agent.
+// A non-nil error means the status could not be determined and callers must fail closed.
+type UserDelegationVerifier interface {
+	VerifyUserDelegation(ctx context.Context, principal id.Principal, agentID id.AgentID) (UserDelegationStatus, error)
+}

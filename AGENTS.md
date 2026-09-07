@@ -143,6 +143,7 @@ Read relevant ADRs before implementation. Treat accepted ADRs as authoritative. 
 | 029 | `adrs/029-token-exchange-client-assertion-trust-anchor.md` | Dedicated client-assertion trust anchor for token exchange |
 | 030 | `adrs/030-normalize-protected-resources.md` | Normalized, globally unique protected-resource child records |
 | 030 | `adrs/030-vendor-neutral-oidc-trust.md` | Vendor-neutral CDK OIDC trust configuration |
+| 032 | `adrs/032-impersonation-requires-user-delegation.md` | User delegation required for OAuth2 impersonation |
 
 ## Domain Glossary
 

@@ -81,6 +81,11 @@ oauth2_authorization_server:
     # registered. This does not set the issued token's `aud`; local token_claims_expression remains authoritative.
     audience_prefix: "https://broker.example.com/impersonation"
 
+    # Every successful impersonation also requires an active UserGrant for the subject extracted
+    # from subject_token and the audience-selected target agent. This is mandatory for every
+    # rule, including verification:none; a missing or expired grant returns access_denied with
+    # an error_uri to that target agent's existing consent-management page.
+
     # CR-002: non-empty, ordered; evaluated first-match (FR-004a). Both rules
     # below trust the SAME issuer (https://idp.internal.example.com), demonstrating
     # cross-rule trusted-issuer reuse (FR-014); CR-008 uniqueness is scoped WITHIN

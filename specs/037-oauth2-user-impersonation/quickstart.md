@@ -18,6 +18,7 @@ in [contracts/impersonation-config.yaml](contracts/impersonation-config.yaml); A
 - An external IdP (or a test JWKS server, as used by `internal/adapters/jwks/adapter_test.go`) that
   can sign client-assertion / actor / subject JWTs with an approved asymmetric algorithm.
 - The `oauth2_authorization_server.impersonation` block from the config contract.
+- The impersonated subject must already hold an active `UserGrant` for the registered target agent. The subject identity extracted from `subject_token` is the user-grant principal.
 
 ## Setup
 
@@ -43,6 +44,8 @@ Startup MUST fail closed with an actionable, field-indexed error if any of CR-00
 violated (e.g. remove `allowed_algorithms` from a trusted issuer, or add the block in proxy mode,
 or use an `HS256` algorithm, or configure an unverified rule whose predicate omits
 `subject_token`).
+
+Impersonation additionally fails closed at startup if user-delegation verification or the end-user public URL used for the consent `error_uri` is unavailable (CR-010).
 
 ## Run the validation suites
 
@@ -71,12 +74,12 @@ observable proof.
 
 | # | Action | Expected |
 |---|---|---|
-| 1 | Valid request; `audience` = `$IMPERSONATION_AUDIENCE_PREFIX/$TARGET_AGENT_ID`; JWT actor/subject types; jwt-bearer assertion type | 200; token `sub` = subject, `agent_id` and CEL agent fields = target, `act.iss` = validated actor-token issuer, `act.sub` = actor |
+| 1 | Valid request; `audience` = `$IMPERSONATION_AUDIENCE_PREFIX/$TARGET_AGENT_ID`; JWT actor/subject types; jwt-bearer assertion type; active subject delegation | 200; token `sub` = subject, `agent_id` and CEL agent fields = target, `act.iss` = validated actor-token issuer, `act.sub` = actor |
 | 2 | `subject_token_type`/`actor_token_type` absent, malformed, or unsupported | 400 `invalid_request`; no token |
 | 3 | Inspect issued token | issuer/lifetime/signing/base claims and `aud` follow local policy; target fields are target-derived; JWT `scope` is the granted request scope and the response omits `scope` only when none was granted |
 | 4 | Different, absent, or multiple `audience` | impersonation does NOT activate; pre-existing routing applies |
 | 5 | Proxy or hybrid mode targeting a valid suffixed audience | rejected; no impersonated token or upstream forwarding |
-| 6 | Unverified subject with a valid registered target and binding rule | 200; target-derived `agent_id`, subject/email local-policy claims, validated actor-token `act.iss`, and `act.sub` |
+| 6 | Unverified subject with a valid registered target, active subject delegation, and binding rule | 200; target-derived `agent_id`, subject/email local-policy claims, validated actor-token `act.iss`, and `act.sub` |
 
 ### User Story 2 — Operator defines trusted sources as rules
 
@@ -106,6 +109,16 @@ observable proof.
 | 2 | Failure before all identities established | audit event records failure category, rule evaluation outcome, only safely-available identities |
 | 3 | Inspect any impersonation audit event | contains NO client assertion, actor/subject/access token, signing key, or credential value |
 
+### User Story 5 — Impersonation honors user delegation
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | Valid signed-subject request with an active delegation for subject + target agent | 200; impersonated token |
+| 2 | Otherwise valid request but no subject delegation | 403 `access_denied`; no token; `error_uri` = target-agent consent page |
+| 3 | Otherwise valid request but expired subject delegation | Same 403 body as missing delegation; audit records expired category |
+| 4 | Unverified subject with no delegation | 403 `access_denied`; no token |
+| 5 | Delegation verifier storage failure | 500 `server_error`; no token and no `error_uri` |
+
 ### Edge cases (additional `It()` blocks)
 
 - `scope=read` for a target allowing `read` → 200 with `scope: "read"` in the JWT and response; an unlisted scope → 400 `invalid_scope` with no token; an empty target allow-list is unrestricted. `resource` → 400 `invalid_request`.
@@ -113,6 +126,7 @@ observable proof.
 - `requested_token_type` present but ≠ access-token type → 400 `invalid_request`.
 - actor identity equals subject identity → permitted; `act.sub == sub`.
 - signing-key metadata for an issuer unavailable → rules depending on it fall through; if none match, fail closed.
+- Missing or expired subject delegation → 403 `access_denied` with `<end-user-public-url>/consent/agent/<target-agent-id>` as `error_uri`; it is terminal and applies to unverified subjects. A delegation lookup failure → 500 `server_error` with no `error_uri`.
 
 ---
 
@@ -132,6 +146,8 @@ curl -s -X POST http://localhost:8000/oauth2/token \
   --data-urlencode 'scope=read' | jq .
 # Decode access_token: sub == subject; agent_id and policy agent fields equal target; act.iss == validated actor-token issuer; act.sub == actor;
 # aud follows local token_claims_expression; scope == "read" when the target allows it.
+# Before this request, create an active UserGrant for the extracted subject and $TARGET_AGENT_ID.
+# Without that delegation, expect 403 access_denied with error_uri=$ENDUSER_PUBLIC_URL/consent/agent/$TARGET_AGENT_ID.
 ```
 
 Use `audience=$IMPERSONATION_AUDIENCE_PREFIX/$TARGET_AGENT_CANONICAL_ID` to address the same target by canonical ID.
@@ -141,3 +157,4 @@ Use `audience=$IMPERSONATION_AUDIENCE_PREFIX/$TARGET_AGENT_CANONICAL_ID` to addr
 - All scenario rows pass (green) in `tests/e2e/impersonation_test.go`.
 - `just verify` passes.
 - ADR 031 is **Accepted** in the base branch (governance PR merged) before this feature merges.
+- ADR 032 is **Accepted**.

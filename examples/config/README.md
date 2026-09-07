@@ -398,7 +398,7 @@ Key settings:
 
 ### `impersonation.yaml` — RFC 8693 User Impersonation
 
-Complete, bootable `local`-mode configuration demonstrating RFC 8693 user impersonation. A privileged client presents client-assertion, actor, and subject JWT credentials; the broker authorizes that client, resolves the registered target agent from the suffixed routing audience, and mints a token whose `sub` represents the impersonated subject and whose `act` records the actor. A request activates only when its single `audience` is `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`.
+Complete, bootable `local`-mode configuration demonstrating RFC 8693 user impersonation. A privileged client presents client-assertion, actor, and subject JWT credentials; the broker authorizes that client, resolves the registered target agent from the suffixed routing audience, verifies the subject's active user delegation to that agent, and mints a token whose `sub` represents the impersonated subject and whose `act` records the actor. A request activates only when its single `audience` is `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`.
 
 Key settings (`oauth2_authorization_server.impersonation`):
 - `audience_prefix` — routing-only HTTP(S) URI prefix; requests append one target agent's canonical lower-case UUID or `canonical_id`. It is not an issued-token audience.
@@ -408,6 +408,8 @@ Key settings (`oauth2_authorization_server.impersonation`):
 - `rules[].authorization` — CEL predicate, reusing the token-exchange schema (`type: cel`, `cel.expression`, `cel.evaluation_timeout`) (CR-005)
 
 The audience-selected target supplies minted `agent_id` and local policy `agent.*`; the asserted privileged-client identity is retained only for authorization and audit. `token_claims_expression` alone controls issued `aud`.
+
+An active `UserGrant` for `(extracted subject, target agent)` is mandatory for every rule, including unverified subjects. A missing or expired grant returns generic `403 access_denied` and an `error_uri` to the existing target-agent consent page; no configuration option disables this check.
 
 **Usage:**
 ```bash

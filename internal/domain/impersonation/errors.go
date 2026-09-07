@@ -30,6 +30,14 @@ func accessDenied(description, details string) *tokenexchange.TokenExchangeError
 	return tokenexchange.NewAccessDeniedErrorWithDetails(description, details)
 }
 
+const consentRequiredDescription = "user delegation is required before impersonation"
+
+// consentRequired builds a credential-free access_denied error directing the user to the
+// existing consent-management page for the target agent.
+func consentRequired(consentURL, details string) *tokenexchange.TokenExchangeError {
+	return accessDenied(consentRequiredDescription, details).WithErrorURI(consentURL)
+}
+
 // serverError builds a server_error (500) for fail-closed internal failures (FR-011).
 func serverError(description, details string) *tokenexchange.TokenExchangeError {
 	return tokenexchange.NewServerErrorWithDetails(description, details)

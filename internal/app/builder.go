@@ -978,6 +978,13 @@ func (b *Builder) Build() (*App, error) {
 		if impersonationIssuer == nil {
 			return nil, fmt.Errorf("oauth2_authorization_server.impersonation requires local mode with a local token issuer")
 		}
+		if app.ConsentService == nil {
+			return nil, fmt.Errorf("oauth2_authorization_server.impersonation requires user delegation verification, but ConsentService is unavailable")
+		}
+		consentBaseURL := strings.TrimRight(b.config.Server.EndUser.PublicURL, "/")
+		if consentBaseURL == "" {
+			return nil, fmt.Errorf("oauth2_authorization_server.impersonation requires server.enduser.public_url for consent error_uri")
+		}
 		// CR-004: the broker's own issuer must never sign the client_assertion role.
 		normalizedLocalIssuer := normalizedIssuerURI(ov.localIssuerURI)
 		for i, rule := range impCfg.Rules {
@@ -991,7 +998,7 @@ func (b *Builder) Build() (*App, error) {
 			}
 		}
 
-		svc, err := impersonation.NewService(impCfg, b.newImpersonationJWKSFactory(upstreamClient), b.storage.Agents(), impersonationIssuer, 0, b.logger)
+		svc, err := impersonation.NewService(impCfg, b.newImpersonationJWKSFactory(upstreamClient), b.storage.Agents(), impersonationIssuer, 0, b.logger, newUserDelegationVerifier(app.ConsentService), consentBaseURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build impersonation service: %w", err)
 		}

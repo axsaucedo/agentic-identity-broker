@@ -790,9 +790,9 @@ OAuth2 /authorize request
 
 #### 3.1.y. User Impersonation Domain (Feature 037)
 
-**Purpose**: Orchestrate the broker's user-impersonation capability on `POST /oauth2/token` so a privileged client can mint a broker-issued access token that represents a specified subject while explicitly attributing the acting party via the standard `act` claim. Because the issued token carries both `sub` and `act`, this is *delegation* in RFC 8693 §1.1 terms, not impersonation; the broker keeps **impersonation** as the operator-facing capability name but implements RFC 8693 delegation semantics for actor accountability. (This is unrelated to the repo's user-consented `UserGrant`/`DelegatedToken` delegation.) Available only in `local` mode.
+**Purpose**: Orchestrate the broker's user-impersonation capability on `POST /oauth2/token` so a privileged client can mint a broker-issued access token that represents a specified subject while explicitly attributing the acting party via the standard `act` claim. Because the issued token carries both `sub` and `act`, this is *delegation* in RFC 8693 §1.1 terms, not impersonation; the broker keeps **impersonation** as the operator-facing capability name but implements RFC 8693 delegation semantics for actor accountability. It separately requires the repo's user-consented `UserGrant` delegation before minting. Available only in `local` mode.
 
-**New Bounded Context**: `internal/domain/impersonation/` independently orchestrates credential validation, authorization, audience-target resolution, and local minting. It depends only on ports and domain; `ports.ImpersonationTokenIssuer` insulates it from the fosite signer. It resolves existing registered target agents through `ports.AgentRepository`; no new persistence exists.
+**New Bounded Context**: `internal/domain/impersonation/` independently orchestrates credential validation, authorization, audience-target resolution, user-delegation enforcement, and local minting. It depends only on ports and domain; `ports.ImpersonationTokenIssuer` insulates it from the fosite signer and `ports.UserDelegationVerifier` insulates it from the consent bounded context. It resolves existing registered target agents through `ports.AgentRepository`; no new persistence exists.
 
 **Responsibility / Flow**:
 
@@ -803,8 +803,10 @@ POST /oauth2/token (grant_type=urn:ietf:params:oauth:grant-type:token-exchange)
   ↓ Walk oauth2_authorization_server.impersonation.rules in configured order, first-match:
   ↓   ├─ Validate signed client_assertion, actor, and subject against the rule's per-issuer JWKS
   ↓   │    (signature, algorithm allow-list, iss, per-role expected audience, exp, nbf)
-  ↓   ├─ Evaluate the rule's single CEL authorization predicate (ADR-009 pattern)
-  ↓   └─ Extract privileged-client, actor-token issuer, actor, and subject identities (+ optional subject email)
+  ↓   ├─ Extract privileged-client, actor-token issuer, actor, and subject identities (+ optional subject email)
+  ↓   └─ Evaluate the rule's single CEL authorization predicate (ADR-009 pattern)
+  ↓ Verify an active UserGrant for (extracted subject principal, target agent)
+  ↓   missing/expired → terminal access_denied + error_uri=<public-url>/consent/agent/<target-id>; lookup failure → server_error
   ↓ Mint through normal local access-token path: target agent_id + local CEL agent.*, sub=subject, act.iss=validated actor-token issuer, act.sub=actor, granted scope
   ↓ Local token_claims_expression alone emits aud (or omits it); RFC 8693 response returns non-empty granted scope; audit target and privileged client
 ```
@@ -814,12 +816,13 @@ POST /oauth2/token (grant_type=urn:ietf:params:oauth:grant-type:token-exchange)
 - Signature validation is never optional for signed roles (client assertion, actor, subject).
 - `actor == subject` is permitted and yields `act.sub == sub`; `act.iss` remains the validated actor-token issuer.
 - The issued token uses normal local issuer, lifetime, signing-key, base claims, token-claims policy, and JWT `scope` claim. The target supplies minted `agent_id`, CEL `agent.*`, request `agent_id`, audit identity, and `AllowedScopes`: empty is unrestricted, listed values are exact, and reserved refresh-token scopes retain normal handling. A rejected scope returns credential-free `invalid_scope`; absent scope yields JWT `scope == ""` and no response field. The assertion supplies privileged-client authorization/audit identity only. `aud` remains policy-owned.
-- Fail-closed on validation, extraction, predicate denial, or CEL timeout; no-match precedence is `access_denied` > `invalid_request` > `invalid_client`.
+- A rule-authorized request mints only when the extracted subject (as `id.Principal`) has an active `UserGrant` for the target agent. This check is mandatory for signed and unverified subjects, terminal rather than rule fall-through, and has no configuration opt-out. Missing or expired delegation returns generic `access_denied` with the existing token-error `error_uri`; its credential-free audit category distinguishes the cases. An unavailable verifier fails closed with `server_error`.
+- Fail-closed on validation, extraction, predicate denial, delegation verification, or CEL timeout; no-match precedence is `access_denied` > `invalid_request` > `invalid_client`.
 - Local-mode only; proxy and hybrid modes reject impersonation and never forward upstream.
 
 **Reused Machinery**: the JWKS adapter (`internal/adapters/jwks`), the ADR-009 CEL evaluator pattern (`internal/domain/tokenexchange/cel_evaluator.go`), the signed-JWT validation pattern, and the local issuer's signing key + `token_claims_expression` principal context (`internal/domain/oauth2server`).
 
-**See Also**: spec `037-oauth2-user-impersonation` (FR-013/014/015, CR-001..008).
+**See Also**: ADR 032 (accepted) — mandatory user delegation for impersonation; spec `037-oauth2-user-impersonation` (FR-013–019, CR-001–010).
 
 ### 3.2. Envoy External Processor (ExtProc) Token Exchange Service
 
@@ -1368,9 +1371,11 @@ Define any project-specific terms or acronyms.)
 
 **Actor Identity**: The non-empty identity extracted from the validated actor token via the selected rule's `actor` role `principal_expression`, represented with its validated issuer as the standardized `act.iss` and `act.sub` claims in a successful impersonated broker token.
 
-**Subject Identity**: The non-empty user identity extracted from a validated signed subject token via the selected rule's `subject` role `principal_expression`, represented as the `sub` claim in a successful impersonated broker token. It may be accompanied by an optional `email` claim produced from the role's optional `email_expression`, fed through the existing local-token `principal` CEL context so `token_claims_expression` mints it unchanged.
+**Subject Identity**: The non-empty user identity extracted from a validated signed subject token or an allowed unverified subject JWT via the selected rule's `subject` role `principal_expression`. It is represented as the `sub` claim and, byte-for-byte, as `id.Principal` for the mandatory `(principal, target agent)` user-delegation check. It may be accompanied by an optional `email` claim produced from the role's optional `email_expression`, fed through the existing local-token `principal` CEL context so `token_claims_expression` mints it unchanged.
 
 **Impersonated Broker Token**: A locally issued token minted by the normal local access-token path, carrying target-derived `agent_id`, subject identity, protected `act.iss`/`act.sub`, optional email, granted JWT `scope`, and normal local-policy claims. The routing URI never forces `aud`; local token policy may emit it or omit it.
+
+**User Delegation (UserGrant)**: The active existing delegation from a subject principal to a target agent. After rule authorization and before minting, impersonation checks it through `ports.UserDelegationVerifier`; it never creates, changes, or infers a delegation. A missing or expired delegation returns `access_denied` with an `error_uri` to the target's consent-management page; the token-error body intentionally does not distinguish the two states.
 
 ### ExtProc (Envoy External Processor) Domain
 

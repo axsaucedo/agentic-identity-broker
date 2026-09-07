@@ -386,6 +386,35 @@ token values (T024 covers S1–S3).
       JWT/RFC 8693 response; rejected scope returns credential-free `invalid_scope`; empty target
       allow-list is unrestricted; unit, HTTP, and E2E coverage prove the contract.
 
+### User-delegation consent remediation
+
+- [X] T086 Update the feature design artefacts (`plan.md`, `data-model.md`, `quickstart.md`) and
+      architecture/governance records (`ARCHITECTURE.md`, ADR 032, ADR index) for mandatory
+      user-delegation enforcement and the token-error `error_uri` signal (FR-017–019, CR-010).
+- [X] T087 [P] Update `api/enduser/openapi.yaml`, `docs/configuration.md`, and
+      `examples/config/impersonation.yaml` plus its README reference with the mandatory
+      delegation contract and consent `error_uri` (FR-013/014/018).
+- [X] T088 [P] Write failing User Story 5 E2E scenarios in `tests/e2e/impersonation_test.go`:
+      seed active delegation for existing mint scenarios; assert missing, expired, and unverified subjects
+      without delegation return 403 `access_denied` plus the exact target-agent `error_uri` (US5.2–US5.4,
+      Principles VIII, XIII).
+- [X] T089 [P] Write failing `internal/domain/impersonation/service_test.go` cases for active,
+      missing, expired, and unavailable user-delegation verification; prove predicate denial does
+      not query delegation and delegation denial is terminal. Write app classifier tests first.
+- [X] T090 Add `ports.UserDelegationVerifier` and `UserDelegationStatus` to
+      `internal/ports/oauth2.go`; add the app-boundary consent-service classifier and its tests in
+      `internal/app/impersonation_delegation.go` (FR-017, Principle VI).
+- [X] T091 Implement `consentRequired` in `internal/domain/impersonation/errors.go` and enforce
+      terminal user-delegation verification after rule authorization and before minting in
+      `internal/domain/impersonation/service.go` (FR-017a/017b/018/019).
+- [X] T092 Wire the verifier and end-user public URL in `internal/app/builder.go`, failing startup
+      when mandatory dependencies are unavailable (CR-010).
+- [X] T093 Run the focused US5 E2E suite, `just check`, `just test`, and `just verify`; confirm the
+      consent URL is actionable for a first-time delegation and audits remain credential-free.
+- [X] T094 [US5] Add a production-bootstrap E2E scenario for a delegation-storage lookup failure. Assert
+      `500 server_error`, no token or `error_uri`, and a credential-free `user_grant_lookup_failed` audit event
+      (US5.5, Principles VIII, XIII).
+
 
 ## Amendment 2026-09-04: canonical-ID audience targets
 
