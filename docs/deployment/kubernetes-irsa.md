@@ -125,7 +125,7 @@ export K8S_SERVICE_ACCOUNT="broker-sa"
 
 - AWS CLI 2.x
 - Go 1.26.8+ (CDK infrastructure is written in Go)
-- Node.js 18+ with AWS CDK CLI (`npm install -g aws-cdk`)
+- Node.js 24+ with AWS CDK CLI (`npm install -g aws-cdk`)
 - kubectl (configured for your EKS cluster)
 - Helm 3.x
 - jq (for JSON parsing)

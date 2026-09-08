@@ -467,7 +467,7 @@ cd web && npm run dev
 
 **Dockerfile:**
 ```dockerfile
-FROM node:18-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 WORKDIR /app/web
 COPY web/package*.json ./
 RUN npm ci

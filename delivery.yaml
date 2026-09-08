@@ -27,7 +27,7 @@ pipeline:
         cmd: |
           apt-get update
           apt-get --yes install just curl ca-certificates
-          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
           apt-get --yes install nodejs
           just install-tools
           just web-ci
@@ -63,7 +63,7 @@ pipeline:
         cmd: |
           apt-get update
           apt-get --yes install just curl ca-certificates
-          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
           apt-get --yes install nodejs
           just install-tools
           just web-ci

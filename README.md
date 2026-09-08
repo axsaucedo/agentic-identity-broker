@@ -38,7 +38,7 @@ Major roadmap topics include: (a) centralized tool authorization with Open Polic
 
 - **Go 1.26.8** or higher (required)
 - **PostgreSQL 12+** (for persistence; in-memory storage available for development)
-- **Node.js 18+** (for React frontend development, optional)
+- **Node.js 24+** (for React frontend development, optional)
 - **[just](https://github.com/casey/just)** command runner (recommended)
 - **[Air](https://github.com/air-verse/air)** for hot-reload development (optional, recommended)
 - **[golangci-lint](https://golangci-lint.run/)** for code quality checks (optional)
@@ -465,7 +465,7 @@ The consent frontend is a React-based Single Page Application (SPA) for managing
 
 ### Prerequisites
 
-- Node.js 18.18.0 or higher
+- Node.js 24.0.0 or higher
 - npm (comes with Node.js)
 
 ### Setup
