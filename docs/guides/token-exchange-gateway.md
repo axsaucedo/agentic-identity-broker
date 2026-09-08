@@ -167,8 +167,13 @@ through.
 
 - **No database.** The sidecar keeps only an in-memory cache, so scale it horizontally by
   running one instance per gateway pod; each maintains its own cache.
-- **Container image.** Build and run from `Dockerfile.extproc`. Provide the configuration by
-  YAML file or entirely through `EXTPROC_` environment variables.
+- **Container image.** To build a release image, run `just docker-build-extproc`. It builds the required Linux artifacts for amd64 and arm64 before packaging the default Dockerfile target. To build a source-based development image instead, run:
+
+  ```bash
+  docker build --target development --file Dockerfile.extproc .
+  ```
+
+  Provide configuration by YAML file or entirely through `EXTPROC_` environment variables.
 - **Placement.** Run it alongside the gateway so exchange happens at the edge, before the
   request leaves for the third-party service. See
   [architecture](/docs/concepts/architecture) for where the sidecar sits.

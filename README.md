@@ -177,7 +177,7 @@ All development tasks are managed using [just](https://github.com/casey/just). R
 - `just test-coverage` - Generate HTML coverage report for the fast Go/package suite
 - `just test-coverage-summary` - Display coverage summary for the fast Go/package suite
 - `just test-integration` - Run the default self-contained integration suites
-- `just test-integration-infra` - Run infra-backed integration suites only (Docker/Podman required)
+- `just test-integration-infra` - Run infra-backed integration suites only (Docker required)
 - `just test-integration-all` - Run both integration layers
 - `just test-e2e` - Run all backend, ExtProc, and frontend E2E suites
 - `just test-e2e-performance` - Run only performance-labelled E2E measurements; normal E2E commands exclude them
@@ -376,7 +376,7 @@ Run `just --list` to see all available commands:
 - `just test-coverage` - Generate HTML coverage report for the fast Go/package suite (coverage/coverage.html)
 - `just test-coverage-summary` - Display coverage summary for the fast Go/package suite
 - `just test-integration` - Run the default self-contained integration suites
-- `just test-integration-infra` - Run infra-backed integration suites only (Docker/Podman required)
+- `just test-integration-infra` - Run infra-backed integration suites only (Docker required)
 - `just test-integration-all` - Run both integration layers
 - `just test-e2e` - Run all backend, ExtProc, and frontend E2E suites
 - `just test-e2e-performance` - Run only performance-labelled E2E measurements; normal E2E commands exclude them

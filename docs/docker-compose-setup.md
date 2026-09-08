@@ -6,8 +6,7 @@ This guide explains how to use Docker Compose to run the complete Agentic Identi
 
 ### Prerequisites
 
-- Podman or Docker installed
-- `podman-compose` or `docker-compose` v2.x
+- Docker installed and running, with Docker Compose v2 (`docker compose`)
 - `justfile` (included in repo)
 
 ### Step 1: Start All Services
@@ -124,7 +123,7 @@ When you modify any `.go` file in `./cmd` or `./internal`:
 1. Air detects the change
 2. Recompiles binary to `tmp/agentic-identity-broker`
 3. Restarts the server
-4. New behavior available in ~1-2 seconds (Podman macOS) or ~500ms (Docker/Linux)
+4. New behavior available after the server restarts
 
 **View logs:**
 ```bash
@@ -309,8 +308,11 @@ Seed services may fail if broker isn't healthy.
 
 **Check seed logs:**
 ```bash
-podman-compose logs seed-broker-data
-podman-compose logs seed-third-party
+# In one terminal:
+just compose-logs-service seed-broker-data
+
+# In another terminal:
+just compose-logs-service seed-third-party
 ```
 
 **Manual reseed:**
@@ -321,7 +323,7 @@ just compose-register-third-party
 
 ### File Changes Not Detected
 
-Especially on Podman/macOS - polling is used instead of inotify.
+Air uses polling to detect changes on bind-mounted files.
 
 **Expected behavior:**
 - Go changes detected in ~1-2 seconds (polling delay)
@@ -344,18 +346,9 @@ First startup builds Docker images (~1-2 min). Subsequent starts are faster.
 
 **To speed up:**
 - Use SSD for Docker storage
-- Allocate more resources to container runtime (Docker Desktop / Podman settings)
-- Pre-build images: `docker compose build` (or `podman-compose build`) before `docker compose up` (or `podman-compose up`)
+- Allocate more resources in Docker Desktop
+- Pre-build images: `docker compose build` before `docker compose up`
 
-### Permission Denied on Volume Mounts
-
-May occur on Podman/macOS with FUSE mounts.
-
-**Solution:**
-```bash
-# Run once to fix permissions
-podman unshare chown -R 1000:1000 ./cmd ./internal ./web
-```
 
 ### "health check: too many retries"
 
@@ -493,7 +486,7 @@ just compose-logs
 
 ```bash
 # Get into running container
-podman exec -it aib-broker /bin/sh
+docker exec -it aib-broker /bin/sh
 
 # Then run commands directly
 curl http://localhost:8000/health
@@ -516,10 +509,10 @@ All services are on custom bridge network `aib-network`:
 
 ```bash
 # List network
-podman network inspect aib-network
+docker network inspect aib-network
 
 # Test service DNS resolution
-podman exec aib-broker ping upstream-oauth2  # Should work
+docker exec aib-broker ping upstream-oauth2  # Should work
 ```
 
 ---

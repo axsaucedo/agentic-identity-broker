@@ -191,6 +191,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.extproc
+      target: development
     container_name: aib-extproc
     volumes:
       - ./config.extproc.docker.yaml:/app/config.yaml:ro

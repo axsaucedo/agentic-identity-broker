@@ -17,8 +17,8 @@ you can see the whole flow without registering anything by hand first.
 
 You need:
 
-- **Docker or Podman**, with a Compose plugin (`docker compose`, `docker-compose`, or
-  `podman-compose`). The stack auto-detects whichever you have.
+- **Docker**, with Docker Compose v2 (`docker compose`). The stack uses Docker Compose to run
+  the local services.
 - **[just](https://github.com/casey/just)**, the command runner the project uses for its
   workflows.
 - **The repository**, cloned locally:

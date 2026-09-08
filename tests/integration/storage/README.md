@@ -7,9 +7,8 @@ Self-contained tests stay in `tests/integration/storage/`, while infra-backed Po
 
 ### Prerequisites
 
-Integration tests require either Docker or Podman to run.
+Integration tests require Docker.
 
-#### With Docker
 ```bash
 # Ensure Docker daemon is running
 docker ps
@@ -20,37 +19,6 @@ go test -tags=integration -v ./tests/integration/storage/infra/...
 # Or using justfile
 just test-integration-infra
 ```
-
-#### With Podman
-
-Podman is fully supported as an alternative to Docker, including on macOS.
-
-**On Linux with rootless Podman:**
-```bash
-# Podman socket should be available automatically
-export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
-go test -tags=integration -v ./tests/integration/storage/infra/...
-```
-
-**On macOS with Podman machine:**
-```bash
-# Start the Podman machine and get the socket path
-podman machine start
-
-# The output will show the socket path, typically:
-# /var/folders/42/xfyh9ksn6sndqbtl0ybbtr700000gn/T/podman/podman-machine-default-api.sock
-
-# Set DOCKER_HOST environment variable
-export DOCKER_HOST='unix:///var/folders/42/xfyh9ksn6sndqbtl0ybbtr700000gn/T/podman/podman-machine-default-api.sock'
-
-# Run tests
-go test -tags=integration -v ./tests/integration/storage/infra/...
-
-# Or with justfile
-just test-integration-infra
-```
-
-**Note:** The postgres_test.go init function automatically disables Ryuk cleanup by default. This is necessary because Ryuk tries to use a network named "bridge", which conflicts with Podman's network mode system (where "bridge" is a reserved network mode, not a network name). This is handled transparently - no additional configuration needed.
 
 ## Test Organization
 
@@ -79,7 +47,7 @@ Tests:
 - `TestMemoryAdapter_ErrorRecovery` - Error handling scenarios
 
 ### PostgreSQL Adapter Tests (Infra-Backed, Integration Build Tag)
-Requires container runtime (Docker or Podman):
+Requires Docker:
 ```bash
 go test -tags=integration -v ./tests/integration/storage/infra/...
 # or just test-integration-infra
@@ -92,62 +60,34 @@ Tests:
 - `TestPostgresAdapter_ContextCancellation` - Context cancellation handling
 - `TestPostgresAdapter_FullLifecycle_Integration` - Full lifecycle with real PostgreSQL container
 
-## Container Runtime Detection
+## Container Runtime
 
-The integration tests automatically detect available container runtimes in this order:
-1. Docker (via `docker ps`)
-2. Podman (via `podman ps`)
+The integration tests use Docker through testcontainers. If Docker is unavailable, the tests skip.
 
-If neither is available, tests are skipped with appropriate message.
+## Test Configuration
 
-## Environment Variables
-
-### Container Runtime Configuration
-- `DOCKER_HOST` - Used by testcontainers to connect to Podman socket
-  - Example: `unix:///run/podman/podman.sock`
-
-### Test Configuration
 - `TESTCONTAINERS_RYUK_DISABLED` - Disable resource cleanup (useful for debugging)
   - Set to `true` to keep containers running after test failure
 
 ## Troubleshooting
 
-### "Connection refused" or "Cannot connect to container runtime"
+### "Connection refused" or "Cannot connect to Docker"
 
-**On macOS with Podman:**
 ```bash
-# Verify DOCKER_HOST is set correctly with podman socket path
-echo $DOCKER_HOST
+# Verify that Docker is running
+docker ps
 
-# Start podman machine if not running
-podman machine start
-
-# Get the correct socket path from podman machine start output
-# It will be something like:
-# unix:///var/folders/42/xfyh9ksn6sndqbtl0ybbtr700000gn/T/podman/podman-machine-default-api.sock
-
-# Export and retry tests
-export DOCKER_HOST='unix:///<your-socket-path>'
-go test -tags=integration -v ./tests/integration/storage/infra/...
-```
-
-**On Linux with rootless Podman:**
-```bash
-# Verify socket exists
-ls -l $XDG_RUNTIME_DIR/podman/podman.sock
-
-# Set DOCKER_HOST if needed
-export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
+# Retry with verbose output
 go test -tags=integration -v ./tests/integration/storage/infra/...
 ```
 
 ### Container image not available
 ```bash
 # Check if postgres:15-alpine image is available
-podman images | grep postgres
+docker images | grep postgres
 
 # Pull image manually if needed
-podman pull postgres:15-alpine
+docker pull postgres:15-alpine
 
 # Run tests with verbose output
 TESTCONTAINERS_LOGS=true go test -tags=integration -v ./tests/integration/storage/infra/...
@@ -156,10 +96,10 @@ TESTCONTAINERS_LOGS=true go test -tags=integration -v ./tests/integration/storag
 ### Tests hang or timeout
 ```bash
 # Check for orphaned containers
-podman ps -a | grep postgres
+docker ps -a | grep postgres
 
 # Clean up if needed
-podman rm -f $(podman ps -aq --filter ancestor=postgres:15-alpine)
+docker rm -f $(docker ps -aq --filter ancestor=postgres:15-alpine)
 
 # Run tests with debug output
 TESTCONTAINERS_LOGS=true go test -tags=integration -v ./tests/integration/storage/infra/...
@@ -167,31 +107,10 @@ TESTCONTAINERS_LOGS=true go test -tags=integration -v ./tests/integration/storag
 
 ## CI/CD Integration
 
-### GitHub Actions Example
-```yaml
-- name: Run Integration Tests
-  env:
-    DOCKER_HOST: unix:///run/podman/podman.sock
-  run: |
-    # Start podman socket
-    podman system service --time=0 unix:///run/podman/podman.sock &
-    sleep 2
+Provide a Docker daemon to jobs that run infra-backed integration tests:
 
-    # Run tests
-    go test -tags=integration -v ./tests/integration/storage/infra/...
-```
-
-### GitLab CI Example
-```yaml
-integration-tests:
-  image: golang:1.24
-  services:
-    - podman
-  script:
-    - export DOCKER_HOST=unix:///run/podman/podman.sock
-    - podman system service --time=0 unix:///run/podman/podman.sock &
-    - sleep 2
-    - go test -tags=integration -v ./tests/integration/storage/infra/...
+```bash
+go test -tags=integration -v ./tests/integration/storage/infra/...
 ```
 
 ## Performance Notes
@@ -209,5 +128,4 @@ For CI/CD, consider:
 ## References
 
 - [testcontainers-go Documentation](https://golang.testcontainers.org/)
-- [Podman Documentation](https://podman.io/)
 - [PostgreSQL Docker Image](https://hub.docker.com/_/postgres)
