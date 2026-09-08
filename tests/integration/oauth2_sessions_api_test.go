@@ -1183,6 +1183,260 @@ func TestDeleteSession_VerifiesTokensDeleted(t *testing.T) {
 	// - No sensitive data remains in storage
 }
 
+func TestRefreshSession_ReturnsRefreshedSummary(t *testing.T) {
+	ctx := context.Background()
+	sessionRepo := memory.NewInMemoryUserSessionRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
+	grantRepo := memory.NewUserGrantRepository()
+	principal := "user@example.com"
+	serviceUUID := id.NewServiceID()
+
+	var requests []url.Values
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		requests = append(requests, r.Form)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"new-access-token","token_type":"Bearer","expires_in":3600,"refresh_token":"rotated-refresh-token","scope":"repo"}`))
+	}))
+	defer mockServer.Close()
+
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceUUID,
+		DisplayName: "GitHub",
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
+			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
+			TokenEndpoint:     mockServer.URL,
+		},
+		Scopes:    []model.OAuthScope{{ScopeValue: "repo", Description: "Repository access"}},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	require.NoError(t, serviceRepo.Create(ctx, thirdPartyService))
+
+	expiry := time.Now().Add(time.Hour)
+	session := &storage.UserSession{
+		ID:                    id.NewSessionID(),
+		Principal:             id.Principal(principal),
+		ServiceID:             serviceUUID,
+		EncryptedAccessToken:  encryptSecretForTest(t, serviceUUID.String(), "old-access-token"),
+		EncryptedRefreshToken: encryptSecretForTest(t, serviceUUID.String(), "old-refresh-token"),
+		TokenType:             "Bearer",
+		Scope:                 []string{"repo"},
+		InitiatedAt:           time.Now(),
+		CreatedAt:             time.Now(),
+		AccessTokenExpiresAt:  &expiry,
+	}
+	require.NoError(t, sessionRepo.Create(ctx, session))
+
+	service := createOAuth2SessionService(t,
+		serviceRepo,
+		sessionRepo,
+		grantRepo,
+		nil,
+		createTestJWEKey(t),
+		oauth2session.DefaultConfig(),
+	)
+
+	handler := oauth2_sessions.NewHandler(service)
+	router := setupTestRouter(handler)
+	req := httptest.NewRequest(http.MethodPost, "/api/third-party/"+serviceUUID.String()+"/session/refresh", nil)
+	req.Header.Set("X-Remote-User", principal)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, serviceUUID.String(), resp.Data["service_id"])
+	assert.Equal(t, true, resp.Data["has_refresh_token"])
+	require.Len(t, requests, 1)
+	assert.Equal(t, "refresh_token", requests[0].Get("grant_type"))
+	assert.Equal(t, "old-refresh-token", requests[0].Get("refresh_token"))
+}
+
+func TestRefreshSession_ReturnsNotFoundWhenSessionDoesntExist(t *testing.T) {
+	sessionRepo := memory.NewInMemoryUserSessionRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
+	grantRepo := memory.NewUserGrantRepository()
+	service := createOAuth2SessionService(t,
+		serviceRepo,
+		sessionRepo,
+		grantRepo,
+		nil,
+		createTestJWEKey(t),
+		oauth2session.DefaultConfig(),
+	)
+
+	handler := oauth2_sessions.NewHandler(service)
+	serviceID := id.NewServiceID()
+	router := setupTestRouter(handler)
+	req := httptest.NewRequest(http.MethodPost, "/api/third-party/"+serviceID.String()+"/session/refresh", nil)
+	req.Header.Set("X-Remote-User", "user@example.com")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "session not found")
+}
+
+func TestRefreshSession_ReturnsConflictWhenRefreshTokenUnavailable(t *testing.T) {
+	ctx := context.Background()
+	sessionRepo := memory.NewInMemoryUserSessionRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
+	grantRepo := memory.NewUserGrantRepository()
+	principal := "user@example.com"
+	serviceUUID := id.NewServiceID()
+	expiry := time.Now().Add(time.Hour)
+
+	session := &storage.UserSession{
+		ID:                   id.NewSessionID(),
+		Principal:            id.Principal(principal),
+		ServiceID:            serviceUUID,
+		EncryptedAccessToken: encryptSecretForTest(t, serviceUUID.String(), "old-access-token"),
+		TokenType:            "Bearer",
+		Scope:                []string{"repo"},
+		InitiatedAt:          time.Now(),
+		CreatedAt:            time.Now(),
+		AccessTokenExpiresAt: &expiry,
+	}
+	require.NoError(t, sessionRepo.Create(ctx, session))
+
+	service := createOAuth2SessionService(t,
+		serviceRepo,
+		sessionRepo,
+		grantRepo,
+		nil,
+		createTestJWEKey(t),
+		oauth2session.DefaultConfig(),
+	)
+
+	handler := oauth2_sessions.NewHandler(service)
+	router := setupTestRouter(handler)
+	req := httptest.NewRequest(http.MethodPost, "/api/third-party/"+serviceUUID.String()+"/session/refresh", nil)
+	req.Header.Set("X-Remote-User", principal)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusConflict, w.Code)
+	assert.Contains(t, w.Body.String(), "refresh_unavailable")
+}
+
+func TestRefreshSession_ReturnsNotFoundForCrossPrincipalRequest(t *testing.T) {
+	ctx := context.Background()
+	sessionRepo := memory.NewInMemoryUserSessionRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
+	grantRepo := memory.NewUserGrantRepository()
+	serviceUUID := id.NewServiceID()
+
+	session := &storage.UserSession{
+		ID:                   id.NewSessionID(),
+		Principal:            id.Principal("owner@example.com"),
+		ServiceID:            serviceUUID,
+		EncryptedAccessToken: encryptSecretForTest(t, serviceUUID.String(), "old-access-token"),
+		TokenType:            "Bearer",
+		Scope:                []string{"repo"},
+		InitiatedAt:          time.Now(),
+		CreatedAt:            time.Now(),
+	}
+	require.NoError(t, sessionRepo.Create(ctx, session))
+
+	service := createOAuth2SessionService(t,
+		serviceRepo,
+		sessionRepo,
+		grantRepo,
+		nil,
+		createTestJWEKey(t),
+		oauth2session.DefaultConfig(),
+	)
+
+	handler := oauth2_sessions.NewHandler(service)
+	router := setupTestRouter(handler)
+	req := httptest.NewRequest(http.MethodPost, "/api/third-party/"+serviceUUID.String()+"/session/refresh", nil)
+	req.Header.Set("X-Remote-User", "attacker@example.com")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "session not found")
+}
+
+func TestRefreshSession_ReturnsBadGatewayWhenProviderRefreshFails(t *testing.T) {
+	ctx := context.Background()
+	sessionRepo := memory.NewInMemoryUserSessionRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
+	grantRepo := memory.NewUserGrantRepository()
+	principal := "user@example.com"
+	serviceUUID := id.NewServiceID()
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"server_error","error_description":"refresh failed"}`))
+	}))
+	defer mockServer.Close()
+
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceUUID,
+		DisplayName: "GitHub",
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
+			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
+			TokenEndpoint:     mockServer.URL,
+		},
+		Scopes:    []model.OAuthScope{{ScopeValue: "repo", Description: "Repository access"}},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	require.NoError(t, serviceRepo.Create(ctx, thirdPartyService))
+
+	expiry := time.Now().Add(time.Hour)
+	session := &storage.UserSession{
+		ID:                    id.NewSessionID(),
+		Principal:             id.Principal(principal),
+		ServiceID:             serviceUUID,
+		EncryptedAccessToken:  encryptSecretForTest(t, serviceUUID.String(), "old-access-token"),
+		EncryptedRefreshToken: encryptSecretForTest(t, serviceUUID.String(), "old-refresh-token"),
+		TokenType:             "Bearer",
+		Scope:                 []string{"repo"},
+		InitiatedAt:           time.Now(),
+		CreatedAt:             time.Now(),
+		AccessTokenExpiresAt:  &expiry,
+	}
+	require.NoError(t, sessionRepo.Create(ctx, session))
+
+	service := createOAuth2SessionService(t,
+		serviceRepo,
+		sessionRepo,
+		grantRepo,
+		nil,
+		createTestJWEKey(t),
+		oauth2session.DefaultConfig(),
+	)
+
+	handler := oauth2_sessions.NewHandler(service)
+	router := setupTestRouter(handler)
+	req := httptest.NewRequest(http.MethodPost, "/api/third-party/"+serviceUUID.String()+"/session/refresh", nil)
+	req.Header.Set("X-Remote-User", principal)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadGateway, w.Code)
+	assert.Contains(t, w.Body.String(), "refresh_failed")
+}
+
 // =============================================================================
 // Tests for GET /api/third-party/{serviceId}/session (T066)
 // =============================================================================

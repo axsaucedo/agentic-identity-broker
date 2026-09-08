@@ -231,6 +231,64 @@ describe('SessionCard', () => {
     });
   });
 
+
+  describe('Refresh button', () => {
+    it('renders Refresh button when refresh token exists and onRefresh is provided', () => {
+      const session = createMockSession({ has_refresh_token: true });
+      const onTerminate = vi.fn();
+      const onRefresh = vi.fn();
+
+      render(
+        <SessionCard
+          session={session}
+          onTerminate={onTerminate}
+          onRefresh={onRefresh}
+        />,
+      );
+
+      expect(screen.getByRole('button', { name: /refresh/i })).toBeInTheDocument();
+    });
+
+    it('does not render Refresh button when refresh token is missing', () => {
+      const session = createMockSession({ has_refresh_token: false });
+
+      render(
+        <SessionCard
+          session={session}
+          onTerminate={vi.fn()}
+          onRefresh={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByRole('button', { name: /refresh/i })).toBeNull();
+    });
+
+    it('calls onRefresh with service id when clicked', async () => {
+      const user = userEvent.setup();
+      const session = createMockSession();
+      const onRefresh = vi.fn();
+
+      render(
+        <SessionCard
+          session={session}
+          onTerminate={vi.fn()}
+          onRefresh={onRefresh}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /refresh/i }));
+
+      expect(onRefresh).toHaveBeenCalledWith(session.service_id);
+    });
+
+    it('does not render Refresh button when onRefresh is omitted', () => {
+      const session = createMockSession();
+
+      render(<SessionCard session={session} onTerminate={vi.fn()} />);
+
+      expect(screen.queryByRole('button', { name: /refresh/i })).toBeNull();
+    });
+  });
   describe('Loading State', () => {
     it('disables buttons and shows loading spinner when loading', () => {
       const session = createMockSession();

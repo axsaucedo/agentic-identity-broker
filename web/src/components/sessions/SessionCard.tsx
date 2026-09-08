@@ -29,6 +29,10 @@ interface SessionCardProps {
   onTerminate: (serviceId: string) => void;
   /** Callback when user clicks view details (optional) */
   onViewDetails?: (serviceId: string) => void;
+  /** Callback when user clicks the refresh button (force token refresh) */
+  onRefresh?: (serviceId: string) => void;
+  /** Whether the refresh action is currently loading for this card */
+  refreshing?: boolean;
   /** Whether card actions are currently loading */
   loading?: boolean;
 }
@@ -50,6 +54,8 @@ export const SessionCard: React.FC<SessionCardProps> = ({
   session,
   onTerminate,
   onViewDetails,
+  onRefresh,
+  refreshing = false,
   loading = false,
 }) => {
   // Determine status and color variant
@@ -112,10 +118,22 @@ export const SessionCard: React.FC<SessionCardProps> = ({
               variant="outline"
               size="sm"
               onClick={() => onViewDetails(session.service_id)}
-              disabled={loading}
+              disabled={loading || refreshing}
               className="flex-shrink-0"
             >
               View Details
+            </Button>
+          )}
+          {onRefresh && session.has_refresh_token && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onRefresh(session.service_id)}
+              isLoading={refreshing}
+              disabled={loading || refreshing}
+              className="flex-shrink-0"
+            >
+              Refresh
             </Button>
           )}
           {!session.is_expired && (
@@ -124,7 +142,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({
               size="sm"
               onClick={() => onTerminate(session.service_id)}
               isLoading={loading}
-              disabled={loading}
+              disabled={loading || refreshing}
               className="flex-shrink-0"
             >
               Terminate

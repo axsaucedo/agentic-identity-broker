@@ -602,6 +602,96 @@ func (h *Handler) TerminateSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// RefreshSession handles POST /api/third-party/{serviceId}/session/refresh
+// Forces an OAuth2 access-token refresh using the stored refresh token.
+func (h *Handler) RefreshSession(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	principalValue, ok := principal.FromContext(ctx)
+	if !ok || principalValue == "" {
+		h.logger.Warn("principal not found in context in refresh session request")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":   "unauthorized",
+			"message": "principal not found in context",
+		})
+		return
+	}
+
+	serviceIDStr := chi.URLParam(r, "serviceId")
+	if serviceIDStr == "" {
+		h.logger.Warn("missing serviceId in refresh session request")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":   "invalid_request",
+			"message": "serviceId parameter required in path",
+		})
+		return
+	}
+
+	parsedServiceID, err := id.ParseServiceID(serviceIDStr)
+	if err != nil {
+		h.logger.Warn("invalid serviceId format in refresh session request", "service_id", serviceIDStr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":   "invalid_request",
+			"message": "serviceId must be a valid UUID",
+		})
+		return
+	}
+
+	summary, err := h.service.ForceRefreshSession(ctx, id.Principal(principalValue), parsedServiceID)
+	if err != nil {
+		switch {
+		case errors.Is(err, oauth2session.ErrSessionNotFound):
+			h.logger.Warn("session not found for refresh", "service_id", serviceIDStr, "principal", principalValue)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":   "not_found",
+				"message": "session not found",
+			})
+		case errors.Is(err, oauth2session.ErrRefreshNotAvailable):
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":   "refresh_unavailable",
+				"message": "no valid refresh token available for this session",
+			})
+		case errors.Is(err, oauth2session.ErrRefreshFailed):
+			h.logger.Error("force refresh failed at upstream",
+				"principal", principalValue,
+				"service_id", serviceIDStr,
+				"error", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":   "refresh_failed",
+				"message": "failed to refresh token with the third-party provider",
+			})
+		default:
+			h.logger.Error("failed to refresh session",
+				"principal", principalValue,
+				"service_id", serviceIDStr,
+				"error", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":   "internal_error",
+				"message": "failed to refresh session",
+			})
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"data": summary})
+}
+
 // RegisterRoutes registers all OAuth2 session routes with the router.
 // Routes are relative to /api (e.g., "/third-party/sessions" becomes "/api/third-party/sessions")
 func (h *Handler) RegisterRoutes(router chi.Router) {
@@ -610,4 +700,5 @@ func (h *Handler) RegisterRoutes(router chi.Router) {
 	router.Get("/third-party/{serviceId}/oauth2/callback", h.HandleCallback)
 	router.Get("/third-party/{serviceId}/session", h.GetSessionDetails)
 	router.Delete("/third-party/{serviceId}/session", h.TerminateSession)
+	router.Post("/third-party/{serviceId}/session/refresh", h.RefreshSession)
 }

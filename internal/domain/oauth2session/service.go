@@ -1121,66 +1121,9 @@ func (s *OAuth2SessionService) GetValidAccessToken(
 		return nil, "", fmt.Errorf("%w: principal=%s, service=%s", ErrSessionExpired, principal, serviceID)
 	}
 
-	// Step 4: Fetch service details for refresh operation (with decrypted client secret via service manager)
-	service, err := s.providerService.Get(ctx, serviceID)
-	if err != nil {
-		s.logger.Error("failed to fetch service for token refresh",
-			"principal", principal,
-			"service_id", serviceID,
-			"err", err)
-		return nil, "", fmt.Errorf("failed to fetch service for token refresh: %w", err)
+	if err := s.refreshSessionTokens(ctx, principal, session); err != nil {
+		return nil, "", err
 	}
-
-	if service == nil {
-		return nil, "", fmt.Errorf("service not found for refresh: service_id=%s", serviceID)
-	}
-
-	// Step 5: Decrypt refresh token
-	refreshToken, err := s.DecryptRefreshToken(ctx, session)
-	if err != nil {
-		s.logger.Error("failed to decrypt refresh token",
-			"principal", principal,
-			"service_id", serviceID,
-			"err", err)
-		return nil, "", fmt.Errorf("failed to decrypt refresh token: %w", err)
-	}
-
-	// Defensive: ensure refresh token is not empty
-	if refreshToken == "" {
-		return nil, "", fmt.Errorf("refresh token is empty: principal=%s, service=%s", principal, serviceID)
-	}
-
-	// Step 6: Call upstream OAuth2 provider to refresh tokens
-	newToken, err := s.RefreshAccessToken(ctx, service, refreshToken)
-	if err != nil {
-		s.logger.Error("oauth2_refresh_failed",
-			"event", "session.oauth2.refresh_failed",
-			"principal", principal,
-			"service_id", serviceID,
-			"error", err.Error(),
-			"timestamp", time.Now().Unix())
-		return nil, "", fmt.Errorf("%w: %v", ErrRefreshFailed, err)
-	}
-
-	if newToken == nil {
-		return nil, "", fmt.Errorf("upstream provider returned nil token: principal=%s, service=%s", principal, serviceID)
-	}
-
-	// Step 7: Update session with new tokens from refresh
-	if err := s.UpdateSessionTokens(ctx, principal, session, newToken); err != nil {
-		s.logger.Error("failed to update session with refreshed tokens",
-			"principal", principal,
-			"service_id", serviceID,
-			"err", err)
-		return nil, "", fmt.Errorf("failed to update session with refreshed tokens: %w", err)
-	}
-
-	// Audit log: Token refresh succeeded
-	s.logger.Info("oauth2_token_refreshed",
-		"event", "session.oauth2.token_refreshed",
-		"principal", principal,
-		"service_id", serviceID,
-		"timestamp", time.Now().Unix())
 
 	// Step 8: Decrypt and return the new access token along with updated session
 	accessToken, err := s.DecryptAccessToken(ctx, session)
@@ -1189,6 +1132,75 @@ func (s *OAuth2SessionService) GetValidAccessToken(
 	}
 
 	return session, accessToken, nil
+}
+
+// refreshSessionTokens refreshes the session's access token against the upstream
+// provider using the stored refresh token and persists the rotated tokens in place.
+// Precondition: session.CanRefresh() is true. Returns ErrRefreshFailed (wrapped) on
+// upstream rejection; other errors are wrapped with context.
+func (s *OAuth2SessionService) refreshSessionTokens(
+	ctx context.Context,
+	principal id.Principal,
+	session *storage.UserSession,
+) error {
+	serviceID := session.ServiceID
+
+	service, err := s.providerService.Get(ctx, serviceID)
+	if err != nil {
+		s.logger.Error("failed to fetch service for token refresh",
+			"principal", principal,
+			"service_id", serviceID,
+			"err", err)
+		return fmt.Errorf("failed to fetch service for token refresh: %w", err)
+	}
+
+	if service == nil {
+		return fmt.Errorf("service not found for refresh: service_id=%s", serviceID)
+	}
+
+	refreshToken, err := s.DecryptRefreshToken(ctx, session)
+	if err != nil {
+		s.logger.Error("failed to decrypt refresh token",
+			"principal", principal,
+			"service_id", serviceID,
+			"err", err)
+		return fmt.Errorf("failed to decrypt refresh token: %w", err)
+	}
+
+	if refreshToken == "" {
+		return fmt.Errorf("refresh token is empty: principal=%s, service=%s", principal, serviceID)
+	}
+
+	newToken, err := s.RefreshAccessToken(ctx, service, refreshToken)
+	if err != nil {
+		s.logger.Error("oauth2_refresh_failed",
+			"event", "session.oauth2.refresh_failed",
+			"principal", principal,
+			"service_id", serviceID,
+			"error", err.Error(),
+			"timestamp", time.Now().Unix())
+		return fmt.Errorf("%w: %v", ErrRefreshFailed, err)
+	}
+
+	if newToken == nil {
+		return fmt.Errorf("upstream provider returned nil token: principal=%s, service=%s", principal, serviceID)
+	}
+
+	if err := s.UpdateSessionTokens(ctx, principal, session, newToken); err != nil {
+		s.logger.Error("failed to update session with refreshed tokens",
+			"principal", principal,
+			"service_id", serviceID,
+			"err", err)
+		return fmt.Errorf("failed to update session with refreshed tokens: %w", err)
+	}
+
+	s.logger.Info("oauth2_token_refreshed",
+		"event", "session.oauth2.token_refreshed",
+		"principal", principal,
+		"service_id", serviceID,
+		"timestamp", time.Now().Unix())
+
+	return nil
 }
 
 // GetSessionWithValidToken retrieves session metadata plus a valid access token.
@@ -1230,4 +1242,45 @@ func (s *OAuth2SessionService) GetSessionWithValidToken(
 	}
 
 	return session, token, nil
+}
+
+// ForceRefreshSession unconditionally refreshes the access token for a user's
+// session using the stored refresh token, even if the current access token is
+// still valid. Returns the updated session summary.
+func (s *OAuth2SessionService) ForceRefreshSession(
+	ctx context.Context,
+	principal id.Principal,
+	serviceID id.ServiceID,
+) (*storage.UserSessionSummary, error) {
+	session, err := s.sessionRepo.FindByPrincipalAndService(ctx, principal, serviceID)
+	if err != nil {
+		if err == ports.ErrNotFound {
+			return nil, fmt.Errorf("%w: principal=%s, service=%s", ErrSessionNotFound, principal, serviceID)
+		}
+		return nil, fmt.Errorf("failed to retrieve session: %w", err)
+	}
+	if session == nil {
+		return nil, fmt.Errorf("%w: principal=%s, service=%s", ErrSessionNotFound, principal, serviceID)
+	}
+	if !session.CanRefresh() {
+		return nil, fmt.Errorf("%w: principal=%s, service=%s", ErrRefreshNotAvailable, principal, serviceID)
+	}
+
+	if err := s.refreshSessionTokens(ctx, principal, session); err != nil {
+		return nil, err
+	}
+
+	agentCount, err := s.grantRepo.CountAgentsByServiceID(ctx, serviceID)
+	if err != nil {
+		s.logger.Warn("failed to count agents after refresh", "service_id", serviceID, "err", err)
+		agentCount = 0
+	}
+
+	service, err := s.providerService.Get(ctx, serviceID)
+	if err != nil || service == nil {
+		s.logger.Warn("failed to fetch service display name after refresh", "service_id", serviceID, "err", err)
+		return storage.NewUserSessionSummary(session, "", agentCount), nil
+	}
+
+	return storage.NewUserSessionSummary(session, service.DisplayName, agentCount), nil
 }

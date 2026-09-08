@@ -42,4 +42,7 @@ var (
 
 	// ErrRefreshFailed indicates token refresh operation failed with upstream provider.
 	ErrRefreshFailed = errors.New("failed to refresh access token with upstream provider")
+
+	// ErrRefreshNotAvailable indicates the session has no refresh token or the refresh token has expired.
+	ErrRefreshNotAvailable = errors.New("no valid refresh token available for session")
 )

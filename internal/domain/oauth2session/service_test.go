@@ -1550,6 +1550,142 @@ func TestTerminateSession_ReturnsErrorWhenPrincipalMismatch(t *testing.T) {
 	assert.True(t, errors.Is(err, oauth2session.ErrSessionNotFound), "error should be ErrSessionNotFound")
 }
 
+func TestForceRefreshSession(t *testing.T) {
+	t.Run("refreshes even when access token is valid", func(t *testing.T) {
+		ctx := context.Background()
+		service, _, providerService := setupService(t)
+		serviceID := id.NewServiceID()
+		provider := createTestService(serviceID)
+
+		var requests []url.Values
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.NoError(t, r.ParseForm())
+			requests = append(requests, r.Form)
+
+			w.Header().Set("Content-Type", "application/json")
+			switch r.Form.Get("grant_type") {
+			case "authorization_code":
+				_, _ = w.Write([]byte(`{"access_token":"initial-access-token","token_type":"Bearer","expires_in":3600,"refresh_token":"initial-refresh-token","scope":"repo user"}`))
+			case "refresh_token":
+				_, _ = w.Write([]byte(`{"access_token":"refreshed-access-token","token_type":"Bearer","expires_in":3600,"refresh_token":"rotated-refresh-token","scope":"repo user"}`))
+			default:
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"unsupported_grant_type"}`))
+			}
+		}))
+		defer mockServer.Close()
+
+		provider.Endpoints.TokenEndpoint = mockServer.URL
+		require.NoError(t, providerService.Create(ctx, provider))
+
+		principal := id.Principal("user@example.com")
+		flow, err := service.InitiateOAuth2Flow(ctx, principal, serviceID, "https://example.com/sessions")
+		require.NoError(t, err)
+
+		_, err = service.HandleCallback(ctx, principal, &oauth2session.HandleCallbackRequest{
+			ServiceID: serviceID,
+			Code:      "authorization-code",
+			State:     flow.StateToken,
+		})
+		require.NoError(t, err)
+
+		summary, err := service.ForceRefreshSession(ctx, principal, serviceID)
+		require.NoError(t, err)
+		require.NotNil(t, summary)
+		assert.True(t, summary.HasRefreshToken)
+		assert.Equal(t, serviceID, summary.ServiceID)
+		require.Len(t, requests, 2)
+		assert.Equal(t, "authorization_code", requests[0].Get("grant_type"))
+		assert.Equal(t, "refresh_token", requests[1].Get("grant_type"))
+		assert.Equal(t, "initial-refresh-token", requests[1].Get("refresh_token"))
+	})
+
+	t.Run("no session", func(t *testing.T) {
+		ctx := context.Background()
+		service, _, _ := setupService(t)
+
+		_, err := service.ForceRefreshSession(ctx, id.Principal("user@example.com"), id.NewServiceID())
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, oauth2session.ErrSessionNotFound))
+	})
+
+	t.Run("no refresh token", func(t *testing.T) {
+		ctx := context.Background()
+		service, _, providerService := setupService(t)
+		serviceID := id.NewServiceID()
+		provider := createTestService(serviceID)
+
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.NoError(t, r.ParseForm())
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"initial-access-token","token_type":"Bearer","expires_in":3600,"scope":"repo user"}`))
+		}))
+		defer mockServer.Close()
+
+		provider.Endpoints.TokenEndpoint = mockServer.URL
+		require.NoError(t, providerService.Create(ctx, provider))
+
+		principal := id.Principal("user@example.com")
+		flow, err := service.InitiateOAuth2Flow(ctx, principal, serviceID, "https://example.com/sessions")
+		require.NoError(t, err)
+
+		_, err = service.HandleCallback(ctx, principal, &oauth2session.HandleCallbackRequest{
+			ServiceID: serviceID,
+			Code:      "authorization-code",
+			State:     flow.StateToken,
+		})
+		require.NoError(t, err)
+
+		_, err = service.ForceRefreshSession(ctx, principal, serviceID)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, oauth2session.ErrRefreshNotAvailable))
+	})
+
+	t.Run("upstream rejects", func(t *testing.T) {
+		ctx := context.Background()
+		service, _, providerService := setupService(t)
+		serviceID := id.NewServiceID()
+		provider := createTestService(serviceID)
+
+		seedServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.NoError(t, r.ParseForm())
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"initial-access-token","token_type":"Bearer","expires_in":3600,"refresh_token":"initial-refresh-token","scope":"repo user"}`))
+		}))
+		defer seedServer.Close()
+
+		provider.Endpoints.TokenEndpoint = seedServer.URL
+		require.NoError(t, providerService.Create(ctx, provider))
+
+		principal := id.Principal("user@example.com")
+		flow, err := service.InitiateOAuth2Flow(ctx, principal, serviceID, "https://example.com/sessions")
+		require.NoError(t, err)
+
+		_, err = service.HandleCallback(ctx, principal, &oauth2session.HandleCallbackRequest{
+			ServiceID: serviceID,
+			Code:      "authorization-code",
+			State:     flow.StateToken,
+		})
+		require.NoError(t, err)
+
+		rejectServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.NoError(t, r.ParseForm())
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"refresh rejected"}`))
+		}))
+		defer rejectServer.Close()
+
+		provider.Secret = model.NewPlaintextSecret("test-client-secret")
+		provider.Endpoints.TokenEndpoint = rejectServer.URL
+		require.NoError(t, providerService.Update(ctx, provider, nil))
+
+		_, err = service.ForceRefreshSession(ctx, principal, serviceID)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, oauth2session.ErrRefreshFailed))
+	})
+}
+
 // =============================================================================
 // Tests for GetSessionWithAgents (T064)
 // =============================================================================

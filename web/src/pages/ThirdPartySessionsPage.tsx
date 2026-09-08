@@ -27,6 +27,7 @@ import { useSessions } from '@hooks/useSessions';
 import { SessionCard } from '@components/sessions/SessionCard';
 import { TerminationDialog } from '@components/sessions/TerminationDialog';
 import { sessionsApi } from '@services/api/sessions';
+import { extractApiError } from '@utils/api';
 import type { SessionDetail } from '@services/api/sessions';
 
 /**
@@ -64,6 +65,9 @@ export const ThirdPartySessionsPage: React.FC = () => {
   const [terminatingLoading, setTerminatingLoading] = useState(false);
   const [terminationError, setTerminationError] = useState<string | null>(null);
   const [alert, setAlert] = useState<AlertState | null>(null);
+  const [refreshingServiceIds, setRefreshingServiceIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   /**
    * Map OAuth2 error codes to user-friendly messages.
@@ -171,14 +175,9 @@ export const ThirdPartySessionsPage: React.FC = () => {
       });
     } catch (err) {
       console.error('Failed to terminate session', err);
-
-      // Extract error message
-      let errorMessage = 'Failed to terminate session. Please try again.';
-      if (err && typeof err === 'object' && 'message' in err) {
-        errorMessage = (err as { message: string }).message;
-      }
-
-      setTerminationError(errorMessage);
+      setTerminationError(
+        extractApiError(err, 'Failed to terminate session. Please try again.'),
+      );
     } finally {
       setTerminatingLoading(false);
     }
@@ -188,6 +187,34 @@ export const ThirdPartySessionsPage: React.FC = () => {
     setSelectedSessionId(null);
     setSelectedSessionDetails(null);
     setTerminationError(null);
+  };
+
+  const handleRefresh = async (serviceId: string) => {
+    try {
+      setRefreshingServiceIds((prev) => new Set(prev).add(serviceId));
+      setAlert(null);
+      await sessionsApi.refreshSession(serviceId);
+      await refetch();
+      setAlert({
+        type: 'success',
+        message: 'Session token refreshed successfully.',
+      });
+    } catch (err) {
+      console.error('Failed to refresh session token', err);
+      setAlert({
+        type: 'error',
+        message: extractApiError(
+          err,
+          'Failed to refresh session token. Please try again.',
+        ),
+      });
+    } finally {
+      setRefreshingServiceIds((prev) => {
+        const next = new Set(prev);
+        next.delete(serviceId);
+        return next;
+      });
+    }
   };
 
   // Loading state with skeleton cards
@@ -370,6 +397,8 @@ export const ThirdPartySessionsPage: React.FC = () => {
                   key={session.id}
                   session={session}
                   onTerminate={handleTerminate}
+                  onRefresh={handleRefresh}
+                  refreshing={refreshingServiceIds.has(session.service_id)}
                   loading={
                     terminatingLoading &&
                     selectedSessionId === session.service_id
