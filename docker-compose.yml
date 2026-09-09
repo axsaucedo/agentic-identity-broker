@@ -160,6 +160,13 @@ services:
       identity-broker:
         condition: service_healthy
 
+  opa-bundle-volume-init:
+    image: alpine:latest
+    user: "0:0" # Required to give the non-root builder ownership of /output.
+    network_mode: none
+    volumes: [opa-bundles:/output]
+    command: ["chown", "-R", "1000:1000", "/output"]
+
   # Compiles mocks/opa/bundle/ into the opa-bundles volume at startup.
   # For local policy development and testing, use `just opa-check` instead.
   opa-bundle-build:
@@ -171,6 +178,9 @@ services:
       - opa-bundles:/output
     command: ["build", "--debug", "-o", "/output/mcp-authz.tar.gz", "."]
     restart: "no"
+    depends_on:
+      opa-bundle-volume-init:
+        condition: service_completed_successfully
 
   # Serves the compiled bundle as a static file for OPA to poll.
   opa-bundle-server:

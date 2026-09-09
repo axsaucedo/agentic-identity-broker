@@ -27,7 +27,7 @@ deny contains {"reason": "unknown request type"} if {
 
 result := {"action": "deny", "reasons": _deny_reasons} if {
 	count(deny) > 0
-	_deny_reasons := [entry.reason | some entry in deny]
+	_deny_reasons := [r | some entry in deny; r := entry.reason]
 }
 
 # Allow if no deny and at least one allow
