@@ -8,7 +8,7 @@ import (
 	"github.com/mxschmitt/playwright-go"
 )
 
-const thirdPartySessionsRoute = "/consent/oauth2/sessions"
+const thirdPartySessionsRoute = "/sessions"
 
 type SessionsPage struct {
 	*Page

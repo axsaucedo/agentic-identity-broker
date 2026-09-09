@@ -66,9 +66,9 @@ Main page component that displays all OAuth2 sessions in a responsive grid layou
 
 **Route:**
 
-- Path: `/oauth2/sessions`
-- Base: `/consent` (configured in App.tsx)
-- Full URL: `http://localhost:3000/consent/oauth2/sessions`
+- Path: `/sessions`
+- Base: `/` (configured in App.tsx)
+- Full URL: `http://localhost:3000/sessions`
 
 **States:**
 
@@ -205,7 +205,7 @@ just run
 just web-dev
 ```
 
-Access frontend at: http://localhost:3000/consent/oauth2/sessions
+Access frontend at: http://localhost:3000/sessions
 API proxied to: http://localhost:8000
 
 **Option 2: Production Build**
@@ -215,7 +215,7 @@ API proxied to: http://localhost:8000
 just web-build && just run
 ```
 
-Access at: http://localhost:8000/consent/oauth2/sessions
+Access at: http://localhost:8000/sessions
 
 ### Vite Proxy Configuration
 

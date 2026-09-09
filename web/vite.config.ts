@@ -2,33 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-// SPA fallback plugin: serve index.html for client-side routes
-function spaSinglePageAppPlugin() {
-  return {
-    name: 'spa-fallback',
-    configureServer(server) {
-      return () => {
-        server.middlewares.use((req, res, next) => {
-          const url = req.url?.split('?')[0] || '';
-          const hasFileExtension = /\.\w+$/.test(url);
-          const isConsentPath = url.startsWith('/consent');
-
-          // Serve index.html for consent routes without file extensions
-          if (isConsentPath && !hasFileExtension && url !== '/consent/') {
-            req.url = '/consent/index.html';
-          }
-          next();
-        });
-      };
-    },
-  };
-}
-
 export default defineConfig({
-  plugins: [react(), spaSinglePageAppPlugin()],
-  base: '/consent',
+  plugins: [react()],
+  base: '/',
   build: {
-    outDir: 'dist/consent',
+    outDir: 'dist',
     sourcemap: false,
     minify: 'terser',
   },
@@ -52,15 +30,12 @@ export default defineConfig({
     } : {}),
 
     proxy: {
-      // Match all paths EXCEPT: node_modules, @vite, __vite, /consent (frontend files), and file extensions
-      '^/(?!node_modules|@vite|__vite|consent).*': {
+      // Proxy backend namespaces to the Go server; Vite serves all SPA view routes.
+      '^/(api|oauth2|\\.well-known|health)(/|$)': {
         target: process.env.VITE_API_URL || 'http://localhost:8000',
         changeOrigin: true,
-        rewrite: (path) => path,
-        configure: (proxy, _options) => {
-          proxy.on('proxyReq', (proxyReq, req, res) => {
-            // Add development principal for local testing
-            // In production, authentication is handled by the browser/upstream proxy
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
             proxyReq.setHeader('X-Remote-User', 'dev@example.com');
           });
         },

@@ -759,7 +759,7 @@ describe('AgentGrantDetailPage - CIMD session_token flow', () => {
     });
 
     render(
-      <MemoryRouterWrapper initialEntry="/agent/agent-123?session_token=test-session-abc">
+      <MemoryRouterWrapper initialEntry="/agents/agent-123?session_token=test-session-abc">
         <AgentGrantDetailPage />
       </MemoryRouterWrapper>,
     );
@@ -789,7 +789,7 @@ describe('AgentGrantDetailPage - CIMD session_token flow', () => {
     });
 
     render(
-      <MemoryRouterWrapper initialEntry="/agent/agent-123?session_token=test-session-abc">
+      <MemoryRouterWrapper initialEntry="/agents/agent-123?session_token=test-session-abc">
         <AgentGrantDetailPage />
       </MemoryRouterWrapper>,
     );

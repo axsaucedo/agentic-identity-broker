@@ -113,7 +113,7 @@ var _ = Describe("CIMD Full Authorization Flow", func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusFound))
 
 			loc := resp.Header.Get("Location")
-			Expect(loc).To(ContainSubstring("/consent/agent/"))
+			Expect(loc).To(ContainSubstring("/agents/"))
 			Expect(loc).To(ContainSubstring(agent.ID.String()))
 
 			consentLoc, err := url.Parse(loc)

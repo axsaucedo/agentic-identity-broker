@@ -182,7 +182,7 @@ func TestImpersonate_RequiresActiveUserDelegation(t *testing.T) {
 			require.ErrorAs(t, err, &tokenErr)
 			assert.Equal(t, tokenexchange.AccessDeniedError, tokenErr.Code())
 			assert.Equal(t, "user delegation is required before impersonation", tokenErr.Description())
-			assert.Equal(t, "https://broker.example.com/consent/agent/"+target.Agent.ID.String(), tokenErr.ErrorURI())
+			assert.Equal(t, "https://broker.example.com/agents/"+target.Agent.ID.String(), tokenErr.ErrorURI())
 			assert.Equal(t, tc.details, tokenErr.Details())
 			assert.Equal(t, tc.details, outcome.Audit.FailureCategory)
 			assert.False(t, issuer.called)

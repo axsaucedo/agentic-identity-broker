@@ -418,11 +418,6 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 
 	switch options.serverType {
 	case ServerTypeEndUser:
-		// Temporarily disable SPA so SetupEnduserRoutes skips /consent/* registration,
-		// then add a catch-all /* instead for test flexibility.
-		spaSaved := app.EnduserHandlers.SPA
-		app.EnduserHandlers.SPA = nil
-		defer func() { app.EnduserHandlers.SPA = spaSaved }()
 		healthComponents = app.EnduserHealthComponents
 		routeSetup = func(r chi.Router) {
 			routing.SetupEnduserRoutes(r, app.EnduserHandlers, routing.EnduserRouteConfig{
@@ -433,9 +428,6 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 				CORS:                         app.Config.Server.EndUser.CORS,
 				Telemetry:                    app.Config.Telemetry,
 			})
-			if spaSaved != nil {
-				r.Handle("/*", spaSaved)
-			}
 		}
 		serverCfg.Name = "enduser"
 		serverCfg.Authentication = app.Config.Server.EndUser.Authentication
@@ -899,9 +891,6 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 			CORS:                         appInstance.Config.Server.EndUser.CORS,
 			Telemetry:                    appInstance.Config.Telemetry,
 		})
-		if appInstance.EnduserHandlers.SPA != nil {
-			r.Handle("/*", appInstance.EnduserHandlers.SPA)
-		}
 	}
 
 	serverCfg := httpAdapter.ServerConfig{

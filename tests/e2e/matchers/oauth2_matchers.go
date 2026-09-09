@@ -74,7 +74,7 @@ func (m *oauth2RedirectMatcher) Match(actual interface{}) (success bool, err err
 		}
 
 		// Handle relative URLs (no scheme/host in expected)
-		// If expected URL is relative (e.g., /consent/agent/123), just compare paths
+		// If expected URL is relative (e.g., /agents/123), just compare paths
 		if parsedExpected.Scheme == "" && parsedExpected.Host == "" {
 			// Relative URL match - only compare paths
 			if parsedLocation.Path != parsedExpected.Path {

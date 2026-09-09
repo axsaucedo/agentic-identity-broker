@@ -25,7 +25,6 @@ bin/
 !bin/linux/
 dist/*
 !web/dist/
-!web/dist/consent/
 coverage/
 *.test.js
 *.spec.js

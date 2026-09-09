@@ -486,7 +486,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			// CRITICAL FIX #2: Add redirect Location header verification
 			location := resp.Header.Get("Location")
 			Expect(location).ToNot(BeEmpty(), "Redirect should have Location header")
-			Expect(location).To(ContainSubstring("/consent/agent/"))
+			Expect(location).To(ContainSubstring("/agents/"))
 			Expect(location).To(ContainSubstring(agent.ID.String()))
 		})
 
@@ -582,7 +582,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			// CRITICAL FIX #2: Verify redirect goes to upstream (not consent)
 			location := resp.Header.Get("Location")
 			Expect(location).ToNot(BeEmpty(), "Redirect should have Location header")
-			Expect(location).ToNot(ContainSubstring("/consent/agent/"), "Should proxy to upstream, not consent")
+			Expect(location).ToNot(ContainSubstring("/agents/"), "Should proxy to upstream, not consent")
 		})
 
 		// Scenario 4: spec.md User Story 2, Scenario 4
@@ -619,7 +619,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			// CRITICAL FIX #2: Verify redirect location
 			location := resp.Header.Get("Location")
 			Expect(location).ToNot(BeEmpty(), "Redirect should have Location header")
-			Expect(location).To(ContainSubstring("/consent/agent/"))
+			Expect(location).To(ContainSubstring("/agents/"))
 			Expect(location).To(ContainSubstring(agent.ID.String()))
 		})
 

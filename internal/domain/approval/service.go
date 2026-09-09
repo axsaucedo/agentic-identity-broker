@@ -405,7 +405,7 @@ func (s *Service) CreatePendingApproval(ctx context.Context, req CreateApprovalR
 	now := time.Now()
 	expiresAt := now.Add(s.pendingTTL)
 	approvalID := id.NewApprovalID()
-	approvalURL := fmt.Sprintf("%s/consent/approvals/%s", s.publicURL, approvalID.String())
+	approvalURL := fmt.Sprintf("%s/approvals/%s", s.publicURL, approvalID.String())
 
 	newApproval := &storage.ToolApproval{
 		ID:                       approvalID,

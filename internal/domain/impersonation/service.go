@@ -265,10 +265,10 @@ func (s *Service) evaluateRule(ctx context.Context, rule *compiledRule, req *Req
 	switch delegationStatus {
 	case ports.UserDelegationActive:
 	case ports.UserDelegationMissing:
-		res.abort = consentRequired(strings.TrimRight(s.consentBaseURL, "/")+"/consent/agent/"+targetAgent.ID.String(), "user_grant_missing")
+		res.abort = consentRequired(strings.TrimRight(s.consentBaseURL, "/")+"/agents/"+targetAgent.ID.String(), "user_grant_missing")
 		return res
 	case ports.UserDelegationExpired:
-		res.abort = consentRequired(strings.TrimRight(s.consentBaseURL, "/")+"/consent/agent/"+targetAgent.ID.String(), "user_grant_expired")
+		res.abort = consentRequired(strings.TrimRight(s.consentBaseURL, "/")+"/agents/"+targetAgent.ID.String(), "user_grant_expired")
 		return res
 	default:
 		res.abort = serverError("user delegation verification returned an unknown status", "user_grant_lookup_failed")

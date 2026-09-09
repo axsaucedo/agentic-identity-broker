@@ -50,7 +50,7 @@ interface AlertState {
  *
  * @example
  * ```tsx
- * <Route path="/oauth2/sessions" element={<ThirdPartySessionsPage />} />
+ * <Route path="/sessions" element={<ThirdPartySessionsPage />} />
  * ```
  */
 export const ThirdPartySessionsPage: React.FC = () => {
@@ -114,7 +114,7 @@ export const ThirdPartySessionsPage: React.FC = () => {
       // Auto-dismiss after 5 seconds and clear URL
       const timer = setTimeout(() => {
         setAlert(null);
-        navigate('/consent/sessions', { replace: true });
+        navigate('/sessions', { replace: true });
       }, 5000);
 
       return () => clearTimeout(timer);
@@ -124,7 +124,7 @@ export const ThirdPartySessionsPage: React.FC = () => {
       setAlert({ type: 'error', message });
 
       // Clear URL immediately (don't auto-dismiss error alerts)
-      navigate('/consent/sessions', { replace: true });
+      navigate('/sessions', { replace: true });
     }
   }, [location.search, navigate, refetch]);
 

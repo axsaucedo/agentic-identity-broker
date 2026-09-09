@@ -101,22 +101,22 @@ func NewPage(page playwright.Page, baseURL string) *Page {
 //
 // Parameters:
 //   - ctx: Context for cancellation and timeouts
-//   - path: Relative path (e.g., "/consent", "agent/123")
+//   - path: Relative path (e.g., "/", "agent/123")
 //
 // Returns:
 //   - error: If navigation fails (network error, invalid URL, etc.)
 //
 // Error messages include the full URL for debugging:
-// - "failed to navigate to http://localhost:3000/consent: context cancelled"
+// - "failed to navigate to http://localhost:3000/: context cancelled"
 // - "failed to navigate to http://localhost:3000/404: HTTP 404"
 //
 // Example:
 //
-//	err := p.Navigate(ctx, "/consent")
+//	err := p.Navigate(ctx, "/")
 //	require.NoError(t, err)
 //
 //	// Navigate with path parameters
-//	err = p.Navigate(ctx, "/agent/123/detail")
+//	err = p.Navigate(ctx, "/agents/123/detail")
 //	require.NoError(t, err)
 func (p *Page) Navigate(ctx context.Context, path string) error {
 	// Ensure path is absolute
@@ -283,7 +283,7 @@ func (p *Page) WaitForNavigation(ctx context.Context) error {
 // Example:
 //
 //	// Take screenshot on test failure
-//	err := p.Navigate(ctx, "/consent")
+//	err := p.Navigate(ctx, "/")
 //	if err != nil {
 //		_ = p.TakeScreenshot(ctx, "navigation_failed")
 //		t.Fatal(err)
@@ -423,16 +423,17 @@ func isPlaywrightTimeout(err error) bool {
 // Useful for verifying navigation without waiting.
 //
 // Returns:
-//   - string: Current page URL (e.g., "http://localhost:3000/consent")
+//   - string: Current page URL (e.g., "http://localhost:3000/")
 //   - error: Never returns error; always succeeds
 //
 // Example:
 //
-//	currentURL := p.GetCurrentURL(ctx)
+//	currentURL, err := p.GetCurrentURL(ctx)
+//	require.NoError(t, err)
 //	fmt.Printf("Currently on: %s\n", currentURL)
 //
-//	// Verify we're on expected page
-//	require.Contains(t, p.GetCurrentURL(ctx), "/consent")
+//	// Verify that a URL was returned.
+//	require.NotEmpty(t, currentURL)
 func (p *Page) GetCurrentURL(ctx context.Context) (string, error) {
 	return p.page.URL(), nil
 }

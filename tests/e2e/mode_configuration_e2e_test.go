@@ -122,7 +122,7 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			// Without an existing grant, proxy mode redirects to consent
 			Expect(resp.StatusCode).To(Equal(http.StatusFound))
 			loc := resp.Header.Get("Location")
-			Expect(loc).To(ContainSubstring("/consent/agent/" + agent.ID.String()))
+			Expect(loc).To(ContainSubstring("/agents/" + agent.ID.String()))
 		})
 
 		It("rejects URL-format client_id since CIMD is not available in proxy mode", func() {
@@ -218,7 +218,7 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 
 			Expect(resp.StatusCode).To(Equal(http.StatusFound))
 			loc := resp.Header.Get("Location")
-			Expect(loc).To(ContainSubstring("/consent/agent/" + agent.ID.String()))
+			Expect(loc).To(ContainSubstring("/agents/" + agent.ID.String()))
 		})
 
 		It("rejects URL-format client_id when CIMD is disabled", func() {
@@ -329,7 +329,7 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			// CIMD-enabled: resolves agent and redirects to consent
 			Expect(resp.StatusCode).To(Equal(http.StatusFound))
 			loc := resp.Header.Get("Location")
-			Expect(loc).To(ContainSubstring("/consent/agent/" + agent.ID.String()))
+			Expect(loc).To(ContainSubstring("/agents/" + agent.ID.String()))
 		})
 
 		It("still resolves plain string client_id for registered agents", func() {
@@ -353,7 +353,7 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 
 			Expect(resp.StatusCode).To(Equal(http.StatusFound))
 			loc := resp.Header.Get("Location")
-			Expect(loc).To(ContainSubstring("/consent/agent/" + agent.ID.String()))
+			Expect(loc).To(ContainSubstring("/agents/" + agent.ID.String()))
 		})
 	})
 })

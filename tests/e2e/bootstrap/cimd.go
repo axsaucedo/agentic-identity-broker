@@ -95,9 +95,6 @@ func NewCIMDEndUserTestServer(storage interface{}, sf *ServerFactory, cimdFetche
 			CORS:                         appInstance.Config.Server.EndUser.CORS,
 			Telemetry:                    appInstance.Config.Telemetry,
 		})
-		if appInstance.EnduserHandlers.SPA != nil {
-			r.Handle("/*", appInstance.EnduserHandlers.SPA)
-		}
 	}
 
 	router := httpAdapter.NewHandler(serverCfg, routeSetup, appInstance.Logger)

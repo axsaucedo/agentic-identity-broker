@@ -12,7 +12,7 @@ import (
 // ToolAuthorizationsPage represents the tool authorizations management page where users
 // view pending approvals and manage permanent tool permissions.
 //
-// Route: /consent/tool-authorizations
+// Route: /approvals
 //
 // Sections:
 //   - Pending Approvals: list of pending tool requests with inline approve/deny
@@ -34,9 +34,9 @@ func (tp *ToolAuthorizationsPage) pwPage() playwright.Page {
 }
 
 // NavigateToToolAuthorizations navigates to the tool authorizations page.
-// Route: /consent/tool-authorizations
+// Route: /approvals
 func (tp *ToolAuthorizationsPage) NavigateToToolAuthorizations(ctx context.Context) error {
-	return tp.Navigate(ctx, "/consent/tool-authorizations")
+	return tp.Navigate(ctx, "/approvals")
 }
 
 // --- Page state ---

@@ -7,6 +7,11 @@ description: Notable changes, breaking changes, and migration guidance for the A
 
 ## [NEXT VERSION] — Breaking Changes
 
+### Root-Mounted Consent SPA (038)
+
+- **BREAKING**: The canonical consent browser paths start at `/`. The sessions page is `/sessions`. Former `/consent` paths do not receive server-side redirects.
+- **Confirmation**: The user approved ADR 035 in this conversation.
+
 ### Protected Resource Subresources (035)
 
 - **BREAKING**: Full-service `PUT /api/services/{id}` preserves protected resources when `protected_resources` is omitted. Supplying the field, including an empty set, replaces the set only with a current strong `If-Match` ETag; requests without it receive `428`, and stale ETags receive `412` without changing the set.

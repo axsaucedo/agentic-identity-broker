@@ -466,7 +466,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
             It("should redirect to consent UI", func() {
                 // Test: valid agent + no grant -> consent redirect
                 resp, err := server.AuthenticatedGET(...)
-                Expect(resp).To(matchers.HaveOAuth2Redirect("/consent/agent/"))
+                Expect(resp).To(matchers.HaveOAuth2Redirect("/agents/"))
             })
 
             It("should preserve original request URL in redirect_uri parameter", func() {
@@ -513,7 +513,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
             It("should treat expired grant as non-existent and redirect to consent", func() {
                 // Test: valid agent + expired grant -> same as no grant
                 resp, err := server.AuthenticatedGET(...)
-                Expect(resp).To(matchers.HaveOAuth2Redirect("/consent/agent/"))
+                Expect(resp).To(matchers.HaveOAuth2Redirect("/agents/"))
             })
         })
     })
@@ -1358,7 +1358,7 @@ Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
 Expect(body).To(matchers.HaveOAuth2Error("invalid_request", "description"))
 
 // Redirects
-Expect(resp).To(matchers.BeRedirectTo("/consent/agent/123"))
+Expect(resp).To(matchers.BeRedirectTo("/agents/123"))
 
 // Metadata
 Expect(body).To(matchers.ContainOAuth2Metadata("issuer", "https://..."))
@@ -1862,7 +1862,7 @@ Describe("when processing requests", func() {
         // No grant created
 
         resp, _ := server.AuthenticatedGET(path, principal)
-        Expect(resp).To(matchers.BeRedirectTo("/consent/"))
+        Expect(resp).To(matchers.BeRedirectTo("/"))
     })
 
     It("should handle request with active grant", func() {
@@ -1882,7 +1882,7 @@ Describe("when processing requests", func() {
         testStorage.UserGrants().Create(ctx, grant)
 
         resp, _ := server.AuthenticatedGET(path, principal)
-        Expect(resp).To(matchers.BeRedirectTo("/consent/"))
+        Expect(resp).To(matchers.BeRedirectTo("/"))
     })
 })
 ```
@@ -1918,7 +1918,7 @@ Describe("when processing authorization requests", func() {
         It("should redirect to consent UI", func() {
             path := fmt.Sprintf("/oauth2/authorize?client_id=%s&...", agent.ClientID)
             resp, _ := server.AuthenticatedGET(path, principal)
-            Expect(resp).To(matchers.BeRedirectTo("/consent/agent/" + agent.ID))
+            Expect(resp).To(matchers.BeRedirectTo("/agents/" + agent.ID))
         })
     })
 
@@ -1946,7 +1946,7 @@ Describe("when processing authorization requests", func() {
         It("should redirect to consent UI", func() {
             path := fmt.Sprintf("/oauth2/authorize?client_id=%s&...", agent.ClientID)
             resp, _ := server.AuthenticatedGET(path, principal)
-            Expect(resp).To(matchers.BeRedirectTo("/consent/agent/" + agent.ID))
+            Expect(resp).To(matchers.BeRedirectTo("/agents/" + agent.ID))
         })
     })
 })

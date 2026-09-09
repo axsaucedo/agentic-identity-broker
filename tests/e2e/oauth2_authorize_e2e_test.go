@@ -360,10 +360,10 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (local mode)", func() {
 		Expect(err).ToNot(HaveOccurred())
 		defer func() { _ = resp.Body.Close() }()
 
-		// Should redirect to consent
+		// Should redirect to the root-mounted agent view.
 		Expect(resp.StatusCode).To(Equal(http.StatusFound))
 		location := resp.Header.Get("Location")
-		Expect(location).To(ContainSubstring("consent"))
+		Expect(location).To(ContainSubstring("/agents/"))
 	})
 
 	// Scenario 4.6 from specs/025-oauth2-server/spec.md

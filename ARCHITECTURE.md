@@ -30,7 +30,7 @@ This section provides a high-level overview of the project's directory and file 
 │   │   ├── assets/       # Images, fonts, and other static assets
 │   │   └── styles/       # Global styles (Tailwind CSS)
 │   ├── public/           # Publicly accessible assets (favicon, etc.)
-│   ├── dist/consent/     # Build output directory (served by Go backend)
+│   ├── dist/             # Build output directory (served by Go backend)
 │   ├── tests/            # Frontend unit and integration tests (Vitest)
 │   ├── package.json      # Frontend dependencies and scripts
 │   ├── vite.config.ts    # Vite build configuration
@@ -191,7 +191,7 @@ web/
 │   │   └── validation.ts                 # Input validation
 │   ├── App.tsx           # Root component
 │   └── main.tsx          # Application entry point
-├── dist/consent/         # Build output (served by Go)
+├── dist/                 # Build output (served by Go)
 ├── vite.config.ts        # Vite configuration
 ├── tsconfig.json         # TypeScript solution references
 ├── tsconfig.app.json     # App TypeScript configuration
@@ -205,23 +205,23 @@ web/
 
 1. **Development**: `npm run dev` runs Vite dev server (<http://localhost:3000>)
 2. **Build**: `npm run build` compiles TypeScript and bundles with Vite
-3. **Output**: Static files written to `dist/consent/` directory
-4. **Deployment**: Go backend serves files from `dist/consent/` at `/consent` path
+3. **Output**: Static files written to `dist/` directory
+4. **Deployment**: Go backend serves files from `dist/` at `/`
 
 **SPA Serving Pattern**:
 
 ```
-User Request: /consent/agents
+User Request: /agents/123
   ↓
 Go HTTP Server (Port 8080)
   ↓
-Static File Handler (/consent/*)
+Static File Handler (/*)
   ↓ (404 fallback for client-side routes)
 Serve index.html
   ↓
 Browser loads React app
   ↓
-React Router handles /agents route
+React Router handles /agents/:agentId route
   ↓
 Component fetches data from /api/consent/agents
   ↓
@@ -230,8 +230,8 @@ Go API Handler returns JSON
 
 **Key Features**:
 
-- **Client-Side Routing**: React Router handles all `/consent/*` routes without page reloads
-- **History API Fallback**: Go backend serves `index.html` for all `/consent/*` paths (SPA fallback)
+- **Client-Side Routing**: React Router handles root-mounted view routes without page reloads
+- **History API Fallback**: Go backend serves `index.html` for all non-API view paths (SPA fallback)
 - **API Integration**: Frontend makes requests to `/api/consent/*` endpoints on same domain
 - **CSRF Protection**: All mutating requests include CSRF token from cookie
 - **Session Management**: Principal extracted from `X-Principal` header (set by reverse proxy)
@@ -806,7 +806,7 @@ POST /oauth2/token (grant_type=urn:ietf:params:oauth:grant-type:token-exchange)
   ↓   ├─ Extract privileged-client, actor-token issuer, actor, and subject identities (+ optional subject email)
   ↓   └─ Evaluate the rule's single CEL authorization predicate (ADR-009 pattern)
   ↓ Verify an active UserGrant for (extracted subject principal, target agent)
-  ↓   missing/expired → terminal access_denied + error_uri=<public-url>/consent/agent/<target-id>; lookup failure → server_error
+  ↓   missing/expired → terminal access_denied + error_uri=<public-url>/agents/<target-id>; lookup failure → server_error
   ↓ Mint through normal local access-token path: target agent_id + local CEL agent.*, sub=subject, act.iss=validated actor-token issuer, act.sub=actor, granted scope
   ↓ Local token_claims_expression alone emits aud (or omits it); RFC 8693 response returns non-empty granted scope; audit target and privileged client
 ```

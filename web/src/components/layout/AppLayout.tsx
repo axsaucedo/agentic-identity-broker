@@ -26,16 +26,11 @@ function Header() {
   const location = useLocation();
 
   const navLinks = [
-    { label: 'Agent Delegations', href: '/' },
-    { label: 'Tool Authorizations', href: '/tool-authorizations' },
-    { label: 'Third-Party Sessions', href: '/oauth2/sessions' },
+    { label: 'Agent Delegations', href: '/delegations' },
+    { label: 'Tool Authorizations', href: '/approvals' },
+    { label: 'Third-Party Sessions', href: '/sessions' },
   ];
 
-  const isActiveLink = (href: string) => {
-    return (
-      location.pathname === href || (location.pathname === '/' && href === '/')
-    );
-  };
 
   return (
     <div className="bg-white border-b border-neutral-200">
@@ -72,20 +67,24 @@ function Header() {
           <nav className="flex items-center gap-6 ml-auto">
             {/* Main navigation links */}
             <div className="hidden md:flex items-center gap-1">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  to={link.href}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
-                    isActiveLink(link.href)
-                      ? 'bg-trust-light text-trust-deep'
-                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-                  }`}
-                  aria-current={isActiveLink(link.href) ? 'page' : undefined}
-                >
-                  {link.label}
-                </Link>
-              ))}
+              {navLinks.map((link) => {
+                const isActive = location.pathname === link.href;
+
+                return (
+                  <Link
+                    key={link.href}
+                    to={link.href}
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
+                      isActive
+                        ? 'bg-trust-light text-trust-deep'
+                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              })}
             </div>
 
             {/* User info with avatar */}

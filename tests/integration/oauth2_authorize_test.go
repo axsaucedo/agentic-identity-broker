@@ -191,7 +191,7 @@ func TestOAuth2AuthorizeEndpoint_NoGrantRedirectsToConsent(t *testing.T) {
 	// Verify redirect to consent with session_token state transport
 	assert.Equal(t, http.StatusFound, w.Code)
 	redirectURL := w.Header().Get("Location")
-	assert.Contains(t, redirectURL, "https://broker.example.com/consent/agent/"+agent.ID.String())
+	assert.Contains(t, redirectURL, "https://broker.example.com/agents/"+agent.ID.String())
 	assert.Contains(t, redirectURL, "session_token=")
 	assert.NotContains(t, redirectURL, "redirect_uri=")
 }
@@ -309,7 +309,7 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 	// Verify redirect to consent (not upstream) with session_token state transport
 	assert.Equal(t, http.StatusFound, w.Code)
 	redirectURL := w.Header().Get("Location")
-	assert.Contains(t, redirectURL, "https://broker.example.com/consent/agent/"+agent.ID.String())
+	assert.Contains(t, redirectURL, "https://broker.example.com/agents/"+agent.ID.String())
 	assert.Contains(t, redirectURL, "session_token=")
 	assert.NotContains(t, redirectURL, "redirect_uri=")
 	assert.NotContains(t, redirectURL, "https://auth.example.com/authorize")

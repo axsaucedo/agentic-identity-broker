@@ -35,10 +35,3 @@ storage:
   timeouts:
     read: 5s
     write: 10s
-
-# SPA configuration for consent management frontend
-spa:
-  # Path to the built SPA files (relative to working directory)
-  static_files_path: "./dist/consent"
-  # Enable serving the SPA
-  serve_enabled: true

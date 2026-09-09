@@ -139,44 +139,46 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 	})
 
 	// Register OAuth2 authorization server endpoints (optional, public routes).
-	// Single authorize handler serves both proxy and local mode.
-	// In local mode, the handler's CodeIssuer strategy issues local codes.
-	if h.OAuth2Authorize != nil {
-		r.With(
-			middleware.OAuth2AuditMiddleware(cfg.Logger),
-			middleware.RequirePrincipalMiddleware(cfg.Authentication, cfg.JWTAuthenticator, cfg.Logger),
-		).Get("/oauth2/authorize", h.OAuth2Authorize.ServeHTTP)
+	if h.JWKS == nil && (h.OAuth2Authorize != nil || h.OAuth2Token != nil || h.OAuth2Metadata != nil) {
+		panic("BUG: JWKS handler required when OAuth2 routes are enabled")
 	}
+	r.Route("/oauth2", func(oauth2Router chi.Router) {
+		// Single authorize handler serves both proxy and local mode.
+		// In local mode, the handler's CodeIssuer strategy issues local codes.
+		if h.OAuth2Authorize != nil {
+			oauth2Router.With(
+				middleware.OAuth2AuditMiddleware(cfg.Logger),
+				middleware.RequirePrincipalMiddleware(cfg.Authentication, cfg.JWTAuthenticator, cfg.Logger),
+			).Get("/authorize", h.OAuth2Authorize.ServeHTTP)
+		}
 
-	// Single token handler serves both proxy and local mode.
-	// In local mode, the handler's TokenMinting strategy mints local tokens.
-	if h.OAuth2Token != nil {
-		r.With(middleware.OAuth2AuditMiddleware(cfg.Logger)).Post("/oauth2/token", h.OAuth2Token.ServeHTTP)
-	}
+		// Single token handler serves both proxy and local mode.
+		// In local mode, the handler's TokenMinting strategy mints local tokens.
+		if h.OAuth2Token != nil {
+			oauth2Router.With(middleware.OAuth2AuditMiddleware(cfg.Logger)).Post("/token", h.OAuth2Token.ServeHTTP)
+		}
+
+		// JWKS endpoint — serves aggregated public key material in all modes.
+		if h.JWKS != nil {
+			oauth2Router.Get("/jwks.json", h.JWKS.ServeJWKS)
+		}
+	})
 
 	// RFC 8414 discovery endpoint — single handler serves both modes.
 	// The OAuth2Service.GenerateMetadata() includes JWKS URI in local mode.
-	if h.OAuth2Metadata != nil {
-		r.Get("/.well-known/oauth-authorization-server", h.OAuth2Metadata.ServeHTTP)
-	}
-
-	// JWKS endpoint — serves aggregated public key material in all modes
-	if h.OAuth2Authorize != nil || h.OAuth2Token != nil || h.OAuth2Metadata != nil || h.JWKS != nil {
-		if h.JWKS == nil {
-			panic("BUG: JWKS handler required when OAuth2 routes are enabled")
+	r.Route("/.well-known", func(discoveryRouter chi.Router) {
+		if h.OAuth2Metadata != nil {
+			discoveryRouter.Get("/oauth-authorization-server", h.OAuth2Metadata.ServeHTTP)
 		}
-		r.Get("/oauth2/jwks.json", h.JWKS.ServeJWKS)
-	}
+	})
 
-	// Register SPA handler if configured (must be last, after /api routes)
+	// Reserve the health namespace; Server registers its GET endpoint after route setup.
+	r.Route("/health", func(chi.Router) {})
+
+	// Register SPA handler after reserved namespaces, for static-view GET and HEAD requests.
 	if h.SPA != nil {
-		// Redirect root and /consent to /consent/ for better UX
-		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, "/consent/", http.StatusMovedPermanently)
-		})
-		r.Get("/consent", func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, "/consent/", http.StatusMovedPermanently)
-		})
-		r.Handle("/consent/*", h.SPA)
+		r.Method(http.MethodGet, "/*", h.SPA)
+		r.Method(http.MethodHead, "/*", h.SPA)
+
 	}
 }

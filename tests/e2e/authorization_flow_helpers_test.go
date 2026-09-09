@@ -42,7 +42,7 @@ func completeAuthorizationCodeFlow(
 
 	consentLoc, err := helpers.ExtractRedirectURL(authResp)
 	Expect(err).ToNot(HaveOccurred())
-	Expect(consentLoc.Path).To(ContainSubstring("/consent/agent/"))
+	Expect(consentLoc.Path).To(ContainSubstring("/agents/"))
 	Expect(consentLoc.Query().Get("redirect_uri")).To(BeEmpty())
 
 	resolvedAgentID, err := id.ParseAgentID(path.Base(consentLoc.Path))
@@ -50,6 +50,12 @@ func completeAuthorizationCodeFlow(
 
 	sessionToken := consentLoc.Query().Get("session_token")
 	Expect(sessionToken).ToNot(BeEmpty())
+
+	consentViewResp, err := server.AuthenticatedGET(consentLoc.RequestURI(), principal)
+	Expect(err).ToNot(HaveOccurred())
+	defer func() { _ = consentViewResp.Body.Close() }()
+	Expect(consentViewResp.StatusCode).To(Equal(http.StatusOK))
+	Expect(consentViewResp.Header.Get("Content-Type")).To(HavePrefix("text/html"))
 
 	consentResp, err := server.AuthenticatedGET(
 		fmt.Sprintf("/api/consent/agents/%s?session_token=%s", resolvedAgentID, url.QueryEscape(sessionToken)),

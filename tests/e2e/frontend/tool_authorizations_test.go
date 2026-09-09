@@ -35,14 +35,14 @@ func newTestApproval(principal id.Principal, agentID id.AgentID, toolName, descr
 		Description:     description,
 		RiskLevel:       riskLevel,
 		Status:          storage.ApprovalStatusPending,
-		ApprovalURL:     "http://localhost/consent/approvals/test",
+		ApprovalURL:     "http://localhost/approvals/test",
 		CreatedAt:       time.Now(),
 		ExpiresAt:       time.Now().Add(10 * time.Minute),
 	}
 }
 
 // Tool Authorizations page tests verify the approval list and management UI
-// for the Tool Authorizations route (/consent/tool-authorizations).
+// for the Tool Authorizations route (/approvals).
 var _ = Describe("Tool Authorizations Page", func() {
 	var (
 		ctx       context.Context

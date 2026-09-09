@@ -100,7 +100,7 @@ var _ = Describe("US2: Hybrid Mode Agent Coexistence", func() {
 		defer func() { _ = resp.Body.Close() }()
 
 		Expect(resp.StatusCode).To(Equal(http.StatusFound))
-		Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent/agent/" + proxyAgent.ID.String()))
+		Expect(resp.Header.Get("Location")).To(ContainSubstring("/agents/" + proxyAgent.ID.String()))
 	})
 
 	// Scenario US2.2 from specs/030-hybrid-oauth-modes/spec.md
@@ -117,7 +117,7 @@ var _ = Describe("US2: Hybrid Mode Agent Coexistence", func() {
 		defer func() { _ = resp.Body.Close() }()
 
 		Expect(resp.StatusCode).To(Equal(http.StatusFound))
-		Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent/agent/" + localAgent.ID.String()))
+		Expect(resp.Header.Get("Location")).To(ContainSubstring("/agents/" + localAgent.ID.String()))
 	})
 
 	// Scenario US2.10 from specs/030-hybrid-oauth-modes/spec.md
@@ -254,7 +254,7 @@ var _ = Describe("US2+US3: Hybrid Mode with CIMD", func() {
 
 		// CIMD agent resolved via URL → accepted by hybrid mode → consent redirect
 		Expect(resp.StatusCode).To(Equal(http.StatusFound))
-		Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent/agent/" + cimdAgent.ID.String()))
+		Expect(resp.Header.Get("Location")).To(ContainSubstring("/agents/" + cimdAgent.ID.String()))
 	})
 
 	// Scenario US3.4 from specs/030-hybrid-oauth-modes/spec.md
@@ -280,7 +280,7 @@ var _ = Describe("US2+US3: Hybrid Mode with CIMD", func() {
 		defer func() { _ = resp.Body.Close() }()
 
 		Expect(resp).To(matchers.HaveStatusCode(http.StatusFound))
-		Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent/agent/" + proxyAgent.ID.String()))
+		Expect(resp.Header.Get("Location")).To(ContainSubstring("/agents/" + proxyAgent.ID.String()))
 	})
 
 	// Scenario US2.4: full CIMD agent authorization code journey in hybrid mode.

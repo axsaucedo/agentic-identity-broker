@@ -40,7 +40,7 @@ func newPendingApproval(principal id.Principal, agentID id.AgentID, toolName str
 		Description:     "Delete files from the filesystem recursively",
 		RiskLevel:       "critical",
 		Status:          storage.ApprovalStatusPending,
-		ApprovalURL:     "http://localhost/consent/approvals/test",
+		ApprovalURL:     "http://localhost/approvals/test",
 		CreatedAt:       time.Now(),
 		ExpiresAt:       expiresAt,
 	}

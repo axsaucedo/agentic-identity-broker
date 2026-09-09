@@ -45,7 +45,7 @@ flowchart TB
 A single Go service that exposes two independent HTTP ports (see [dual-port topology](#dual-port-topology)).
 It handles consent management, third-party OAuth2 sessions, the OAuth2 authorization-server
 surface, and token exchange. It also serves the **consent UI**, a React single-page
-application, at `/consent` on the end-user port.
+application, at `/` on the end-user port.
 
 ### The consent UI
 

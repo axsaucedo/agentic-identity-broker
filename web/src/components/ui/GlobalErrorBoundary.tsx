@@ -88,7 +88,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
   };
 
   handleGoHome = (): void => {
-    window.location.href = '/consent';
+    window.location.href = '/';
   };
 
   render(): ReactNode {

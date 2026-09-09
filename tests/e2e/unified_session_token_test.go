@@ -125,7 +125,7 @@ var _ = Describe("Unified Session Token State Transport", func() {
 
 			Expect(resp.StatusCode).To(Equal(http.StatusFound))
 			loc := resp.Header.Get("Location")
-			Expect(loc).To(ContainSubstring("/consent/agent/"))
+			Expect(loc).To(ContainSubstring("/agents/"))
 			Expect(loc).To(ContainSubstring("session_token="), "consent URL must contain session_token")
 			Expect(loc).NotTo(ContainSubstring("redirect_uri="), "consent URL must NOT contain redirect_uri")
 		})

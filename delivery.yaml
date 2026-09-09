@@ -41,7 +41,7 @@ pipeline:
       - desc: "Run artifacts build test"
         cmd: |
           just build-all
-          test -f web/dist/consent/index.html
+          test -f web/dist/index.html
 
   - id: release
     type: script

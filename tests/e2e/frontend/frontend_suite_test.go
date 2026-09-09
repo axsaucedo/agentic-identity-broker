@@ -109,7 +109,7 @@ var _ = BeforeSuite(func() {
 	logger := bootstrap.TestLogger(slog.LevelInfo)
 
 	// Verify working directory for relative paths
-	// This is important for the SPA handler to find web/dist/consent/index.html
+	// This is important for the SPA handler to find web/dist/index.html
 	cwd, err := os.Getwd()
 	Expect(err).NotTo(HaveOccurred(), "Failed to get current working directory")
 	logger.Info("Test suite starting from directory", "cwd", cwd)
@@ -160,8 +160,8 @@ var _ = BeforeSuite(func() {
 		logger.Info("Frontend URL (dev mode - requires 'just web-dev')", "url", devFrontendURL)
 
 		// Step 7: Verify Vite dev server is accessible with retries
-		// Check /consent/ path since that's where the consent app is served
-		verifyURL := devFrontendURL + "/consent/"
+		// Check the root path where the consent app is served.
+		verifyURL := devFrontendURL + "/"
 		logger.Info("Verifying Vite dev server accessibility", "url", verifyURL)
 		err = verifyFrontendAccessible(logger, verifyURL, 30*time.Second)
 		Expect(err).NotTo(HaveOccurred(), "Vite dev server not accessible at "+verifyURL)

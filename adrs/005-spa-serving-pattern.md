@@ -1,6 +1,8 @@
 # ADR 005: SPA Serving Pattern
 
 **Status**: Accepted
+> **Superseded in part by [ADR 035](./035-root-mounted-spa.md)**: the root-mounted SPA replaces the serving path and fallback prefix, Vite base and output directory, asset path, and SPA configuration references.
+
 **Date**: 2025-12-18
 **Feature**: 007-consent-frontend
 

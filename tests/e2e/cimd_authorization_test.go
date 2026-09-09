@@ -176,7 +176,7 @@ var _ = Describe("CIMD Authorization", func() {
 			loc, parseErr := url.Parse(resp.Header.Get("Location"))
 			Expect(parseErr).ToNot(HaveOccurred())
 			// Consent redirect must land on the correct agent's page.
-			Expect(loc.Path).To(ContainSubstring("/consent/agent/" + agent.ID.String()))
+			Expect(loc.Path).To(ContainSubstring("/agents/" + agent.ID.String()))
 			// SR-013: full authorization context must be sealed in an opaque JWE session_token.
 			Expect(loc.Query().Get("session_token")).ToNot(BeEmpty(),
 				"consent redirect must carry an opaque session_token per SR-013")
@@ -797,7 +797,7 @@ var _ = Describe("CIMD Authorization", func() {
 
 			loc, parseErr := url.Parse(resp.Header.Get("Location"))
 			Expect(parseErr).ToNot(HaveOccurred())
-			Expect(loc.Path).To(ContainSubstring("/consent/agent/" + agent.ID.String()))
+			Expect(loc.Path).To(ContainSubstring("/agents/" + agent.ID.String()))
 		})
 	})
 
@@ -880,7 +880,7 @@ var _ = Describe("CIMD Authorization", func() {
 
 			loc, parseErr := url.Parse(resp.Header.Get("Location"))
 			Expect(parseErr).ToNot(HaveOccurred())
-			Expect(loc.Path).To(ContainSubstring("/consent/agent/" + agent.ID.String()))
+			Expect(loc.Path).To(ContainSubstring("/agents/" + agent.ID.String()))
 		})
 	})
 

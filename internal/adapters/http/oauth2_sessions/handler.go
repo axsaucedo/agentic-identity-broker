@@ -280,7 +280,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 			"error_description", callbackReq.ErrorDesc)
 
 		// Redirect to sessions page with error in query
-		redirectURL := "/consent/sessions?error=" + url.QueryEscape(callbackReq.Error)
+		redirectURL := "/sessions?error=" + url.QueryEscape(callbackReq.Error)
 		if callbackReq.ErrorDesc != "" {
 			redirectURL += "&error_description=" + url.QueryEscape(callbackReq.ErrorDesc)
 		}
@@ -295,7 +295,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 			"has_code", callbackReq.Code != "",
 			"has_state", callbackReq.State != "")
 
-		redirectURL := "/consent/sessions?error=invalid_callback&error_description=" +
+		redirectURL := "/sessions?error=invalid_callback&error_description=" +
 			url.QueryEscape("Missing required OAuth2 parameters")
 		http.Redirect(w, r, redirectURL, http.StatusFound)
 		return
@@ -338,7 +338,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 				"service_id", serviceIDStr,
 				"error", err)
 
-			redirectURL := "/consent/sessions?error=expired_token&error_description=" +
+			redirectURL := "/sessions?error=expired_token&error_description=" +
 				url.QueryEscape("OAuth2 state token expired - please try again")
 			http.Redirect(w, r, redirectURL, http.StatusFound)
 			return
@@ -349,7 +349,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 				"service_id", serviceIDStr,
 				"error", err)
 
-			redirectURL := "/consent/sessions?error=invalid_state&error_description=" +
+			redirectURL := "/sessions?error=invalid_state&error_description=" +
 				url.QueryEscape("OAuth2 state token invalid - please try again")
 			http.Redirect(w, r, redirectURL, http.StatusFound)
 			return
@@ -361,7 +361,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 			"service_id", serviceIDStr,
 			"error", err)
 
-		redirectURL := "/consent/sessions?error=callback_failed&error_description=" +
+		redirectURL := "/sessions?error=callback_failed&error_description=" +
 			url.QueryEscape("Authorization failed - please try again")
 		http.Redirect(w, r, redirectURL, http.StatusFound)
 		return
@@ -376,7 +376,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	redirectURIStr := result.RedirectURI
 	if redirectURIStr == "" {
 		// Fallback to sessions page if redirectURI is not set (shouldn't happen)
-		redirectURIStr = "/consent/sessions"
+		redirectURIStr = "/sessions"
 	}
 
 	// Parse redirect URI and add success parameters securely
@@ -386,7 +386,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("failed to parse redirect URI",
 			"redirect_uri", redirectURIStr,
 			"error", err)
-		http.Redirect(w, r, "/consent/sessions", http.StatusFound)
+		http.Redirect(w, r, "/sessions", http.StatusFound)
 		return
 	}
 

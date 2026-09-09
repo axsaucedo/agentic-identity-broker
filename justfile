@@ -89,7 +89,7 @@ test-coverage-summary:
     go tool cover -func=coverage/coverage.out
 
 # Run the backend E2E acceptance suite with Ginkgo
-test-e2e-backend:
+test-e2e-backend: web-build
     @echo "Running backend E2E suite..."
     @if command -v ginkgo > /dev/null; then ginkgo -v --procs={{GINKGO_BACKEND_PROCS}} --label-filter="!performance" ./tests/e2e/; else echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; fi
 
@@ -99,13 +99,13 @@ test-e2e-performance:
     @if command -v ginkgo > /dev/null; then ginkgo -v --procs=1 --label-filter="performance" ./tests/e2e/; else echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; fi
 
 # Run the backend E2E acceptance suite with coverage report
-test-e2e-backend-coverage:
+test-e2e-backend-coverage: web-build
     @echo "Running backend E2E suite with coverage..."
     @mkdir -p coverage
     @if command -v ginkgo > /dev/null; then ginkgo -v --procs={{GINKGO_BACKEND_PROCS}} --label-filter="!performance" --cover --coverprofile=e2e-backend.out --output-dir=coverage ./tests/e2e/; go tool cover -html=coverage/e2e-backend.out -o coverage/e2e-backend.html; echo "Backend E2E coverage report generated at coverage/e2e-backend.html"; else echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; fi
 
 # Watch the backend E2E acceptance suite during development
-test-e2e-backend-watch:
+test-e2e-backend-watch: web-build
     @echo "Watching backend E2E suite..."
     @if command -v ginkgo > /dev/null; then ginkgo watch -v --label-filter="!performance" ./tests/e2e/; else echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; fi
 
@@ -373,6 +373,8 @@ verify-junit:
         echo ""
         echo "--- Web unit test output (FAILED) ---"
         cat test-results/web-unit.log
+        echo "--- Web unit JUnit report (FAILED) ---"
+        cat test-results/web-unit-junit.xml
     fi
     if [ $CDK_EXIT -ne 0 ]; then
         echo ""
@@ -675,20 +677,21 @@ compose-up: compose-env
     @echo "  - Seed data will auto-run once broker is healthy"
     @echo ""
     @echo "Press Ctrl+C to stop"
-    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} up
+    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} up --build
 
 # Start all services in background
 compose-up-detached: compose-env
     @echo "Generating JWE signing key..."
     @echo "Starting docker-compose services in background..."
-    @IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} up -d
+    @IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} {{COMPOSE_FILE_ARGS}} up -d --build
     @sleep 2
     @just compose-health
     @echo ""
     @echo "Service URLs:"
-    @echo "  - Broker (end-user): http://localhost:8000"
-    @echo "  - Broker (admin): http://localhost:14000"
-    @echo "  - Frontend (consent UI): http://localhost:3000"
+    @echo "  - Browser UI (Vite proxy includes development identity): http://localhost:3000/"
+    @echo "  - End-user broker (protected API requires upstream auth): http://localhost:8000/"
+    @echo "  - Admin API: http://localhost:14000/api/agents"
+    @echo "  - Admin health: http://localhost:14000/health"
     @echo "  - Sample OAuth2 client: http://localhost:9002/oauth2/authorize"
     @echo ""
     @echo "View logs: just compose-logs"
@@ -954,7 +957,7 @@ mock-third-party-oauth2-setup: mock-third-party-oauth2-build
     @echo "Mock Third-Party OAuth2 Setup Complete!"
     @echo "========================================="
     @echo "Mock OAuth2 Server: http://localhost:9000"
-    @echo "Broker Consent UI: http://localhost:8000/consent/sessions"
+    @echo "Broker Consent UI: http://localhost:8000/sessions"
     @echo ""
     @echo "To stop: pkill -f mock-oauth2-server"
 

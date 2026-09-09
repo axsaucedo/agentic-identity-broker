@@ -180,11 +180,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 
 			location := resp.Header.Get("Location")
 			Expect(location).NotTo(BeEmpty())
-			// Should redirect to consent or upstream
-			Expect(location).To(SatisfyAny(
-				ContainSubstring(fixtures.DefaultOAuth2Config().OAuth2AuthServer.Proxy.UpstreamIssuerURI),
-				ContainSubstring("/consent/"),
-			))
+			Expect(location).To(ContainSubstring("/agents/"))
 		})
 	})
 

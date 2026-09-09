@@ -9,6 +9,8 @@ package bootstrap
 import (
 	"fmt"
 	"log/slog"
+	"path/filepath"
+	"runtime"
 
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
@@ -33,6 +35,11 @@ import (
 type ServerFactory struct {
 	config *ports.Config
 	logger *slog.Logger
+}
+
+func webDistPath() string {
+	_, file, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(file), "../../../web/dist")
 }
 
 // NewServerFactory creates a new ServerFactory with required configuration.
@@ -109,7 +116,7 @@ func (f *ServerFactory) BuildApp(storage interface{}) (*app.App, error) {
 		WithConfig(f.config).
 		WithStorage(storageAdapter).
 		WithLogger(f.logger).
-		WithStaticWebResourcesPath("../../../web/dist")
+		WithStaticWebResourcesPath(webDistPath())
 
 	return builder.Build()
 }
@@ -138,7 +145,7 @@ func (f *ServerFactory) BuildAppWithTracerProvider(storage interface{}, tp *sdkt
 		WithConfig(f.config).
 		WithStorage(storageAdapter).
 		WithLogger(f.logger).
-		WithStaticWebResourcesPath("../../../web/dist").
+		WithStaticWebResourcesPath(webDistPath()).
 		WithTracerProvider(tp).
 		Build()
 }
@@ -166,7 +173,7 @@ func (f *ServerFactory) BuildAppWithCIMDFetcher(storage interface{}, cimdFetcher
 		WithConfig(f.config).
 		WithStorage(storageAdapter).
 		WithLogger(f.logger).
-		WithStaticWebResourcesPath("../../../web/dist").
+		WithStaticWebResourcesPath(webDistPath()).
 		WithCIMDFetcher(cimdFetcher).
 		Build()
 }

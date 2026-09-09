@@ -74,12 +74,12 @@ describe('ConsentApiService.createOrUpdateGrant', () => {
   it('returns { kind: "redirect", redirectUrl } on 201 with redirect_url and does not navigate', async () => {
     vi.mocked(apiClient.post).mockResolvedValue({
       status: 201,
-      data: { data: mockGrant, redirect_url: '/consent/agent/agent-1/done' },
+      data: { data: mockGrant, redirect_url: '/agents/agent-1/done' },
     });
 
     const result = await service.createOrUpdateGrant('agent-1', request);
 
-    expect(result).toEqual({ kind: 'redirect', redirectUrl: '/consent/agent/agent-1/done' });
+    expect(result).toEqual({ kind: 'redirect', redirectUrl: '/agents/agent-1/done' });
     expect(window.location.href).toBe('');
   });
 

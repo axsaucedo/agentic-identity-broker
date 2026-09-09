@@ -14,7 +14,7 @@ React 19 + TypeScript 5.3+ + Vite 7 + Tailwind CSS 4 + Headless UI 2 + React Rou
 
 ```
 src/
-  App.tsx              Router: /, /agent/:agentId, /oauth2/sessions, *→404
+  App.tsx              Router: /, /delegations, /agents/:agentId, /sessions, *→404
   components/          consent/ (delegation cards), layout/ (chrome), sessions/, ui/ (primitives)
   design-system/       ★ AUTHORITATIVE design reference — read docs/ before styling
     components/        7 categories: primitives, inputs, data-display, layout, navigation, overlays, feedback

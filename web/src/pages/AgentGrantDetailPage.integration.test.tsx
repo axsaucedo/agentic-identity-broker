@@ -86,9 +86,9 @@ describe('AgentGrantDetailPage - Integration', () => {
   const renderPage = () => {
     return render(
       <ToastProvider>
-        <MemoryRouter initialEntries={['/agent/test-agent']}>
+        <MemoryRouter initialEntries={['/agents/test-agent']}>
           <Routes>
-            <Route path="/agent/:agentId" element={<AgentGrantDetailPage />} />
+            <Route path="/agents/:agentId" element={<AgentGrantDetailPage />} />
           </Routes>
         </MemoryRouter>
       </ToastProvider>,

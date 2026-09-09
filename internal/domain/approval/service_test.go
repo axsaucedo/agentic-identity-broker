@@ -573,7 +573,7 @@ func TestService_CreatePendingApproval(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		expected := "https://broker.example.com/consent/approvals/" + result.Approval.ID.String()
+		expected := "https://broker.example.com/approvals/" + result.Approval.ID.String()
 		if result.Approval.ApprovalURL != expected {
 			t.Fatalf("expected approval_url %s, got %s", expected, result.Approval.ApprovalURL)
 		}

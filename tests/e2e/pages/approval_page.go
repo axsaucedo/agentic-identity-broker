@@ -12,7 +12,7 @@ import (
 // ApprovalPage represents the tool approval review page where users approve or deny
 // pending tool calls submitted by AI agents.
 //
-// Route: /consent/approvals/:id
+// Route: /approvals/:id
 //
 // States:
 //   - Loading: Skeleton placeholder with aria-busy="true"
@@ -36,12 +36,12 @@ func (ap *ApprovalPage) pwPage() playwright.Page {
 }
 
 // NavigateToApproval navigates to the approval review page for the given approval ID.
-// Route: /consent/approvals/{approvalID}
+// Route: /approvals/{approvalID}
 func (ap *ApprovalPage) NavigateToApproval(ctx context.Context, approvalID string) error {
 	if approvalID == "" {
 		return fmt.Errorf("approvalID cannot be empty")
 	}
-	path := fmt.Sprintf("/consent/approvals/%s", approvalID)
+	path := fmt.Sprintf("/approvals/%s", approvalID)
 	return ap.Navigate(ctx, path)
 }
 

@@ -18,7 +18,7 @@ The normal authorization-code flow and third-party RFC 8693 exchange both enforc
 2. The extracted subject identity is used byte-for-byte as `id.Principal`; it is both the minted `sub` and the delegation principal. No fallback or inferred principal is permitted.
 3. `internal/ports/oauth2.go` defines the narrow `UserDelegationVerifier` port and a status enum (`active`, `missing`, `expired`). A verifier error means the state is unknown and fails closed.
 4. An app-layer adapter wraps `consent.Service.VerifyAgentAccess` and translates consent sentinel errors into the port status. This keeps the impersonation domain independent from the consent domain.
-5. Missing or expired delegation is terminal: return `access_denied` with the existing RFC 6749 §5.2 `error_uri` response member pointing to `<end-user-public-url>/consent/agent/<target-agent-id>`. The response does not distinguish missing from expired; structured audit categories do. A verifier error returns `server_error` without `error_uri`.
+5. Missing or expired delegation is terminal: return `access_denied` with the existing RFC 6749 §5.2 `error_uri` response member pointing to `<end-user-public-url>/agents/<target-agent-id>`. The response does not distinguish missing from expired; structured audit categories do. A verifier error returns `server_error` without `error_uri`.
 6. Do not use `WWW-Authenticate`: it is a resource-server challenge header. The token endpoint already serializes `TokenExchangeError.ErrorURI`, and ExtProc consumes it to initiate MCP URL elicitation.
 
 ## Consequences

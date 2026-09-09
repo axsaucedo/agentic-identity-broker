@@ -466,7 +466,7 @@ func (s *AuthorizationService) buildConsentURL(_ context.Context, req *ports.Aut
 	if err != nil {
 		return "", fmt.Errorf("failed to create authorization session token: %w", err)
 	}
-	return fmt.Sprintf("%s/consent/agent/%s?session_token=%s", s.config.PublicURL, agent.ID, url.QueryEscape(token)), nil
+	return fmt.Sprintf("%s/agents/%s?session_token=%s", s.config.PublicURL, agent.ID, url.QueryEscape(token)), nil
 }
 
 // GenerateMetadata returns RFC 8414 OAuth2 metadata for this broker.

@@ -1793,5 +1793,5 @@ func TestBuildConsentURL_AlwaysProducesSessionToken(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, consentURL, "session_token=", "buildConsentURL must always produce session_token")
 	assert.NotContains(t, consentURL, "redirect_uri=", "buildConsentURL must never produce redirect_uri fallback")
-	assert.Contains(t, consentURL, "/consent/agent/"+agentID.String())
+	assert.True(t, strings.HasPrefix(consentURL, "https://broker.example.com/agents/"+agentID.String()+"?session_token="))
 }

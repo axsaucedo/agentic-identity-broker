@@ -40,7 +40,7 @@ This command will:
 
 ### Manual Test Flow
 
-1. **Open Broker UI**: http://localhost:8000/consent/sessions
+1. **Open Broker UI**: http://localhost:8000/sessions
 2. **Connect**: Click "Connect" on "Mock OAuth2 Service (Dev)" card
 3. **Approve**: You'll be redirected to the mock consent page - click "Approve"
 4. **Session Created**: The mock redirects back to the broker with an authorization code
@@ -252,7 +252,7 @@ just test-integration
 ### Manual Testing
 
 1. **Setup**: `just mock-third-party-oauth2-setup`
-2. **Test**: Navigate to http://localhost:8000/consent/sessions
+2. **Test**: Navigate to http://localhost:8000/sessions
 3. **Cleanup**: `just mock-third-party-oauth2-clean`
 
 ### End-to-End Flow

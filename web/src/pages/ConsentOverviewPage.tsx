@@ -71,7 +71,7 @@ export function ConsentOverviewPage() {
    * Navigate to agent detail page when delegation card is clicked.
    */
   const handleDelegationClick = (agentId: string) => {
-    navigate(`/agent/${agentId}`);
+    navigate(`/agents/${agentId}`);
   };
 
   return (

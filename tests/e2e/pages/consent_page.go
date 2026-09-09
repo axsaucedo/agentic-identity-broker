@@ -16,11 +16,10 @@ import (
 )
 
 // Route constants for navigation.
-// The React app uses basename="/consent" so the overview is at /consent (root path)
-// and the agent detail page is at /consent/agent/:agentId.
+// The React app serves the overview at /delegations and the agent detail page at /agents/:agentId.
 const (
-	agentDetailPath   = "/consent/agent/%s"
-	overviewPath      = "/consent"
+	agentDetailPath   = "/agents/%s"
+	overviewPath      = "/delegations"
 	revokeDialogTitle = "Revoke All Access"
 )
 
@@ -47,7 +46,7 @@ type ConsentPage struct {
 //
 // Parameters:
 //   - page: Playwright page instance for this test
-//   - baseURL: Base URL of the frontend (e.g., "http://localhost:3000" or "http://localhost:8000/consent")
+//   - baseURL: Base URL of the frontend (e.g., "http://localhost:3000" or "http://localhost:8000")
 //
 // Returns:
 //   - *ConsentPage: Initialized page object
@@ -75,8 +74,8 @@ func NewConsentPage(page playwright.Page, baseURL string) *ConsentPage {
 // NavigateToAgent navigates to the detail page for a specific agent.
 // Waits for the page to finish loading before returning.
 //
-// The React app uses basename="/consent" so the full path is /consent/agent/:agentId.
-// This corresponds to the `/agent/:agentId` React route.
+// The React app serves the agent detail page at /agents/:agentId.
+// This corresponds to the `/agents/:agentId` React route.
 //
 // Returns an error if navigation fails or the page does not load within the timeout.
 // If the page fails to load, returns a descriptive error.
@@ -91,7 +90,7 @@ func (cp *ConsentPage) NavigateToAgent(ctx context.Context, agentID string) erro
 	}
 
 	// Navigate to agent detail page
-	// Route: /agent/:agentId (defined in React Router App.tsx)
+	// Route: /agents/:agentId (defined in React Router App.tsx)
 	path := fmt.Sprintf(agentDetailPath, agentID)
 	if err := cp.Navigate(ctx, path); err != nil {
 		return fmt.Errorf("failed to navigate to agent consent page: %w", err)
@@ -133,8 +132,7 @@ func (cp *ConsentPage) NavigateToAgentWithRedirectURI(ctx context.Context, agent
 }
 
 // NavigateToOverview navigates to the consent overview page (list of delegations).
-// The React app serves the overview at the root route ("/") with basename="/consent",
-// so the full URL path is /consent.
+// The React app serves the overview at the root route ("/").
 //
 // Returns an error if navigation fails.
 //

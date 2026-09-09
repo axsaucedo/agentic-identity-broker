@@ -2,9 +2,10 @@
  * Main App component with React Router setup.
  *
  * Configures routes for the consent management application:
- * - / -> Consent overview (list of agent delegations)
- * - /agent/:agentId -> Agent grant detail page
- * - /oauth2/sessions -> Third-party OAuth2 sessions management
+ * - / -> Redirect to the consent overview
+ * - /delegations -> Consent overview (list of agent delegations)
+ * - /agents/:agentId -> Agent grant detail page
+ * - /sessions -> Third-party OAuth2 sessions management
  * - * -> 404 error page
  *
  * Performance Optimizations:
@@ -14,8 +15,8 @@
  * - Toast provider for notifications
  */
 
-import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Suspense, lazy } from 'react';
+import { BrowserRouter as Router, Navigate, Routes, Route } from 'react-router-dom';
 import { GlobalErrorBoundary } from '@components/ui/GlobalErrorBoundary';
 import { ToastProvider } from '@components/ui/Toast';
 
@@ -48,16 +49,17 @@ function App() {
   return (
     <GlobalErrorBoundary>
       <ToastProvider>
-        <Router basename="/consent">
+        <Router basename="/">
           <Suspense fallback={<LoadingFallback />}>
             <Routes>
-              <Route path="/" element={<ConsentOverviewPage />} />
+              <Route path="/" element={<Navigate to="/delegations" replace />} />
+              <Route path="/delegations" element={<ConsentOverviewPage />} />
               <Route
-                path="/agent/:agentId"
+                path="/agents/:agentId"
                 element={<AgentGrantDetailPage />}
               />
               <Route
-                path="/oauth2/sessions"
+                path="/sessions"
                 element={<ThirdPartySessionsPage />}
               />
               <Route
@@ -65,7 +67,7 @@ function App() {
                 element={<ApprovalPage />}
               />
               <Route
-                path="/tool-authorizations"
+                path="/approvals"
                 element={<ToolAuthorizationsPage />}
               />
               <Route path="*" element={<ErrorPage />} />

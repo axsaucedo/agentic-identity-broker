@@ -1,5 +1,5 @@
 /**
- * ApprovalPage - Route-level page for /consent/approvals/:id
+ * ApprovalPage - Route-level page for /approvals/:id
  *
  * Fetches approval by ID from URL params, renders:
  * - Loading skeleton while fetching

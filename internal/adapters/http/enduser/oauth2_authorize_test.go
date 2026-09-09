@@ -277,7 +277,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 	// Should redirect to consent UI with a JWE session token
 	assert.Equal(t, http.StatusFound, w.Code)
 	redirectURL := w.Header().Get("Location")
-	assert.Contains(t, redirectURL, "https://broker.example.com/consent/agent/"+agentID.String())
+	assert.Contains(t, redirectURL, "https://broker.example.com/agents/"+agentID.String())
 	assert.Contains(t, redirectURL, "session_token=")
 }
 

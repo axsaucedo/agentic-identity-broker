@@ -451,7 +451,7 @@ just docker-build-prod   # Create production Docker image
 ```bash
 just docker-run-prod
 # Runs at http://localhost:8000
-# Frontend at http://localhost:8000/consent
+# Frontend at http://localhost:8000/
 ```
 
 ### Key Differences from Dev

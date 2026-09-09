@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/lestrrat-go/jwx/v4/jwk"
@@ -105,6 +107,53 @@ func TestSetupEnduserRoutes_ConsentAllowsNonBrowserPost(t *testing.T) {
 	require.Equal(t, http.StatusCreated, postResp.Code)
 }
 
+func TestSetupEnduserRoutes_DoesNotRedirectLegacyConsentViews(t *testing.T) {
+	t.Parallel()
+
+	router, _ := newEnduserConsentRouter(t)
+
+	for _, path := range []string{"/consent", "/consent/oauth2/sessions?error=x"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code, path)
+		require.Empty(t, rec.Header().Get("Location"), path)
+	}
+}
+
+func TestSetupEnduserRoutes_ReservesProtocolNamespaces(t *testing.T) {
+	t.Parallel()
+
+	router, _ := newEnduserConsentRouter(t)
+
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		status int
+	}{
+		{name: "SPA view", method: http.MethodGet, path: "/agents/abc", status: http.StatusOK},
+		{name: "SPA view HEAD", method: http.MethodHead, path: "/agents/abc", status: http.StatusOK},
+		{name: "unknown API route", method: http.MethodGet, path: "/api/not-a-route", status: http.StatusNotFound},
+		{name: "unknown OAuth2 route", method: http.MethodGet, path: "/oauth2/not-a-route", status: http.StatusNotFound},
+		{name: "unknown discovery route", method: http.MethodGet, path: "/.well-known/not-a-route", status: http.StatusNotFound},
+		{name: "unknown health route", method: http.MethodGet, path: "/health/not-a-route", status: http.StatusNotFound},
+		{name: "unsupported OAuth2 method", method: http.MethodPost, path: "/oauth2/authorize", status: http.StatusMethodNotAllowed},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			req.Header.Set("X-Remote-User", "user@example.com")
+			rec := httptest.NewRecorder()
+
+			router.ServeHTTP(rec, req)
+
+			require.Equal(t, tc.status, rec.Code)
+		})
+	}
+}
+
 func TestSetupEnduserRoutes_ApprovalBrowserRoutesRequirePrincipal(t *testing.T) {
 	t.Parallel()
 
@@ -144,6 +193,9 @@ func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
 	t.Helper()
 
 	logger := slog.Default()
+	staticPath := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(staticPath, "index.html"), []byte("<!doctype html><title>test</title>"), 0o600))
+
 	cfg := fixtures.DefaultOAuth2Config()
 
 	storage, err := storageadapter.NewAdapter(&cfg.Storage)
@@ -159,6 +211,7 @@ func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
 		WithConfig(cfg).
 		WithStorage(storage).
 		WithLogger(logger).
+		WithStaticWebResourcesPath(staticPath).
 		WithJWKSPublisher(&mockJWKSPublisher{}).
 		Build()
 	require.NoError(t, err)

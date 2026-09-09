@@ -4,7 +4,7 @@
 
 ## Overview
 
-Use this React consent SPA for agent permissions and tool approvals. Access it at `/consent`. The Go backend serves it there (ADR 005). Use the Refined Trust Architecture and WCAG 2.1 AA.
+Use this React consent SPA for agent permissions and tool approvals. The Go backend serves it at root `/` (ADR 035). Use the Refined Trust Architecture and WCAG 2.1 AA.
 
 ## Tech Stack
 
@@ -15,7 +15,7 @@ Use this React consent SPA for agent permissions and tool approvals. Access it a
 | Vite                  | 7       | Build tool + dev server                        |
 | Tailwind CSS          | 4       | Utility-first styling via semantic tokens      |
 | Headless UI           | 2       | Accessible unstyled component primitives       |
-| React Router          | 7       | Client-side routing (basename `/consent`)      |
+| React Router          | 7       | Client-side routing (basename `/`)             |
 | Axios                 | 1       | HTTP client with interceptors                  |
 | Framer Motion         | 12      | Page transitions and animations                |
 | Vitest                | 4       | Unit/integration testing                       |
@@ -72,11 +72,11 @@ src/
     useApproval         Tool-approval data and actions
 
   pages/               Route components (lazy-loaded with React.lazy)
-    ConsentOverviewPage     / — agent delegation list
-    AgentGrantDetailPage    /agent/:agentId — per-agent grants
-    ThirdPartySessionsPage  /oauth2/sessions — session management
+    ConsentOverviewPage     /delegations — agent delegation list
+    AgentGrantDetailPage    /agents/:agentId — per-agent grants
+    ThirdPartySessionsPage  /sessions — session management
     ApprovalPage            /approvals/:id — tool-approval review
-    ToolAuthorizationsPage  /tool-authorizations — permanent approvals
+    ToolAuthorizationsPage  /approvals — permanent approvals
     ErrorPage               * — fallback
 
   services/

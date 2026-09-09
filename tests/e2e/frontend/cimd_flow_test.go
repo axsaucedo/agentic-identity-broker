@@ -107,12 +107,12 @@ var _ = Describe("CIMD Full Browser Authorization Flow", func() {
 
 		// Step 1: Navigate browser to the authorize endpoint.
 		// The broker resolves the CIMD client, fetches the document, and issues a
-		// 302 redirect to /consent/agent/{id}?session_token=... .
+		// 302 redirect to /agents/{id}?session_token=... .
 		_, err := GetTestPage().Goto(authorizeURL)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Step 2: Wait for the browser to land on the consent page.
-		err = consentPage.WaitForURL(ctx, "/consent/agent/")
+		err = consentPage.WaitForURL(ctx, "/agents/")
 		Expect(err).NotTo(HaveOccurred(), "browser should be redirected to consent page")
 
 		// Wait for React to finish rendering before asserting UI components.
@@ -240,7 +240,7 @@ var _ = Describe("CIMD Loopback Warning Browser Flow", func() {
 		_, err := GetTestPage().Goto(authorizeURL)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = consentPage.WaitForURL(ctx, "/consent/agent/")
+		err = consentPage.WaitForURL(ctx, "/agents/")
 		Expect(err).NotTo(HaveOccurred(), "browser should reach the consent page when explicit-port registration matches a different runtime loopback port")
 
 		err = consentPage.WaitForPageLoad(ctx)

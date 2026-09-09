@@ -166,13 +166,13 @@ func (ph *PlaywrightHelper) CreateContext(ctx context.Context) (playwright.Brows
 //
 // Mode selection:
 //   - E2E_FRONTEND_MODE="dev": Returns http://localhost:3000 (Vite dev server)
-//   - E2E_FRONTEND_MODE="built" or unset: Returns http://localhost:8000/consent (built frontend)
+//   - E2E_FRONTEND_MODE="built" or unset: Returns http://localhost:8000/ (built frontend)
 //
 // Example:
 //
 //	url := helper.GetBaseURL()
 //	// In dev mode: "http://localhost:3000"
-//	// In built mode: "http://localhost:8000/consent"
+//	// In built mode: "http://localhost:8000/"
 func (ph *PlaywrightHelper) GetBaseURL() string {
 	mode := os.Getenv("E2E_FRONTEND_MODE")
 

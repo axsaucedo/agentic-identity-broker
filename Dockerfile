@@ -34,9 +34,9 @@ WORKDIR /app
 # Binary should be built with: just build-linux-amd64 or just build-linux-arm64
 COPY --chown=1000:1000 ./bin/linux/${TARGETARCH}/agentic-identity-broker /app/agentic-identity-broker
 
-# Copy pre-built frontend assets from ./web/dist/
-# Assumes frontend is already built and available at ./web/dist/consent/
-COPY --chown=1000:1000 ./web/dist/consent /app/web/dist/consent
+# Copy pre-built frontend assets from ./web/dist/.
+# Assumes frontend is already built and available at ./web/dist/.
+COPY --chown=1000:1000 ./web/dist /app/web/dist
 
 # Ensure binary is executable
 RUN chmod +x /app/agentic-identity-broker

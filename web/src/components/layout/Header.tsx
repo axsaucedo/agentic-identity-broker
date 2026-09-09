@@ -28,7 +28,7 @@ const NAV_LINKS: NavLink[] = [
   },
   {
     label: 'Third-Party Sessions',
-    href: '/oauth2/sessions',
+    href: '/sessions',
   },
 ];
 

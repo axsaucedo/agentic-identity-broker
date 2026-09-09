@@ -275,7 +275,7 @@ var _ = Describe("Selection Preservation Across OAuth2 Redirect", func() {
 		Expect(err).NotTo(HaveOccurred())
 		encoded := base64.RawURLEncoding.EncodeToString(selectionsJSON)
 
-		path := "/consent/agent/" + testAgentID + "?success=true&service_id=" +
+		path := "/agents/" + testAgentID + "?success=true&service_id=" +
 			selGitHubServiceID.String() + "&consent_state=" + url.QueryEscape(encoded)
 
 		err = consentPage.Navigate(ctx, path)

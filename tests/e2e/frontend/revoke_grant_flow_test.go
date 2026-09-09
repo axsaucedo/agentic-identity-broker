@@ -142,7 +142,7 @@ var _ = Describe("Revoke Grant Flow", func() {
 		// When: User navigates to the detail page of an agent they have NOT consented to
 		noGrantPage := pages.NewConsentPage(GetTestPage(), GetFrontendURL())
 		defer func() { _ = noGrantPage.Close() }()
-		err = noGrantPage.Navigate(ctx, "/consent/agent/"+agentWithoutGrant.ID.String())
+		err = noGrantPage.Navigate(ctx, "/agents/"+agentWithoutGrant.ID.String())
 		Expect(err).NotTo(HaveOccurred(), "Failed to navigate to agent without grant")
 
 		// Then: "Revoke All Access" button must NOT be visible (FR-009)

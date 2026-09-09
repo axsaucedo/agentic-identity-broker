@@ -13,83 +13,9 @@ This document describes the configuration options for the consent Single Page Ap
 
 ## Backend Configuration
 
-The Go backend serves the React SPA and provides API endpoints. Configuration is managed through environment variables, YAML files, or CLI flags.
+The backend always serves the root-mounted SPA from `web/dist`, relative to the process working directory. It has no SPA-specific environment variables, YAML keys, or CLI flags.
 
-### SPA Static Files
-
-**Environment Variable:** `SPA_STATIC_FILES_PATH`
-**YAML Key:** `spa.static_files_path`
-**CLI Flag:** `--spa-static-files-path`
-**Default:** `web/dist/consent`
-**Type:** string (file path)
-
-**Description:** Path to the directory containing the built SPA static files (HTML, CSS, JS, assets).
-
-**Example:**
-```yaml
-# config.yaml
-spa:
-  static_files_path: /opt/agentic-identity-broker/web/dist/consent
-```
-
-```bash
-# Environment variable
-export SPA_STATIC_FILES_PATH=/opt/agentic-identity-broker/web/dist/consent
-
-# CLI flag
-./agentic-identity-broker --spa-static-files-path=/opt/agentic-identity-broker/web/dist/consent
-```
-
-### SPA Serving Enable/Disable
-
-**Environment Variable:** `SPA_SERVE_ENABLED`
-**YAML Key:** `spa.serve_enabled`
-**CLI Flag:** `--spa-serve-enabled`
-**Default:** `true`
-**Type:** boolean
-
-**Description:** Enable or disable serving the SPA. When disabled, requests to `/consent/*` return 404.
-
-**Use Cases:**
-- Disable in API-only deployments
-- Disable during maintenance
-- Disable if serving SPA from separate CDN
-
-**Example:**
-```yaml
-# config.yaml
-spa:
-  serve_enabled: true
-```
-
-```bash
-# Environment variable
-export SPA_SERVE_ENABLED=false
-
-# CLI flag
-./agentic-identity-broker --spa-serve-enabled=false
-```
-
-### SPA Base Path
-
-**Environment Variable:** `SPA_BASE_PATH`
-**YAML Key:** `spa.base_path`
-**CLI Flag:** `--spa-base-path`
-**Default:** `/consent`
-**Type:** string (URL path)
-
-**Description:** Base URL path where the SPA is served. Must match the `base` setting in `vite.config.ts`.
-
-**Example:**
-```yaml
-# config.yaml
-spa:
-  base_path: /consent
-```
-
-**Note:** If you change this, you must also update:
-1. `vite.config.ts`: `base: '/consent'`
-2. React Router: `<BrowserRouter basename="/consent">`
+Deployments must build the frontend and make `web/dist` available relative to the broker process. The browser routes are defined in [ADR 035](../../adrs/035-root-mounted-spa.md).
 
 ### Server Configuration
 
@@ -163,9 +89,9 @@ Build settings are defined in `vite.config.ts`:
 
 ```typescript
 export default defineConfig({
-  base: '/consent',           // Must match SPA_BASE_PATH
+  base: '/',                  // Root SPA path
   build: {
-    outDir: 'dist/consent',   // Must match SPA_STATIC_FILES_PATH
+    outDir: 'dist',           // SPA build output
     sourcemap: false,         // Disable in production
     minify: 'terser',         // Minification strategy
   },
@@ -188,10 +114,6 @@ export default defineConfig({
 **Backend:**
 ```yaml
 # config.dev.yaml
-spa:
-  static_files_path: web/dist/consent
-  serve_enabled: true
-  base_path: /consent
 
 servers:
   enduser:
@@ -222,11 +144,6 @@ Access frontend at: http://localhost:3000 (proxies API to :8080)
 **Backend:**
 ```yaml
 # config.staging.yaml
-spa:
-  static_files_path: /app/web/dist/consent
-  serve_enabled: true
-  base_path: /consent
-
 servers:
   enduser:
     port: 8080
@@ -249,22 +166,17 @@ cd web && npm run build
 # Build backend
 just build-release
 
-# Deploy binary with embedded SPA
+# Deploy binary with the built SPA files
 ./bin/agentic-identity-broker --config=config.staging.yaml
 ```
 
-Access SPA at: https://staging.example.com/consent
+Access SPA at: https://staging.example.com/
 
 ### Production
 
 **Backend:**
 ```yaml
 # config.production.yaml
-spa:
-  static_files_path: /opt/agentic-identity-broker/web/dist/consent
-  serve_enabled: true
-  base_path: /consent
-
 servers:
   enduser:
     port: 8080
@@ -276,19 +188,6 @@ servers:
 log:
   level: info
   format: json
-```
-
-**Frontend:**
-```bash
-# Build optimized bundle
-npm run build
-```
-
-**Environment Variables:**
-```bash
-export SPA_STATIC_FILES_PATH=/opt/agentic-identity-broker/web/dist/consent
-export SPA_SERVE_ENABLED=true
-export ENDUSER_SERVER_PORT=8080
 ```
 
 **Deployment:**
@@ -303,7 +202,7 @@ just build-release
 ./bin/agentic-identity-broker --config=config.production.yaml
 ```
 
-Access SPA at: https://agentic-identity-broker.example.com/consent
+Access SPA at: https://agentic-identity-broker.example.com/
 
 ## CORS Configuration
 
@@ -403,11 +302,6 @@ The system uses **stateless session management** with the principal from the rev
 
 **Backend (config.yaml):**
 ```yaml
-spa:
-  static_files_path: web/dist/consent
-  serve_enabled: true
-  base_path: /consent
-
 servers:
   enduser:
     port: 8080
@@ -431,7 +325,7 @@ cd web && npm run build
 just run
 ```
 
-**Access:** http://localhost:8080/consent
+**Access:** http://localhost:8080/
 
 ### Example 2: Separate Dev Servers with Proxy
 
@@ -479,13 +373,13 @@ WORKDIR /app
 COPY go.* ./
 RUN go mod download
 COPY . ./
-COPY --from=frontend-builder /app/web/dist/consent ./web/dist/consent
+COPY --from=frontend-builder /app/web/dist ./web/dist
 RUN go build -o agentic-identity-broker ./cmd/agentic-identity-broker
 
 FROM alpine:latest
 WORKDIR /app
 COPY --from=backend-builder /app/agentic-identity-broker .
-COPY --from=backend-builder /app/web/dist/consent ./web/dist/consent
+COPY --from=backend-builder /app/web/dist ./web/dist
 COPY config.production.yaml ./config.yaml
 
 EXPOSE 8080
@@ -494,10 +388,6 @@ CMD ["./agentic-identity-broker", "--config=config.yaml"]
 
 **config.production.yaml:**
 ```yaml
-spa:
-  static_files_path: /app/web/dist/consent
-  serve_enabled: true
-
 servers:
   enduser:
     port: 8080
@@ -514,9 +404,6 @@ metadata:
   name: agentic-identity-broker-config
 data:
   config.yaml: |
-    spa:
-      static_files_path: /app/web/dist/consent
-      serve_enabled: true
     servers:
       enduser:
         port: 8080
@@ -524,8 +411,8 @@ data:
           preauth:
             enabled: true
             principal_header_name: X-Auth-Request-User
-```
 
+```
 **Deployment:**
 ```yaml
 apiVersion: apps/v1
@@ -579,10 +466,6 @@ spec:
 
 **Backend Configuration:**
 ```yaml
-# Disable SPA serving (served from CDN)
-spa:
-  serve_enabled: false
-
 # Configure CORS for CDN origin
 cors:
   allowed_origins:
@@ -600,12 +483,12 @@ servers:
 # Build with production API URL
 VITE_API_BASE_URL=https://api.example.com/api npm run build
 
-# Upload dist/consent/ to CDN
-aws s3 sync web/dist/consent/ s3://my-cdn-bucket/consent/
+# Upload dist/ to CDN
+aws s3 sync web/dist/ s3://my-cdn-bucket/
 ```
 
 **Access:**
-- SPA: https://cdn.example.com/consent/
+- SPA: https://cdn.example.com/
 - API: https://api.example.com/api/
 
 **Note:** Requires CORS configuration and careful handling of authentication cookies.
@@ -614,14 +497,13 @@ aws s3 sync web/dist/consent/ s3://my-cdn-bucket/consent/
 
 ### SPA Not Loading
 
-**Issue:** 404 error when accessing `/consent`
+**Issue:** 404 error when accessing `/`
 
 **Solutions:**
-1. Verify `SPA_SERVE_ENABLED=true`
-2. Check `SPA_STATIC_FILES_PATH` points to correct directory
-3. Ensure frontend is built: `cd web && npm run build`
-4. Verify files exist: `ls web/dist/consent/index.html`
-5. Check backend logs for file serving errors
+1. Ensure frontend is built: `cd web && npm run build`
+2. Verify the deployment contains `web/dist/index.html`
+3. Ensure `web/dist` is relative to the broker process working directory
+4. Check backend logs for file serving errors
 
 ### API Requests Failing
 

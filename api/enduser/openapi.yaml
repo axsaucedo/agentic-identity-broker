@@ -784,7 +784,7 @@ paths:
           schema:
             type: string
             format: uri
-          example: https://broker.example.com/consent/sessions
+          example: https://broker.example.com/sessions
       responses:
         "302":
           description: Redirect to third-party authorization endpoint
@@ -1584,7 +1584,7 @@ paths:
                   value:
                     error: "access_denied"
                     error_description: "user delegation is required before impersonation"
-                    error_uri: "https://broker.example.com/consent/agent/550e8400-e29b-41d4-a716-446655440000"
+                    error_uri: "https://broker.example.com/agents/550e8400-e29b-41d4-a716-446655440000"
         "500":
           description: Internal Server Error
           content:

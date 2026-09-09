@@ -318,7 +318,7 @@ For detailed documentation, see [ARCHITECTURE.md](ARCHITECTURE.md).
 │   │   ├── services/            # API client and services
 │   │   ├── types/               # TypeScript type definitions
 │   │   └── utils/               # Utility functions
-│   ├── dist/consent/            # Built frontend assets (served by Go)
+│   ├── dist/                    # Built frontend assets (served by Go)
 │   └── package.json             # Dependencies and scripts
 ├── migrations/                  # Database schema migrations (go-migrate)
 ├── test/                        # Integration tests
@@ -391,7 +391,7 @@ Run `just --list` to see all available commands:
 **Frontend**:
 - `just web-install` - Install npm dependencies
 - `just web-dev` - Start Vite dev server with HMR (port 3000)
-- `just web-build` - Build production bundle to web/dist/consent/
+- `just web-build` - Build production bundle to web/dist/
 - `just build-all` - Build both backend and frontend
 
 **Documentation**:
@@ -537,7 +537,7 @@ This setup provides:
 ```bash
 just web-install          # Install npm dependencies
 just web-dev              # Start Vite dev server (port 3000)
-just web-build            # Build production bundle to web/dist/consent/
+just web-build            # Build production bundle to web/dist/
 just build-all            # Build both Go backend and frontend
 ```
 
@@ -548,7 +548,7 @@ Build frontend and run from Go backend:
 cd web && npm run build && cd .. && just run
 ```
 
-Access at http://localhost:8000/consent (no hot reload, requires rebuild for changes)
+Access at http://localhost:8000/ (no hot reload, requires rebuild for changes)
 
 #### Frontend-Only Development
 
@@ -578,7 +578,7 @@ npm run build
 # or from project root:
 just web-build
 ```
-This compiles TypeScript and bundles the app to `web/dist/consent/` directory.
+This compiles TypeScript and bundles the app to `web/dist/` directory.
 
 **Preview Production Build:**
 ```bash
@@ -587,13 +587,13 @@ npm run preview
 
 ### Integration with Go Backend
 
-The frontend is served by the Go backend at `/consent`:
+The frontend is served by the Go backend at `/`:
 
-1. **Build the frontend**: `just web-build` (creates `web/dist/consent/`)
+1. **Build the frontend**: `just web-build` (creates `web/dist/`)
 2. **Start the backend**: `just run` (from project root)
-3. **Access the app**: http://localhost:8000/consent
+3. **Access the app**: http://localhost:8000/
 
-The backend serves static files from `web/dist/consent/` and handles API requests at `/api/consent/*`.
+The backend serves static files from `web/dist/` and handles API requests at `/api/consent/*`.
 
 ### Environment Variables
 
@@ -621,7 +621,7 @@ web/
 │   ├── services/         # API client and services
 │   ├── types/            # TypeScript type definitions
 │   └── utils/            # Utility functions
-├── dist/consent/         # Build output (served by Go backend)
+├── dist/                 # Build output (served by Go backend)
 ├── package.json          # Dependencies and scripts
 ├── vite.config.ts        # Vite configuration
 ├── tsconfig.json         # TypeScript solution references
@@ -667,14 +667,14 @@ open coverage/index.html
 npm run build
 ```
 
-Output: `web/dist/consent/` directory with optimized static files.
+Output: `web/dist/` directory with optimized static files.
 
 **Deploy with Go Backend:**
 1. Build frontend: `cd web && npm run build`
 2. Build Go binary: `just build-release`
-3. Deploy `bin/agentic-identity-broker` with embedded `web/dist/consent/`
+3. Deploy `bin/agentic-identity-broker` with `web/dist/`
 
-The Go backend automatically serves the SPA from the embedded directory.
+The Go backend automatically serves the SPA from `web/dist/`.
 
 ### Troubleshooting
 

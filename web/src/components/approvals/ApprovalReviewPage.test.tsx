@@ -11,7 +11,7 @@ const approval = {
   tool_name: 'read_file',
   arguments: { path: '/tmp/example' },
   status: 'pending' as const,
-  approval_url: 'https://broker.example.com/consent/approvals/approval-1',
+  approval_url: 'https://broker.example.com/approvals/approval-1',
   created_at: '2026-03-29T00:00:00Z',
   expires_at: '2026-03-29T00:10:00Z',
 };

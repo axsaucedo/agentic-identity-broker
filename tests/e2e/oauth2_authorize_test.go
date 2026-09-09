@@ -158,7 +158,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Redirects to consent UI
-			Expect(resp).To(matchers.HaveOAuth2Redirect("/consent/agent/" + agent.ID.String()))
+			Expect(resp).To(matchers.HaveOAuth2Redirect("/agents/" + agent.ID.String()))
 
 			// And: Original URL sealed in session_token (not exposed as plain redirect_uri)
 			redirectURL, err := helpers.ExtractRedirectURL(resp)
@@ -249,7 +249,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Redirects to consent UI (not upstream)
-			Expect(resp).To(matchers.HaveOAuth2Redirect("/consent/agent/" + agent.ID.String()))
+			Expect(resp).To(matchers.HaveOAuth2Redirect("/agents/" + agent.ID.String()))
 		})
 	})
 
@@ -444,7 +444,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 				Equal(http.StatusSeeOther),
 			))
 			location2 := resp2.Header.Get("Location")
-			Expect(location2).To(ContainSubstring("/consent/agent/"))
+			Expect(location2).To(ContainSubstring("/agents/"))
 		})
 	})
 })

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -659,7 +660,7 @@ func TestCallbackEndpoint_InvalidStateToken(t *testing.T) {
 	assert.Equal(t, http.StatusFound, w.Code)
 
 	location := w.Header().Get("Location")
-	assert.Contains(t, location, "/consent/sessions")
+	assert.True(t, strings.HasPrefix(location, "/sessions?"), "unexpected callback redirect: %s", location)
 	assert.Contains(t, location, "error=invalid_state")
 }
 
@@ -732,7 +733,7 @@ func TestCallbackEndpoint_OAuth2Error(t *testing.T) {
 			assert.Equal(t, http.StatusFound, w.Code)
 
 			location := w.Header().Get("Location")
-			assert.Contains(t, location, "/consent/sessions")
+			assert.True(t, strings.HasPrefix(location, "/sessions?"), "unexpected callback redirect: %s", location)
 			assert.Contains(t, location, "error="+tt.error)
 			assert.Contains(t, location, url.QueryEscape(tt.errorDesc))
 		})
@@ -771,7 +772,7 @@ func TestCallbackEndpoint_MissingCode(t *testing.T) {
 	assert.Equal(t, http.StatusFound, w.Code)
 
 	location := w.Header().Get("Location")
-	assert.Contains(t, location, "/consent/sessions")
+	assert.True(t, strings.HasPrefix(location, "/sessions?"), "unexpected callback redirect: %s", location)
 	assert.Contains(t, location, "error=invalid_callback")
 }
 
@@ -806,7 +807,7 @@ func TestCallbackEndpoint_MissingState(t *testing.T) {
 	assert.Equal(t, http.StatusFound, w.Code)
 
 	location := w.Header().Get("Location")
-	assert.Contains(t, location, "/consent/sessions")
+	assert.True(t, strings.HasPrefix(location, "/sessions?"), "unexpected callback redirect: %s", location)
 	assert.Contains(t, location, "error=invalid_callback")
 }
 
