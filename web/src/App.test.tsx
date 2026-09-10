@@ -18,6 +18,10 @@ vi.mock('@services/api/sessions', () => ({
   },
 }));
 
+vi.mock('./pages/ConsentOverviewPage', () => ({
+  default: () => <h1>My Agent Delegations</h1>,
+}));
+
 vi.mock('./pages/AgentGrantDetailPage', () => ({
   default: () => <h1>Agent grant detail</h1>,
 }));
