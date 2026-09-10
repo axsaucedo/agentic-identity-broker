@@ -5,123 +5,121 @@ description: Precise definitions of the terms used across the Agentic Identity B
 
 # Glossary
 
-Definitions of the terms used throughout these docs. Terms are grouped by area. For how they
-fit together, see [delegation and consent](/docs/concepts/delegation-and-consent).
+This page defines the terms used in these documents. The terms are grouped by area. See
+[delegation and consent](/docs/concepts/delegation-and-consent) to see how they work together.
 
 ## Delegation model
 
-**Principal** — the authenticated end user. The broker does not authenticate users; a trusted
-reverse proxy authenticates the request and passes the principal identifier in a header
-(default `X-Remote-User`).
+**Principal** — The authenticated user. A trusted reverse proxy authenticates the request and
+sends the principal identifier in a header. The default header is `X-Remote-User`.
 
-**Agent** — an AI agent registered in the broker. Identified by a system-generated UUID (used
-as its OAuth2 `client_id`), with a display name, description, and optional governance and
-documentation URLs. Declares the services and permission sets it needs, each mandatory or
-optional.
+**Agent** — An AI agent registered in the broker. An agent has a system-generated UUID for
+its OAuth2 `client_id`. It has a display name, description, and optional governance and
+documentation URLs. It declares mandatory or optional services and permission sets.
 
-**Third-party service** (third-party OAuth2 provider) — an external OAuth2 provider the broker
-integrates with, such as GitHub or Google. Holds the provider's client ID, an encrypted client
-secret, issuer and endpoints, offered scopes, and optional resource URIs for token exchange.
+**Third-party service** (third-party OAuth2 provider) — An external OAuth2 provider, such as
+GitHub or Google. A service has a provider client ID, encrypted client secret, issuer,
+endpoints, scopes, and optional token-exchange resource URIs.
 
-**Scope** — a single permission string defined by a service (for example `repo` or
-`user:email`), paired with a human-readable description.
+**Scope** — A permission string from a service, such as `repo` or `user:email`. Each scope
+has a human-readable description.
 
-**Permission set** — an administrator-defined bundle of scopes spanning one or more services.
-The unit users consent to, expressed in business terms rather than raw provider scopes.
+**Permission set** — An administrator-defined group of scopes for one or more services. It
+is the unit that users consent to. It uses business terms instead of raw provider scopes.
 
-**Requirement type** — whether an agent's need for a service or permission set is **mandatory**
-(authorization is blocked until satisfied) or **optional** (the agent degrades gracefully if
-it is not granted).
+**Requirement type** — Whether an agent needs a service or permission set. **Mandatory**
+requirements stop authorization until satisfied. **Optional** requirements let the agent
+continue without that access.
 
-**Grant** (user grant) — the record of a principal delegating permission sets to an agent. At
-most one active grant per user and agent; optionally expires (`valid_until`); revocable at any
-time.
+**Grant** (user grant) — The record of a principal giving permission sets to an agent. A user
+has at most one active grant for each agent. A grant can expire through `valid_until`. A user
+can revoke it at any time.
 
-**User session** — an authenticated OAuth2 session between a principal and one third-party
-service, holding the encrypted access and refresh tokens, expiry, and scopes. Exactly one per
-user and service.
+**User session** — An authenticated OAuth2 session for one principal and one third-party
+service. It contains encrypted access and refresh tokens, expiry, and scopes. A user has one
+session for each service.
 
-**Consent flow** — the process where a user reviews an agent's requested access and grants,
-adjusts, or revokes it, through the consent UI.
+**Consent flow** — The process where a user reviews, grants, adjusts, or revokes an agent
+request in the consent interface.
 
 ## OAuth2 and token exchange
 
-**Authorization server** — the broker's OAuth2 surface implementing RFC 6749 (authorization
-code) and RFC 8414 (server metadata). Depending on [server mode](/docs/concepts/oauth2-server-modes),
-it either proxies an upstream server or issues its own tokens.
+**Authorization server** — The broker OAuth2 surface for RFC 6749 authorization code and RFC
+8414 metadata. It can proxy an upstream server or issue its own tokens. The selected
+[server mode](/docs/concepts/oauth2-server-modes) determines its behavior.
 
-**Server mode** — one of `proxy` (forward to an upstream authorization server), `local` (issue
-tokens locally), or `hybrid` (both, dispatched per agent).
+**Server mode** — `proxy` forwards to an upstream authorization server. `local` issues tokens
+in the broker. `hybrid` uses both modes based on agent registration.
 
-**PKCE** — Proof Key for Code Exchange (RFC 7636). Always required on the broker's
-authorization flows, using the `S256` challenge method only.
+**PKCE** — Proof Key for Code Exchange (RFC 7636). The broker always requires the `S256`
+challenge method for authorization flows.
 
-**Token exchange** — RFC 8693. A privileged gateway swaps an agent's subject token for the
-correct third-party token, scoped to a target resource, after the broker verifies the user's
-grant.
+**Token exchange** — RFC 8693. A privileged gateway exchanges an agent subject token for the
+appropriate third-party token. The broker first validates the user grant.
 
-**Subject token** — in token exchange, the JWT identifying the user (via a configurable claim,
-default `sub`) and the agent (default `azp`) on whose behalf the exchange is requested.
+**Subject token** — The JWT that identifies a user and agent in token exchange. The default
+user claim is `sub`. The default agent claim is `azp`.
 
-**Client assertion** — in token exchange, the JWT a privileged gateway presents to authenticate
-itself to the broker. Validated against the upstream authorization server's keys.
+**Client assertion** — The JWT that a privileged gateway uses to authenticate to the broker.
+The broker validates it against upstream authorization server keys.
 
-**Resource / protected resource** — a URI identifying the target third-party service for a
-token exchange. Matched against the `protected_resources` configured on a service.
+**Resource / protected resource** — A URI that identifies a target third-party service for
+token exchange. The broker matches it to service `protected_resources`.
 
-**Broker client credential** — OAuth2 client credentials the broker itself issues to an agent
-for `local` or `hybrid` mode. The secret is hashed at rest, shown once, and rotatable.
+**Broker client credential** — OAuth2 client credentials that the broker issues for an agent
+in `local` or `hybrid` mode. The broker stores the secret hash, shows the secret once, and
+can rotate the credential.
 
-**Signing key** — the asymmetric key (ES256) the broker uses to sign locally issued JWT access
-tokens. Private material is encrypted at rest and published in the broker's JWKS for
-verification.
+**Signing key** — An asymmetric ES256 key that the broker uses to sign local JWT access
+tokens. The broker encrypts private material at rest and publishes public keys through its
+JWKS.
 
 **JWKS** — JSON Web Key Set (RFC 7517). The broker publishes public keys at
-`/oauth2/jwks.json` so tokens it issues (or republishes) can be verified.
+`/oauth2/jwks.json`. Token validators use these keys.
 
-**CIMD** — Client ID Metadata Document. An HTTPS URL an agent can use as its `client_id`; the
-broker fetches and validates a JSON document there (with SSRF protection) to show trustworthy
-metadata on the consent screen.
+**CIMD** — Client ID Metadata Document. An agent can identify itself with an HTTPS URL that
+points to this JSON document. The broker fetches and validates the document with SSRF
+protection. The consent interface shows the document metadata.
 
-**CEL** — Common Expression Language. Used for authorizing which gateways may perform token
-exchange, extracting identifiers from tokens, and adding custom claims to locally issued
-tokens.
+**CEL** — Common Expression Language. The broker uses it to authorize token exchange, get
+identifiers from tokens, and add claims to local tokens.
 
 ## Encryption
 
-**Envelope encryption** — encrypting data with a fresh data key, then encrypting that data key
-with a higher-level key. The broker uses this so a single key-management call protects many
-tokens. See [encryption at rest](/docs/concepts/encryption).
+**Envelope encryption** — The broker encrypts data with a new data key. It then encrypts that
+data key with a higher-level key. One key-management request can protect many tokens. See
+[encryption at rest](/docs/concepts/encryption).
 
-**KEK / DEK** — Key Encryption Key (the root key, an AWS KMS customer-managed key in production)
-and Data Encryption Key (the per-operation key that actually encrypts a token).
+**KEK / DEK** — Key Encryption Key (KEK) is the production root AWS KMS customer-managed key.
+Data Encryption Key (DEK) encrypts one token for an operation.
 
-**Branch key** — an intermediate key, cached in DynamoDB, between the KEK and the DEK in the
-hierarchical keyring. Reduces calls to KMS.
+**Branch key** — An intermediate key between the KEK and DEK. DynamoDB caches this key in the
+hierarchical keyring. This cache reduces KMS calls.
 
-**Encryption context** — non-secret data bound to ciphertext as additional authenticated data,
-constrained to a single subject (the service) so a token encrypted for one service cannot be
-decrypted for another.
+**Encryption context** — Non-secret data bound to ciphertext as additional authenticated data.
+The context identifies one service. A token for one service cannot be decrypted for another
+service.
 
-**Token vault** — the encrypted store of third-party OAuth2 tokens held in user sessions.
+**Token vault** — Encrypted third-party OAuth2 tokens stored in user sessions.
 
 ## Deployment and operations
 
-**Reverse-proxy pre-authentication** — the model where a trusted proxy authenticates the user
-and injects the principal header. The broker's baseline authentication mode.
+**Reverse-proxy pre-authentication** — A trusted proxy authenticates the user and adds the
+principal header. This is the broker baseline authentication mode.
 
-**JWT pre-authentication** — an optional mode where the broker verifies a signed JWT header
-(against a JWKS, or unsigned in trusted environments) and extracts a user profile via CEL.
+**JWT pre-authentication** — An optional mode where the broker validates a signed JWT from a
+header. It uses a JWKS for signed tokens. It accepts unsigned claims only in a trusted
+environment. It uses CEL to get a user profile.
 
-**ExtProc token-exchange sidecar** — a standalone gRPC service implementing Envoy's External
-Processor protocol. Performs transparent token exchange (and optional OPA policy checks) at an
+**ExtProc token-exchange sidecar** — A standalone gRPC service that implements the Envoy
+External Processor protocol. It performs token exchange and optional OPA policy checks at an
 Envoy-based agent gateway.
 
-**OPA** — Open Policy Agent. Used by the ExtProc sidecar to authorize proxied requests and MCP
-tool calls, independently of the broker's own token-exchange policy.
+**OPA** — Open Policy Agent. The ExtProc sidecar uses it to authorize proxied requests and
+MCP tool calls. It is independent of the broker token-exchange policy.
 
-**IRSA** — IAM Roles for Service Accounts. The AWS mechanism by which broker pods obtain
-permission to use the KMS key and DynamoDB table without static credentials.
+**IRSA** — IAM Roles for Service Accounts. On AWS, this lets broker pods use the KMS key and
+DynamoDB table without static credentials.
 
-**Migration job** — a one-shot container image that applies database schema changes with a
-least-privilege database user, run separately from the broker service.
+**Migration job** — A one-shot container image that applies database schema changes with a
+least-privilege database user. It runs separately from the broker service.

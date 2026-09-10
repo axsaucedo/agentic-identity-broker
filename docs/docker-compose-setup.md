@@ -1,6 +1,7 @@
 # Docker Compose Development Setup
 
-This guide explains how to use Docker Compose to run the complete Agentic Identity Broker stack locally with hot-reload support for both backend and frontend.
+This guide explains how to start the complete Agentic Identity Broker stack with Docker
+Compose. It includes hot reload for the backend and frontend.
 
 ## Quick Start (5 minutes)
 
@@ -15,16 +16,15 @@ This guide explains how to use Docker Compose to run the complete Agentic Identi
 just dev-docker
 ```
 
-This single command:
-1. Creates `.env.compose` from `.env` template (if needed)
-2. Builds Docker images for all services
-3. Starts all services with hot reload enabled
-4. Auto-runs seed data scripts
+This command does the following:
 
-**Expected output:**
-- Services starting log messages
-- Logs from all containers streaming to stdout
-- "Seed data scripts" completing after broker health check
+1. Creates `.env.compose` from the `.env` template when required.
+2. Builds Docker images for all services.
+3. Starts all services with hot reload.
+4. Runs seed-data scripts.
+
+The command shows service startup messages and container logs. Seed-data scripts finish after
+the broker health check.
 
 ### Step 2: Access Services
 
@@ -37,7 +37,7 @@ Open in your browser:
 - **Third-Party OAuth2**: http://localhost:9000
 - **Sample Agent**: http://localhost:9002
 
-### Step 3: Verify Everything Works
+### Examine service status
 
 ```bash
 # Check all services are healthy
@@ -78,11 +78,12 @@ just compose-down
 
 ## Configuration Files
 
-The project uses separate configuration files for Docker Compose and native development:
+The project uses different configuration files for Docker Compose and native development.
 
-### `config.yaml` (Native Development)
+### `config.yaml` (Native development)
 
-Default configuration file for running the broker directly on your host machine using `just run` or `just dev`. Uses `localhost` and `127.0.0.1` addresses for all services:
+Use this configuration file when the broker runs directly on your host with `just run` or
+`just dev`. It uses `localhost` and `127.0.0.1` addresses:
 
 ```yaml
 oauth2_authorization_server:
@@ -91,11 +92,13 @@ oauth2_authorization_server:
   upstream_token_endpoint: http://127.0.0.1:9001/oauth/token
 ```
 
-**When to use:** Running the broker natively on your host machine (recommended for debugging, profiling, or when you don't need the full stack).
+Use this mode for native debugging or profiling. You can use it when you do not require the
+complete stack.
 
 ### `config.docker.yaml` (Docker Compose)
 
-Docker-specific configuration that uses internal container DNS names for service-to-service communication within the Docker Compose network:
+Docker Compose uses this file for container-to-container communication. It uses internal
+container DNS names:
 
 ```yaml
 oauth2_authorization_server:
@@ -104,13 +107,16 @@ oauth2_authorization_server:
   upstream_token_endpoint: http://upstream-oauth2:9001/oauth/token
 ```
 
-**When to use:** Running the full stack with `just dev-docker` or `just compose-up`. The docker-compose.yml automatically sets `IDENTITY_BROKER_CONFIG_PATH=config.docker.yaml` to use this file.
+Use it with `just dev-docker` or `just compose-up`. `docker-compose.yml` sets
+`IDENTITY_BROKER_CONFIG_PATH=config.docker.yaml`.
 
-### Why Separate Configs?
+### Why the files differ
 
-- **Native development**: `just run` needs `localhost`/`127.0.0.1` addresses since services aren't in a Docker network
-- **Docker Compose**: Container-to-container communication uses DNS names like `upstream-oauth2` which only resolve inside the Docker network
-- **No manual switching**: The environment automatically picks the right config based on how you run it
+- **Native development:** `just run` uses `localhost` or `127.0.0.1`. Services are not in a
+  Docker network.
+- **Docker Compose:** Services use container DNS names such as `upstream-oauth2`. These names
+  resolve only in the Docker network.
+- **No manual switch:** The environment selects the configuration based on the start command.
 
 ---
 
@@ -118,45 +124,45 @@ oauth2_authorization_server:
 
 ### Backend (Go with Air)
 
-When you modify any `.go` file in `./cmd` or `./internal`:
+When you change a `.go` file in `./cmd` or `./internal`, Air responds:
 
-1. Air detects the change
-2. Recompiles binary to `tmp/agentic-identity-broker`
-3. Restarts the server
-4. New behavior available after the server restarts
+1. Air detects the change.
+2. Air compiles `tmp/agentic-identity-broker`.
+3. Air restarts the server.
+4. The server provides the new behavior after restart.
 
 **View logs:**
 ```bash
 just compose-logs-backend
 ```
 
-**Manual restart if needed:**
+**Manual restart:**
 ```bash
 just compose-restart-backend
 ```
 
 ### Frontend (React with Vite HMR)
 
-When you modify files in `./web/src`:
+When you change a file in `./web/src`, Vite responds:
 
-1. Vite detects the change
-2. Browser receives HMR update
-3. Component hot-replaces without full page reload
-4. Changes visible in ~500ms
+1. Vite detects the change.
+2. The browser receives an HMR update.
+3. Vite replaces the component without a full page reload.
+4. The change is visible in about 500ms.
 
 **View logs:**
 ```bash
 just compose-logs-frontend
 ```
 
-**Manual restart if needed:**
+**Manual restart:**
 ```bash
 just compose-restart-frontend
 ```
 
 ### Configuration Changes
 
-If you modify `.air.toml` or `vite.config.ts`, restart the affected service:
+If you change `.air.toml` or `vite.config.ts`, restart the affected service:
 
 ```bash
 just compose-restart-backend    # For Air config changes
@@ -193,7 +199,7 @@ Registers the mock OAuth2 service via `scripts/register-mock-thirdparty-service.
 
 ### Manual Seed Execution
 
-If auto-seed fails or you want to reseed:
+If automatic seeding fails, or you want to seed the stack again, run:
 
 ```bash
 # Seed broker data
@@ -221,25 +227,25 @@ just compose-logs-frontend
 just compose-logs-service upstream-oauth2
 ```
 
-### Restart a Service (after code changes)
+### Restart a service after code changes
 
 ```bash
 just compose-restart-backend
 just compose-restart-frontend
 ```
 
-### Check Service Health
+### Examine service health
 
 ```bash
 just compose-health
 ```
 
-Shows:
-- Running containers and their status
-- Health check status for each service
+This command shows:
+- Running containers and their state
+- Health state for each service
 - Connectivity test results
 
-### Run Services in Background
+### Start services in the background
 
 ```bash
 just compose-up-detached
@@ -248,7 +254,7 @@ just compose-up-detached
 just compose-down
 ```
 
-### Clean Everything (containers, volumes, temp files)
+### Clean containers, volumes, and temporary files
 
 ```bash
 just compose-clean
@@ -280,11 +286,11 @@ identity-broker:
     - "14001:14000"
 ```
 
-### Frontend Can't Reach Backend
+### Frontend cannot access the backend
 
-Backend API proxy failing with connection errors.
+The backend API proxy returned a connection error.
 
-**Check:**
+**Examine:**
 ```bash
 # 1. Backend is running
 curl http://localhost:8000/health
@@ -297,16 +303,16 @@ just compose-logs-frontend  # Look for proxy errors
 # The proxy target should be http://localhost:8000 (host) or http://identity-broker:8000 (container)
 ```
 
-**Verify proxy is working:**
+**Examine the proxy:**
 ```bash
 curl -s http://localhost:3000/api/health  # Should proxy to backend
 ```
 
-### Seed Data Didn't Run
+### Seed data did not start
 
-Seed services may fail if broker isn't healthy.
+Seed services can fail when the broker is unhealthy.
 
-**Check seed logs:**
+**Read seed logs:**
 ```bash
 # In one terminal:
 just compose-logs-service seed-broker-data
@@ -321,40 +327,39 @@ just compose-seed-data
 just compose-register-third-party
 ```
 
-### File Changes Not Detected
+### File changes are not detected
 
-Air uses polling to detect changes on bind-mounted files.
+Air uses polling for changes in bind-mounted files.
 
 **Expected behavior:**
-- Go changes detected in ~1-2 seconds (polling delay)
-- React changes detected in ~500ms (Vite HMR is faster)
+- Go changes are detected in about 1–2 seconds.
+- React changes are detected in about 500ms.
 
-**Check polling is enabled:**
+**Make sure that polling is enabled:**
 ```bash
 grep "poll = " .air.toml
 # Should show: poll = true
 ```
 
-**Manually restart if needed:**
+**Manual restart:**
 ```bash
 just compose-restart-backend
 ```
 
-### Container Startup Too Slow
+### Slow container startup
 
-First startup builds Docker images (~1-2 min). Subsequent starts are faster.
+The first startup builds Docker images and takes about 1–2 minutes. Later starts are faster.
 
-**To speed up:**
-- Use SSD for Docker storage
-- Allocate more resources in Docker Desktop
-- Pre-build images: `docker compose build` before `docker compose up`
-
+To reduce startup time:
+- Use an SSD for Docker storage.
+- Allocate more Docker Desktop resources.
+- Build images with `docker compose build` before you start the stack.
 
 ### "health check: too many retries"
 
-Services failing health checks - likely startup is slow.
+Slow startup can cause health-check failures.
 
-**Check logs:**
+**Read logs:**
 ```bash
 just compose-logs
 
@@ -556,11 +561,10 @@ Key Features:
 
 ---
 
-## Next Steps
 
-- **Modify code**: Edit `.go` or `.tsx` files → auto-rebuild
-- **Check logs**: `just compose-logs` to debug
-- **Run tests**: `just verify` (inside devcontainer or on host)
-- **Build for prod**: `just docker-build-prod`
+## Next steps
 
-Happy developing!
+- **Edit code:** Edit a `.go` or `.tsx` file. The relevant service rebuilds.
+- **View logs:** Use `just compose-logs` to debug.
+- **Run tests:** Use `just verify` in the devcontainer or on the host.
+- **Build for production:** Use `just docker-build-prod`.

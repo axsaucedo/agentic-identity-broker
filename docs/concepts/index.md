@@ -5,12 +5,12 @@ description: The mental model behind the Agentic Identity Broker — how delegat
 
 # Concepts
 
-This section explains how the broker works and why it is shaped the way it is. It is written
-for readers deciding whether the broker fits their architecture, and for operators who need
-an accurate mental model before deploying it.
+This section explains how the broker works. It also explains why the broker has this
+design. It is for readers who decide whether the broker fits their architecture. It also
+serves operators who need a correct model before deployment.
 
-Start with the [delegation and consent model](/docs/concepts/delegation-and-consent) — it is
-the core of everything else. Then read whichever of the remaining pages match your interest.
+The [delegation and consent model](/docs/concepts/delegation-and-consent) is the core
+model. The remaining pages address specific parts of that model.
 
 ## The pages
 
@@ -31,25 +31,25 @@ the core of everything else. Then read whichever of the remaining pages match yo
 
 ## The one-minute model
 
-Four ideas carry most of the weight:
+Four facts explain the broker:
 
-1. **Delegation is per-user, per-agent, per-service, and scoped.** A *principal* (the user)
-   creates a *grant* that lets an *agent* use specific *permission sets* on specific
-   third-party services. At most one active grant exists per user and agent; it is revocable
-   and can expire.
+1. **Delegation is per-user, per-agent, per-service, and scoped.** A *principal* creates a
+   *grant*. The grant lets an *agent* use specific *permission sets* with specific
+   third-party services. A user has at most one active grant for each agent. A grant can
+   expire and can be revoked.
 
 2. **The broker owns the third-party tokens.** When a user authorizes a third-party service,
-   the resulting access and refresh tokens are stored **encrypted** as a *user session* —
-   one per user and service. Agents never receive these tokens directly.
+   the broker creates a *user session*. The session stores encrypted access and refresh
+   tokens. An agent does not receive these tokens.
 
-3. **Access is exchanged, not shared.** At request time, a gateway presents an agent's token
-   and the target resource; the broker verifies the grant and returns the correct third-party
-   token via [token exchange](/docs/concepts/token-exchange). The agent holds no provider
-   credential.
+3. **Access is exchanged, not shared.** At request time, a gateway presents an agent token
+   and the target resource. The broker validates the grant and returns the appropriate
+   third-party token through [token exchange](/docs/concepts/token-exchange). An agent does
+   not hold a provider credential.
 
 4. **Authentication is delegated to the edge.** The broker does not log users in. A trusted
-   reverse proxy authenticates the user and passes the principal in a header. The broker
-   enforces consent and least privilege from there.
+   reverse proxy authenticates each user. It passes the principal in a header. The broker
+   then enforces consent and least privilege.
 
-Everything else — server modes, encryption backends, the ExtProc sidecar, CIMD — is a way to
-make those four ideas work in a real deployment.
+Server modes, encryption backends, the ExtProc sidecar, and CIMD support these facts in a
+deployment.

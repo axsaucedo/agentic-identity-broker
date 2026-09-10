@@ -1,18 +1,17 @@
 ---
 title: Architecture
-description: The components of the Agentic Identity Broker, its dual-port topology, how a delegated request flows, and where it sits alongside your gateway and identity provider.
+description: Components of the Agentic Identity Broker and its dual-port topology. This page shows how a delegated request flows and where the broker fits with your gateway and identity provider.
 ---
 
 # Architecture
 
-This page describes the broker at the level an operator needs to deploy and reason about it:
-the moving parts, the network surfaces, and how a request flows. It deliberately avoids
-internal code structure.
+This page describes the broker for operators. It explains the components, network surfaces,
+and request flow. It does not describe the internal code structure.
 
 ## System context
 
-The broker is one component in a larger picture. It relies on an authenticating reverse
-proxy in front of it and, optionally, an agent gateway that performs token exchange.
+The broker is one component in a larger system. It requires an authenticating reverse proxy.
+An agent gateway can perform token exchange.
 
 ```mermaid
 flowchart TB
@@ -49,31 +48,30 @@ application, at `/` on the end-user port.
 
 ### The consent UI
 
-A browser application where users review what an agent is asking for and grant, adjust, or
-revoke access. It talks only to the end-user API. Users typically reach it in two ways: on
-their own to manage existing delegations, or by redirect in the middle of an agent's
-authorization flow when consent is required.
+The consent UI is a browser application. A user can review requested access and grant,
+adjust, or revoke it. The UI calls only the end-user API. A user can open it to manage a
+delegation. The broker can also redirect a user to it during an agent authorization flow.
 
 ### The ExtProc token-exchange sidecar (optional)
 
-A standalone gRPC service implementing Envoy's External Processor protocol. Deployed beside
-an Envoy-based agent gateway, it transparently swaps an agent's bearer token for the correct
-third-party token on each request, caches results in memory, and can enforce an
-[OPA](https://www.openpolicyagent.org/) policy on the proxied call. See
+The ExtProc sidecar is a standalone gRPC service for the Envoy External Processor protocol.
+It runs beside an Envoy-based agent gateway. For each request, it exchanges the agent bearer
+token for the appropriate third-party token. It stores cached results in memory. It can use
+an [OPA](https://www.openpolicyagent.org/) policy to restrict the proxied request. See
 [token exchange at the gateway](/docs/guides/token-exchange-gateway).
 
 ### State
 
-- **PostgreSQL** stores agents, services, permission sets, grants, and encrypted third-party
-  sessions. An in-memory backend exists for evaluation and tests.
-- **Encryption keys** live in AWS KMS (a customer-managed key) with a DynamoDB table caching
-  intermediate keys. In development, a single raw key replaces KMS. See
+- **PostgreSQL** stores agents, services, permission sets, grants, and encrypted
+  third-party sessions. An in-memory backend is available for evaluation and tests.
+- **Encryption keys** are in AWS KMS. A DynamoDB table caches intermediate keys. In
+  development, the broker uses a single raw key instead. See
   [encryption at rest](/docs/concepts/encryption).
 
 ## Dual-port topology
 
-The broker separates two audiences onto two ports so they can be exposed, secured, and scaled
-independently.
+The broker serves two audiences on separate ports. You can expose, secure, and scale these
+ports independently.
 
 | Port | Surface | Audience | Typical exposure |
 |---|---|---|---|
@@ -88,27 +86,27 @@ The end-user port hosts:
   `/.well-known/oauth-authorization-server` — the [OAuth2 authorization-server](/docs/concepts/oauth2-server-modes)
   surface.
 
-The admin port hosts CRUD for agents, third-party services, and permission sets, plus
-per-agent client credentials and signing keys. Administrative privilege is enforced by your
-proxy before requests reach this port.
+The admin port provides CRUD operations for agents, third-party services, and permission
+sets. It also provides per-agent client credentials and signing keys. The proxy enforces
+administrator privilege before a request reaches this port.
 
 See the [API reference](/docs/reference/api) for the full contracts.
 
 ## Authentication is delegated
 
-The broker does not authenticate users. A trusted reverse proxy — oauth2-proxy, an nginx
-`auth_request`, an API gateway, or a service mesh — authenticates the request and injects the
-user's identity in a header (`X-Remote-User` by default, configurable). The broker trusts
-that header only from a trusted source.
+The broker does not authenticate users. A trusted reverse proxy authenticates each request.
+For example, the proxy can use oauth2-proxy, nginx `auth_request`, an API gateway, or a
+service mesh. It sends the user identity in a header. The default header is
+`X-Remote-User`. The broker accepts the header only from the proxy.
 
-This is a deliberate boundary: keep using your existing identity provider for human login,
-and let the broker focus on delegation, consent, and least privilege. An optional JWT
-pre-authentication mode lets the broker verify a signed JWT header and extract a richer
-profile. See [configure authentication](/docs/guides/configure-authentication).
+Keep your identity provider for human login. The broker manages delegation, consent, and
+least privilege. An optional JWT pre-authentication mode validates a signed JWT from a
+header and extracts a user profile. See
+[configure authentication](/docs/guides/configure-authentication).
 
 ## How a delegated request flows
 
-A representative end-to-end path, from an agent calling a third-party API through a gateway:
+This is a representative path from an agent request to a third-party API through a gateway:
 
 ```mermaid
 sequenceDiagram
@@ -126,22 +124,20 @@ sequenceDiagram
     G-->>A: Response
 ```
 
-If the user has not yet delegated the required access, the flow instead routes the user to
-the consent UI first; once they grant it, the original flow resumes. The
-[delegation and consent](/docs/concepts/delegation-and-consent) page covers that path in
-detail.
+If a user has not delegated required access, the broker routes the user to the consent
+interface. After the user grants access, the original flow resumes. See
+[delegation and consent](/docs/concepts/delegation-and-consent) for this path.
 
 ## Deployment shape
 
-The broker ships as containers and is designed to run on Kubernetes, though it runs anywhere
-containers do. A typical production deployment includes:
+The broker is available as containers. It can run on Kubernetes or another container
+platform. A typical production deployment includes:
 
-- The broker service (multiple replicas), fronted by the authenticating proxy.
-- A separate one-shot migration job image that applies database schema changes with a
-  least-privilege database user.
-- PostgreSQL, provisioned however you prefer (external, or an operator-managed cluster).
-- For encryption, a KMS key and DynamoDB table, with pods authenticating via IRSA on AWS.
-- Optionally, the ExtProc sidecar alongside your agent gateway.
+- The broker service with multiple replicas behind the authenticating proxy.
+- A one-shot migration job image with a least-privilege database user.
+- PostgreSQL. You can use an external database or an operator-managed cluster.
+- A KMS key and DynamoDB table for encryption. On AWS, pods authenticate through IRSA.
+- An optional ExtProc sidecar with the agent gateway.
 
 See [deploy on Kubernetes](/docs/guides/deploy-on-kubernetes) and the
 [deployment checklist](/docs/operations/deployment-checklist) for the operational detail.

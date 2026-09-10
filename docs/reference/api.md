@@ -1,40 +1,36 @@
 ---
 title: "API overview"
-description: "The shared conventions of the Agentic Identity Broker's dual-port API: the reverse-proxy auth model, response envelopes, error codes, and a compact map of every end-user and admin endpoint."
+description: Shared conventions for the Agentic Identity Broker two-port API. This page covers reverse-proxy authentication, response envelopes, error codes, and endpoint groups.
 ---
 
 # API overview
 
-This page is a hand-authored companion to the two generated OpenAPI contracts. It explains
-the conventions the endpoints share — how requests authenticate, how responses are shaped,
-and what errors mean — and gives you a compact map of the whole surface.
+This page describes the conventions shared by the generated OpenAPI contracts. It explains
+authentication, response structure, and error codes. It also maps the API endpoint groups.
 
-The full, field-level contracts are generated from the source specifications and rendered at:
+The source specifications generate the field-level contracts:
 
-- **[End-user API reference](/api/enduser)** — port 8000.
-- **[Admin API reference](/api/admin)** — port 14000.
+- **[End-user API reference](/api/enduser)** — Port 8000.
+- **[Admin API reference](/api/admin)** — Port 14000.
 
-Those two pages are the authoritative contract for request and response schemas. This
-overview does not repeat them; it points you to the right group and explains what is common
-across all of them.
+These pages define request and response schemas. This overview describes shared behavior and
+points to the relevant endpoint group.
 
 ## Authentication model
 
-The broker relies on a **trusted reverse proxy** for pre-authentication. The proxy
-(oauth2-proxy, nginx `auth_request`, a service mesh) authenticates the caller and injects the
-principal in a request header. The broker never authenticates end users itself.
+The broker uses a **trusted reverse proxy** for pre-authentication. The proxy can be
+oauth2-proxy, nginx `auth_request`, or a service mesh. It authenticates the caller and sends
+the principal in a request header. The broker does not authenticate end users.
 
-- **Principal header** — default **`X-Remote-User`**, carrying the principal (an email,
-  username, or opaque ID). The header name is configurable. The broker trusts it only from a
-  trusted source; requests carrying it from an untrusted source are rejected.
-- **Session cookie** (end-user server only) — after pre-authentication, the broker maintains
-  a `session_token` cookie for the session duration. On the end-user server, a request is
-  authenticated by **either** the session cookie **or** the principal header.
-- **Admin privilege** — every admin endpoint requires the principal header, and
-  administrative privilege itself is enforced **at the proxy**, before requests reach the
-  admin API.
-- **CORS** — enabled for all `/api/*` routes on the end-user server, to support the browser
-  consent app.
+- **Principal header** — The default is **`X-Remote-User`**. It contains a principal email,
+  username, or opaque ID. You can configure the header name. The broker accepts it only from
+  a trusted source.
+- **Session cookie** — After pre-authentication, the end-user server maintains a
+  `session_token` cookie. A request can use the session cookie or principal header.
+- **Admin privilege** — The proxy enforces administrator privilege before a request reaches
+  the admin API.
+- **CORS** — The end-user server enables CORS for `/api/*` routes for the browser consent
+  interface.
 
 ### Public endpoints
 
@@ -46,12 +42,11 @@ These endpoints require no pre-authentication:
 | `GET /oauth2/jwks.json` | End-user |
 | `GET /.well-known/oauth-authorization-server` | End-user |
 
-The OAuth2 endpoints `GET /oauth2/authorize` and `POST /oauth2/token` are not pre-auth gated
-either — they authenticate through their own OAuth2 parameters (agent client credentials or a
-`client_assertion`), not the principal header.
-
-See [Configure authentication](/docs/guides/configure-authentication) for how to establish
-the proxy trust boundary.
+`GET /oauth2/authorize` and `POST /oauth2/token` do not use pre-authentication. They use
+OAuth2 parameters, such as agent client credentials or `client_assertion`. They do not use
+the principal header. See
+[Configure authentication](/docs/guides/configure-authentication) for the proxy trust
+boundary.
 
 ## Response envelopes
 
@@ -65,18 +60,13 @@ Successful and error responses follow a small set of consistent shapes.
 | `{"error": "<code>", "message": "<text>"}` | Standard errors (end-user and admin) | `{"error": "agent not found", "message": "…"}` |
 | `{"error": "<code>", "error_description": "…"}` | OAuth2 endpoints (RFC 6749 / 8693) | `{"error": "access_denied", "error_description": "…"}` |
 
-:::note
-The two error shapes are intentionally different. Standard end-user and admin errors use the
-`{error, message}` envelope, where both fields are required. The OAuth2 endpoints
-(`/oauth2/token`, `/oauth2/jwks.json`, `/.well-known/*`, and authorize) use the RFC-defined
-`{error, error_description}` format instead.
-:::
+The error envelope depends on the API surface. End-user and admin APIs use `{error, message}`.
+Both fields are required. OAuth2 endpoints use the RFC `{error, error_description}` envelope.
 
 ## Error codes
 
-The `error` field carries a machine-readable code. The codes differ by surface: end-user and
-admin surfaces use human-readable strings, while the OAuth2 endpoints use the snake_case RFC
-tokens.
+The `error` field contains a machine-readable code. End-user and admin APIs use
+human-readable strings. OAuth2 endpoints use RFC snake_case tokens.
 
 | Surface | Codes |
 |---|---|
@@ -121,7 +111,7 @@ The full request and response schemas for every endpoint below are in the
 | GET | `/api/third-party/{serviceId}/oauth2/callback` | Handle the third-party OAuth2 callback. |
 | GET | `/api/third-party/{serviceId}/session` | Session detail and the agents that depend on it. |
 | DELETE | `/api/third-party/{serviceId}/session` | Terminate the session and delete its stored tokens. |
-| GET | `/api/third-party/{serviceId}/session/affected-agents` | Agents that would lose access if the session ends. |
+| GET | `/api/third-party/{serviceId}/session/affected-agents` | Agents that lose access when the session ends. |
 
 ### OAuth2 server
 
@@ -137,9 +127,8 @@ For the `/oauth2/token` grant modes and the RFC 8693 field reference, see
 
 ## Admin API map (port 14000)
 
-Every admin endpoint requires the `X-Remote-User` header, with administrative privilege
-enforced at the proxy. `GET /health` is public. Full schemas are in the
-[admin API reference](/api/admin).
+Each admin endpoint requires `X-Remote-User`. The proxy enforces administrator privilege.
+`GET /health` is public. See [admin API reference](/api/admin) for full schemas.
 
 ### Agents
 

@@ -1,32 +1,32 @@
 # Kubernetes Deployment Guide
 
-This guide covers deploying the Agentic Identity Broker to Kubernetes using Helm charts.
+This guide explains how to deploy the Agentic Identity Broker with Helm.
 
 ## Overview
 
-The Agentic Identity Broker Helm chart provides flexible deployment options:
+The Helm chart supports these deployment patterns:
 
 - **In-memory storage** for evaluation and testing
-- **External PostgreSQL** for production with existing databases
-- **Zalando PostgreSQL Operator** for automatic database provisioning
+- **External PostgreSQL** for an existing production database
+- **Zalando PostgreSQL Operator** for database provisioning
 - **Dual Ingress** for separate end-user and admin API access
 - **Automatic migrations** with separate database credentials
-- **Static manifest generation** for non-Helm environments
+- **Static manifest generation** outside Helm
 
 ## Prerequisites
 
-Before deploying, ensure you have:
+Before deployment, make sure that you have:
 
-- Kubernetes cluster (1.25+)
-- `kubectl` configured for your cluster
-- Helm 3.x installed
-- (Optional) Zalando PostgreSQL Operator for managed databases
+- A Kubernetes cluster version 1.25 or later
+- `kubectl` configured for the cluster
+- Helm 3.x
+- The Zalando PostgreSQL Operator for managed databases, if you use it
 
 ## Quick Start
 
-### 1. Deploy with In-Memory Storage (Evaluation)
+### 1. Deploy with in-memory storage for evaluation
 
-Perfect for quick testing and development:
+Use this mode for evaluation and development:
 
 ```bash
 # Install the chart
@@ -42,7 +42,9 @@ kubectl port-forward svc/broker-agentic-identity-broker 8000:8000
 curl http://localhost:8000/health
 ```
 
-⚠️ **Warning**: Data is lost when pods restart. Not suitable for production.
+:::warning
+In-memory storage loses data when a pod restarts. Do not use it in production.
+:::
 
 ### 2. Deploy with External PostgreSQL (Production)
 
@@ -104,7 +106,7 @@ helm install broker ./charts/agentic-identity-broker \
   --set postgresql.external.brokerSecretName=broker-db
 ```
 
-#### Step 4: Verify Deployment
+#### Step 4: Examine deployment
 
 ```bash
 # Check migration Job completed
@@ -146,14 +148,14 @@ helm install broker ./charts/agentic-identity-broker \
   --set postgresql.operator.volume.size=20Gi
 ```
 
-The operator will:
-1. Create a PostgreSQL cluster (`my-team-broker`)
-2. Create migration user: `broker-migration`
-3. Create broker user: `broker`
-4. Generate Kubernetes Secrets automatically
-5. Configure connection strings
+The operator does the following:
+1. Creates a PostgreSQL cluster (`my-team-broker`).
+2. Creates the migration user `broker-migration`.
+3. Creates the broker user `broker`.
+4. Generates Kubernetes Secrets.
+5. Configures connection strings.
 
-#### Check Operator Status
+#### Examine operator status
 
 ```bash
 # Check PostgreSQL cluster
@@ -339,10 +341,10 @@ helm upgrade broker ./charts/agentic-identity-broker -f values-production.yaml
 
 ### Upgrade Process
 
-1. **Migration Job runs** (Helm pre-upgrade hook)
-2. **Database schema updated** with migration user
-3. **Broker pods updated** one by one (rolling update)
-4. **Health checks** ensure availability during upgrade
+1. The migration Job starts as a Helm pre-upgrade hook.
+2. The migration user updates the database schema.
+3. Broker pods update one at a time.
+4. Health checks keep the service available during the upgrade.
 
 ### Rollback
 
@@ -404,7 +406,7 @@ The Helm chart uses two separate Docker images for enhanced security:
 
 **Configuration**:
 
-Both images use the same version tag by default (chart `appVersion`) to ensure consistency:
+By default, both images use the same version tag (`appVersion` from the chart):
 
 ```yaml
 # Default configuration (automatically set)
@@ -525,10 +527,10 @@ kubectl logs deployment/broker-agentic-identity-broker
 kubectl describe pod <pod-name>
 ```
 
-**Common Causes**:
-- Cannot connect to database (check broker secret)
-- Configuration error in ConfigMap
-- Missing required environment variables
+**Common causes:**
+- The broker cannot connect to the database. Examine the broker Secret.
+- A ConfigMap has a configuration error.
+- A required environment variable is missing.
 
 ### Zalando Operator Issues
 

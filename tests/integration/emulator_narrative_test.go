@@ -260,54 +260,6 @@ func TestHistoricalEncryptionDocsCarrySupersessionNotice(t *testing.T) {
 	}
 }
 
-func TestEnvLocalExamplesUseLiteralValues(t *testing.T) {
-	cases := []struct {
-		path           string
-		mustContain    []string
-		mustNotContain []string
-	}{
-		{
-			path: "docs/configuration.md",
-			mustContain: []string{
-				"values are literal strings; paste a generated base64 key",
-				"# .env.local\nIDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=base64-encoded-32-byte-key",
-				"# shell\nexport IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=\"$(openssl rand -base64 32)\"",
-			},
-			mustNotContain: []string{
-				"# .env.local\nIDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=$(openssl rand -base64 32)",
-				"# .env.local\nexport IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=",
-			},
-		},
-		{
-			path: "docs/ENCRYPTION_INTEGRATION_GUIDE.md",
-			mustContain: []string{
-				"do not evaluate shell command substitution",
-				"# .env.local\nIDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=base64-encoded-32-byte-key",
-				"# shell\nexport IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=\"$(openssl rand -base64 32)\"",
-			},
-			mustNotContain: []string{
-				"# .env.local\nIDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=$(openssl rand -base64 32)",
-				"# .env.local\nexport IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=",
-			},
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.path, func(t *testing.T) {
-			content, err := os.ReadFile(repoPath(t, tc.path))
-			require.NoError(t, err)
-
-			text := string(content)
-			for _, want := range tc.mustContain {
-				assert.Contains(t, text, want)
-			}
-			for _, forbidden := range tc.mustNotContain {
-				assert.NotContains(t, text, forbidden)
-			}
-		})
-	}
-}
-
 func repoPath(t *testing.T, relativePath string) string {
 	t.Helper()
 

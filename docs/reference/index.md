@@ -1,14 +1,13 @@
 ---
 title: "Reference"
-description: "The API contracts, token-exchange field reference, and configuration reference for the Agentic Identity Broker — how the dual-port API is structured and authenticated."
+description: API contracts and token-exchange fields for the Agentic Identity Broker. This page explains the two API ports, their authentication, and configuration reference.
 ---
 
 # Reference
 
-This section is the precise, contract-level documentation for operating and integrating
-against the Agentic Identity Broker. Use it when you already understand the
-[concepts](/docs/concepts) and need exact endpoints, fields, error codes, and configuration
-keys.
+This section documents API contracts for broker operation and integration. Use it after you
+understand the [concepts](/docs/concepts). It contains exact endpoints, fields, error codes,
+and configuration keys.
 
 ## What's here
 
@@ -20,34 +19,35 @@ keys.
 | [Token exchange](/docs/reference/token-exchange) | The field-level reference for the RFC 8693 grant on `POST /oauth2/token`. |
 | [Configuration](/docs/configuration) | Every configuration section and key, and how the configuration sources compose. |
 
-The two API pages ([end-user](/api/enduser) and [admin](/api/admin)) are rendered directly
-from the source OpenAPI specifications, so they are always the authoritative contract. The
-[API overview](/docs/reference/api) explains the conventions those contracts share.
+The source OpenAPI specifications generate the end-user and admin API pages. These pages are
+the authoritative contracts. The [API overview](/docs/reference/api) describes conventions
+that both contracts share.
 
 ## How the API is organized
 
-The broker exposes **two independent HTTP servers on separate ports**, so that end-user and
-administrative traffic can be routed, firewalled, and exposed independently:
+The broker serves end-user and administrator traffic through two independent HTTP servers.
+Each server has a separate port. You can route, firewall, and expose the ports independently:
 
-- **End-user API — port 8000.** The consent surface (`/api/consent/*`), third-party sessions
-  (`/api/third-party/*`), user info (`/api/me`), and the OAuth2 server endpoints
-  (`/oauth2/*`, `/.well-known/*`).
-- **Admin API — port 14000.** Registration and lifecycle for agents, services, permission
-  sets, per-agent client credentials, and the broker's signing keys.
+- **End-user API — port 8000.** This port serves the consent interface (`/api/consent/*`),
+  third-party sessions (`/api/third-party/*`), user information (`/api/me`), and OAuth2
+  endpoints (`/oauth2/*`, `/.well-known/*`).
+- **Admin API — port 14000.** This port manages agents, services, permission sets, client
+  credentials, and signing keys.
 
 ## How authentication works
 
-The broker does not authenticate users itself. A **trusted reverse proxy** (oauth2-proxy,
-nginx `auth_request`, a service mesh) authenticates the caller and injects the principal in a
-request header — **`X-Remote-User`** by default, and configurable. The broker trusts that
-header only from a trusted source. On the admin server, administrative privilege is enforced
-**at the proxy** before requests reach the API.
+The broker does not authenticate users. A **trusted reverse proxy** authenticates each caller.
+The proxy can be oauth2-proxy, nginx `auth_request`, or a service mesh. It sends the
+principal in a request header. The default header is **`X-Remote-User`**. The broker accepts
+the header only from a trusted source. The proxy enforces administrator privilege before
+requests reach the admin API.
 
-A small set of endpoints is public and needs no pre-authentication: `GET /health` (both
-servers), `GET /oauth2/jwks.json`, and `GET /.well-known/oauth-authorization-server`. The
-OAuth2 endpoints `GET /oauth2/authorize` and `POST /oauth2/token` authenticate through their
-own OAuth2 parameters rather than the principal header.
+Some endpoints do not require pre-authentication:
 
-See [Configure authentication](/docs/guides/configure-authentication) to set up the proxy
-trust boundary, and the [API overview](/docs/reference/api) for the details of every
-convention above.
+- `GET /health` on both servers.
+- `GET /oauth2/jwks.json` on the end-user server.
+- `GET /.well-known/oauth-authorization-server` on the end-user server.
+
+`GET /oauth2/authorize` and `POST /oauth2/token` use OAuth2 parameters for authentication.
+They do not use the principal header. See
+[Configure authentication](/docs/guides/configure-authentication) for the proxy boundary.

@@ -14,22 +14,38 @@ description: Notable changes, breaking changes, and migration guidance for the A
 
 ### Protected Resource Subresources (035)
 
-- **BREAKING**: Full-service `PUT /api/services/{id}` preserves protected resources when `protected_resources` is omitted. Supplying the field, including an empty set, replaces the set only with a current strong `If-Match` ETag; requests without it receive `428`, and stale ETags receive `412` without changing the set.
-- **NEW**: Administrators can add protected resources through `POST /api/services/{id}/protected-resources` with a `resource_uri` body field or the retained idempotent member-addressed `PUT`; they can remove, rename, and list resources through dedicated service subresource endpoints.
+- **BREAKING:** Full-service `PUT /api/services/{id}` retains protected resources when
+  `protected_resources` is omitted. When the field is present, including an empty set, it
+  replaces the set. The request must contain the current strong `If-Match` ETag. A request
+  without it returns `428`. A stale ETag returns `412` and does not change the set.
+- **NEW:** Administrators can add a protected resource with
+  `POST /api/services/{id}/protected-resources` and `resource_uri`. The retained idempotent
+  member-addressed `PUT` can also add a resource. Dedicated service subresource endpoints
+  remove, rename, and list resources.
 - **Confirmation**: Stakeholder approved these API changes, including the body-based POST add operation, in this conversation before implementation.
 
 ### Multi-Agent OAuth2 Client Delegation (021)
 
-- **BREAKING**: The `client_id` parameter in OAuth2 authorize/token requests now resolves to `agent.id` (UUID), not `agent.client_id` (upstream client ID). Clients must update their `client_id` values from the upstream OAuth2 client ID string to the broker-internal agent UUID.
-- **BREAKING**: Token exchange CEL expression `agent_id_expression` must be updated from `subject_token.azp` to `resolveAgentIdByClientId(subject_token.azp)` (or a claim-based expression when the feature is enabled). The previous expression resolved agents by `client_id`; token exchange now resolves by `agent.id` (UUID).
-- **NEW**: `multi_agent_client` configuration block under `oauth2_authorization_server` enables multiple agents to share one upstream OAuth2 client ID. See `examples/config/oauth2-authorization-server.yaml` and `docs/configuration.md` for configuration details.
-- **NEW**: CEL helper function `resolveAgentIdByClientId(clientId string) string` is available in token exchange CEL policies when `multi_agent_client.enabled = false`. It maps an upstream `client_id` string to the corresponding broker `agent.id` UUID.
+- **BREAKING:** OAuth2 authorize and token requests now resolve `client_id` as `agent.id`
+  (UUID). They do not resolve `agent.client_id` (upstream client ID). Clients must replace
+  the upstream OAuth2 client ID with the internal agent UUID.
+- **BREAKING:** Update token-exchange CEL `agent_id_expression` from `subject_token.azp` to
+  `resolveAgentIdByClientId(subject_token.azp)`. Use a claim-based expression when the
+  multi-agent feature is enabled. The previous expression resolved `client_id`. Token
+  exchange now resolves `agent.id`.
+- **NEW:** `multi_agent_client` under `oauth2_authorization_server` lets agents share an
+  upstream OAuth2 client ID. See `examples/config/oauth2-authorization-server.yaml` and
+  `docs/configuration.md`.
+- **NEW:** Token-exchange CEL policies can use
+  `resolveAgentIdByClientId(clientId string) string` when `multi_agent_client.enabled =
+  false`. This function maps an upstream `client_id` to the broker `agent.id` UUID.
 
 #### Migration Guide
 
 **Step 1: Update OAuth2 `client_id` values**
 
-OAuth2 clients integrating with the broker must update the `client_id` parameter in authorize and token requests from the upstream OAuth2 client ID string to the agent's internal UUID:
+OAuth2 clients must replace the upstream OAuth2 client ID in authorize and token requests
+with the agent internal UUID:
 
 ```
 # Before

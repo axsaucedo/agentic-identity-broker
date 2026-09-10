@@ -1,32 +1,30 @@
 ---
 title: "Configure encryption at rest"
-description: "Configure the broker's mandatory encryption backend — a raw AES-256 key for development or an AWS KMS hierarchical keyring for production — and the separate JWE signing key for state and session tokens."
+description: Configure the required encryption backend. Use a raw AES-256 key for development or an AWS KMS hierarchical keyring for production. Configure a separate JWE signing key for state and session tokens.
 ---
 
 # Configure encryption at rest
 
-The broker stores third-party OAuth2 access and refresh tokens, provider client
-secrets, and signing-key private material **encrypted at rest**. Encryption is
-mandatory: the broker refuses to start unless exactly one encryption backend is
-configured, and it never falls back to plaintext. This page shows how to
-configure each backend and how production pods reach the keys.
+The broker encrypts third-party OAuth2 access and refresh tokens, provider client secrets,
+and signing-key private material at rest. Encryption is mandatory. The broker starts only
+when exactly one encryption backend is configured. It does not fall back to plaintext. This
+page explains each backend and how production pods access its keys.
 
-For the model behind it — the KEK → branch key → DEK envelope and per-service
-context binding — see [encryption at rest](/docs/concepts/encryption).
+For the key model and per-service context binding, see
+[encryption at rest](/docs/concepts/encryption).
 
 ## Choose a backend
 
-Configure exactly one backend under the `encryption` key. Configuring both, or
-neither, is a configuration error and the broker exits at startup.
+Configure exactly one backend under `encryption`. Configuring both backends or neither
+backend is a configuration error. The broker exits at startup.
 
 | Backend | Key | Use for |
 |---|---|---|
 | `encryption.memory` | A raw base64 AES-256 key you supply | Development, testing, CI |
 | `encryption.aws_kms` | An AWS KMS customer-managed key + a DynamoDB branch-key table | Production |
 
-The memory backend keeps key material in the process environment, has no key
-rotation, and no hardware-backed key storage or centralized audit. Use it only
-outside production.
+The memory backend keeps key material in the process environment. It has no key rotation,
+hardware-backed key storage, or centralized audit. Use it only outside production.
 
 ## Development: a raw AES-256 key
 
@@ -41,8 +39,8 @@ openssl rand -base64 32
 
 ### Configure it
 
-Reference the key through an environment variable rather than writing it into
-the file, so the key never lands in version control:
+Use an environment variable for the key. Do not write the key in the configuration file.
+This prevents the key from entering version control:
 
 ```yaml
 encryption:
@@ -51,39 +49,37 @@ encryption:
     raw_key: "${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}"
 ```
 
-The broker performs `${VAR}` substitution in YAML, so the value comes from the
-environment at load time:
+The broker substitutes `${VAR}` values in YAML. It reads the value from the environment at
+load time:
 
 ```bash
 export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY="$(openssl rand -base64 32)"
 ```
 
 :::warning
-Never commit a key or hardcode it in a config file. The memory-backend key is
-visible to anything that can read the process environment, and it does not
-rotate. Treat it as a development convenience, not a production control.
+Do not commit a key or hardcode it in a configuration file. A process-environment reader
+can access the memory-backend key. The memory backend does not rotate the key. Use it only
+for development.
 :::
 
 ## Production: AWS KMS hierarchical keyring
 
-In production the broker uses an AWS KMS customer-managed key as the root key
-encryption key (KEK) and a DynamoDB table to cache intermediate branch keys.
-This is the hierarchical keyring: the KMS key is called once per service and TTL
-window rather than on every token operation, which keeps latency and KMS costs
-low while every data key stays wrapped by KMS.
+In production, the broker uses an AWS KMS customer-managed key as the root key encryption
+key (KEK). It uses a DynamoDB table to cache intermediate branch keys. The KMS key is used
+once for each service and TTL period. The broker does not call KMS for every token
+operation. Each data key remains wrapped by KMS.
 
 ### AWS resources you need
 
-- **A customer-managed KMS key (CMK)** — the root key that wraps branch keys.
-  Key rotation is a property of the KMS key itself, managed in AWS.
-- **A DynamoDB table** — caches the branch keys the keyring derives, so the
-  broker avoids a KMS round trip on every encryption.
+- **A customer-managed KMS key (CMK)** — This root key wraps branch keys. AWS manages its
+  key rotation.
+- **A DynamoDB table** — This table stores derived branch keys. The cache prevents a KMS
+  request for every encryption operation.
 
-You can provision both consistently with the project's AWS CDK stack in
-`infra/cdk`, which creates the KMS key, the DynamoDB table with the schema the
-AWS Encryption SDK expects, and a least-privilege IAM role in one deployment.
-The [deployment checklist](/docs/operations/deployment-checklist) walks through
-running it and reading back the resource ARNs.
+The project AWS CDK stack in `infra/cdk` can provision both resources. It creates the KMS
+key, a DynamoDB table with the AWS Encryption SDK schema, and a least-privilege IAM role.
+See [deployment checklist](/docs/operations/deployment-checklist) for commands and resource
+ARNs.
 
 ### Configure it
 
@@ -107,38 +103,35 @@ encryption:
     # dynamodb_timeout: "5s"
 ```
 
-Set the region and structured JSON logging alongside it for a production
-deployment; see the full schema in [configuration](/docs/configuration).
+For production, set the region and structured JSON log format. See the full schema in
+[configuration](/docs/configuration).
 
 ### IAM permissions the broker needs
 
-The identity the broker runs as must be allowed to use the KMS key and to
-read and write the branch-key table:
+The broker identity must access the KMS key and the branch-key table:
 
-- **KMS**: encrypt, decrypt, and generate data keys with the customer-managed
-  key (the keyring also uses describe and grant operations against that key).
-- **DynamoDB**: read and write items in the branch-key table.
+- **KMS** — Encrypt, decrypt, and generate data keys with the customer-managed key. The
+  keyring also describes the key and creates grants.
+- **DynamoDB** — Read and write branch-key table items.
 
-The CDK stack provisions an IAM role scoped to exactly these actions on exactly
-these resources. Scope any hand-written policy to the specific key ARN and table
-— do not grant account-wide KMS or DynamoDB access.
+The CDK stack creates an IAM role for these actions and resources only. Limit each
+hand-written policy to the key ARN and table. Do not grant account-wide KMS or DynamoDB
+access.
 
 ### How pods reach the keys
 
-On EKS, grant pods access with **IAM Roles for Service Accounts (IRSA)** rather
-than static AWS credentials: annotate the broker's service account with the IAM
-role that can use the KMS key and the DynamoDB table, and the AWS SDK obtains
-and rotates temporary credentials automatically. The
+On EKS, use **IAM Roles for Service Accounts (IRSA)** instead of static AWS credentials.
+Annotate the broker service account with the IAM role for the KMS key and DynamoDB table.
+The AWS SDK obtains and rotates temporary credentials. See the
 [Kubernetes deployment guide](/docs/guides/deploy-on-kubernetes#grant-aws-access-with-irsa)
-covers the operator-level steps.
+for operator steps.
 
 ## Configure the JWE signing key
 
-Separate from encryption at rest, the broker seals short-lived state and
-consent-session tokens (the ephemeral tokens that bind an OAuth2 callback to its
-initiating request and prevent consent-screen spoofing) in encrypted JWE tokens.
-These use their own key: `third_party_oauth2.jwe_signing_key`, a base64-encoded
-32-byte key generated the same way:
+The broker uses encrypted JWE tokens for short-lived state and consent sessions. These
+tokens bind an OAuth2 callback to its initiating request. They prevent consent-screen
+spoofing. They use a separate key, `third_party_oauth2.jwe_signing_key`. This is a
+base64-encoded 32-byte key generated in the same way:
 
 ```yaml
 third_party_oauth2:
@@ -146,26 +139,22 @@ third_party_oauth2:
   jwe_signing_key: "${IDENTITY_BROKER_THIRD_PARTY_OAUTH2_JWE_SIGNING_KEY}"
 ```
 
-Provide this key in every environment. Inject it from a secret exactly as you do
-the encryption key — never commit it.
+Provide this key in every environment. Inject it from a secret as you inject the encryption
+key. Do not commit it.
 
-## Verify
+## Examine startup output
 
-At startup the broker logs which encryption backend it initialized. Sensitive
-key material is redacted in logs, so you see the backend and its parameters but
-never the key itself.
+At startup, the broker records the encryption backend that it initialized. It redacts key
+material. The output shows the backend and its parameters, but not the key.
 
-- **Success**: the broker starts and logs the active backend (memory, or AWS KMS
-  with the configured key ARN and table).
-- **Failure closed**: a missing, duplicated, or malformed encryption backend
-  makes the broker exit at startup rather than run without protection. On
-  Kubernetes this surfaces as a pod in `CrashLoopBackOff`; check the logs for
-  the encryption error.
+- **Success** — The broker starts and records the active memory or AWS KMS backend. For AWS
+  KMS, the output includes the configured key ARN and table.
+- **Failure closed** — A missing, duplicate, or malformed backend causes startup to stop. On
+  Kubernetes, the pod enters `CrashLoopBackOff`. Examine the logs for the encryption error.
 
-To confirm end to end that KMS encryption works, create a third-party OAuth2
-session and read it back — storing and retrieving the encrypted tokens exercises
-the full keyring. The
-[deployment checklist](/docs/operations/deployment-checklist) includes this
+To make sure that KMS encryption works end to end, create a third-party OAuth2 session.
+Then read the session. This stores and retrieves encrypted tokens through the complete
+keyring. The [deployment checklist](/docs/operations/deployment-checklist) includes this
 smoke test.
 
 ## Related

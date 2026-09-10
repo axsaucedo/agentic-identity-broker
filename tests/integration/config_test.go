@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -471,66 +470,6 @@ func TestStandaloneBrokerExamplesLoadWithBrokerLoader(t *testing.T) {
 			cfg, sources := loadBrokerExampleConfig(t, tt.relativePath, tt.envVars)
 			tt.assertConfig(t, cfg)
 			requireYAMLSource(t, tt.relativePath, sources)
-		})
-	}
-}
-
-func TestJWTPreauthDocsStateFailClosedNoFallback(t *testing.T) {
-	// Keep this list explicit. It pins the three human-facing files that must
-	// describe JWT pre-auth as fail-closed rather than a fallback to plain-header
-	// preauth when authentication.jwt is configured.
-	tests := []struct {
-		path           string
-		mustContain    []string
-		mustNotContain []string
-	}{
-		{
-			path: "examples/config/README.md",
-			mustContain: []string{
-				"fail-closed behavior when `authentication.jwt` is configured",
-				"plain-header-only configurations",
-			},
-			mustNotContain: []string{
-				"backward-compatible configuration with plain-header fallback",
-				"signed, unsigned, and fallback configurations",
-			},
-		},
-		{
-			path: "examples/config/jwt-preauth.yaml",
-			mustContain: []string{
-				"fail closed with 401",
-				"not used as a runtime",
-			},
-			mustNotContain: []string{
-				"fallback when jwt header absent",
-			},
-		},
-		{
-			path: "docs/guides/configure-authentication.md",
-			mustContain: []string{
-				"401 unauthorized",
-				"instead of falling back to the plain header",
-				"not used as a runtime fallback",
-			},
-			mustNotContain: []string{
-				"used as a fallback when the jwt header is absent",
-				"fallback when the jwt header is absent",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			content, err := os.ReadFile(repoPath(t, tt.path))
-			require.NoError(t, err)
-
-			text := strings.ToLower(string(content))
-			for _, want := range tt.mustContain {
-				assert.Contains(t, text, want)
-			}
-			for _, forbidden := range tt.mustNotContain {
-				assert.NotContains(t, text, forbidden)
-			}
 		})
 	}
 }

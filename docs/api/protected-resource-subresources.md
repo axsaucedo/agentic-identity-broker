@@ -1,10 +1,15 @@
 # Protected Resource Subresources API
 
-> **Implemented API — Feature 035.** This guide describes the protected-resource subresources and full-service update behavior implemented by the admin server. The canonical API definition is [`api/admin/openapi.yaml`](../../api/admin/openapi.yaml).
+> **Implemented API — Feature 035.** The admin server implements this protected-resource
+API and full-service update behavior. [`api/admin/openapi.yaml`](../../api/admin/openapi.yaml)
+is the canonical API definition.
 
-Protected resources are absolute URIs that map an RFC 8693 token-exchange request to a third-party service. The API normalizes a URI by trimming trailing path slashes before storing and matching it. A normalized URI may belong to only one service globally.
+Protected resources are absolute URIs for RFC 8693 token exchange. The API removes trailing
+path slashes before it stores or matches a URI. A normalized URI belongs to one service only.
 
-All endpoints below use the existing administrator authentication and authorization applicable to `/api/services`. Replace `SERVICE_ID` with the service UUID. Examples use documentation-only URIs and contain no credentials.
+All endpoints use the administrator authentication and authorization for `/api/services`.
+Replace `SERVICE_ID` with a service UUID. The examples use documentation-only URIs and no
+credentials.
 
 ## Read the resource set
 
@@ -12,7 +17,8 @@ All endpoints below use the existing administrator authentication and authorizat
 GET /api/services/{SERVICE_ID}/protected-resources
 ```
 
-A successful response returns the normalized set and the service's strong `ETag`. Retain that ETag when a later full-service update needs to replace the whole set.
+A successful response contains the normalized resource set and service strong `ETag`. Retain
+this ETag for a later full-service resource-set replacement.
 
 ```http
 GET /api/services/8e5aa5aa-8ec3-4c45-842b-55050a359bb4/protected-resources HTTP/1.1
@@ -37,7 +43,7 @@ A missing service returns `404`.
 
 ### Collection POST
 
-Use `POST` when the URI naturally belongs in a request body:
+Collection `POST` uses a URI in the request body:
 
 ```http
 POST /api/services/8e5aa5aa-8ec3-4c45-842b-55050a359bb4/protected-resources HTTP/1.1
@@ -48,11 +54,16 @@ Content-Type: application/json
 }
 ```
 
-The server validates and normalizes the URI, yielding `https://api.example.com/v2`. A new claim returns `201 Created` and a new `ETag`; replaying a normalized URI already owned by that same service returns `200 OK` without a duplicate. If another service owns the normalized URI, the response is `409 Conflict`. Malformed, relative, empty, or whitespace-only values return `400 Bad Request` before state changes.
+The server validates and normalizes the URI to `https://api.example.com/v2`. A new URI
+returns `201 Created` and a new `ETag`. Repeating a URI already owned by the service returns
+`200 OK` without a duplicate. A URI owned by another service returns `409 Conflict`. A
+malformed, relative, empty, or whitespace-only URI returns `400 Bad Request` before state
+changes.
 
 ### Member-addressed PUT
 
-`PUT` is the retained idempotent add operation. It has no request body; the member URI is the final path segment:
+`PUT` is the idempotent add operation. It has no request body. The member URI is the final
+path segment:
 
 ```sh
 curl --path-as-is -X PUT \
@@ -60,23 +71,30 @@ curl --path-as-is -X PUT \
   'http://localhost:14000/api/services/8e5aa5aa-8ec3-4c45-842b-55050a359bb4/protected-resources/https%3A%2F%2Fapi.example.com%2Fv2'
 ```
 
-Its status and ownership behavior match collection `POST`: `201` for a new URI, `200` for an idempotent replay, `409` if another service owns the normalized URI, and `400` for an invalid URI. Successful responses include the resulting set and an `ETag`.
+Member `PUT` has the same status and ownership rules as collection `POST`. A new URI returns
+`201`. A repeat returns `200`. A URI owned by another service returns `409`. An invalid URI
+returns `400`. Each successful response contains the resource set and `ETag`.
 
 ## Address a member URI safely
 
-A member URI is not a hierarchy of API paths. It must occupy **one fully RFC 3986 percent-encoded path segment**. Encode every reserved character in the URI, including `:` as `%3A`, `/` as `%2F`, `?` as `%3F`, and `#` as `%23`. For example, this source URI:
+A member URI is one RFC 3986 percent-encoded path segment. It is not a hierarchy of API
+paths. Encode every reserved URI character. Use `%3A` for `:`, `%2F` for `/`, `%3F` for `?`,
+and `%23` for `#`. For example, this source URI:
 
 ```
 https://api.example.com/v2?region=eu#status
 ```
 
-is addressed as:
+Use this encoded path segment:
 
 ```
 https%3A%2F%2Fapi.example.com%2Fv2%3Fregion%3Deu%23status
 ```
 
-The server obtains the escaped segment, confirms it is exactly one segment, then percent-decodes it exactly once before validation, normalization, and matching. Do not submit a raw URI containing `/`, pre-decode the value, or double-encode it. If the URI itself contains a percent sign, encode that percent sign as `%25` in the path segment. Gateways in front of the API must preserve encoded slashes rather than decoding or rejecting `%2F`.
+The server gets one escaped segment. It percent-decodes the segment once. It then validates,
+normalizes, and matches the URI. Do not send a raw URI containing `/`. Do not decode or
+double-encode the value first. If a source URI contains `%`, encode it as `%25`. API
+gateways must preserve `%2F` instead of decoding or rejecting it.
 
 ## Remove one resource
 
@@ -88,11 +106,14 @@ DELETE /api/services/{SERVICE_ID}/protected-resources/{ENCODED_RESOURCE_URI}
 DELETE /api/services/8e5aa5aa-8ec3-4c45-842b-55050a359bb4/protected-resources/https%3A%2F%2Fapi.example.com%2Fv2 HTTP/1.1
 ```
 
-A successful removal returns `200 OK` with the removed normalized URI, the resulting set, and the current strong `ETag`. Removing a URI the service does not own, or targeting a missing service, returns `404`; an invalid encoded member URI returns `400`. Removing a URI stops new token-exchange resolution for that URI; it does not revoke already-issued downstream tokens.
+A successful removal returns `200 OK`, the removed normalized URI, the resource set, and the
+strong `ETag`. A missing service or unowned URI returns `404`. An invalid member URI returns
+`400`. Removal stops future token exchange for the URI. It does not revoke issued tokens.
 
 ## Rename one resource
 
-`PATCH` uses the encoded path member as the source URI and `to` as the target URI. The operation is atomic; clients do not need a delete-then-add round trip.
+`PATCH` uses the encoded path member as the source URI. It uses `to` as the target URI. The
+operation is atomic. Clients do not need a delete-and-add round trip.
 
 ```http
 PATCH /api/services/8e5aa5aa-8ec3-4c45-842b-55050a359bb4/protected-resources/https%3A%2F%2Fapi.example.com%2Fv1 HTTP/1.1
@@ -103,21 +124,28 @@ Content-Type: application/json
 }
 ```
 
-A successful rename returns `200 OK` with the affected normalized URI, the resulting set, and an `ETag`. Renaming a URI to itself succeeds as a no-op. A missing source or service returns `404`; an invalid source or target returns `400`; a target already owned by any service, including the current service, returns `409`.
+A successful rename returns `200 OK`, the affected normalized URI, the resource set, and an
+`ETag`. Renaming a URI to itself is a no-op. A missing source URI or service returns `404`.
+An invalid source or target returns `400`. A target owned by a service returns `409`.
 
 ## Full-service update and ETag retry
 
-The existing full-service endpoint retains whole-set replacement, but it is intentionally distinct from the single-resource operations:
+The full-service endpoint can replace the complete resource set. This operation differs from
+the single-resource operations:
 
 ```
 PUT /api/services/{SERVICE_ID}
 ```
 
-- If `protected_resources` is omitted or `null`, the API preserves the current resource set. No `If-Match` is required solely because of this update.
-- If `protected_resources` is present, including an empty array, it authoritatively replaces the set. The request must carry the current strong ETag in `If-Match`.
-- An empty array is an explicit request to clear the set, not an omission.
+- If `protected_resources` is omitted or `null`, the API retains the current resource set.
+  This update does not require `If-Match`.
+- If `protected_resources` is present, including an empty array, it replaces the resource
+  set. The request must contain the current strong ETag in `If-Match`.
+- An empty array clears the resource set. It is not an omission.
 
-For a replacement, first read the current resource set (or service) and use its ETag. Include every other field required by the existing full-service update contract; the fragment below shows only the resource-set behavior:
+For a replacement, first get the current resource set or service. Get its ETag. Include all
+other fields required by the full-service update contract. The following fragment shows only
+resource-set behavior:
 
 ```http
 PUT /api/services/8e5aa5aa-8ec3-4c45-842b-55050a359bb4 HTTP/1.1
@@ -132,9 +160,14 @@ Content-Type: application/json
 }
 ```
 
-If a concurrent add, remove, rename, or other service mutation advances the version, this request receives `412 Precondition Failed` and does not modify the set. Retry by re-reading the current service or protected-resource collection, reconciling the desired authoritative set with the returned state, and sending a new replacement with the fresh ETag. Do not blindly resend the old set, because doing so may intentionally discard a change that the precondition protected.
+If another request changes the service version, this request returns `412 Precondition
+Failed`. It does not modify the resource set. Get the current service or resource set. Merge
+the desired resource set with its returned state. Send a replacement with the new ETag. Do
+not resend the old set. It can discard the change that `If-Match` protected.
 
-A replacement that omits `If-Match` returns `428 Precondition Required`. Conflicts with a URI claimed by another service return `409 Conflict`. Successful replacements return `200 OK` and a new `ETag`.
+A replacement without `If-Match` returns `428 Precondition Required`. A URI claimed by
+another service returns `409 Conflict`. A successful replacement returns `200 OK` and a new
+`ETag`.
 
 For an update that does not intend to change protected resources, omit the field:
 
@@ -147,7 +180,8 @@ Content-Type: application/json
 }
 ```
 
-As with every full-service update, include the fields required by the canonical service schema. The omitted `protected_resources` field leaves the resource set untouched.
+Include each field required by the canonical full-service schema. An omitted
+`protected_resources` value leaves the resource set unchanged.
 
 ## Status summary
 

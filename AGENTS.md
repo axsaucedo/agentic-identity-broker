@@ -162,7 +162,7 @@ Read relevant ADRs before implementation. Treat accepted ADRs as authoritative. 
 | **EncryptionContext** | AAD with exactly one subject key: `service_id` or `kid`. Never store secrets. |
 | **ResourceURI** | Normalized protected-resource URI for RFC 8693 token exchange. |
 | **CEL Expression** | Policy for privileged-client authorization and JWT claim extraction. |
-| **ToolApproval** | Human authorization for an agent tool call with pending, approved, or denied status. |
+| **ToolApproval** | Human-in-the-loop authorization for an agent tool call with pending, approved, or denied status. |
 
 ## Development Workflow
 

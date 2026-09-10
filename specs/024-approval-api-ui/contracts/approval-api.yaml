@@ -12,7 +12,7 @@ paths:
       operationId: createApproval
       summary: Create a pending tool approval
       description: |
-        Creates a pending approval record for a tool invocation that requires human authorization.
+        Creates a pending approval record for a tool invocation that requires human-in-the-loop authorization.
         Called by ExtProc when a tool call is intercepted that requires approval.
 
         **Authentication**: Dual-auth required:

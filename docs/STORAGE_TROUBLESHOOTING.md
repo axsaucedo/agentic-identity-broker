@@ -1,6 +1,6 @@
 # Storage Layer Troubleshooting Guide
 
-This guide helps diagnose and resolve common storage layer issues.
+This guide helps you find and correct common storage-layer problems.
 
 ## Startup Issues
 
@@ -8,16 +8,17 @@ This guide helps diagnose and resolve common storage layer issues.
 
 **Symptoms**: Application exits at startup with storage initialization error
 
-**Check List**:
+**Examine the configuration:**
 
-1. **Verify backend is configured**
+1. Make sure that the storage backend is configured.
    ```bash
    # Check config file
    cat config.yaml | grep -A 5 "^storage:"
    # Should show: backend: memory or backend: postgres
    ```
 
-2. **If using PostgreSQL**:
+2. If you use PostgreSQL, make sure that the connection URL is set. Then connect with
+   `psql`.
    ```bash
    # Verify connection URL is set
    echo $IDENTITY_BROKER_STORAGE_POSTGRES_URL
@@ -27,7 +28,7 @@ This guide helps diagnose and resolve common storage layer issues.
    psql $IDENTITY_BROKER_STORAGE_POSTGRES_URL -c "SELECT 1"
    ```
 
-3. **Enable debug logging**:
+3. Start the broker with debug logging.
    ```bash
    agentic-identity-broker --log-level=debug --config config.yaml
    ```
@@ -46,7 +47,7 @@ This guide helps diagnose and resolve common storage layer issues.
 | SSL/TLS misconfiguration | Try `sslmode=disable` temporarily to diagnose |
 | Firewall blocking connection | Check security groups/firewall rules |
 
-**Debug Commands**:
+**Diagnostic commands:**
 ```bash
 # Test connection with psql directly
 psql -h localhost -U postgres -d identity_broker
@@ -62,7 +63,7 @@ telnet localhost 5432
 
 **Symptoms**: `ErrorKindValidation` with message about missing tables
 
-**Solution**: Run database migrations
+**Solution:** Start database migrations.
 ```bash
 # Create database and schema
 agentic-identity-broker migrate up
@@ -73,8 +74,8 @@ psql $IDENTITY_BROKER_STORAGE_POSTGRES_URL -c "
 ```
 
 Expected tables:
-- `schema_migrations` - Tracks applied migrations
-- `users` - Stores user entities
+- `schema_migrations` records applied migrations.
+- `users` stores user entities.
 
 ## Runtime Issues
 
@@ -102,7 +103,7 @@ Expected tables:
    - Check traceroute: `traceroute db.example.com`
    - Move application closer to database
 
-**Solution - Increase Timeouts**:
+**Solution: Increase timeouts**
 ```yaml
 storage:
   backend: postgres
@@ -111,28 +112,28 @@ storage:
     write: 20s   # Increase from 10s
 ```
 
-### High Memory Usage with In-Memory Backend
+### High memory use with the in-memory backend
 
-**Symptoms**: Memory usage grows over time with memory backend
+**Symptoms:** Memory use increases with the memory backend.
 
-**Root Cause**: In-memory adapter has no eviction policy
+**Cause:** The in-memory adapter does not evict data.
 
-**Solutions**:
+**Solutions:**
 
-1. **Restart application periodically**
+1. Restart the application at intervals.
    ```bash
    # Use deployment's rolling restart
    kubectl rollout restart deployment/agentic-identity-broker
    ```
 
-2. **Switch to PostgreSQL for production**
+2. Use PostgreSQL in production.
    ```yaml
    # config.prod.yaml
    storage:
      backend: postgres  # Better for persistent, scalable storage
    ```
 
-3. **Clean up old users** (development only)
+3. Delete old users in development only.
    ```bash
    curl -X DELETE http://localhost:14000/admin/users/old_user_id
    ```
@@ -143,7 +144,7 @@ storage:
 
 **Root Cause**: User with that ID already exists
 
-**Solution - Verify User Doesn't Exist**:
+**Solution: Determine whether the user exists**
 ```bash
 # Check if user exists
 curl http://localhost:8000/users/user123
@@ -166,31 +167,31 @@ The default pool configuration is:
 - Max lifetime: 1 hour
 - Max idle time: 15 minutes
 
-To reduce load, either:
+To reduce load, use one of these approaches:
 
-1. **Decrease number of agentic-identity-broker instances**
-2. **Use connection pooler** (PgBouncer, pgpool)
+1. Decrease the number of Agentic Identity Broker instances.
+2. Use a connection pooler such as PgBouncer or pgpool.
    ```yaml
    storage:
      postgres:
        connection_url: postgresql://user@pgbouncer:6432/db
    ```
 
-### Connection Timeouts
+### Connection timeouts
 
-**Symptoms**: Occasional `ErrorKindTimeout` errors
+**Symptoms:** Occasional `ErrorKindTimeout` errors.
 
-**Check**: Connection pool health
+**Examine:** Connection-pool health.
 ```bash
 # Monitor connections in real-time
 watch -n 1 "psql $IDENTITY_BROKER_STORAGE_POSTGRES_URL -c
   'SELECT count(*) FROM pg_stat_activity;'"
 ```
 
-**Solutions**:
-1. Reduce `Max open connections` if PostgreSQL has connection limits
-2. Use connection pooler to centralize connection management
-3. Increase pool idle timeout if connections are closed prematurely
+**Solutions:**
+1. If PostgreSQL has connection limits, reduce `Max open connections`.
+2. Use a connection pooler to centralize connection management.
+3. If connections close too early, increase the idle timeout.
 
 ## Security Issues
 
@@ -198,12 +199,12 @@ watch -n 1 "psql $IDENTITY_BROKER_STORAGE_POSTGRES_URL -c
 
 **Symptom**: Connection string appears in log output
 
-**Solution - Already Built In**:
-- Connection strings are automatically redacted in logs
-- Never log raw configuration values
-- Use `--log-level=error` in production to reduce verbosity
+**Built-in control:**
+- The broker redacts connection strings in logs.
+- Do not record raw configuration values.
+- Use `--log-level=error` in production to reduce log output.
 
-**Verify redaction is working**:
+**Examine redaction:**
 ```bash
 agentic-identity-broker --log-level=debug --config config.prod.yaml 2>&1 | grep -i password
 # Should output nothing - password should be redacted as "[REDACTED]"
@@ -213,7 +214,7 @@ agentic-identity-broker --log-level=debug --config config.prod.yaml 2>&1 | grep 
 
 **Symptoms**: `ErrorKindConnection` with SSL/certificate error
 
-**Debug**:
+**Diagnostic commands:**
 ```bash
 # Test connection with SSL verification
 psql "postgresql://user@host/db?sslmode=verify-full" -c "SELECT 1"
@@ -225,66 +226,66 @@ openssl s_client -connect host:5432 -showcerts
 openssl x509 -in /path/to/cert.pem -text -noout
 ```
 
-**Solutions**:
+**Solutions:**
 
-1. **Accept self-signed certificate**
+1. Accept a self-signed certificate.
    ```yaml
    storage:
      postgres:
        connection_url: "postgresql://...?sslmode=require&sslrootcert=/path/to/ca.pem"
    ```
 
-2. **Disable SSL (development only)**
+2. Disable SSL in development only.
    ```yaml
    storage:
      postgres:
        connection_url: "postgresql://...?sslmode=disable"
    ```
 
-3. **Fix certificate**
-   - Ensure certificate CN matches hostname
-   - Update certificate expiration
-   - Install intermediate certificates
+3. Correct the certificate.
+   - Make sure that the certificate CN matches the hostname.
+   - Update the certificate expiration.
+   - Install intermediate certificates.
 
 ## Data Integrity Issues
 
 ### Users Missing After Restart
 
-**If Using In-Memory Backend**:
-- This is expected behavior - in-memory adapter loses all data on restart
-- Switch to PostgreSQL for persistent storage
-- Or populate seed data on startup
+**With the in-memory backend:**
+- This behavior is expected. The adapter loses data on restart.
+- Use PostgreSQL for persistent storage.
+- You can load seed data at startup.
 
-**If Using PostgreSQL**:
+**With PostgreSQL:**
 
-1. **Verify data is in database**
+1. Make sure that data is in the database.
    ```bash
    psql $IDENTITY_BROKER_STORAGE_POSTGRES_URL -c "
      SELECT id, email FROM users LIMIT 5;"
    ```
 
-2. **Check application isn't deleting data**
-   - Review recent changes
-   - Check logs for DELETE statements
-   - Look for cleanup/purge processes
+2. Make sure that the application does not delete data.
+   - Examine recent changes.
+   - Examine logs for `DELETE` statements.
+   - Look for cleanup or purge processes.
 
-3. **Verify backup integrity**
+3. Make sure that a backup is valid.
    ```bash
    # List backups
    pg_basebackup -D /tmp/backup -v
    ```
 
-### Concurrent Access Issues
+### Concurrent access problems
 
-**Symptoms**: Occasional `ErrorKindConflict` or stale data
+**Symptoms:** Occasional `ErrorKindConflict` or stale data.
 
-**In-Memory Adapter**:
-- Uses `sync.RWMutex` for thread safety
-- No race conditions (verified with `go test -race`)
+**In-memory adapter:**
+- Uses `sync.RWMutex` for concurrent access.
+- Run `go test -race ./...` to check for races in your build and configuration.
 
-**PostgreSQL Adapter**:
-- Database handles concurrent access via transactions
-- If issues persist, check:
+**PostgreSQL adapter:**
+- The database controls concurrent access through transactions.
+- If the problem continues, examine locks:
   ```bash
   psql -c "SELECT * FROM pg_stat_activity;" # Check for locks
   pg_locks    # Check for blocking queries
@@ -292,33 +293,31 @@ openssl x509 -in /path/to/cert.pem -text -noout
 
 ## Performance Tuning
 
-### Slow Read Operations
-
-**Check Query Performance**:
+**Examine query performance:**
 ```bash
 psql -c "
 EXPLAIN ANALYZE
 SELECT id, email, created_at, updated_at FROM users LIMIT 100;"
 ```
 
-**Solutions**:
-1. Create indexes on frequently searched columns
-2. Increase `read` timeout if database is returning data
-3. Move database closer to application (reduce network latency)
+**Solutions:**
+1. Create indexes on frequently searched columns.
+2. If the database returns data, increase the `read` timeout.
+3. Move the database closer to the application to reduce network latency.
 
-### Slow Write Operations
+### Slow write operations
 
-**Check Write Performance**:
+**Examine write performance:**
 ```bash
 time psql -c "INSERT INTO users (id, email, created_at, updated_at)
               VALUES ('test', 'test@example.com', NOW(), NOW());"
 ```
 
-**Solutions**:
-1. Check disk I/O: `iostat` or cloud provider metrics
-2. Increase `write` timeout temporarily
-3. Batch writes using transactions (if implemented)
-4. Archive old data if table is very large
+**Solutions:**
+1. Examine disk I/O with `iostat` or cloud metrics.
+2. Increase the `write` timeout temporarily.
+3. If transactions are available, batch writes in a transaction.
+4. Archive old data when the table is large.
 
 ## Debugging with Environment Variables
 
@@ -341,7 +340,7 @@ agentic-identity-broker | jq -r '.error_kind' | sort | uniq -c
 
 ## Testing Connectivity
 
-### Script to Verify Storage Setup
+### Script to examine storage setup
 
 ```bash
 #!/bin/bash
@@ -387,24 +386,24 @@ echo "Storage connectivity tests complete"
 
 ## Getting Help
 
-If you cannot resolve the issue:
+If you cannot correct the problem:
 
-1. **Check logs with timestamps**
+1. Read logs with timestamps.
    ```bash
    agentic-identity-broker --log-level=debug 2>&1 | tee app.log
    ```
 
-2. **Capture error context**
-   - Note the exact error message and error kind
-   - Record timestamps and operations that failed
-   - Save configuration (with passwords redacted)
+2. Record the error context.
+   - Record the exact error message and error kind.
+   - Record timestamps and operations that failed.
+   - Save redacted configuration values.
 
-3. **Report issue with**:
-   - Error kind and message
-   - Configuration (with redacted credentials)
-   - Debug logs
-   - Steps to reproduce
-   - Environment information (OS, Go version, PostgreSQL version)
+3. Report the problem with:
+   - The error kind and message.
+   - The redacted configuration.
+   - Debug logs.
+   - Steps to reproduce.
+   - Environment information: OS, Go version, and PostgreSQL version.
 
 ## References
 

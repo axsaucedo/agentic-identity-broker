@@ -1605,7 +1605,7 @@ paths:
       operationId: createApproval
       summary: Create a pending tool approval
       description: |
-        Creates a pending approval record for a tool invocation that requires human authorization.
+        Creates a pending approval record for a tool invocation that requires human-in-the-loop authorization.
         Called by ExtProc when a tool call is intercepted that requires approval.
         Dual-auth required: subject token + client assertion. The subject token binds the request to user/agent context, while the client assertion proves the trusted gateway caller that is allowed to mint approval prompts.
         Idempotent: returns existing record for duplicate pending requests.

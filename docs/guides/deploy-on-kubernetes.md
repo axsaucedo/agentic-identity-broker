@@ -1,18 +1,18 @@
 ---
 title: "Deploy on Kubernetes"
-description: "Deploy the Agentic Identity Broker with the official Helm chart — an in-memory evaluation install, and a production layout with external PostgreSQL, KMS encryption, IRSA-based AWS access, and dual Ingress for the end-user and admin APIs."
+description: Deploy the Agentic Identity Broker with the official Helm chart. This guide covers in-memory evaluation and production with PostgreSQL, KMS encryption, IRSA AWS access, and separate end-user and admin Ingress resources.
 ---
 
 # Deploy on Kubernetes
 
-The broker ships as containers and runs on any Kubernetes cluster through the
-Helm chart in `charts/agentic-identity-broker`. This guide takes you from a
-throwaway evaluation install to a production layout with external PostgreSQL,
-KMS-backed encryption, and least-privilege AWS access.
+The broker runs in containers on any Kubernetes cluster. The Helm chart is in
+`charts/agentic-identity-broker`. This guide starts with an in-memory evaluation install.
+It then describes a production layout with external PostgreSQL, KMS encryption, and
+least-privilege AWS access.
 
-The chart deploys the broker as a Deployment exposing two ports — the end-user
-API on `8000` and the admin API on `14000` — plus the supporting resources for
-storage, migrations, ingress, and (on AWS) encryption.
+The chart deploys a broker Deployment with an end-user API on port 8000 and an admin API
+on port 14000. It also deploys resources for storage, migrations, ingress, and AWS
+encryption.
 
 ## Prerequisites
 
@@ -20,14 +20,13 @@ storage, migrations, ingress, and (on AWS) encryption.
 - `kubectl`, configured for that cluster.
 - Helm 3.x.
 
-For a production install you also need:
+For production, you also need these components:
 
-- A PostgreSQL instance, version 12 or later, reachable from the cluster — or
-  the Zalando PostgreSQL Operator to provision one.
-- Encryption infrastructure. Encryption at rest is mandatory; on AWS this is a
-  KMS customer-managed key and a DynamoDB branch-key table. See
-  [configure encryption at rest](/docs/guides/configure-encryption) for
-  provisioning and the deep dive.
+- PostgreSQL version 12 or later. The cluster must be able to access it. You can use the
+  Zalando PostgreSQL Operator to create it.
+- Encryption infrastructure. Encryption at rest is mandatory. On AWS, use a
+  customer-managed KMS key and a DynamoDB branch-key table. See
+  [configure encryption at rest](/docs/guides/configure-encryption).
 
 ## What the chart deploys
 
@@ -49,28 +48,27 @@ flowchart TB
     Deploy -- via IRSA --> AWS
 ```
 
-The chart's main options:
+The chart main options follow:
 
 | Option | Values key | Purpose |
 |---|---|---|
-| **Storage** | `storage.type` | `memory` (evaluation) or `postgres` (production). |
-| **External PostgreSQL** | `postgresql.external.*` | Point at an existing database with separate migration and broker credentials. |
-| **Operator-managed PostgreSQL** | `postgresql.operator.*` | Provision a cluster with the Zalando PostgreSQL Operator, which creates the users and Secrets for you. |
-| **Migration Job** | `migration.*` | A one-shot Job, run before the broker, that applies schema changes with a least-privilege database user. |
-| **End-user Ingress** | `ingress.enduser.*` | Expose port `8000` publicly, behind your authenticating proxy. |
-| **Admin Ingress** | `ingress.admin.*` | Expose port `14000` on a restricted path. |
+| **Storage** | `storage.type` | `memory` for evaluation or `postgres` for production. |
+| **External PostgreSQL** | `postgresql.external.*` | Use an existing database with separate migration and broker credentials. |
+| **Operator-managed PostgreSQL** | `postgresql.operator.*` | The Zalando PostgreSQL Operator creates a cluster, users, and Secrets. |
+| **Migration Job** | `migration.*` | A one-shot Job applies schema changes before the broker starts. It has a least-privilege database user. |
+| **End-user Ingress** | `ingress.enduser.*` | Expose port 8000 behind the authenticating proxy. |
+| **Admin Ingress** | `ingress.admin.*` | Expose port 14000 on a restricted path. |
 | **Service account / IRSA** | `serviceAccount.*` | Bind an AWS IAM role for KMS and DynamoDB access. |
-| **Encryption** | `broker.encryption.*`, `broker.extraConfig.encryption.*` | The mandatory encryption backend. |
+| **Encryption** | `broker.encryption.*`, `broker.extraConfig.encryption.*` | Select the required encryption backend. |
 
-The chart applies restricted Pod Security defaults out of the box: non-root user,
-read-only root filesystem, no privilege escalation, all Linux capabilities
-dropped.
+The chart uses restricted Pod Security defaults. It runs as a non-root user. Its root file
+system is read-only. It has no privilege escalation or Linux capabilities.
 
 ## Evaluate with in-memory storage
 
-For a quick look, run the broker with in-memory storage and the in-memory
-encryption backend. Because encryption is mandatory, supply an encryption key and
-a JWE signing key even for evaluation — both are base64-encoded 32-byte keys:
+For an evaluation, start the broker with in-memory storage and encryption. Encryption is
+mandatory. Supply an encryption key and JWE signing key. Both keys are base64-encoded and
+contain 32 bytes:
 
 ```bash
 helm install broker ./charts/agentic-identity-broker \
@@ -78,7 +76,7 @@ helm install broker ./charts/agentic-identity-broker \
   --set broker.thirdPartyOauth2.jweSigningKey="$(openssl rand -base64 32)"
 ```
 
-Check the pod and reach the health endpoint:
+Examine the pod and use the health endpoint:
 
 ```bash
 kubectl get pods -l app.kubernetes.io/name=agentic-identity-broker
@@ -87,26 +85,25 @@ curl http://localhost:8000/health
 ```
 
 :::warning
-In-memory storage loses all data — agents, services, grants, sessions — when a
-pod restarts, and the evaluation key lives in a ConfigMap. Use this mode only to
-try the broker out, never for real delegations.
+In-memory storage loses agents, services, grants, and sessions when a pod restarts. The
+evaluation key is in a ConfigMap. Use this mode only to evaluate the broker. Do not use it
+for real delegations.
 :::
 
 ## Deploy for production
 
-A production install uses persistent PostgreSQL, KMS-backed encryption, and
-IRSA for AWS access. Build up a values file section by section, then install
-once at the end.
+A production install uses persistent PostgreSQL, KMS-backed encryption, and IRSA AWS access.
+Create a values file. Add each section, then install the release.
 
 ### Provision PostgreSQL with two database users
 
-Run the broker against a persistent database with two roles, so the running
-broker never holds schema-modification rights:
+Use a persistent database with two roles. The running broker must not have schema-modification
+rights:
 
-- A **migration user** with schema privileges (`CREATE`, `ALTER`, `DROP`), used
-  only by the migration Job.
-- A **broker user** with data privileges only (`SELECT`, `INSERT`, `UPDATE`,
-  `DELETE`), used by the running broker.
+- A **migration user** has schema privileges: `CREATE`, `ALTER`, and `DROP`. Only the
+  migration Job uses this role.
+- A **broker user** has data privileges: `SELECT`, `INSERT`, `UPDATE`, and `DELETE`. Only
+  the running broker uses this role.
 
 Create them in your database:
 
@@ -135,15 +132,13 @@ kubectl create secret generic broker-db \
   --from-literal=username=broker --from-literal=password=REPLACE_ME
 ```
 
-If you prefer the broker to provision the database for you, enable
-`postgresql.operator` instead: the Zalando PostgreSQL Operator creates the
-cluster, both users, and their Secrets, and the chart wires them up.
+You can instead enable `postgresql.operator`. The Zalando PostgreSQL Operator then creates
+the cluster, both users, and their Secrets. The chart configures these resources.
 
 ### Wire encryption to KMS
 
-Point the broker at your KMS key and branch-key table. Pass the encryption
-block through `broker.extraConfig`, which the chart merges into the broker's
-configuration:
+Set the KMS key and branch-key table in `broker.extraConfig`. The chart merges this block
+into the broker configuration:
 
 ```yaml
 broker:
@@ -156,29 +151,25 @@ broker:
         branch_key_ttl: "1h"
 ```
 
-The KMS key and DynamoDB table, along with the IAM role in the next step, can be
-provisioned together with the project's AWS CDK stack. See
-[configure encryption at rest](/docs/guides/configure-encryption#production-aws-kms-hierarchical-keyring)
-for what each resource is, and the
-[deployment checklist](/docs/operations/deployment-checklist) for the commands to
-create them and read back the ARNs.
+The project AWS CDK stack can provision the KMS key, DynamoDB table, and IAM role together.
+See [configure encryption at rest](/docs/guides/configure-encryption#production-aws-kms-hierarchical-keyring)
+for the resource details. See [deployment checklist](/docs/operations/deployment-checklist)
+for commands and resource ARNs.
 
 ### Grant AWS access with IRSA
 
-On EKS, give pods access to KMS and DynamoDB with **IAM Roles for Service
-Accounts (IRSA)** rather than static AWS credentials. IRSA maps the broker's
-Kubernetes service account to an IAM role through the cluster's OIDC provider;
-the AWS SDK obtains and rotates temporary credentials automatically, and
-CloudTrail records which pod used the keys.
+On EKS, use **IAM Roles for Service Accounts (IRSA)** instead of static AWS credentials.
+IRSA maps the broker service account to an IAM role through the cluster OIDC provider. The
+AWS SDK obtains and rotates temporary credentials. CloudTrail records the pod identity that
+used the credentials.
 
 At the operator level:
 
-1. Provision an IAM role whose trust policy allows the broker's service account
-   (`system:serviceaccount:<namespace>:<service-account>`) to assume it, and
-   whose permissions cover the KMS key (encrypt, decrypt, generate data keys)
-   and the DynamoDB branch-key table (read and write). The CDK stack creates a
-   role scoped to exactly these actions on exactly these resources.
-2. Tell the chart to create the service account and annotate it with that role:
+1. Provision an IAM role for the broker service account. Its trust policy must allow
+   `system:serviceaccount:<namespace>:<service-account>` to assume the role. Grant the role
+   access to the KMS key and DynamoDB branch-key table. The CDK stack creates this limited
+   role.
+2. Configure the chart to create the service account and add the role annotation:
 
    ```yaml
    serviceAccount:
@@ -189,16 +180,15 @@ At the operator level:
        role: "arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod"
    ```
 
-The chart adds the IRSA annotation binding the role to the service account, so
-every broker pod runs as an identity permitted to use the KMS key and the table.
-For the full AWS walkthrough — OIDC provider setup, CDK deployment, and trust
-policy verification — see the
+The chart adds the IRSA annotation to the service account. Every broker pod then has an
+identity that can use the KMS key and table. For OIDC provider setup, CDK deployment, and
+trust policy examination, see
 [Kubernetes IRSA deployment guide](/docs/deployment/kubernetes-irsa).
 
 ### Expose the two APIs separately
 
-The broker's two ports have different audiences, so expose them through separate
-Ingress resources and restrict the admin one:
+The broker ports serve different audiences. Use separate Ingress resources. Restrict the
+admin Ingress:
 
 ```yaml
 ingress:
@@ -227,14 +217,14 @@ ingress:
             pathType: Prefix
 ```
 
-Put your authenticating reverse proxy in front of the end-user Ingress — the
-broker does not authenticate users itself. Keep the admin API off the public
-internet. See [configure authentication](/docs/guides/configure-authentication).
+Put the authenticating reverse proxy in front of the end-user Ingress. The broker does not
+authenticate users. Keep the admin API off the public internet. See
+[configure authentication](/docs/guides/configure-authentication).
 
 ### Install
 
-Combine the sections into a `values-production.yaml` (storage, encryption, IRSA,
-and ingress) and add the runtime settings:
+Combine storage, encryption, IRSA, and ingress in `values-production.yaml`. Then add the
+runtime settings:
 
 ```yaml
 replicaCount: 3
@@ -290,15 +280,13 @@ helm install broker ./charts/agentic-identity-broker \
 
 ## The migration Job
 
-Whenever storage is PostgreSQL, the chart runs a one-shot migration Job before
-the broker starts (a Helm pre-install and pre-upgrade hook). The Job:
+With PostgreSQL storage, the chart starts a one-shot migration Job before the broker starts.
+The Job is a Helm pre-install and pre-upgrade hook. It uses a separate migration image and
+service account. The running broker image does not include schema-migration tools. The Job
+applies schema changes with the migration user. It then grants data-access privileges to the
+broker user.
 
-- Uses a **separate migration image** and its **own service account**, so the
-  running broker image never carries schema-migration tooling.
-- Applies schema changes with the migration user, then grants the broker user
-  its data-access privileges.
-
-The broker Deployment rolls out only after the Job succeeds. Check it with:
+The broker Deployment starts only after the Job succeeds. Examine the Job with:
 
 ```bash
 kubectl get jobs -n identity-broker
@@ -307,10 +295,10 @@ kubectl logs job/broker-migrate -n identity-broker
 
 ## Health and verification
 
-The broker serves `GET /health` on the end-user port (`8000`) — use it for both
-liveness and readiness probes — and `GET /health` on the admin port (`14000`).
+The broker serves `GET /health` on end-user port 8000 and admin port 14000. Use these
+endpoints for liveness and readiness probes.
 
-Confirm a deployment is healthy:
+Examine deployment health:
 
 ```bash
 # Pods and the migration Job
@@ -324,11 +312,11 @@ kubectl logs deployment/broker-agentic-identity-broker -n identity-broker
 helm test broker -n identity-broker
 ```
 
-At startup the broker logs which encryption backend it initialized. A missing or
-misconfigured backend makes the broker exit rather than run unprotected, which
-surfaces as a pod in `CrashLoopBackOff` — check the logs for the encryption
-error. The [deployment checklist](/docs/operations/deployment-checklist) has a
-full post-deployment verification pass, including an encryption smoke test.
+At startup, the broker records the encryption backend that it initialized. A missing or
+incorrect backend stops the broker. Kubernetes then puts the pod in `CrashLoopBackOff`.
+Examine the logs for the encryption error. The
+[deployment checklist](/docs/operations/deployment-checklist) includes an encryption smoke
+test and a post-deployment verification pass.
 
 ## Related
 

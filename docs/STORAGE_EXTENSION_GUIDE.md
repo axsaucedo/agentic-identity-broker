@@ -1,14 +1,16 @@
 # Storage Layer Extension Guide
 
-This guide helps contributors add new storage backends to the agentic-identity-broker.
+This guide explains how to add a storage backend to the Agentic Identity Broker.
 
 ## Overview
 
-The storage layer uses a **Hexagonal (Ports & Adapters) Architecture** to support multiple backends without changing domain logic. Currently supported backends:
-- **Memory**: For development and testing
-- **PostgreSQL**: For production deployments
+The storage layer uses hexagonal architecture. Ports define the contracts. Adapters implement
+the contracts without changing domain logic. The project supports these backends:
 
-This guide explains how to add a new backend (e.g., MongoDB, Redis, DynamoDB).
+- **Memory** for development and testing.
+- **PostgreSQL** for production.
+
+This guide uses MongoDB, Redis, and DynamoDB as example backends.
 
 ## Architecture Overview
 
@@ -47,10 +49,12 @@ type StorageLifecycle interface {
 }
 ```
 
-**Responsibilities**:
-- `Initialize()`: Connect to backend, verify schema, set up connection pools
-- `HealthCheck()`: Verify backend is responding
-- `Close()`: Gracefully close connections and cleanup resources
+**Responsibilities:**
+
+- `Initialize()` connects to the backend, makes sure that the schema exists, and creates
+  connection pools.
+- `HealthCheck()` makes sure that the backend responds.
+- `Close()` closes connections and releases resources.
 
 ### UserRepository Interface
 ```go
@@ -63,10 +67,11 @@ type UserRepository interface {
 }
 ```
 
-**Responsibilities**:
-- Implement CRUD operations for User entities
-- Handle filtering and pagination via `UserFilter`
-- Return domain-specific errors via `storage.ErrorKind`
+**Responsibilities:**
+
+- Implement CRUD operations for user entities.
+- Filter and paginate with `UserFilter`.
+- Return domain errors that use `storage.ErrorKind`.
 
 ## Step 2: Create Your Adapter Package
 
@@ -273,25 +278,26 @@ func NewAdapter(config *ports.StorageConfig) (*Adapter, error) {
 }
 ```
 
-## Step 6: Write Comprehensive Tests
+## Step 6: Write tests
 
-Minimum test coverage: **20+ tests** covering:
+Write tests that cover at least these behaviors:
 
-### Unit Tests
-- ✅ Configuration validation
-- ✅ Initialization success/failure scenarios
-- ✅ Connection error handling
-- ✅ CRUD operations success paths
-- ✅ CRUD operations error paths
-- ✅ Context timeout handling
-- ✅ Concurrent operations
-- ✅ Input validation
+### Unit tests
 
-### Integration Tests (Optional)
-- ✅ Real backend connection lifecycle
-- ✅ Data persistence across restarts
-- ✅ Transaction handling
-- ✅ Connection pool behavior
+- Configuration validation
+- Initialization success and error paths
+- Connection errors
+- CRUD operation success and error paths
+- Context timeouts
+- Concurrent operations
+- Input validation
+
+### Integration tests
+
+- Backend connection lifecycle
+- Data persistence after restart
+- Transaction behavior
+- Connection-pool behavior
 
 Example test structure:
 
@@ -342,14 +348,14 @@ func TestMyBackendAdapter_CreateUser_Duplicate(t *testing.T) {
 }
 ```
 
-## Step 7: Security Considerations
+## Step 7: Security considerations
 
-- ✅ Never log connection strings in plain text
-- ✅ Implement credential redaction if your backend uses credentials
-- ✅ Use environment variables for sensitive config
-- ✅ Enforce TLS/SSL for production connections
-- ✅ Validate all inputs before sending to backend
-- ✅ Wrap backend errors without exposing internals
+- Do not record connection strings in plaintext.
+- Redact credentials when the backend uses credentials.
+- Use environment variables for sensitive configuration.
+- Use TLS for production connections.
+- Validate input before sending it to the backend.
+- Wrap backend errors without exposing internal data.
 
 Example credential handling:
 
@@ -394,16 +400,16 @@ storage:
 
 ## Step 9: Documentation
 
-- ✅ Add backend to README.md supported backends list
-- ✅ Document configuration options with examples
-- ✅ Document environment variables
-- ✅ Add troubleshooting guide
-- ✅ Document performance characteristics
-- ✅ List dependencies and versions
+- Add the backend to the README supported-backend list.
+- Document configuration options and examples.
+- Document environment variables.
+- Add troubleshooting information.
+- Document performance characteristics.
+- List dependency versions.
 
-## Step 10: Code Quality Checklist
+## Step 10: Code quality checklist
 
-Before submitting a PR:
+Before you submit a PR, run:
 
 ```bash
 # Format code
@@ -422,39 +428,42 @@ go test -cover ./internal/adapters/storage/mybackend/...
 go test ./...
 ```
 
-All checks must pass before merging.
+All checks must pass before merge.
 
-## Example: Adding Redis Adapter
+## Example: Add a Redis adapter
 
-Here's how you would add a Redis backend:
+Add a Redis backend with these steps:
 
-1. Create `internal/adapters/storage/redis/adapter.go`
-2. Implement `StorageLifecycle` interface (connect, health check, close)
-3. Implement `UserRepository` interface (CRUD operations)
-4. Create `adapter_test.go` with 20+ tests
-5. Update factory.go to handle "redis" backend
-6. Add configuration validation
-7. Add example `config.redis.yaml`
-8. Run `go test -race ./...` - all tests pass
-9. Document in STORAGE_EXTENSION_GUIDE.md
+1. Create `internal/adapters/storage/redis/adapter.go`.
+2. Implement `StorageLifecycle` for connection, health, and close operations.
+3. Implement `UserRepository` CRUD operations.
+4. Create `adapter_test.go` with behavior tests.
+5. Add the Redis backend to `factory.go`.
+6. Add configuration validation.
+7. Add `config.redis.yaml` as an example.
+8. Run `go test -race ./...`.
+9. Document the backend in `STORAGE_EXTENSION_GUIDE.md`.
 
 ## Support
 
-For questions or issues:
-1. Check existing adapters (memory, postgres) for patterns
-2. Review error handling in `internal/domain/storage/error.go`
-3. Consult interface definitions in `internal/ports/storage.go`
-4. Review security checklist in `SECURITY.md`
+For a question or problem:
 
-## Performance Benchmarks
+1. Examine the memory and PostgreSQL adapters for patterns.
+2. Read `internal/domain/storage/error.go` for error handling.
+3. Read `internal/ports/storage.go` for interface definitions.
+4. Read `SECURITY.md` for the security checklist.
 
-Your adapter should include benchmarks showing:
+## Performance benchmarks
+
+A production-ready adapter includes benchmarks for:
+
 - Create operation latency
 - Get operation latency
 - List operation latency with 1000 items
 - Concurrent operation throughput
 
 Run benchmarks:
+
 ```bash
 go test -bench=. -benchmem ./internal/adapters/storage/mybackend/
 ```

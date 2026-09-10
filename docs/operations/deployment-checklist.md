@@ -67,14 +67,14 @@ npx cdk deploy \
 
 ## Post-Deployment Verification
 
-- [ ] **Verify KMS key created**:
+- [ ] **KMS key exists:**
 
   ```bash
   aws kms describe-key --key-id alias/agentic-identity-broker/prod/token-vault-kek
   # Expected: KeyState=Enabled, KeyRotationEnabled=true
   ```
 
-- [ ] **Verify DynamoDB table created**:
+- [ ] **DynamoDB table exists:**
 
   ```bash
   aws dynamodb describe-table --table-name AgenticIdentityBrokerBranchKeys-prod
@@ -83,7 +83,7 @@ npx cdk deploy \
   # Note: DeletionProtection is ENABLED only in production
   ```
 
-- [ ] **Verify IAM role created**:
+- [ ] **IAM role exists:**
 
   ```bash
   # IAM role name is created by CDK with the format: AgenticIdentityBrokerEncryptionRole-{env}
@@ -106,7 +106,7 @@ npx cdk deploy \
 
 ### For Kubernetes IRSA Deployments
 
-- [ ] **Verify IAM role trust policy includes federated principal**:
+- [ ] **IAM role trust policy includes the federated principal:**
 
   ```bash
   IAM_ROLE_NAME=$(aws cloudformation describe-stacks \
@@ -181,7 +181,7 @@ npx cdk deploy \
     --set postgresql.external.enabled=true
   ```
 
-- [ ] **Verify ServiceAccount has IRSA annotation**:
+- [ ] **ServiceAccount has the IRSA annotation:**
 
   ```bash
   kubectl get serviceaccount ${K8S_SERVICE_ACCOUNT} \
@@ -191,7 +191,7 @@ npx cdk deploy \
   # Expected: arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod
   ```
 
-- [ ] **Verify pod can assume IAM role**:
+- [ ] **Pod can assume the IAM role:**
 
   ```bash
   POD_NAME=$(kubectl get pods -n ${K8S_NAMESPACE} \
@@ -233,7 +233,7 @@ npx cdk deploy \
 
   **Alternative**: Create a full OAuth2 session flow via `/api/third-party/{serviceId}/oauth2/authorize` and `/api/third-party/{serviceId}/oauth2/callback` endpoints.
 
-- [ ] **Verify CloudWatch alarms created**:
+- [ ] **CloudWatch alarms exist:**
 
   ```bash
   aws cloudwatch describe-alarms \
@@ -417,7 +417,7 @@ All AWS KMS configuration can be set via environment variables:
 
 ## Monitoring and Alerting
 
-After deployment, ensure continuous monitoring:
+After deployment, monitor these resources continuously:
 
 ```bash
 # View CloudWatch dashboard

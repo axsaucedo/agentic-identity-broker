@@ -1,6 +1,6 @@
 # Encryption Integration Guide
 
-This guide provides developers with comprehensive instructions for integrating the Encryption Vault feature into applications using the Agentic Identity Broker.
+This guide explains how applications use the Agentic Identity Broker encryption vault.
 
 ## Table of Contents
 
@@ -14,13 +14,14 @@ This guide provides developers with comprehensive instructions for integrating t
 
 ## Overview
 
-The Encryption Vault feature provides transparent envelope encryption of OAuth2 tokens at rest. Tokens are encrypted using:
+The encryption vault encrypts OAuth2 tokens at rest with envelope encryption. Each token uses:
 
-1. **DEK (Data Encryption Key)**: A fresh 256-bit AES key generated for each token
-2. **KEK (Key Encryption Key)**: A master key managed by AWS KMS or environment variable
-3. **Context Binding**: Service-level isolation preventing token reuse across services
+1. **DEK (Data Encryption Key):** A new 256-bit AES key for one token.
+2. **KEK (Key Encryption Key):** A master key in AWS KMS or an environment variable.
+3. **Context binding:** Service isolation that prevents token reuse between services.
 
-Encryption/decryption happens transparently in the OAuth2SessionService layer - tokens are encrypted when stored and decrypted when retrieved. Storage adapters see only encrypted ciphertext.
+`OAuth2SessionService` encrypts tokens before storage and decrypts them on retrieval. Storage
+adapters receive only ciphertext.
 
 ## Quick Start
 
@@ -37,7 +38,8 @@ encryption:
 
 **For Development (Memory backend):**
 
-`.env.local` files do not evaluate shell command substitution. Paste a generated base64 key when editing the file directly.
+`.env.local` does not evaluate shell command substitution. Paste a generated base64 key when
+you edit this file.
 
 ```dotenv
 # .env.local
@@ -58,8 +60,7 @@ encryption:
 
 ### 2. Initialize Application
 
-The application builder automatically initializes encryption from the configured
-backend:
+The application builder initializes encryption with the configured backend:
 
 ```go
 // From internal/app/builder.go - automatic initialization
@@ -71,7 +72,7 @@ if err != nil {
 
 ### 3. Use OAuth2SessionService
 
-The encryption is transparent in the service layer:
+The service layer encrypts and decrypts tokens without application code:
 
 ```go
 // Creating a session (tokens automatically encrypted by service)
@@ -178,7 +179,7 @@ encryption:
 
 ### OAuth2SessionService Integration
 
-The OAuth2SessionService automatically encrypts/decrypts tokens:
+`OAuth2SessionService` encrypts and decrypts tokens automatically:
 
 ```go
 // Service method that automatically encrypts tokens
@@ -237,7 +238,7 @@ func (s *OAuth2SessionService) GetSessionWithAgents(
 
 ### Using EncryptionPort Interface Directly
 
-For custom encryption needs:
+For custom encryption operations, use `EncryptionPort` directly:
 
 ```go
 // EncryptionPort interface
@@ -299,19 +300,19 @@ if err != nil {
 
 #### AWS KMS Key Not Found
 
-**Error**: `kek_unavailable: KMS key not accessible`
+**Error:** `kek_unavailable: KMS key not accessible`
 
-**Solution**:
+**Solution:**
 
-1. Verify KMS key ARN is correct in configuration
-2. Verify IAM role has `kms:DescribeKey` permission
-3. Check KMS key exists in the specified region
+1. Make sure that the KMS key ARN in the configuration is correct.
+2. Make sure that the IAM role has `kms:DescribeKey` permission.
+3. Make sure that the KMS key is in the configured Region.
 
-#### Environment Variable Not Set
+#### Environment variable not set
 
-**Error**: `kek_unavailable: encryption key material is empty`
+**Error:** `kek_unavailable: encryption key material is empty`
 
-**Solution**:
+**Solution:**
 
 ```bash
 # Generate and export the key
@@ -321,15 +322,15 @@ export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=$(openssl rand -base64 32)
 echo $IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY
 ```
 
-#### Context Mismatch on Decryption
+#### Context mismatch during decryption
 
-**Error**: `context_mismatch: context verification failed during decryption`
+**Error:** `context_mismatch: context verification failed during decryption`
 
-**Solution**:
+**Solution:**
 
-- Ensure decryption context matches encryption context
-- Tokens encrypted for service A cannot be decrypted with service B context
-- Check service_id in encryption context
+- Make sure that the decryption context matches the encryption context.
+- A token for service A cannot be decrypted with service B context.
+- Make sure that the encryption context contains the correct `service_id`.
 
 ## Testing
 
@@ -391,70 +392,70 @@ func TestEncryptionWithRealAdapter(t *testing.T) {
 
 ### E2E Tests
 
-See `tests/e2e/encryption_vault_raw_test.go` for comprehensive E2E test scenarios covering:
+See `tests/e2e/encryption_vault_raw_test.go` for E2E scenarios that cover:
 
 - Envelope encryption with context binding
 - AWS KMS storage
 - Environment variable KEK injection
 - DEK generation and isolation
-- Context verification failure scenarios
+- Context verification errors
 - Cross-service token reuse prevention
 
 ## Troubleshooting
 
 ### Issue: "Adapter not properly initialized"
 
-**Cause**: Encryption adapter failed to initialize at startup
+**Cause:** Encryption adapter initialization failed at startup.
 
-**Solution**:
+**Solution:**
 
-1. Check KEK configuration is valid (AWS KMS ARN or environment variable)
-2. Verify AWS credentials are available
-3. Verify environment variable is set if using env var mode
-4. Check application logs for detailed error
+1. Make sure that the KEK configuration is valid.
+2. Make sure that AWS credentials are available.
+3. If you use an environment-variable backend, make sure that the key variable is set.
+4. Examine the application logs for the error.
 
 ### Issue: "KMS key not accessible"
 
-**Cause**: AWS KMS key cannot be accessed
+**Cause:** The configured AWS KMS key cannot be accessed.
 
-**Solution**:
+**Solution:**
 
-1. Verify KMS key exists in the specified region
-2. Verify IAM role has required permissions
-3. Check AWS region configuration
-4. Verify key is not scheduled for deletion
+1. Make sure that the KMS key exists in the configured Region.
+2. Make sure that the IAM role has the required permissions.
+3. Examine the AWS Region configuration.
+4. Make sure that the key is not scheduled for deletion.
 
 ### Issue: "Context verification failed"
 
-**Cause**: Token was encrypted with different context
+**Cause:** The token was encrypted with a different context.
 
-**Solution**:
+**Solution:**
 
-1. Ensure encryption and decryption use the same service_id
-2. Check if token is being used for a different service
-3. Verify encryption context is built correctly
+1. Make sure that encryption and decryption use the same `service_id`.
+2. Make sure that the token is used with the correct service.
+3. Make sure that the encryption context is constructed correctly.
 
 ### Issue: Performance degradation
 
-**Cause**: AWS KMS latency or DynamoDB caching issues
+**Cause:** AWS KMS latency or DynamoDB cache problems.
 
-**Solution**:
+**Solution:**
 
-1. Check AWS KMS CloudTrail logs for throttling
-2. Increase branch key TTL if cache eviction is frequent
-3. Consider DynamoDB provisioned capacity
-4. Monitor network latency to AWS services
+1. Examine AWS KMS CloudTrail logs for throttling.
+2. If cache eviction is frequent, increase branch-key TTL.
+3. Consider DynamoDB provisioned capacity.
+4. Measure network latency to AWS services.
 
 ### Issue: Tokens cannot be decrypted after restart
 
-**Cause**: Different KEK being used after restart
+**Cause:** A different KEK is used after restart.
 
-**Solution**:
+**Solution:**
 
-1. Verify KEK configuration is identical
-2. Verify environment variable hasn't changed
-3. Check AWS KMS key hasn't been rotated to incompatible version
-4. Ensure database contains encrypted tokens from previous run
+1. Make sure that KEK configuration is identical.
+2. Make sure that the environment variable did not change.
+3. Make sure that the AWS KMS key is compatible with the previous key.
+4. Make sure that the database contains encrypted tokens from the previous run.
 
 ## Additional Resources
 

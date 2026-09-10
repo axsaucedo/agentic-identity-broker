@@ -1,13 +1,13 @@
 ---
 title: "Token exchange"
-description: "The field-level reference for RFC 8693 grants on POST /oauth2/token: third-party token exchange and local user impersonation request, response, error, and audit contracts."
+description: Field-level reference for RFC 8693 `POST /oauth2/token` grants. This page covers third-party token exchange and local user impersonation requests, responses, errors, and audit events.
 ---
 
 # Token exchange
 
-This is the field-level reference for the broker's two RFC 8693 token-exchange flows on
-the token endpoint: third-party token exchange and local user impersonation. They share a
-grant type but have distinct request, issuance, and authorization models.
+This page describes the broker RFC 8693 token-exchange flows. The token endpoint supports
+third-party token exchange and local user impersonation. They share a grant type but use
+different requests, token issuance, and authorization.
 
 :::note
 For the concept and the request flow, read [Token exchange](/docs/concepts/token-exchange).
@@ -18,13 +18,14 @@ contract for this endpoint lives in the [end-user API reference](/api/enduser).
 
 The broker supports two RFC 8693 flows:
 
-- **Third-party token exchange** returns a stored provider credential after resolving a
-  `resource` and checking the user's active delegation.
-- **User impersonation** is local-mode-only. A privileged client presents assertion, actor,
-  and subject credentials for a registered target agent selected by `audience`; the broker
-  mints a local access token with the subject in `sub` and the validated actor-token issuer and actor identity in `act.iss`/`act.sub`.
+- **Third-party token exchange** returns a stored provider credential. The broker resolves a
+  `resource` and validates the user delegation.
+- **User impersonation** is available only in local mode. A privileged client provides
+  assertion, actor, and subject credentials for the `audience` target agent. The broker
+  issues a local access token. `sub` contains the subject. `act.iss` and `act.sub` contain
+  the validated actor issuer and identity.
 
-The sections below distinguish their request and response contracts.
+The following sections describe the request and response contracts.
 
 ## Overview
 
@@ -32,33 +33,31 @@ The sections below distinguish their request and response contracts.
 - **Grant type:** `urn:ietf:params:oauth:grant-type:token-exchange`.
 - **Content type:** `application/x-www-form-urlencoded`.
 
-The token endpoint is unified: it detects a token-exchange request by its `grant_type` and
-processes it per RFC 8693. The same endpoint also serves the `authorization_code` and
-`client_credentials` grants, documented in the [API overview](/docs/reference/api) and
+The token endpoint uses `grant_type` to identify an RFC 8693 request. It processes the
+request under RFC 8693. The same endpoint also supports `authorization_code` and
+`client_credentials`. See [API overview](/docs/reference/api) and
 [OAuth2 server modes](/docs/concepts/oauth2-server-modes).
 
 ## Key concepts
 
 ### Tokens
 
-**Subject token** (`subject_token`) — a JWT carrying the user's principal (extracted via a
-configurable CEL expression, default the `sub` claim) and the agent identifier (default the
-`azp` claim). The privileged client presents it to request the exchange.
+**Subject token** (`subject_token`) — A JWT that carries the user principal and agent
+identifier. CEL expressions select these values. The default user claim is `sub`. The
+default agent claim is `azp`. The privileged client presents the token for exchange.
 
-**Client assertion** (`client_assertion`) — a JWT identifying the privileged client (gateway
-or reverse proxy), validated against the upstream OAuth2 server's JWKS. Its `sub` claim
-identifies the gateway for audit logging.
+**Client assertion** (`client_assertion`) — A JWT that identifies the privileged client,
+such as a gateway or reverse proxy. The broker validates it with the upstream OAuth2 server
+JWKS. Its `sub` identifies the gateway in audit data.
 
-**Third-party token** — the OAuth2 access token the broker holds encrypted in its token vault
-for the target service (for example GitHub or Google). This is what a successful exchange
-returns.
+**Third-party token** — The OAuth2 access token held in the broker token vault for a target
+service, such as GitHub or Google. A successful exchange returns this token.
 
 ### Resource parameter
 
-The `resource` parameter identifies which service's token to return. The broker matches it
-against the `protected_resources` URIs configured on services. The URI is normalized
-(trailing slash removed) before matching, and each resource URI may be configured on only one
-service.
+`resource` identifies the service token to return. The broker compares it to
+service `protected_resources`. The broker removes a trailing slash before comparison. A
+resource URI can belong to only one service.
 
 ```mermaid
 flowchart LR
@@ -67,18 +66,17 @@ flowchart LR
     C --> D["Return that service's stored token"]
 ```
 
-Configure `protected_resources` on a service through the [admin API](/api/admin); see
-[Manage agents and services](/docs/guides/manage-agents-and-services). A resource URI must be
-a valid HTTP or HTTPS URI (scheme required), is stored trailing-slash-normalized, and a
-duplicate URI across services is rejected with `409 conflict`.
+Configure `protected_resources` for a service through the [admin API](/api/admin). See
+[Manage agents and services](/docs/guides/manage-agents-and-services). The resource must be
+a valid HTTP or HTTPS URI. The broker stores it without a trailing slash. A duplicate URI
+in another service returns `409 conflict`.
 
 ### User grant
 
-Before returning a token, the broker verifies that the user (from the subject token's
-principal claim) has an active [grant](/docs/concepts/delegation-and-consent) allowing the
-agent (from the subject token's agent claim) to use the target service. Without a current,
-non-expired grant, the exchange is denied. This is where the consent model is enforced at
-request time.
+Before it returns a token, the broker validates the user grant. The subject token identifies
+the user and agent. The grant must permit the agent to use the target service. Without an
+active, unexpired grant, the broker denies token exchange. This enforces consent at request
+time.
 
 ## Third-party token exchange request
 
@@ -166,8 +164,8 @@ curl -X POST http://localhost:8000/oauth2/token \
 
 ## Third-party token exchange errors
 
-Third-party token-exchange errors use the OAuth2 error format: an `error` code and an optional
-`error_description`.
+Third-party token-exchange errors use the OAuth2 error format. The format contains `error`
+and optional `error_description`.
 
 | HTTP status | `error` | When it occurs |
 |---|---|---|
@@ -187,9 +185,9 @@ Third-party token-exchange errors use the OAuth2 error format: an `error` code a
 }
 ```
 
-Common causes: a missing required parameter (`subject_token`, `client_assertion`, `resource`);
-an invalid subject-token or client-assertion format or signature; an invalid resource URI; or
-a subject token missing a required claim such as `sub`.
+Common causes include a missing `subject_token`, `client_assertion`, or `resource`. Other
+causes include an invalid token format or signature, an invalid resource URI, or a missing
+claim such as `sub`.
 
 ### 400 invalid_target
 
@@ -211,8 +209,8 @@ No service has the requested URI in its `protected_resources`.
 }
 ```
 
-The user has no session for the service, or the stored access and refresh tokens have both
-expired and cannot be refreshed.
+The user has no session for the service. Or, both stored access and refresh tokens expired
+and cannot be refreshed.
 
 ### 401 invalid_client
 
@@ -223,8 +221,8 @@ expired and cannot be refreshed.
 }
 ```
 
-The `client_assertion` signature failed verification against the upstream JWKS, the assertion
-has expired, or its audience does not include the broker.
+The `client_assertion` signature did not validate against the upstream JWKS. The assertion
+can also be expired or have no broker audience.
 
 ### 403 access_denied
 
@@ -235,8 +233,8 @@ has expired, or its audience does not include the broker.
 }
 ```
 
-The user has no grant for this agent and service, the grant was revoked or has expired, or a
-CEL authorization expression evaluated to false.
+The user has no active grant for the agent and service. The grant can be revoked or expired.
+A CEL authorization expression can also be false.
 
 ### 500 server_error
 
@@ -249,39 +247,41 @@ CEL authorization expression evaluated to false.
 
 ## User impersonation
 
-User impersonation is a separate RFC 8693 profile on the same endpoint. It is available only
-when `oauth2_authorization_server.mode` is `local`; proxy and hybrid modes reject the request
-without forwarding it upstream. It does not retrieve a third-party token, require a user grant,
-or accept `resource`.
-The issued token carries both a subject (`sub`) and an actor (`act`) claim, which in RFC 8693 §1.1 terms is delegation rather than impersonation; "impersonation" is the operator-facing capability name, and the `act` claim is retained deliberately for actor accountability.
+User impersonation is a separate RFC 8693 profile on this endpoint. It is available only
+when `oauth2_authorization_server.mode` is `local`. Proxy and hybrid modes reject the
+request without forwarding it upstream. Impersonation does not get a third-party token,
+require a user grant, or accept `resource`.
 
+The token contains subject claim `sub` and actor claim `act`. In RFC 8693 terms, this is
+delegation. This feature uses the name "impersonation" for operators. `act` preserves actor
+accountability.
 
 ### Activation and request
 
-The request activates impersonation only when it carries exactly one `audience` equal to
-`<impersonation.audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`. The suffix
-must resolve to a registered target agent. It may equally be the target's `canonical_id`; both forms
-retain the target UUID as minted `agent_id`. That target supplies the local token policy's `agent.*`
-context and the optional-scope allow-list. The routing audience never becomes the issued token's
-`aud`; `token_claims_expression` alone controls that claim.
+The request activates impersonation when it contains one `audience`. The value must be
+`<impersonation.audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`. The
+suffix must resolve to a registered target agent. It can be the canonical target UUID or
+`canonical_id`. Both forms produce the target UUID as `agent_id`. The target agent supplies
+the local token policy `agent.*` context and optional-scope allow list. The routing audience
+does not set issued `aud`. Only `token_claims_expression` controls this claim.
 
 Send these form fields:
 
 | Parameter | Value | Requirement |
 |---|---|---|
 | `grant_type` | `urn:ietf:params:oauth:grant-type:token-exchange` | Required. |
-| `audience` | `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>` | Required; exactly one value. |
+| `audience` | `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>` | Required. Exactly one value. |
 | `client_assertion_type` | `urn:ietf:params:oauth:client-assertion-type:jwt-bearer` | Required. |
-| `client_assertion` | Signed JWT | Required; authenticates the privileged client. |
+| `client_assertion` | Signed JWT | Required. Authenticates the privileged client. |
 | `actor_token_type` | `urn:ietf:params:oauth:token-type:jwt` | Required. |
-| `actor_token` | Signed JWT | Required; its validated issuer and extracted identity become `act.iss` and `act.sub`. |
+| `actor_token` | Signed JWT | Required. Its validated issuer and identity populate `act.iss` and `act.sub`. |
 | `subject_token_type` | `urn:ietf:params:oauth:token-type:jwt` | Required. |
-| `subject_token` | Signed JWT or, for a matching `verification: none` rule, unsigned `alg:none` JWT | Required; its extracted identity becomes `sub`. |
-| `scope` | Literal-space-separated scopes | Optional; each non-reserved value must be permitted by the target agent's `allowed_scopes`, unless its allow-list is empty. The reserved refresh-token scopes `offline` and `offline_access` are always permitted. |
-| `requested_token_type` | `urn:ietf:params:oauth:token-type:access_token` | Optional; any other value is `invalid_request`. |
+| `subject_token` | Signed JWT or unsigned `alg:none` JWT for a matching `verification: none` rule | Required. Its extracted identity populates `sub`. |
+| `scope` | Literal-space-separated scopes | Optional. Each non-reserved scope must be in the target `allowed_scopes`. An empty allow list permits all. `offline` and `offline_access` are reserved and permitted. |
+| `requested_token_type` | `urn:ietf:params:oauth:token-type:access_token` | Optional. Another value returns `invalid_request`. |
 
-`resource` MUST be absent. A bare suffix or suffix matching neither identifier form returns
-`invalid_request`; a well-formed UUID or canonical-ID suffix for an unregistered target returns `invalid_target`.
+`resource` must be absent. A bare suffix or invalid suffix returns `invalid_request`. A
+well-formed UUID or canonical-ID suffix for an unregistered target returns `invalid_target`.
 
 ```bash
 curl -X POST http://localhost:8000/oauth2/token \
@@ -299,20 +299,20 @@ curl -X POST http://localhost:8000/oauth2/token \
 
 ### Subject profiles
 
-Both profiles use `subject_token_type=urn:ietf:params:oauth:token-type:jwt`. The signed profile
-validates the client assertion, actor, and subject against the selected rule's trusted issuer,
-audience, expiry, not-before time, signature, and asymmetric algorithm allow-list.
+Both profiles use `subject_token_type=urn:ietf:params:oauth:token-type:jwt`. The signed
+profile validates the client assertion, actor, and subject. It validates the selected issuer,
+audience, expiry, not-before time, signature, and asymmetric algorithm allow list.
 
-The unverified-subject profile is a broker extension, not standard RFC 8693. A matching rule must
-explicitly declare `verification: none`; it accepts an unsigned `alg:none` JWT as `subject_token`
-and rejects signed JWSs on that path. It never permits unsigned client assertions, actors, or
-signed subjects. Its caller-asserted claims are authorized only through the signed client assertion
-and the rule's subject-binding CEL predicate. An email claim is minted only when that predicate
-binds `subject_token.email`.
+The unverified-subject profile is a broker extension. A matching rule declares
+`verification: none`. It accepts an unsigned `alg:none` JWT as `subject_token`. It rejects
+signed JWSs on this path. It does not allow unsigned client assertions, actors, or signed
+subjects. A signed client assertion and the subject-binding CEL predicate authorize
+caller-provided claims. The predicate must bind `subject_token.email` before the broker
+issues an email claim.
 
 ### Response and errors
 
-Success returns a locally signed broker JWT, not a provider credential:
+Success returns a locally signed broker JWT. It does not return a provider credential:
 
 ```json
 {
@@ -324,38 +324,37 @@ Success returns a locally signed broker JWT, not a provider credential:
 }
 ```
 
-The JWT contains the extracted `sub`, target-derived `agent_id`, and `act: {"iss": "<actor-token issuer>",
-"sub": "<actor>"}`, plus normal local-policy claims and the granted `scope`. The response includes `scope` only when
-non-empty. Each requested non-reserved scope must be target-allowed unless the target allow-list
-is empty; the reserved refresh-token scopes `offline` and `offline_access` are always granted.
-A target-disallowed non-reserved scope returns `invalid_scope`; malformed credentials and target
-syntax return `invalid_request`; an untrusted client assertion returns `invalid_client`; a
-valid request that no rule permits returns `access_denied`. Errors do not expose credential,
-signing-key, trust-source, or rejected-scope values.
+The JWT contains `sub`, target-derived `agent_id`, `act`, local-policy claims, and the
+granted `scope`. The response includes `scope` only when it has a value. Each requested
+non-reserved scope must be in the target allow list. An empty allow list permits all scopes.
+`offline` and `offline_access` are reserved and permitted. A disallowed scope returns
+`invalid_scope`. Malformed credentials and target syntax return `invalid_request`. An
+untrusted client assertion returns `invalid_client`. A valid request with no permitted rule
+returns `access_denied`. Errors do not expose credentials, signing keys, trust sources, or
+rejected scopes.
 
 ### Audit events
 
-Every impersonation decision emits a credential-free structured log event with
-`event=impersonation_decision`. Use it to correlate an outcome with the routing audience and
-resolved target, selected rule, issuer identifiers and credential roles, safely available
-identities, OAuth error or failure category, and `request_id`. Submitted client assertions,
-actor and subject tokens, issued access tokens, and signing keys are never included. Treat the
-event as an authorization audit record; it is sufficient to investigate a rejected request
-without collecting credential contents.
+Each impersonation decision records a credential-free structured log event. The event name
+is `impersonation_decision`. It contains the routing audience, target, selected rule, issuer
+identifiers, credential roles, safe identities, OAuth error or failure category, and
+`request_id`. It does not contain client assertions, actor or subject tokens, issued access
+tokens, or signing keys. Use this audit record to investigate a rejected request.
 
-For operator setup, rule validation, and signed and unverified examples, see
-[Configuration](/docs/configuration) and the bundled
-`examples/config/impersonation.yaml`.
+See [Configuration](/docs/configuration) and
+`examples/config/impersonation.yaml` for operator setup and examples.
+
 
 ## Configuration
 
-Token exchange is configured under `token_exchange` in the broker configuration. Two settings
-matter most; the [Configuration reference](/docs/configuration) covers the rest.
+Configure token exchange under `token_exchange`. The
+[Configuration reference](/docs/configuration) describes all settings. These two settings
+matter most:
 
-- **Claim extraction** — CEL expressions that pull the principal and agent identifier out of
-  the subject token.
-- **Authorization** — a CEL expression, evaluated against the `client_assertion` claims, that
-  decides whether a privileged client may perform the exchange.
+- **Claim extraction** — CEL expressions get the principal and agent identifier from the
+  subject token.
+- **Authorization** — A CEL expression evaluates `client_assertion` claims. It determines
+  whether a privileged client can exchange a token.
 
 ```yaml
 token_exchange:
@@ -367,8 +366,8 @@ token_exchange:
       expression: "client_assertion.iss == 'api-gateway.example.com'"
 ```
 
-The authorization expression can allow any client (`"true"`), pin a single issuer as above, or
-accept several:
+The authorization expression can allow all clients (`"true"`). It can also select one
+issuer or several issuers:
 
 ```yaml
 token_exchange:

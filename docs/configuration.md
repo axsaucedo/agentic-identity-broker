@@ -220,7 +220,7 @@ agentic-identity-broker -c config.production.yaml --log-level warn
 
 ## Configuration Reference
 
-This section provides a comprehensive quick-reference table for all configuration options. For detailed explanations and examples, see the [Available Settings](#available-settings) section below.
+This section lists all configuration options. See [Available Settings](#available-settings) for detailed descriptions and examples.
 
 ### Current Configuration Options
 
@@ -268,12 +268,13 @@ The Identity Broker runs two independent HTTP servers on separate ports:
 | `server.admin.bind` | string | `::` | IPv4/IPv6 address or hostname | No | `IDENTITY_BROKER_SERVER_ADMIN_BIND` | `--server.admin.bind` | Bind address for admin server. In production, restrict to private network (e.g., `10.0.1.0`) or use firewall rules. |
 | `server.shutdown.timeout` | duration | `30s` | 1s-5m | No | `IDENTITY_BROKER_SERVER_SHUTDOWN_TIMEOUT` | `--server.shutdown.timeout` | Maximum time to wait for in-flight requests to complete during graceful shutdown. Use longer timeouts (60s) in production. |
 
-**Server Configuration Notes:**
+**Server configuration notes:**
 
-- Both servers start atomically - if one fails to bind, both are stopped
-- Servers run independently after startup - failure of one doesn't affect the other
-- Health endpoints are available on both servers at `/health`
-- Graceful shutdown waits for in-flight requests to complete (up to timeout)
+- Both servers start together. If either server cannot bind, both stop.
+- After startup, each server runs independently. A failure in one server does not affect the
+  other server.
+- Both servers provide `/health`.
+- Graceful shutdown waits for active requests until the configured timeout.
 
 #### Storage Configuration
 
@@ -286,10 +287,12 @@ Storage configuration controls the persistence backend and steady-state timeout 
 | `storage.timeouts.read` | duration | `5s` | Positive duration | No | N/A | N/A | Timeout for steady-state storage read operations. |
 | `storage.timeouts.write` | duration | `10s` | Positive duration | No | N/A | N/A | Timeout for steady-state storage write operations. |
 
-**Storage Configuration Notes:**
+**Storage configuration notes:**
 
-- `storage.timeouts.read` and `storage.timeouts.write` cover steady-state repository operations.
-- The signing-key startup budget now lives at `oauth2_authorization_server.local.signing_keys.bootstrap_timeout` because it applies to local/hybrid token issuance rather than generic storage behavior.
+- `storage.timeouts.read` and `storage.timeouts.write` apply to steady-state repository
+  operations.
+- `oauth2_authorization_server.local.signing_keys.bootstrap_timeout` defines the
+  signing-key startup time limit. It applies to local and hybrid token issuance.
 
 **Example YAML:**
 
@@ -303,29 +306,29 @@ storage:
     write: 10s
 ```
 
-#### IPv4/IPv6 Dual-Stack Support
+#### IPv4/IPv6 dual-stack support
 
-The Identity Broker supports flexible network binding:
+The Identity Broker supports these network bindings:
 
-- **Dual-Stack (default)**: Bind to `::` accepts both IPv6 and IPv4 connections on systems with dual-stack support
-- **IPv6 Only**: Bind to `::1` (localhost) or specific IPv6 addresses
-- **IPv4 Only**: Bind to `0.0.0.0` (all interfaces) or `127.0.0.1` (localhost) for IPv4-only systems
-- **Automatic Fallback**: If IPv6 binding fails, automatically falls back to IPv4 with a warning log
+- **Dual-stack (default):** `::` accepts IPv6 and IPv4 connections on dual-stack systems.
+- **IPv6 only:** Use `::1` for localhost or a specific IPv6 address.
+- **IPv4 only:** Use `0.0.0.0` for all interfaces or `127.0.0.1` for localhost.
+- **Fallback:** If IPv6 binding fails, the broker uses IPv4 and writes a warning log.
 
-**Example YAML configurations** are provided in `examples/config/`:
+Examples are in `examples/config/`:
 
-- `config.ipv6-only.yaml` - Dual-stack with IPv6 preference
-- `config.ipv4-only.yaml` - IPv4-only configuration
+- `config.ipv6-only.yaml` uses dual-stack with IPv6 preference.
+- `config.ipv4-only.yaml` uses IPv4 only.
 
 #### Graceful Shutdown
 
-The broker implements graceful shutdown to ensure requests complete cleanly:
+The broker completes active requests during graceful shutdown:
 
-1. On receiving SIGTERM or SIGINT signal, health status changes to `shutting_down`
-2. New requests are rejected with HTTP 503 Service Unavailable
-3. In-flight requests are allowed to complete (up to `server.shutdown.timeout`)
-4. After timeout, remaining connections are forcefully closed
-5. Process exits cleanly
+1. On `SIGTERM` or `SIGINT`, health status becomes `shutting_down`.
+2. New requests return HTTP 503 Service Unavailable.
+3. Active requests can complete until `server.shutdown.timeout`.
+4. After the timeout, the broker closes remaining connections.
+5. The process exits.
 
 **Example:**
 
@@ -430,22 +433,25 @@ server {
 
 #### Request Context Configuration
 
-The broker captures a request security context for every inbound HTTP request. Capture itself is always enabled;
-this section controls only trusted-proxy caller-IP derivation and whether the broker returns the request Trace ID
-to callers via the additive W3C `traceresponse` response header.
+The broker captures a request security context for every inbound HTTP request. This capture is
+always enabled. This section configures trusted-proxy caller IP derivation and the additive
+W3C `traceresponse` response header.
 
 | Option | Type | Default Value | Valid Values | Required? | Environment Variable | CLI Flag | Description |
 |--------|------|---------------|--------------|-----------|----------------------|----------|-------------|
-| `request_context.trusted_proxy.enabled` | boolean | `false` | `true`, `false` | No | `IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_ENABLED` | `--request_context.trusted_proxy.enabled` | Trust the configured forwarded header for caller-IP derivation. When `false`, the broker ignores client-supplied forwarding headers and uses the direct connection address. |
-| `request_context.trusted_proxy.forwarded_header` | string | `X-Forwarded-For` | Any HTTP header name | No | `IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_FORWARDED_HEADER` | `--request_context.trusted_proxy.forwarded_header` | Header inspected when trusted proxy mode is enabled. The broker treats the right-most entry as authoritative. |
-| `request_context.trace.response_enabled` | boolean | `true` | `true`, `false` | No | `IDENTITY_BROKER_REQUEST_CONTEXT_TRACE_RESPONSE_ENABLED` | `--request_context.trace.response_enabled` | Emit the additive W3C `traceresponse` response header on HTTP responses. Disabling this suppresses only the response header; request capture and log correlation remain enabled. |
+| `request_context.trusted_proxy.enabled` | boolean | `false` | `true`, `false` | No | `IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_ENABLED` | `--request_context.trusted_proxy.enabled` | Use the configured forwarded header to derive the caller IP. When `false`, the broker ignores client forwarding headers and uses the direct connection address. |
+| `request_context.trusted_proxy.forwarded_header` | string | `X-Forwarded-For` | Any HTTP header name | No | `IDENTITY_BROKER_REQUEST_CONTEXT_TRUSTED_PROXY_FORWARDED_HEADER` | `--request_context.trusted_proxy.forwarded_header` | Header read in trusted-proxy mode. The right-most entry is authoritative. |
+| `request_context.trace.response_enabled` | boolean | `true` | `true`, `false` | No | `IDENTITY_BROKER_REQUEST_CONTEXT_TRACE_RESPONSE_ENABLED` | `--request_context.trace.response_enabled` | Add the W3C `traceresponse` response header. Disabling this option does not disable request capture or log correlation. |
 
-**Request Context Notes:**
+**Request context notes:**
 
-- Security-context capture is always on; there is no feature-level disable switch.
-- When `request_context.trusted_proxy.enabled=false`, forwarding headers are ignored to prevent IP spoofing.
-- When trusted proxy mode is enabled, the broker reads the configured header and takes the **right-most** entry as the trusted caller IP.
-- `request_context.trace.response_enabled=false` suppresses only the response header. Structured logs still carry the request `trace_id`.
+- Security-context capture is always enabled. It has no feature-level disable switch.
+- When `request_context.trusted_proxy.enabled=false`, the broker ignores forwarding headers
+  to prevent IP spoofing.
+- In trusted-proxy mode, the broker uses the right-most configured-header entry as the caller
+  IP.
+- `request_context.trace.response_enabled=false` removes only the response header.
+  Structured logs still include `trace_id`.
 
 **Example YAML:**
 
@@ -490,13 +496,13 @@ The following configuration sections are planned for future releases. This table
 | `auth.session.timeout` | duration | `24h` | Valid duration | No | `IDENTITY_BROKER_AUTH_SESSION_TIMEOUT` | `--auth-session-timeout` | User session inactivity timeout. |
 | `auth.providers` | list | `[]` | Array of provider configs | Yes | N/A | N/A | List of configured identity providers (OAuth, SAML, etc.). |
 
-**Future Options Notes:**
+**Future options notes:**
 
-- Options in this table are for planning and design purposes
-- Not yet implemented in the current release
-- Structure may change based on requirements and feedback
-- Sensitive fields (passwords, secrets, keys) will never have CLI flags for security
-- Duration values accept formats like: `30s`, `5m`, `1h`, `24h`
+- These options are for planning and design.
+- The current release does not implement them.
+- Requirements and feedback can change their structure.
+- Sensitive values, such as passwords, secrets, and keys, never have CLI flags.
+- Duration values use formats such as `30s`, `5m`, `1h`, and `24h`.
 
 ### Naming Conventions
 
@@ -700,27 +706,33 @@ encryption:
     key_arn: "arn:aws:kms:eu-central-1:123456789012:alias/identity-broker-encryption"
 ```
 
-**Startup Validation**:
+**Startup validation:**
 
-- **AWS KMS backend**: On startup, the application validates that the KMS key is accessible and the service has required permissions. Startup fails with a clear error message if validation fails.
-- **Memory backend**: On startup, the application validates that `IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY` (or the configured YAML value) is present and decodes to a 32-byte key. Startup fails if not.
+- **AWS KMS backend:** At startup, the broker validates KMS key access and service
+  permissions. It does not start when validation fails.
+- **Memory backend:** At startup, the broker validates
+  `IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY` or its YAML value. The value must decode to a
+  32-byte key. The broker does not start when validation fails.
 
-**Security Considerations**:
+**Security considerations:**
 
-- **AWS KMS**: KEK never leaves AWS KMS boundaries. The application only sees encrypted Data Encryption Keys (DEKs). All cryptographic operations happen server-side in KMS.
-- **Memory backend**: KEK material is loaded into application memory at startup.
-- **Rotation**: KMS keys can be rotated without application restart. Old tokens remain decryptable with rotated keys.
-- **Permissions**: Ensure the service role has `kms:Decrypt` and `kms:GenerateDataKey` permissions. Overly broad permissions should be avoided.
+- **AWS KMS:** The KEK remains in AWS KMS. The application receives only encrypted data
+  encryption keys. KMS performs cryptographic operations.
+- **Memory backend:** The broker loads KEK material into application memory at startup.
+- **Rotation:** KMS keys can rotate without an application restart. Tokens encrypted with
+  prior key material remain decryptable.
+- **Permissions:** Grant the service role `kms:Decrypt` and `kms:GenerateDataKey`.
+  Limit permissions to the required resources.
 
-**Recommendations**:
+**Backend by environment:**
 
 | Environment | Approach | Configuration |
 | --- | --- | --- |
 | Production | AWS KMS | `encryption.aws_kms.key_arn` with a customer-managed KMS key |
-| Staging | AWS KMS | Separate AWS KMS key per environment |
+| Staging | AWS KMS | A separate AWS KMS key for each environment |
 | Development | Memory backend | `encryption.memory.raw_key` from `IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY` |
 | CI/CD | Memory backend | `encryption.memory.raw_key` from CI/CD secrets |
-| Testing | Memory backend | Random generated key per test |
+| Testing | Memory backend | A new random key for each test |
 
 
 ### Request Context Configuration
@@ -757,28 +769,31 @@ W3C `traceresponse` response header. The security-context capture itself is alwa
 
 **Notes**:
 
-- This value matters only when `request_context.trusted_proxy.enabled=true`.
-- The broker treats the right-most entry as authoritative to avoid trusting attacker-controlled left-most values.
+- This value applies only when `request_context.trusted_proxy.enabled=true`.
+- The broker uses the right-most entry to prevent trust in attacker-controlled left-most
+  values.
 
 #### request_context.trace.response_enabled
 
-**Description**: Controls emission of the additive W3C `traceresponse` response header.
+**Description:** Controls the W3C `traceresponse` response header.
 
-**Valid Values**: `true`, `false`
+**Valid values:** `true`, `false`
 
-**Default**: `true`
+**Default:** `true`
 
-**Environment Variable**: `IDENTITY_BROKER_REQUEST_CONTEXT_TRACE_RESPONSE_ENABLED`
+**Environment variable:** `IDENTITY_BROKER_REQUEST_CONTEXT_TRACE_RESPONSE_ENABLED`
 
-**CLI Flag**: None
+**CLI flag:** None
 
-**Notes**:
+**Notes:**
 
-- When enabled, every HTTP response may carry `traceresponse: 00-<trace-id>-<child-id>-<flags>`.
-- The `<trace-id>` field matches the request `trace_id` used in structured logs.
-- Disabling this option suppresses only the response header. Trace capture and log correlation remain active.
+- When enabled, each HTTP response can contain
+  `traceresponse: 00-<trace-id>-<child-id>-<flags>`.
+- `<trace-id>` matches the `trace_id` in structured logs.
+- Disabling this option removes only the response header. Trace capture and log correlation
+  remain active.
 
-**Example**:
+**Example:**
 
 ```yaml
 request_context:
@@ -788,6 +803,7 @@ request_context:
   trace:
     response_enabled: true
 ```
+
 
 See [`examples/config/request-context.yaml`](../examples/config/request-context.yaml) for a documented overlay example.
 
@@ -811,17 +827,18 @@ IDENTITY_BROKER_API_KEY=secret123
 DB_PASSWORD=mypassword
 ```
 
-Both values will be shown as `***REDACTED***` in startup summary and audit logs.
+The startup summary and audit logs show both values as `***REDACTED***`.
 
-### Never Commit Secrets
+### Do not commit secrets
 
-1. Use `.env.local` and `.env.{environment}.local` for local secrets (gitignored)
-2. Commit `.env.example` and `.env.production.example` as templates
-3. Use environment variables or secret management systems in production
+1. Use `.env.local` and `.env.{environment}.local` for local secrets. Git ignores these
+   files.
+2. Commit `.env.example` and `.env.production.example` as templates.
+3. Use environment variables or secret-management systems in production.
 
-### File Permissions
+### File permissions
 
-Configuration files should not be world-readable:
+Do not make configuration files world-readable:
 
 ```bash
 # Recommended permissions
@@ -847,38 +864,40 @@ database:
 
 ### Configuration Not Loading
 
-**Symptom**: Application uses default values instead of your configuration.
+**Symptom:** The application uses default values instead of your configuration.
 
-**Solutions**:
+**Solutions:**
 
-1. Check file locations - .env files must be in the current directory or use absolute paths
-2. Verify environment variable names start with `IDENTITY_BROKER_`
-3. Check YAML syntax is valid (use `yamllint` or online validator)
-4. Use `--help` to verify flag names
+1. Make sure that `.env` files are in the current directory. Or, use an absolute path.
+2. Make sure that environment variable names start with `IDENTITY_BROKER_`.
+3. Validate YAML syntax with `yamllint` or an online validator.
+4. Use `--help` to make sure that flag names are correct.
 
-### Undefined Environment Variable Error
+### Undefined environment variable error
 
-**Symptom**: Error message: "environment variable 'VAR_NAME' is not set"
+**Symptom:** The error message is "environment variable 'VAR_NAME' is not set".
 
-**Cause**: YAML file references `${VAR_NAME}` but variable doesn't exist in environment.
+**Cause:** The YAML file references `${VAR_NAME}`, but the environment has no variable with
+that name.
 
-**Solutions**:
+**Solutions:**
 
-1. Set the environment variable: `export VAR_NAME=value`
-2. Add to .env file: `VAR_NAME=value`
-3. Remove the ${} reference from YAML and use a literal value
+1. Set the environment variable with `export VAR_NAME=value`.
+2. Add `VAR_NAME=value` to `.env`.
+3. Remove the `${}` YAML reference and use a literal value.
 
-### Invalid Configuration Value
+### Invalid configuration value
 
-**Symptom**: Error message: "invalid value 'X' for field 'Y'"
+**Symptom:** The error message is "invalid value 'X' for field 'Y'".
 
-**Cause**: Configuration value doesn't match expected format or enum values.
+**Cause:** The configuration value does not match its expected format or enum.
 
-**Solutions**:
+**Solutions:**
 
-1. Check error message for expected values (e.g., "expected: debug, info, warn, or error")
-2. Verify spelling and case (values are case-sensitive)
-3. Check for extra whitespace or quotes in values
+1. Read the error message for expected values. For example: "expected: debug, info, warn,
+   or error".
+2. Make sure that spelling and case are correct. Values are case-sensitive.
+3. Remove extra whitespace or quotes from the value.
 
 ### Circular Reference Detected
 
@@ -900,7 +919,7 @@ VAR2=${VAR1}
 
 ### Viewing Effective Configuration
 
-To see which configuration values are being used and from which sources:
+To see configuration values and their sources:
 
 ```bash
 agentic-identity-broker
@@ -919,7 +938,7 @@ agentic-identity-broker
 
 ### Audit Log
 
-For compliance and troubleshooting, check the JSON audit log (first output on startup):
+For compliance and troubleshooting, read the JSON audit log. It is the first startup output:
 
 ```json
 {
@@ -935,17 +954,23 @@ For compliance and troubleshooting, check the JSON audit log (first output on st
 
 #### oauth2_authorization_server.multi_agent_client
 
-**Description**: Controls whether multiple agents may share the same upstream OAuth2 `client_id` (stored as `agent.client_id`). When disabled (default), the broker enforces per-agent *upstream* `client_id` uniqueness; incoming OAuth2 requests are always resolved by the agent's internal UUID (`agent.id`), regardless of this setting. When enabled, multiple agents can share one upstream OAuth2 application, and agent identity is additionally verified via a custom claim injected into the upstream authorize redirect and checked in the upstream token response.
+**Description:** Controls whether multiple agents share one upstream OAuth2 `client_id`.
+The broker stores this value as `agent.client_id`. When disabled, the broker requires each
+agent upstream `client_id` to be unique. It always resolves an incoming OAuth2 request with
+the internal UUID in `agent.id`. When enabled, agents can share one upstream OAuth2
+application. The broker validates the agent identity with a custom claim in the upstream
+authorization redirect and token response.
 
-**Configuration block** (nested under `oauth2_authorization_server`):
+**Configuration block:** Nested under `oauth2_authorization_server`.
 
 | Option | Type | Default | Valid Values | Required | Description |
 |--------|------|---------|--------------|----------|-------------|
-| `multi_agent_client.enabled` | boolean | `false` | `true`, `false` | No | Allow multiple agents to share one upstream OAuth2 `client_id`. When `false`, duplicate `client_id` on agent create/update returns `409 Conflict`. |
-| `multi_agent_client.agent_id_param_name` | string | — | Any URL-safe string | Yes if `enabled=true` | Query parameter appended to the upstream authorization redirect URL carrying the agent's internal UUID. Must match the claim name expected by your upstream OAuth2 server. |
-| `multi_agent_client.agent_id_claim_name` | string | — | Any string | Yes if `enabled=true` | JWT claim in the upstream token response carrying the agent's internal UUID. The broker verifies this claim on every token proxy response; tokens lacking it are rejected (fail closed). |
+| `multi_agent_client.enabled` | boolean | `false` | `true`, `false` | No | Allow multiple agents to share one upstream OAuth2 `client_id`. When `false`, duplicate `client_id` on agent creation or update returns `409 Conflict`. |
+| `multi_agent_client.agent_id_param_name` | string | — | Any URL-safe string | Yes if `enabled=true` | Query parameter on the upstream authorization redirect that contains the agent internal UUID. It must match the upstream OAuth2 claim name. |
+| `multi_agent_client.agent_id_claim_name` | string | — | Any string | Yes if `enabled=true` | JWT claim in the upstream token response that contains the agent internal UUID. The broker validates it on each token proxy response. A missing claim is rejected. |
 
-**Startup validation**: If `enabled = true` and either `agent_id_param_name` or `agent_id_claim_name` is empty, the broker fails to start with a clear error message.
+**Startup validation:** If `enabled = true` and `agent_id_param_name` or
+`agent_id_claim_name` is empty, the broker does not start.
 
 **Feature disabled (default)**:
 
@@ -1124,18 +1149,39 @@ See [OAuth2 server modes](/docs/concepts/oauth2-server-modes) for how the broker
 | `impersonation.rules[].authorization.cel.expression` | string | — | CEL expression | Yes (CR-005) | Predicate deciding the request; compiled at startup. |
 | `impersonation.rules[].authorization.cel.evaluation_timeout` | duration | `100ms` | `10ms`–`5s` | No (CR-005) | Per-evaluation CEL timeout. |
 
-**Startup validation** (fail-closed; every failure yields a `ConfigError` with an indexed field path, e.g. `oauth2_authorization_server.impersonation.rules[1].trusted_issuers[0].allowed_algorithms`):
+**Startup validation:** Each failure returns a `ConfigError` with an indexed field path. For
+example: `oauth2_authorization_server.impersonation.rules[1].trusted_issuers[0].allowed_algorithms`.
 
-- **CR-001**: `audience_prefix` is an absolute HTTP(S) routing URI with a host and no userinfo, query, fragment, or trailing slash. Only one exact `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>` activates impersonation; bare suffixes and suffixes matching neither form are `invalid_request`, and unknown targets of either well-formed form are `invalid_target`.
-- **CR-002**: `rules` is non-empty and ordered; evaluated first-match.
-- **CR-003**: each rule has a unique `name`; `roles` keys are a subset of `{client_assertion, actor, subject}` and MUST define all three; each role requires `principal_expression`; `expected_audience` is required for signed roles and MUST be absent for an unverified subject; `verification` and `email_expression` are allowed on `subject` only.
-- **CR-004**: the local `issuer_uri` MUST NOT be a trusted issuer that signs the `client_assertion` role.
-- **CR-005**: `authorization.type` is `cel`; `authorization.cel.expression` is required and compiles at startup (empty fails); `authorization.cel.evaluation_timeout` is within `[10ms, 5s]` and defaults to `100ms`.
-- **CR-005a**: the unverified subject mode (`verification: none`) is OFF unless a rule declares it. A rule that accepts it MUST have an authorization predicate that references `subject_token` (verified at startup from the compiled expression); startup fails otherwise. A caller-controlled `email` is minted only when the predicate binds `subject_token.email` (FR-006a).
-- **CR-006**: the `impersonation` block is rejected outside `local` mode.
-- **CR-007**: `allowed_algorithms` is a non-empty subset of `{RS256, RS384, RS512, PS256, PS384, PS512, ES256, ES384, ES512, EdDSA}`; `none` and `HS*` are rejected. This governs signed credentials only; the unsigned unverified subject is not validated against it.
-- **CR-008**: within a rule, `issuer_uri` is unique across `trusted_issuers`; every `signs_roles` entry is a defined signed role; each signed role (`client_assertion`, `actor`, and a signed `subject`) is covered by at least one trusted issuer's `signs_roles`; a subject whose `verification` is `none` MUST NOT appear in any `signs_roles`. The same `issuer_uri` MAY be reused across rules.
-- **CR-010**: the user-delegation verifier and `server.enduser.public_url` are both required when impersonation is configured. The broker refuses startup if either is unavailable; no degraded or bypass mode exists.
+- **CR-001:** `audience_prefix` is an absolute HTTP(S) routing URI. It has a host and no
+  userinfo, query, fragment, or trailing slash. One exact
+  `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>` enables
+  impersonation. A bare or invalid suffix is `invalid_request`. An unknown valid target is
+  `invalid_target`.
+- **CR-002:** `rules` is non-empty and ordered. The broker evaluates the first matching rule.
+- **CR-003:** Each rule has a unique `name`. Its `roles` keys are a subset of
+  `{client_assertion, actor, subject}` and define all three roles. Each role requires
+  `principal_expression`. Signed roles require `expected_audience`. An unverified subject
+  must not use it. Only `subject` can use `verification` and `email_expression`.
+- **CR-004:** The local `issuer_uri` must not be a trusted issuer for `client_assertion`.
+- **CR-005:** `authorization.type` is `cel`. Its expression is required and compiles at
+  startup. `authorization.cel.evaluation_timeout` must be 10ms through 5s. The default is
+  100ms.
+- **CR-005a:** Unverified subject mode is disabled unless a rule declares
+  `verification: none`. Its authorization predicate must reference `subject_token`. The
+  broker checks this at startup. It can issue a caller-provided email only when the predicate
+  binds `subject_token.email`.
+- **CR-006:** The broker rejects `impersonation` outside local mode.
+- **CR-007:** `allowed_algorithms` is a non-empty subset of
+  `{RS256, RS384, RS512, PS256, PS384, PS512, ES256, ES384, ES512, EdDSA}`. The broker
+  rejects `none` and `HS*`. This rule governs signed credentials only. It does not validate
+  the unsigned unverified subject.
+- **CR-008:** Within a rule, `issuer_uri` is unique across `trusted_issuers`. Every
+  `signs_roles` entry is a defined signed role. At least one trusted issuer covers every
+  signed role: `client_assertion`, `actor`, and a signed `subject`. An unverified subject
+  must not appear in `signs_roles`. The same `issuer_uri` can appear in different rules.
+- **CR-010:** Impersonation requires the user-delegation verifier and
+  `server.enduser.public_url`. The broker does not start without both. It has no bypass
+  mode.
 
 **Example** (`local` mode; the same issuer signs the credentials of two signed rules):
 
@@ -1200,9 +1246,22 @@ oauth2_authorization_server:
             evaluation_timeout: "100ms"
 ```
 
-**Request contract** (`POST /oauth2/token`): send `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`, `audience=<impersonation.audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`, client assertion and actor/subject credentials. The suffix must identify a registered target agent. `requested_token_type` is optional and must equal the access-token type. `resource` must be absent; `scope` is optional and literal-space-separated. Every non-reserved value must be allowed by the resolved target's `allowed_scopes` unless that allow-list is empty; the reserved refresh-token scopes `offline` and `offline_access` are always permitted. A non-empty granted scope is returned in the response and minted token. Target-derived `agent_id` and local CEL `agent.*` always use the target UUID and agent, regardless of the requested identifier form; `aud` remains owned by local policy.
+**Request contract** (`POST /oauth2/token`): Send
+`grant_type=urn:ietf:params:oauth:grant-type:token-exchange` and one
+`audience=<impersonation.audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`.
+Send client assertion, actor, and subject credentials. The suffix must identify a registered
+target agent. `requested_token_type` is optional. When present, it must be the access-token
+type. `resource` must be absent. `scope` is optional and uses literal-space-separated values.
+Each non-reserved scope must be in the resolved target `allowed_scopes`. An empty allow list
+permits all non-reserved scopes. `offline` and `offline_access` are reserved and permitted.
+The response and minted token contain a non-empty granted scope. The target UUID and agent
+always supply `agent_id` and local CEL `agent.*`, regardless of identifier form. Local policy
+controls `aud`.
 
-**Unverified subject rule** (broker profile extension, ADR 031): the subject role sets `verification: none`, omits `expected_audience`, and is absent from every issuer's `signs_roles`; the authorization predicate MUST reference `subject_token` and binds `subject_token.email` so the caller-supplied email may be minted:
+**Unverified subject rule** (broker profile extension, ADR 031): The subject role uses
+`verification: none` and has no `expected_audience`. It does not occur in any issuer
+`signs_roles`. The authorization predicate must reference `subject_token`. It must bind
+`subject_token.email` before the broker mints a caller-provided email:
 
 ```yaml
       - name: "chat-bridge-unverified-subject"
@@ -1298,17 +1357,20 @@ When tracing is enabled, the following operations emit child spans:
 | `jwks.fetch` | JWKS key set fetch/cache lookup | `url.full` |
 | `oauth2.token_exchange` | Upstream OAuth2 token proxy | `http.method=POST`, `http.status_code` |
 
-### Security Notes
+### Security notes
 
-- `telemetry.exporter.insecure` defaults to `false` (TLS required by default). A startup WARN is emitted if set to true.
-- Span attributes never contain tokens, encryption keys, PII, credentials, or request body content.
-- `telemetry.exporter.headers` values (e.g., API keys) should reference environment variables via `${VAR_NAME}` syntax to avoid committing secrets to configuration files.
+- `telemetry.exporter.insecure` defaults to `false`. TLS is required by default. The broker
+  records a startup warning when this value is true.
+- Span attributes do not contain tokens, encryption keys, PII, credentials, or request body
+  content.
+- Use `${VAR_NAME}` substitution for `telemetry.exporter.headers` values such as API keys.
+  This prevents secrets from entering configuration files.
 
-## Getting Help
+## Getting help
 
-- Review error messages carefully - they include fix instructions
-- Check the startup summary to see which sources were loaded
-- Verify file paths are absolute or relative to current directory
-- Ensure GO_ENV matches your environment name
-- Review `adrs/002-configuration-libraries.md` in the repository root for implementation details
-- Check `ARCHITECTURE.md` in the repository root for configuration subsystem architecture
+- Read error messages. They include correction instructions.
+- Read the startup summary to identify loaded sources.
+- Read `ARCHITECTURE.md` for the configuration subsystem architecture.
+- Make sure that each configuration path is absolute or relative to the current working directory.
+- Make sure that `GO_ENV` has the expected environment value.
+- Read `adrs/002-configuration-libraries.md` for the configuration library decision.

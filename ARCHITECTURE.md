@@ -407,7 +407,7 @@ ginkgo -v --focus="Authorization Endpoint" ./tests/e2e/
 
 #### 3.1.5. Tool Approval Domain
 
-**Purpose**: Human-in-the-loop authorization for agent tool calls. When an AI agent attempts to invoke a tool that requires human authorization, the system creates a pending approval record, presents it to the user, and blocks the tool call until the user approves or denies it.
+**Purpose**: Human-in-the-loop authorization for agent tool calls. When an AI agent attempts to invoke a tool that requires human-in-the-loop authorization, the system creates a pending approval record, presents it to the user, and blocks the tool call until the user approves or denies it.
 
 **Domain Model**:
 - **ToolApproval**: Aggregate root representing an approval record with lifecycle status (pending → approved/denied), persistence scope (once/session/permanent), and consumption tracking.

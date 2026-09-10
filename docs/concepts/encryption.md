@@ -1,52 +1,49 @@
 ---
 title: "Encryption at rest"
-description: "How the broker seals third-party tokens and service secrets with envelope encryption bound to each service — why it is mandatory, and how the key hierarchy protects them."
+description: How the broker encrypts third-party tokens and service secrets with envelope encryption. The encryption is bound to each service. This page explains the required key hierarchy.
 ---
 
 # Encryption at rest
 
-The broker's value depends on it holding third-party tokens and provider secrets that agents
-never see. That only holds if those values are unreadable at rest. The broker seals every
-third-party access and refresh token, and every service `client_secret`, with **envelope
-encryption**, and it binds each ciphertext to the service it belongs to so it cannot be
-reused elsewhere.
+The broker stores third-party tokens and provider secrets that agents never see. These
+values must remain unreadable in storage. The broker encrypts every third-party access token,
+refresh token, and service `client_secret`. It binds every ciphertext to its service. A
+ciphertext cannot be reused for another service.
 
-Encryption is **mandatory**. The broker refuses to start if no encryption backend is
-configured — there is no plaintext mode and no fallback. This page explains the model; for
-setup, see [configure encryption](/docs/guides/configure-encryption).
+Encryption is mandatory. The broker does not start without an encryption backend. It has no
+plaintext mode or fallback. This page explains the model. See
+[configure encryption](/docs/guides/configure-encryption) for setup.
 
 ## What is protected, and why it matters
 
 Two kinds of sensitive material live in the broker's storage:
 
-- **Third-party tokens** — the access and refresh tokens the broker obtains when a user
-  authorizes a service. These are the credentials agents borrow at request time through
-  [token exchange](/docs/concepts/token-exchange), so a leak of the datastore would otherwise
-  expose live access to every connected provider.
-- **Service secrets** — the `client_secret` of each registered third-party service.
+- **Third-party tokens** — Access and refresh tokens that the broker receives when a user
+  authorizes a service. Agents use these tokens through
+  [token exchange](/docs/concepts/token-exchange). A datastore leak can otherwise expose
+  provider access.
+- **Service secrets** — The `client_secret` for each registered third-party service.
 
-Both are encrypted before they reach storage, and both are always **redacted** in API
-responses: a service secret reads back as `REDACTED`, never as its value. Encryption at rest
-and redaction on read together mean the plaintext exists only transiently, inside the broker,
-at the moment it is used.
+The broker encrypts both values before storage. The API redacts both values. A service read
+returns `REDACTED` instead of its client secret. Plaintext exists only in the broker while it
+uses the value.
 
 ## Envelope encryption, plainly
 
-Encrypting a large or long-lived secret directly with one master key is fragile: the master
-key sees every plaintext, and rotating it means re-encrypting everything. Envelope encryption
-avoids that with a layered approach.
+Direct encryption of every secret with one long-lived master key is fragile. The master key
+handles every plaintext. Rotating it requires re-encryption of every value. Envelope
+encryption uses a layered design:
 
-- For each encryption operation the broker generates a fresh **data key (DEK)** and uses it to
-  encrypt that one value with authenticated encryption (AES-GCM-SIV, which protects both
-  confidentiality and integrity).
-- The DEK is then **wrapped** — encrypted — by a higher-level key, and in production that key
-  is itself wrapped up to a **root key (KEK)** held in a key-management service.
-- The stored result is a self-contained envelope: the wrapped DEK travels alongside the
-  ciphertext. To read the value, the broker unwraps the DEK through the key hierarchy, then
-  uses it to decrypt.
+- For each encryption operation, the broker creates a new **data key (DEK)**. It uses the
+  DEK to encrypt one value with authenticated encryption (AES-GCM-SIV). This protects
+  confidentiality and integrity.
+- A higher-level key encrypts the DEK. In production, key layers lead to a **root key
+  (KEK)** in a key-management service.
+- The stored envelope contains the encrypted DEK and ciphertext. To read the value, the
+  broker decrypts the DEK through the key hierarchy. It then decrypts the value.
 
-Because every operation gets its own DEK, no single data key protects more than one value, and
-the root key never touches the plaintext directly.
+Each operation uses a separate DEK. A data key protects only one value. The root key does
+not process plaintext directly.
 
 ```mermaid
 flowchart TD
@@ -58,52 +55,47 @@ flowchart TD
 
 ## Two backends: production and development
 
-Exactly one backend is configured, and the difference is only where the top of the key
-hierarchy lives.
+The broker configures exactly one backend. The backend determines where the top key in the
+hierarchy is stored.
 
 | | Production | Development |
 |---|---|---|
-| Root key | AWS KMS customer-managed key (an ARN) | A single raw base64-encoded AES-256 key |
+| Root key | AWS KMS customer-managed key (an ARN) | One raw base64-encoded AES-256 key |
 | Intermediate keys | DynamoDB-cached **branch keys** (hierarchical keyring) | None |
-| Why | HSM-backed root key, audit logging, IAM control, fewer KMS calls via branch-key caching | No cloud dependency; fast local startup for development and CI |
-| Configuration | `encryption.aws_kms.key_arn` + branch-key table | `encryption.memory.raw_key` |
+| Purpose | An HSM-backed root key with audit and IAM control. Branch-key caching reduces KMS calls. | No cloud dependency and fast local startup for development and CI. |
+| Configuration | `encryption.aws_kms.key_arn` and a branch-key table | `encryption.memory.raw_key` |
 
-In production the **hierarchical keyring** sits between the KMS root key and the per-operation
-DEKs: branch keys are cached in a DynamoDB table so the broker does not call KMS for every
-encryption, which is what keeps token operations fast at volume. The development backend
-replaces all of that with one AES-256 key you supply directly — appropriate for local work and
-testing, and never for production, where the key would be visible in the process environment.
+In production, the **hierarchical keyring** is between the KMS root key and per-operation
+DEKs. DynamoDB caches branch keys. The broker does not call KMS for every encryption
+operation. This reduces latency and KMS cost. The development backend uses one AES-256 key
+from the process environment. Do not use this backend in production.
 
 :::warning
-The memory backend keeps its key in the process environment and provides no HSM protection,
-rotation, or centralized audit. Use AWS KMS for any environment that holds real credentials.
+The memory backend stores its key in the process environment. It has no HSM protection, key
+rotation, or centralized audit. Use AWS KMS for an environment that stores real credentials.
 :::
 
 ## Encryption context binds ciphertext to its service
 
-Layered keys keep the plaintext secret. **Encryption context** keeps a decrypted value from
-being used in the wrong place. Each ciphertext is bound to an encryption context — the
-`service_id` it belongs to — supplied as additional authenticated data (AAD) at every layer of
-the envelope.
+Layered keys protect plaintext secrets. **Encryption context** prevents a decrypted value
+from use with the wrong service. The broker binds every ciphertext to the `service_id` with
+additional authenticated data (AAD) at each envelope layer.
 
-The binding is enforced on decryption: the broker must present the same `service_id` to
-decrypt that it used to encrypt. A token encrypted for service A therefore **cannot** be
-decrypted in the context of service B, even by the same broker with the same keys — the
-context mismatch fails the operation. This turns service isolation into a cryptographic
-property rather than an application check: even a bug that fetched the wrong ciphertext could
-not surface a usable token for a different service.
+During decryption, the broker must supply the same `service_id` used for encryption. A token
+for service A cannot be decrypted for service B, even with the same broker and keys. A
+context mismatch stops the operation. This provides cryptographic service isolation. A bug
+that reads the wrong ciphertext cannot return a usable token for another service.
 
 ## Fail-closed by design
 
 The broker treats encryption as a hard boundary:
 
-- **No plaintext fallback.** If encryption or decryption fails — a wrong context, a key that
-  cannot be reached, a corrupted envelope — the operation returns an error. The broker never
-  degrades to storing or returning plaintext.
-- **Mandatory at startup.** With no encryption backend configured, the broker does not start,
-  so a deployment can never silently run without protection.
-- **Redacted on read.** Secrets are returned as `REDACTED` through the API, so the plaintext is
-  never exposed even to an authorized administrator reading a service back.
+- **No plaintext fallback.** A wrong context, unavailable key, or corrupt envelope returns
+  an error. The broker does not store or return plaintext.
+- **Mandatory at startup.** Without an encryption backend, the broker does not start. A
+  deployment cannot run without encryption.
+- **Redacted on read.** The API returns secrets as `REDACTED`. It does not return plaintext
+  to an administrator.
 
 ## Related
 

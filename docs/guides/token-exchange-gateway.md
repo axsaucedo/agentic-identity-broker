@@ -1,32 +1,32 @@
 ---
 title: "Set up token exchange at the gateway"
-description: "Deploy the ExtProc token-exchange sidecar beside an Envoy-based agent gateway for transparent RFC 8693 exchange, with fail-closed behavior and an optional OPA policy gate."
+description: Deploy the ExtProc token-exchange sidecar with an Envoy-based agent gateway. The sidecar performs RFC 8693 exchange, fails closed, and can use an OPA policy gate.
 ---
 
 # Set up token exchange at the gateway
 
-The ExtProc token-exchange service (`extproc-token-exchange`) is a standalone gRPC sidecar
-that gives an agent gateway transparent [RFC 8693 token exchange](/docs/concepts/token-exchange).
-Deployed beside an Envoy-based gateway (such as agentgateway), it intercepts each request,
-swaps the agent's bearer token for the correct third-party token against the broker, and
-rewrites the `Authorization` header — so the agent never holds the provider credential and
-the gateway needs no exchange logic of its own.
+The ExtProc token-exchange service (`extproc-token-exchange`) is a standalone gRPC sidecar.
+It gives an agent gateway transparent
+[RFC 8693 token exchange](/docs/concepts/token-exchange). The sidecar runs beside an
+Envoy-based gateway, such as agentgateway. It intercepts each request and exchanges the
+agent bearer token for the correct third-party token. It rewrites the `Authorization`
+header. The agent never holds the provider credential. The gateway does not require its
+own exchange logic.
 
-This guide shows you how to deploy and configure the sidecar. It stays at the operator level:
-what to run, what to set, and how the request flows.
+This guide explains how to deploy and configure the sidecar. It describes the required
+settings and request flow.
 
-## What you'll need
+## What you need
 
-- An Envoy-based agent gateway that supports the External Processor (ExtProc) filter, pointed
-  at the sidecar's gRPC listener.
-- A reachable broker with its RFC 8693 token endpoint at `POST /oauth2/token` on the end-user
-  port (8000).
-- OAuth2 client credentials for the sidecar itself, issued by your upstream OAuth2 server. The
-  sidecar uses them to obtain the client assertion it presents to the broker.
-- The sidecar container image (`Dockerfile.extproc`). It needs **no database** — all state is
-  an in-memory cache.
-- Optionally, a [broker CEL policy](#the-two-gate-model) authorizing which gateways may
-  perform exchange, and an OPA policy if you want a second gate on the proxied call.
+- An Envoy-based agent gateway with the External Processor (ExtProc) filter. Configure the
+  filter to use the sidecar gRPC listener.
+- A reachable broker token endpoint at `POST /oauth2/token` on end-user port 8000.
+- OAuth2 client credentials for the sidecar. Your upstream OAuth2 server issues these
+  credentials. The sidecar uses them to obtain a client assertion for the broker.
+- The sidecar container image (`Dockerfile.extproc`). The sidecar stores state only in an
+  in-memory cache.
+- A broker CEL policy if you restrict gateway exchanges. You can also add an OPA policy for
+  the proxied request.
 
 ## How the exchange flows
 
@@ -50,30 +50,29 @@ sequenceDiagram
     G-->>A: Response
 ```
 
-1. **Intercept** the request headers from the gateway.
-2. **Extract** the bearer token from the `Authorization` header and the target resource URI
-   from the `:path` pseudo-header. Requests without a bearer token pass through unchanged.
-3. **Exchange** the token against the broker's `/oauth2/token` endpoint, presenting the
-   sidecar's client assertion and the resource URI. The broker verifies the user's grant for
-   that agent and service and returns the stored third-party token.
-4. **Rewrite** the `Authorization` header with `Bearer <exchanged token>` and forward.
+1. **Intercept** the gateway request headers.
+2. **Extract** the bearer token from `Authorization`. Extract the target resource URI from
+   `:path`. Requests without a bearer token pass through unchanged.
+3. **Exchange** the token through the broker `/oauth2/token` endpoint. Include the sidecar
+   client assertion and resource URI. The broker validates the user grant for that agent and
+   service. It then returns the stored third-party token.
+4. **Replace** the `Authorization` header with `Bearer <exchanged token>`. Then forward the
+   request.
 
-The sidecar caches exchanged tokens in memory, keyed by the subject token and resource, and
-deduplicates concurrent identical exchanges so a burst of requests triggers exactly one call
-to the broker.
+The sidecar stores exchanged tokens in memory. Its cache key contains the subject token and
+resource. It combines concurrent identical exchanges into one broker request.
 
 ### Fail-closed behavior
 
-If the exchange fails, the sidecar returns an error to the gateway and **never forwards the
-original agent token** to the third party. A failed or unauthorized exchange stops the
-request rather than leaking an unexchanged credential. Only tokens the broker issued for the
-target resource ever reach the upstream service.
+If exchange fails, the sidecar returns an error to the gateway. It does not forward the
+original agent token to the third party. A failed or unauthorized exchange stops the
+request. Only a broker-issued token for the target resource reaches the upstream service.
 
 ## Configure the sidecar
 
-The sidecar uses its own configuration, separate from the broker, with the `EXTPROC_`
-environment prefix. Every key maps to `EXTPROC_<SECTION>_<KEY>` (for example `grpc.port` →
-`EXTPROC_GRPC_PORT`), and string values support `${VAR}` substitution for secret injection.
+The sidecar has separate configuration from the broker. Its environment prefix is
+`EXTPROC_`. Each key maps to `EXTPROC_<SECTION>_<KEY>`. For example, `grpc.port` maps to
+`EXTPROC_GRPC_PORT`. String values support `${VAR}` substitution for secret injection.
 
 ```yaml
 grpc:
@@ -106,41 +105,42 @@ log:
   format: "json"
 ```
 
-Point your gateway's ExtProc filter at `bind:port` (default `0.0.0.0:50051`). Key settings:
+Configure the gateway ExtProc filter to use `bind:port`. The default value is
+`0.0.0.0:50051`. Key settings follow:
 
-- **`oauth2.token_endpoint`** — the broker's `/oauth2/token`; where exchanges are performed.
-- **`oauth2.issuer`** and **`client_id`/`client_secret`** — the sidecar obtains a client
-  assertion from the upstream server's client-credentials grant and refreshes it in the
-  background, so it always presents a valid assertion to the broker.
-- **`oauth2.tls.allow_http`** — keep `false`. The token endpoint and issuer must use `https`
-  unless you explicitly allow HTTP, which is for local development only.
-- **`cache.default_ttl` / `cache.max_ttl`** — bound how long exchanged tokens are cached. The
-  cached lifetime is derived from the exchange response's `expires_in`, falling back to
-  `default_ttl` and capped at `max_ttl`.
+- **`oauth2.token_endpoint`** — The broker `/oauth2/token` endpoint. The sidecar sends each
+  exchange to this endpoint.
+- **`oauth2.issuer`**, **`client_id`**, and **`client_secret`** — The sidecar obtains a
+  client assertion through the upstream client-credentials grant. It refreshes the
+  assertion in the background.
+- **`oauth2.tls.allow_http`** — Keep this value `false`. The token endpoint and issuer use
+  `https` unless you explicitly allow HTTP for local development.
+- **`cache.default_ttl` / `cache.max_ttl`** — These values limit cache lifetime. The
+  sidecar derives lifetime from the exchange response `expires_in`. It uses `default_ttl`
+  when the response omits that value, then limits it to `max_ttl`.
 
-Inject the client secret from the environment rather than committing it. Sensitive values are
-redacted from logs.
+Inject the client secret through the environment. Do not commit it. The sidecar redacts
+sensitive values from logs.
 
 ## The two-gate model
 
-Two independent policy gates can guard a request, and they compose as a fail-closed **AND** —
-both must allow it:
+Two independent policy gates can guard a request. Both gates must allow the request:
 
 | Gate | Where | Question it answers |
 |---|---|---|
-| Broker CEL | Broker `POST /oauth2/token` | May this gateway perform token exchange for this resource? |
-| ExtProc OPA | Sidecar request path | May this proxied request or MCP tool call proceed? |
+| Broker CEL | Broker `POST /oauth2/token` | Can this gateway exchange a token for this resource? |
+| ExtProc OPA | Sidecar request path | Can this proxied request or MCP tool call continue? |
 
-The broker's CEL policy (configured on the broker, not the sidecar) decides whether the
-exchange is allowed at all. The sidecar's optional OPA policy can further restrict the
-proxied call after the exchange is authorized — but it can never widen access the broker
-denied. See [token exchange](/docs/concepts/token-exchange) for the broker-side CEL policy.
+The broker CEL policy is configured on the broker. It decides whether exchange is allowed.
+The optional sidecar OPA policy can restrict the proxied request after exchange. It cannot
+give access that the broker denied. See
+[token exchange](/docs/concepts/token-exchange) for the broker CEL policy.
 
-### Enable the OPA gate (optional)
+### Optional OPA gate
 
-To evaluate the proxied request (including MCP tool calls) against a Rego policy, add an
-`authorization` block. Body-bearing requests are buffered and evaluated; the decision is
-fail-closed — an undefined result denies.
+To evaluate a proxied request, including MCP tool calls, with a Rego policy, add an
+`authorization` block. The sidecar buffers and evaluates requests that contain a body. An
+undefined result denies the request.
 
 ```yaml
 authorization:
@@ -158,25 +158,26 @@ authorization:
 ```
 
 :::warning
-Keep `default_decision: "deny"`. It is what makes the OPA gate fail-closed: if the policy is
-undefined for a request, or evaluation times out, the request is denied rather than allowed
-through.
+Keep `default_decision: "deny"`. If a policy result is undefined or evaluation times out,
+the OPA gate denies the request.
 :::
 
 ## Deployment notes
 
-- **No database.** The sidecar keeps only an in-memory cache, so scale it horizontally by
-  running one instance per gateway pod; each maintains its own cache.
-- **Container image.** To build a release image, run `just docker-build-extproc`. It builds the required Linux artifacts for amd64 and arm64 before packaging the default Dockerfile target. To build a source-based development image instead, run:
+- **No database.** The sidecar stores only an in-memory cache. Start one sidecar instance
+  for each gateway pod. Each instance has its own cache.
+- **Container image.** To build a release image, use `just docker-build-extproc`. The command
+  builds Linux artifacts for amd64 and arm64. Then it packages the default Dockerfile
+  target. To build a source-based development image, run:
 
   ```bash
   docker build --target development --file Dockerfile.extproc .
   ```
 
-  Provide configuration by YAML file or entirely through `EXTPROC_` environment variables.
-- **Placement.** Run it alongside the gateway so exchange happens at the edge, before the
-  request leaves for the third-party service. See
-  [architecture](/docs/concepts/architecture) for where the sidecar sits.
+  Configure the sidecar with a YAML file or `EXTPROC_` environment variables.
+- **Placement.** Start the sidecar with the gateway. Token exchange then occurs at the edge,
+  before the request reaches the third-party service. See
+  [architecture](/docs/concepts/architecture) for the sidecar location.
 
 ## Related
 

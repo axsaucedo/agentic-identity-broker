@@ -60,7 +60,7 @@ IRSA (IAM Roles for Service Accounts) enables Kubernetes pods to assume AWS IAM 
 
 ## Prerequisites
 
-Before deploying with IRSA, ensure you have:
+Before you deploy with IRSA, make sure that these prerequisites are available:
 
 ### 1. EKS Cluster with OIDC Provider
 
@@ -249,9 +249,9 @@ Expected outputs:
 - `EncryptionRoleARN`: IAM role ARN (e.g., `arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod`)
 - `IamRoleName`: IAM role name (e.g., `AgenticIdentityBrokerEncryptionRole-prod`)
 
-### Step 3: Verify IAM Role Trust Policy
+### Step 3: Examine IAM role trust policy
 
-Verify the IAM role has the correct IRSA trust policy:
+Make sure that the IAM role has the required IRSA trust policy:
 
 ```bash
 aws iam get-role \
@@ -460,11 +460,11 @@ helm install broker . \
   -f values-irsa.yaml
 ```
 
-### Step 8: Verify Deployment
+### Step 8: Examine deployment
 
-#### 8.1 Check ServiceAccount Annotation
+#### 8.1 ServiceAccount annotation
 
-Verify the ServiceAccount has the IRSA role annotation:
+Make sure that the ServiceAccount has the IRSA role annotation:
 
 ```bash
 kubectl get serviceaccount ${K8S_SERVICE_ACCOUNT} \
@@ -484,9 +484,9 @@ metadata:
   namespace: identity-broker
 ```
 
-#### 8.2 Check Pod Status
+#### 8.2 Pod status
 
-Verify broker pods are running:
+Make sure that broker pods are running:
 
 ```bash
 kubectl get pods -n ${K8S_NAMESPACE} -l app.kubernetes.io/name=agentic-identity-broker
@@ -501,9 +501,9 @@ broker-agentic-identity-broker-xxxxx-zzzzz   1/1     Running   0          2m
 broker-agentic-identity-broker-xxxxx-wwwww   1/1     Running   0          2m
 ```
 
-#### 8.3 Check Pod Environment
+#### 8.3 Pod environment
 
-Verify the pod has AWS SDK environment variables for IRSA:
+Make sure that the pod has AWS SDK environment variables for IRSA:
 
 ```bash
 POD_NAME=$(kubectl get pods -n ${K8S_NAMESPACE} \
@@ -521,30 +521,30 @@ AWS_WEB_IDENTITY_TOKEN_FILE=/var/run/secrets/eks.amazonaws.com/serviceaccount/to
 AWS_REGION=us-east-1
 ```
 
-These environment variables are automatically injected by the EKS Pod Identity Webhook.
+The EKS Pod Identity Webhook adds these environment variables.
 
-#### 8.4 Check Application Logs
+#### 8.4 Application logs
 
-Verify the application can access AWS resources:
+Make sure that the application can access AWS resources:
 
 ```bash
 kubectl logs -n ${K8S_NAMESPACE} $POD_NAME | grep -i kms
 kubectl logs -n ${K8S_NAMESPACE} $POD_NAME | grep -i dynamodb
 ```
 
-No errors should appear related to AWS credential or permission issues.
+The logs must not contain AWS credential or permission errors.
 
-#### 8.5 Run Helm Tests
+#### 8.5 Run Helm tests
 
-Execute Helm tests to verify deployment health:
+Run Helm tests to examine deployment health:
 
 ```bash
 helm test broker -n ${K8S_NAMESPACE}
 ```
 
-### Step 9: Basic Health Check
+### Step 9: Basic health
 
-Verify the broker is running and responding:
+Make sure that the broker runs and responds:
 
 ```bash
 # Port-forward to broker service
@@ -554,11 +554,11 @@ kubectl port-forward -n ${K8S_NAMESPACE} svc/broker-agentic-identity-broker 8000
 curl http://localhost:8000/health
 ```
 
-For comprehensive end-to-end testing of OAuth2 flows and encryption functionality, refer to the application's integration tests and API documentation.
+For end-to-end OAuth2 and encryption tests, read the integration tests and API documentation.
 
-### Step 10: Monitor CloudWatch Metrics
+### Step 10: Monitor CloudWatch metrics
 
-Check encryption infrastructure metrics:
+Examine encryption infrastructure metrics:
 
 ```bash
 # View CloudWatch dashboard
@@ -586,9 +586,9 @@ aws cloudwatch get-metric-statistics \
   --statistics Sum
 ```
 
-## Verification Checklist
+## Deployment checklist
 
-After deployment, verify:
+After deployment, make sure that these conditions are true:
 
 - [ ] CDK stack deployed successfully
 - [ ] IAM role created with federated trust policy
@@ -614,23 +614,23 @@ AccessDenied: User: sts:assumed-role/eks-node-role/i-xxxxx is not authorized to 
 
 **Diagnosis**:
 
-1. Check ServiceAccount annotation:
+1. Examine the ServiceAccount annotation:
    ```bash
    kubectl get sa ${K8S_SERVICE_ACCOUNT} -n ${K8S_NAMESPACE} -o yaml
    ```
 
-2. Verify OIDC provider trust relationship:
+2. Examine the OIDC provider trust relationship:
    ```bash
    aws iam get-role --role-name $IAM_ROLE_NAME \
      --query 'Role.AssumeRolePolicyDocument'
    ```
 
-**Solutions**:
+**Solutions:**
 
-- Ensure ServiceAccount name matches trust policy condition
-- Verify namespace matches trust policy condition
-- Confirm OIDC provider ARN is correct
-- Check pod is using correct ServiceAccount:
+- Make sure that the ServiceAccount name matches the trust policy condition.
+- Make sure that the namespace matches the trust policy condition.
+- Make sure that the OIDC provider ARN is correct.
+- Examine the pod ServiceAccount:
   ```bash
   kubectl get pod $POD_NAME -n ${K8S_NAMESPACE} -o jsonpath='{.spec.serviceAccountName}'
   ```
@@ -642,19 +642,19 @@ AccessDenied: User: sts:assumed-role/eks-node-role/i-xxxxx is not authorized to 
 KMS.AccessDeniedException: User: arn:aws:sts::ACCOUNT:assumed-role/AgenticIdentityBrokerEncryptionRole-prod/xxxxx is not authorized to perform: kms:Decrypt
 ```
 
-**Diagnosis**:
+**Diagnosis:**
 
-Check IAM role permissions:
+Examine IAM role permissions:
 ```bash
 aws iam list-attached-role-policies --role-name $IAM_ROLE_NAME
 aws iam list-role-policies --role-name $IAM_ROLE_NAME
 ```
 
-**Solutions**:
+**Solutions:**
 
-- Redeploy CDK stack (permissions are managed by CDK)
-- Verify KMS key ARN in Helm values matches CDK output
-- Check KMS key policy allows the role
+- Deploy the CDK stack again. It manages permissions.
+- Make sure that the KMS key ARN in Helm values matches the CDK output.
+- Make sure that the KMS key policy allows the role.
 
 ### Issue: DynamoDB Access Denied
 
@@ -663,18 +663,18 @@ aws iam list-role-policies --role-name $IAM_ROLE_NAME
 DynamoDB.AccessDeniedException: User: arn:aws:sts::ACCOUNT:assumed-role/AgenticIdentityBrokerEncryptionRole-prod/xxxxx is not authorized to perform: dynamodb:GetItem
 ```
 
-**Diagnosis**:
+**Diagnosis:**
 
-Check DynamoDB table configuration:
+Examine DynamoDB table configuration:
 ```bash
 aws dynamodb describe-table --table-name $DYNAMODB_TABLE_NAME
 ```
 
-**Solutions**:
+**Solutions:**
 
-- Verify DynamoDB table name in Helm values matches CDK output
-- Confirm IAM role has DynamoDB permissions (managed by CDK)
-- Check table exists and is ACTIVE
+- Make sure that the DynamoDB table name in Helm values matches the CDK output.
+- Make sure that the IAM role has DynamoDB permissions. The CDK stack manages these.
+- Make sure that the table exists and is `ACTIVE`.
 
 ### Issue: OIDC Provider Not Found
 
@@ -683,21 +683,21 @@ aws dynamodb describe-table --table-name $DYNAMODB_TABLE_NAME
 InvalidIdentityToken: No OpenIDConnect provider found
 ```
 
-**Diagnosis**:
+**Diagnosis:**
 
-Check OIDC provider exists:
+Make sure that the OIDC provider exists:
 ```bash
 aws iam list-open-id-connect-providers
 ```
 
-**Solutions**:
+**Solutions:**
 
-- Create OIDC provider for EKS cluster:
+- Create the OIDC provider for the EKS cluster:
   ```bash
   eksctl utils associate-iam-oidc-provider --cluster my-cluster --approve
   ```
-- Verify OIDC provider ARN matches CDK input
-- Ensure EKS cluster has OIDC identity provider enabled
+- Make sure that the OIDC provider ARN matches the CDK input.
+- Make sure that the EKS cluster has an OIDC identity provider.
 
 ### Issue: Wrong Namespace or Service Account
 
@@ -706,9 +706,9 @@ aws iam list-open-id-connect-providers
 AssumeRoleWithWebIdentity: Condition not met (namespace mismatch)
 ```
 
-**Diagnosis**:
+**Diagnosis:**
 
-Compare actual vs expected:
+Compare actual and expected values:
 ```bash
 # Actual pod configuration
 kubectl get pod $POD_NAME -n ${K8S_NAMESPACE} -o jsonpath='{.spec.serviceAccountName}'
@@ -719,12 +719,12 @@ kubectl get pod $POD_NAME -n ${K8S_NAMESPACE} -o jsonpath='{.metadata.namespace}
 # Expected condition key: <oidc-provider-host>:sub (oidcSubjectKey)
 ```
 
-**Solutions**:
+**Solutions:**
 
-- Ensure Helm values match CDK deployment parameters
-- Redeploy CDK stack with correct namespace and service account
-- Verify pod is in correct namespace
-- Check ServiceAccount name matches Helm values
+- Make sure that Helm values match the CDK deployment parameters.
+- Deploy the CDK stack again with the correct namespace and service account.
+- Make sure that the pod is in the correct namespace.
+- Make sure that the ServiceAccount name matches Helm values.
 
 ## Security Best Practices
 
@@ -754,11 +754,11 @@ Deploy separate CDK stacks with environment-specific IRSA roles.
 
 ### 3. Service Account Per Application
 
-Do not share service accounts between applications. Each service should have:
-- Dedicated ServiceAccount
-- Dedicated IAM role
-- Dedicated KMS key
-- Dedicated DynamoDB table
+Do not share service accounts between applications. Each service must have:
+- A dedicated ServiceAccount
+- A dedicated IAM role
+- A dedicated KMS key
+- A dedicated DynamoDB table
 
 ### 4. Pod Security Standards
 

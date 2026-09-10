@@ -1,46 +1,45 @@
 ---
 title: "Operate the OAuth2 server modes"
-description: "Configure the broker's proxy, local, and hybrid OAuth2 authorization-server modes, manage ES256 signing keys, and mint custom token claims with CEL."
+description: Configure proxy, local, and hybrid OAuth2 authorization-server modes. Manage ES256 signing keys and add custom token claims with CEL.
 ---
 
 # Operate the OAuth2 server modes
 
-The broker exposes an OAuth2 authorization-server surface on the end-user port (8000):
-`/oauth2/authorize`, `/oauth2/token`, `/oauth2/jwks.json`, and
-`/.well-known/oauth-authorization-server`. It runs in exactly one **mode**, which decides
-where authorization requests and tokens come from:
+The broker exposes an OAuth2 authorization-server surface on end-user port 8000. The
+surface contains `/oauth2/authorize`, `/oauth2/token`, `/oauth2/jwks.json`, and
+`/.well-known/oauth-authorization-server`. The broker uses one **mode**. The mode decides
+where authorization requests and tokens originate:
 
-- **proxy** (default) — forward `/oauth2/authorize` and `/oauth2/token` to an upstream OAuth2
-  server, while still serving broker metadata and a JWKS that republishes upstream keys.
-- **local** — the broker is a standalone authorization server that mints its own JWT access
-  tokens signed with managed ES256 keys.
-- **hybrid** — both, dispatched per request based on how each agent is registered.
+- **proxy** (default) — Forward authorization and token requests to an upstream OAuth2
+  server. The broker still serves its metadata and republishes upstream keys.
+- **local** — The broker is an authorization server. It issues JWT access tokens with
+  managed ES256 keys.
+- **hybrid** — The broker uses both modes. Agent registration selects the mode.
 
-This is the operator how-to companion to the [OAuth2 server modes](/docs/concepts/oauth2-server-modes)
-concept page. It shows what to set for each mode, how to manage signing keys through the
-admin API, and how to shape custom claims with CEL.
+This guide explains the configuration for each mode. It also explains signing-key management
+and CEL claims. See [OAuth2 server modes](/docs/concepts/oauth2-server-modes) for the
+conceptual model.
 
-## What you'll need
+## What you need
 
-- A decision on which mode fits your deployment. If you already run a corporate OAuth2 server
-  and want the broker to defer to it, choose **proxy**. If you want the broker to issue its
-  own tokens for agents, choose **local**. To support both kinds of agent in one deployment,
-  choose **hybrid**.
-- For proxy or hybrid: the upstream server's issuer, authorization, and token endpoints.
-- For local or hybrid: an encryption backend configured — the broker encrypts signing-key
-  private material at rest and refuses to start in these modes without one. See
+- A selected deployment mode. Use **proxy** when you use a corporate OAuth2 server. Use
+  **local** when the broker issues agent tokens. Use **hybrid** when one deployment must
+  serve both agent types.
+- For proxy or hybrid mode, the upstream issuer, authorization endpoint, and token endpoint.
+- For local or hybrid mode, an encryption backend. The broker encrypts signing-key private
+  material. It does not start in these modes without encryption. See
   [configure encryption](/docs/guides/configure-encryption).
-- Access to the broker's YAML configuration and the admin API on port 14000.
+- Access to the broker YAML configuration and the admin API on port 14000.
 
-All modes require PKCE `S256` on the authorization endpoint, and the `client_id` on
-`/oauth2/authorize` is the agent's **UUID** (`agent.id`) — not the upstream OAuth2 client id.
+All modes require PKCE `S256` at the authorization endpoint. `/oauth2/authorize` uses the
+agent UUID (`agent.id`) as `client_id`. It does not use the upstream OAuth2 client ID.
 
 ## Proxy mode
 
-Set `mode: proxy` and configure the upstream endpoints under `proxy`. The broker forwards
-authorization and token requests upstream after checking the user's grant, and republishes
-the upstream signing keys through its own JWKS. The `upstream_jwks_min_refresh` and
-`upstream_jwks_max_refresh` bounds cap how often the broker re-fetches those keys.
+Set `mode: proxy`. Configure upstream endpoints in `proxy`. The broker validates the user
+grant, then forwards authorization and token requests. It republishes upstream signing keys
+through its JWKS. `upstream_jwks_min_refresh` and `upstream_jwks_max_refresh` limit key
+refresh frequency.
 
 ```yaml
 oauth2_authorization_server:
@@ -63,9 +62,9 @@ The broker's own public URL — used as the `issuer` in the discovery metadata �
 
 ## Local mode
 
-Set `mode: local` and configure token issuance under `local`. In this mode the broker mints
-its own JWT access tokens, so there are no upstream endpoints. It supports the
-`client_credentials` and `authorization_code` (with PKCE) grants.
+Set `mode: local`. Configure token issuance in `local`. The broker issues JWT access tokens
+in this mode. It does not use upstream endpoints. It supports `client_credentials` and
+`authorization_code` with PKCE.
 
 ```yaml
 oauth2_authorization_server:
@@ -77,12 +76,11 @@ oauth2_authorization_server:
       bootstrap_timeout: 90s
 ```
 
-- `token_ttl` — how long issued access tokens are valid (a Go duration such as `30m`, `1h`,
-  `1h30m`).
-- `token_claims_expression` — an optional CEL expression that adds custom claims (see
-  [Custom token claims with CEL](#custom-token-claims-with-cel)). Empty means no custom
-  claims.
-- `signing_keys.bootstrap_timeout` — the startup budget for bringing up the first signing key.
+- `token_ttl` — Token lifetime. Use a Go duration such as `30m`, `1h`, or `1h30m`.
+- `token_claims_expression` — Optional CEL expression for custom claims. See
+  [Custom token claims with CEL](#custom-token-claims-with-cel). An empty value adds no
+  custom claims.
+- `signing_keys.bootstrap_timeout` — The time limit to create the first signing key.
 
 Local mode needs an encryption backend so it can protect signing-key private material:
 
@@ -94,10 +92,9 @@ encryption:
 
 ## Hybrid mode
 
-Set `mode: hybrid` and configure **both** the `proxy` and `local` sections — both are
-required. The broker classifies each agent by how it was registered and routes accordingly:
-agents with an upstream client id go through the proxy path; agents registered as local (or
-by CIMD) get locally issued tokens.
+Set `mode: hybrid`. Configure both `proxy` and `local`. Both configurations are required.
+The broker selects the mode from agent registration. Agents with an upstream client ID use
+the proxy path. Local agents and CIMD agents receive locally issued tokens.
 
 ```yaml
 oauth2_authorization_server:
@@ -125,12 +122,11 @@ As with local mode, hybrid mode requires an encryption backend for signing-key m
 
 ## Manage signing keys
 
-Local and hybrid modes sign tokens with **ES256** keys the broker manages. The private
-material is encrypted at rest; the public keys are published at `/oauth2/jwks.json` so
-verifiers can validate tokens. Rotate keys through the admin API on port 14000. Every request
-carries the principal header your proxy injects (see
-[configure authentication](/docs/guides/configure-authentication)); administrative privilege
-is enforced at the proxy.
+Local and hybrid modes use broker-managed **ES256** keys. The broker encrypts the private
+key material at rest. It publishes public keys at `/oauth2/jwks.json`. Use the admin API on
+port 14000 to rotate keys. Every request includes the principal header from the proxy. The
+proxy enforces administrator privilege. See
+[configure authentication](/docs/guides/configure-authentication).
 
 ### Add a key
 
@@ -144,11 +140,10 @@ curl -X POST https://broker.internal:14000/api/oauth2-server/signing-keys \
   -d '{"algorithm": "ES256"}'
 ```
 
-A new key is published to the JWKS immediately and marked as current, but it does **not**
-start signing tokens until its `activates_at` timestamp — a grace period (twice the JWKS
-cache lifetime, 600 seconds) that lets verifiers pick up the new public key before any token
-is signed with it. The response includes `kid`, `algorithm`, `is_current`, `activates_at`,
-and `created_at`.
+The broker immediately publishes a new key to the JWKS. It marks the key as current. The key
+does not sign tokens until `activates_at`. This grace period is twice the JWKS cache lifetime,
+or 600 seconds. It lets verifiers obtain the public key before the broker issues a token with
+it. The response contains `kid`, `algorithm`, `is_current`, `activates_at`, and `created_at`.
 
 ### List keys
 
@@ -162,9 +157,9 @@ curl https://broker.internal:14000/api/oauth2-server/signing-keys \
 
 ### Promote a key to current
 
-`PUT /api/oauth2-server/signing-keys/{kid}/current` promotes an existing key. The previously
-current key becomes non-current but stays valid for verification, so tokens it already signed
-keep working until they expire.
+`PUT /api/oauth2-server/signing-keys/{kid}/current` promotes an existing key. The previous
+key is no longer current but remains valid for verification. Tokens that it signed remain
+valid until they expire.
 
 ```bash
 curl -X PUT https://broker.internal:14000/api/oauth2-server/signing-keys/{kid}/current \
@@ -173,9 +168,9 @@ curl -X PUT https://broker.internal:14000/api/oauth2-server/signing-keys/{kid}/c
 
 ### Retire a key
 
-`DELETE /api/oauth2-server/signing-keys/{kid}` soft-deletes a key. The broker refuses to
-delete the last remaining key (`409 last_key`) or the current key (`409 current_key`) — add
-or promote a replacement first.
+`DELETE /api/oauth2-server/signing-keys/{kid}` marks a key as deleted. The broker does not
+delete the final key or current key. These requests return `409 last_key` or `409
+current_key`. Add or promote a replacement first.
 
 ```bash
 curl -X DELETE https://broker.internal:14000/api/oauth2-server/signing-keys/{kid} \
@@ -183,16 +178,15 @@ curl -X DELETE https://broker.internal:14000/api/oauth2-server/signing-keys/{kid
 ```
 
 :::tip
-Rotate by adding a new key, waiting out its activation grace period so verifiers have the new
-public key, promoting it to current, and only then retiring the old one once its outstanding
-tokens have expired.
+Add a new key. Wait for its activation period. Promote it to current. Retire the old key
+only after tokens that use it have expired.
 :::
 
 ## Custom token claims with CEL
 
-In local and hybrid modes you can add claims to the JWTs the broker issues with
-`local.token_claims_expression`. The expression is CEL and must return a map of claim names
-to values. It has three variables available:
+In local and hybrid modes, `local.token_claims_expression` can add claims to broker-issued
+JWTs. The CEL expression must return a map of claim names to values. Three variables are
+available:
 
 | Variable | Type | Contents |
 |---|---|---|
@@ -206,22 +200,21 @@ oauth2_authorization_server:
     token_claims_expression: '{"team": agent.display_name}'
 ```
 
-The base OAuth2 claims (`iss`, `sub`, `exp`, and the other standard registered claims) are
-set by the broker and **cannot be overridden** by this expression — it only adds claims
-alongside them.
+The broker sets the base OAuth2 claims, including `iss`, `sub`, and `exp`. This expression
+cannot replace these claims. It adds claims beside them.
 
 ## Discovery and JWKS
 
-Regardless of mode, the broker publishes two public endpoints on the end-user port that
-clients and gateways use to discover the server and verify tokens:
+The broker publishes two public endpoints on the end-user port in every mode. Clients and
+gateways use these endpoints to discover the server and validate tokens:
 
-- `GET /.well-known/oauth-authorization-server` — RFC 8414 metadata (issuer, endpoints,
-  supported response and grant types, `code_challenge_methods_supported: [S256]`).
-- `GET /oauth2/jwks.json` — the aggregated public JWK set. In proxy mode it republishes the
-  upstream keys; in local and hybrid modes it publishes the ES256 keys you manage above.
+- `GET /.well-known/oauth-authorization-server` — RFC 8414 metadata. This includes the
+  issuer, endpoints, grant types, and `code_challenge_methods_supported: [S256]`.
+- `GET /oauth2/jwks.json` — The public JWK set. Proxy mode republishes upstream keys. Local
+  and hybrid modes publish the ES256 keys that you manage.
 
-Point your agents and any token-verifying gateway at these endpoints rather than hard-coding
-keys or URLs, so key rotation is transparent to them.
+Point agents and token-validating gateways to these endpoints. Do not hard-code key or URL
+values. This makes key rotation transparent.
 
 ## Related
 

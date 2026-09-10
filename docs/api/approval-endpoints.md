@@ -1,6 +1,8 @@
 # Tool Approval API
 
-The Tool Approval API enables human-in-the-loop authorization for agent tool calls. When an AI agent attempts to invoke a tool that requires human authorization, the ExtProc gateway creates a pending approval record. The user reviews and approves or denies the request through the consent UI.
+The Tool Approval API supports human-in-the-loop authorization for agent tool calls. When an
+AI agent calls a tool that requires approval, the ExtProc gateway creates a pending record. The
+user approves or denies the request in the consent interface.
 
 ## Authentication
 
@@ -40,9 +42,11 @@ ExtProc ◀──GET /api/approvals (long-poll)── Broker updates sync state
 POST /api/approvals
 ```
 
-Creates a pending approval record. Idempotent: duplicate requests for the same tool call return the existing record (200) instead of creating a new one (201).
+Creates a pending approval record. Duplicate requests for one tool call return the existing
+record with `200`. A new record returns `201`.
 
-**Rate Limiting**: Limited to `max_requests_per_minute` per (principal, agent) pair. Returns 429 when exceeded.
+**Rate limit:** The API limits each principal and agent pair to `max_requests_per_minute`.
+It returns `429` when the limit is exceeded.
 
 ### Sync Approval State (Long-Poll)
 
@@ -50,15 +54,18 @@ Creates a pending approval record. Idempotent: duplicate requests for the same t
 GET /api/approvals
 ```
 
-Returns all active approvals grouped by (principal, agent) pair. Supports long-poll via:
+Returns active approvals for each principal and agent pair. The endpoint supports long-poll
+with these headers:
 
-- `If-None-Match`: ETag from previous response (version number)
-- `X-Long-Poll-Timeout`: Seconds to wait for changes (1-120, default 30)
+- `If-None-Match`: The version ETag from the previous response.
+- `X-Long-Poll-Timeout`: The seconds to wait for a change. The range is 1–120. The default
+  is 30.
 
-Returns 304 Not Modified if no changes occur within the timeout. The `ETag` header contains the current version number.
+The endpoint returns `304 Not Modified` when no change occurs before timeout. The `ETag`
+header contains the current version.
 
 **Query Parameters**:
-- `principal` (optional): Filter results to a specific principal
+- `principal` (optional): Filter results for one principal.
 
 ### Get Approval Detail
 
@@ -66,7 +73,8 @@ Returns 304 Not Modified if no changes occur within the timeout. The `ETag` head
 GET /api/approvals/{id}
 ```
 
-Returns full details of a single approval record. The acting principal must match the approval's principal.
+Returns the full detail for one approval record. The acting principal must match the approval
+principal.
 
 ### Approve
 
@@ -74,10 +82,11 @@ Returns full details of a single approval record. The acting principal must matc
 POST /api/approvals/{id}/approve
 ```
 
-Transitions a pending approval to approved state. Requires a `persistence` field:
-- `once`: Single-use, must be consumed after use
-- `session`: Valid for the agent session duration
-- `permanent`: Persists indefinitely, manageable via consent UI
+Changes a pending approval to approved. The request requires a `persistence` field:
+
+- `once`: One use. The caller must consume the approval after tool use.
+- `session`: Valid for the agent session duration.
+- `permanent`: Persists until a user revokes it. The consent interface manages it.
 
 ### Deny
 
@@ -85,7 +94,8 @@ Transitions a pending approval to approved state. Requires a `persistence` field
 POST /api/approvals/{id}/deny
 ```
 
-Transitions a pending approval to denied state. Optionally accepts `persistence: "permanent"` to create a permanent denial. Request body is optional.
+Changes a pending approval to denied. The request can include `persistence: "permanent"` to
+create a permanent denial. The request body is optional.
 
 ### Consume
 
@@ -93,7 +103,8 @@ Transitions a pending approval to denied state. Optionally accepts `persistence:
 POST /api/approvals/{id}/consume
 ```
 
-Marks a `once`-persistence approved approval as consumed. Idempotent: consuming an already-consumed approval returns 200. Returns 422 if the approval is not `once`-persistence or not in approved state.
+Marks a `once` approval as consumed. A repeat consume returns `200`. The API returns `422`
+when the approval is not `once` or is not approved.
 
 ### List Permanent Approvals
 
@@ -101,7 +112,7 @@ Marks a `once`-persistence approved approval as consumed. Idempotent: consuming 
 GET /api/approvals/permanent
 ```
 
-Returns all permanent approvals and denials for the authenticated user.
+Returns permanent approvals and denials for the authenticated user.
 
 ### Revoke Permanent Approval
 
@@ -109,7 +120,8 @@ Returns all permanent approvals and denials for the authenticated user.
 POST /api/approvals/{id}/revoke
 ```
 
-Revokes a permanent approval or denial, transitioning it to denied state. Returns 422 if the approval is not permanent.
+Revokes a permanent approval or denial and changes it to denied. The API returns `422` when
+the approval is not permanent.
 
 ## Persistence Scopes
 
@@ -144,4 +156,5 @@ All error responses use the `ApprovalError` schema:
 
 ## OpenAPI Specification
 
-See [`/api/enduser/openapi.yaml`](../../api/enduser/openapi.yaml) for the complete OpenAPI 3.0 specification.
+See [`/api/enduser/openapi.yaml`](../../api/enduser/openapi.yaml) for the full OpenAPI 3.0
+specification.

@@ -1,6 +1,7 @@
 # Consent SPA Configuration
 
-This document describes the configuration options for the consent Single Page Application (SPA) and its integration with the Go backend.
+This document describes consent single-page application (SPA) configuration and its Go
+backend integration.
 
 ## Table of Contents
 
@@ -19,7 +20,7 @@ Deployments must build the frontend and make `web/dist` available relative to th
 
 ### Server Configuration
 
-The SPA is served on the enduser server port (default: 8080).
+The SPA is served on the end-user server. The default port is 8080.
 
 **Environment Variables:**
 - `ENDUSER_SERVER_PORT`: Port for enduser server (default: 8080)
@@ -38,7 +39,8 @@ servers:
 
 ## Frontend Configuration
 
-The React SPA is configured through Vite and environment variables. Configuration is embedded at build time.
+Vite configures the React SPA with environment variables. Vite embeds this configuration at
+build time.
 
 ### API Base URL
 
@@ -46,7 +48,7 @@ The React SPA is configured through Vite and environment variables. Configuratio
 **Default:** `/api`
 **Type:** string (URL path)
 
-**Description:** Base URL for API requests. Should be relative to the same origin.
+**Description:** The base URL for API requests. Use a relative URL for the same origin.
 
 **Usage in Code:**
 ```typescript
@@ -72,7 +74,8 @@ VITE_API_BASE_URL=/api/v2 npm run build
 **Default:** `3000`
 **Type:** number
 
-**Description:** Port for the Vite development server. Only used during local development.
+**Description:** The Vite development server port. This value applies only during local
+development.
 
 **Example:**
 ```bash
@@ -85,7 +88,7 @@ VITE_DEV_SERVER_PORT=3001 npm run dev
 
 ### Build Configuration
 
-Build settings are defined in `vite.config.ts`:
+Build settings are in `vite.config.ts`:
 
 ```typescript
 export default defineConfig({
@@ -206,12 +209,12 @@ Access SPA at: https://agentic-identity-broker.example.com/
 
 ## CORS Configuration
 
-CORS is configured on the backend for API requests.
+The backend configures CORS for API requests.
 
-**Environment Variables:**
-- `CORS_ALLOWED_ORIGINS`: Comma-separated list of allowed origins
-- `CORS_ALLOW_CREDENTIALS`: Allow credentials (cookies, auth headers)
-- `CORS_MAX_AGE`: Preflight cache duration (seconds)
+**Environment variables:**
+- `CORS_ALLOWED_ORIGINS`: Comma-separated allowed origins
+- `CORS_ALLOW_CREDENTIALS`: Cookie and authentication-header support
+- `CORS_MAX_AGE`: Preflight cache duration in seconds
 
 **YAML:**
 ```yaml
@@ -233,8 +236,7 @@ cors:
   max_age: 3600
 ```
 
-**Production (Same-Origin):**
-When the SPA is served from the same origin as the API, CORS is not required:
+**Production (same origin):** If the SPA and API use the same origin, CORS is not required:
 ```yaml
 cors:
   allowed_origins: []  # Empty = same-origin only
@@ -248,7 +250,8 @@ cors:
 **YAML Key:** `servers.enduser.authentication.preauth.principal_header_name`
 **Default:** `X-Remote-User`
 
-**Description:** HTTP header containing the authenticated user principal (set by reverse proxy).
+**Description:** The HTTP header that contains the authenticated principal. The reverse proxy
+sets this header.
 
 **Example:**
 ```yaml
@@ -268,33 +271,33 @@ servers:
 
 ### CSRF Token Configuration
 
-CSRF tokens are managed automatically by the backend. Configuration:
+The backend manages CSRF tokens automatically:
 
-**Token Properties:**
-- **Header Name:** `X-CSRF-Token` (hardcoded)
-- **Cookie Name:** `csrf_token` (hardcoded)
-- **Token Length:** 32 bytes (base64-encoded)
+**Token properties:**
+- **Header name:** `X-CSRF-Token`
+- **Cookie name:** `csrf_token`
+- **Token length:** 32 bytes (base64-encoded)
 - **TTL:** 24 hours
-- **Storage:** In-memory (keyed by principal)
+- **Storage:** In memory and keyed by principal
 
-**Cookie Settings:**
-- **HttpOnly:** false (JavaScript needs to read it)
-- **Secure:** true (HTTPS only in production)
+**Cookie settings:**
+- **HttpOnly:** false because JavaScript reads the token
+- **Secure:** true for HTTPS production use
 - **SameSite:** Strict
 - **Path:** /
 
-**No Configuration Required:** CSRF is enabled automatically for all mutating requests.
+**No configuration required:** CSRF is enabled for all modifying requests.
 
-### Session Management
+### Session management
 
-The system uses **stateless session management** with the principal from the reverse proxy:
+The system uses a stateless session that is based on the proxy principal:
 
-1. User authenticates with reverse proxy
-2. Proxy sets `X-Principal` header
-3. Go backend extracts principal from header
-4. Principal is used as session identifier
+1. The user authenticates with the reverse proxy.
+2. The proxy adds the configured principal header. The default is `X-Remote-User`.
+3. The Go backend gets the principal from the header.
+4. The principal identifies the session.
 
-**No Backend Session Configuration:** Sessions are managed by the reverse proxy.
+**No backend session configuration:** The reverse proxy manages sessions.
 
 ## Examples
 
@@ -505,37 +508,37 @@ aws s3 sync web/dist/ s3://my-cdn-bucket/
 3. Ensure `web/dist` is relative to the broker process working directory
 4. Check backend logs for file serving errors
 
-### API Requests Failing
+### API requests fail
 
-**Issue:** CORS errors or 404 on API calls
-
-**Solutions:**
-1. Verify API base URL: `VITE_API_BASE_URL=/api`
-2. Check backend is running on expected port
-3. Verify CORS configuration includes frontend origin
-4. In development, ensure Vite proxy is configured
-
-### CSRF Token Missing
-
-**Issue:** 403 Forbidden on POST/PUT/DELETE requests
+**Issue:** CORS errors or 404 responses on API calls.
 
 **Solutions:**
-1. Ensure GET request is made first (to get token)
-2. Check `X-CSRF-Token` header is included
-3. Verify cookie `csrf_token` is set and sent
-4. Check SameSite cookie settings
-5. Verify principal is present in context
+1. Make sure that the API base URL is `VITE_API_BASE_URL=/api`.
+2. Make sure that the backend uses the expected port.
+3. Make sure that CORS configuration includes the frontend origin.
+4. In development, make sure that the Vite proxy is configured.
 
-### Principal Not Found
+### CSRF token missing
 
-**Issue:** 401 Unauthorized on protected endpoints
+**Issue:** `403 Forbidden` on POST, PUT, or DELETE requests.
 
 **Solutions:**
-1. Verify reverse proxy is setting `X-Principal` header
-2. Check header name matches configuration
-3. Test with curl: `curl -H "X-Principal: test@example.com"`
-4. Verify authentication middleware is enabled
-5. Check backend logs for principal extraction errors
+1. First make a GET request to obtain a token.
+2. Make sure that the request includes `X-CSRF-Token`.
+3. Make sure that the `csrf_token` cookie is set and sent.
+4. Examine SameSite cookie settings.
+5. Make sure that a principal is in the context.
+
+### Principal not found
+
+**Issue:** `401 Unauthorized` on protected endpoints.
+
+**Solutions:**
+1. Make sure that the reverse proxy sends the configured principal header. The default is `X-Remote-User`.
+2. Make sure that the header name matches configuration.
+3. Use `curl -H "X-Remote-User: test@example.com"` for a direct request, or replace the header name with your configured value.
+4. Make sure that authentication middleware is enabled.
+5. Examine backend logs for principal-extraction errors.
 
 ## Related Documentation
 
