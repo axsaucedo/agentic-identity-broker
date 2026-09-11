@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	envoyplugin "github.com/open-policy-agent/opa-envoy-plugin/plugin"
+	"github.com/open-policy-agent/opa/v1/plugins"
 	oparego "github.com/open-policy-agent/opa/v1/rego"
 	opasdk "github.com/open-policy-agent/opa/v1/sdk"
 	"go.opentelemetry.io/otel"
@@ -111,6 +113,10 @@ func newSDKAuthorizer(cfg *config.AuthorizationConfig, logger *slog.Logger) (*OP
 		Config:       bytes.NewReader(configBytes),
 		V1Compatible: true,
 		Ready:        readyCh,
+		// Support configs declaring an envoy_ext_authz_grpc plugin block.
+		Plugins: map[string]plugins.Factory{
+			envoyplugin.PluginName: envoyplugin.Factory{},
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("opa authorizer: failed to initialize OPA from config %q: %w", cfg.Policy.ConfigFile, err)

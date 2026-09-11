@@ -561,6 +561,99 @@ func TestOPAAuthorizer_SDKUndefined_DeniesEvenWhenDefaultDecisionAllow(t *testin
 	assert.Contains(t, decision.Reasons, "policy result is undefined")
 }
 
+func TestOPAAuthorizer_SDKConfigWithEnvoyPlugin_StartsSuccessfully(t *testing.T) {
+	bundleServer := sdktest.MustNewServer(
+		sdktest.MockBundle("/bundles/bundle.tar.gz", map[string]string{
+			"allow_all.rego": allowAllPolicy,
+		}),
+	)
+	defer bundleServer.Stop()
+
+	cfg := authzSDKConfig(writeOPAConfigFileWithEnvoyPlugin(t, bundleServer.URL()))
+
+	auth, err := authorization.NewOPAAuthorizer(cfg, nil)
+	require.NoError(t, err)
+	defer auth.Stop(context.Background())
+
+	// bundle activation is asynchronous, poll until it loads
+	require.Eventually(t, func() bool {
+		decision, err := auth.Evaluate(context.Background(), testInput("unknown"))
+		return err == nil && decision.Action == "allow"
+	}, 5*time.Second, 10*time.Millisecond, "expected policy decision to eventually become allow once the bundle is loaded")
+}
+
+// writeOPAConfigFileWithEnvoyPlugin writes an OPA SDK config declaring an
+// envoy_ext_authz_grpc plugin block alongside a bundle service.
+func writeOPAConfigFileWithEnvoyPlugin(t *testing.T, bundleURL string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "opa-config.yaml")
+	content := fmt.Sprintf(`
+services:
+  bundle-server:
+    url: %s
+bundles:
+  app:
+    service: bundle-server
+    resource: /bundles/bundle.tar.gz
+plugins:
+  envoy_ext_authz_grpc:
+    addr: "127.0.0.1:0"
+    path: aib/extproc/authz
+    dry-run: false
+`, bundleURL)
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	return path
+}
+
+func TestOPAAuthorizer_DiscoveryConfigWithEnvoyPlugin_StartsSuccessfully(t *testing.T) {
+	bundleServer := sdktest.MustNewServer(
+		sdktest.MockBundle("/bundles/discovery.tar.gz", map[string]string{
+			"discovery.rego": `package discovery
+
+bundles := {"app": {"service": "bundle-server", "resource": "/bundles/bundle.tar.gz"}}
+
+plugins := {"envoy_ext_authz_grpc": {"addr": "127.0.0.1:0", "path": "aib/extproc/authz", "dry-run": false}}
+`,
+		}),
+		sdktest.MockBundle("/bundles/bundle.tar.gz", map[string]string{
+			"allow_all.rego": allowAllPolicy,
+		}),
+	)
+	defer bundleServer.Stop()
+
+	cfg := authzSDKConfig(writeOPAConfigFileWithDiscovery(t, bundleServer.URL()))
+
+	auth, err := authorization.NewOPAAuthorizer(cfg, nil)
+	require.NoError(t, err)
+	defer auth.Stop(context.Background())
+
+	// discovery + bundle activation is asynchronous, poll until it loads
+	require.Eventually(t, func() bool {
+		decision, err := auth.Evaluate(context.Background(), testInput("unknown"))
+		return err == nil && decision.Action == "allow"
+	}, 5*time.Second, 10*time.Millisecond, "expected policy decision to eventually become allow once the discovery and bundle are loaded")
+}
+
+// writeOPAConfigFileWithDiscovery writes an OPA SDK config that fetches its
+// bundles and plugins (including envoy_ext_authz_grpc) via a discovery document.
+func writeOPAConfigFileWithDiscovery(t *testing.T, bundleURL string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "opa-config.yaml")
+	content := fmt.Sprintf(`
+services:
+  bundle-server:
+    url: %s
+discovery:
+  name: discovery
+  resource: /bundles/discovery.tar.gz
+  service: bundle-server
+`, bundleURL)
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	return path
+}
+
 func TestNewOPAAuthorizer_InvalidPolicyPath(t *testing.T) {
 	// Scenario: policy file does not exist → NewOPAAuthorizer returns error
 	cfg := authzConfig("/does/not/exist/policy.rego")
