@@ -21,10 +21,16 @@ func ValidateCIMDClientURL(raw string) error {
 	if strings.Contains(raw, "#") {
 		return fmt.Errorf("client_id URL must not contain a fragment")
 	}
+	if strings.Contains(raw, "*") {
+		return fmt.Errorf("client_id URL must not contain a wildcard")
+	}
 
 	u, err := url.Parse(raw)
 	if err != nil {
 		return fmt.Errorf("invalid URL: %w", err)
+	}
+	if containsEncodedPathSeparator(u) {
+		return fmt.Errorf("client_id URL must not contain an encoded path separator")
 	}
 
 	if u.Scheme != "https" {
@@ -69,4 +75,9 @@ func ValidateCIMDClientURL(raw string) error {
 	}
 
 	return nil
+}
+
+func containsEncodedPathSeparator(u *url.URL) bool {
+	path := strings.ToLower(u.EscapedPath())
+	return strings.Contains(u.Path, "\\") || strings.Contains(path, "%2f") || strings.Contains(path, "%5c")
 }

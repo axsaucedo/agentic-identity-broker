@@ -6,6 +6,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -283,33 +284,42 @@ func (r *AgentRepository) ExistsOtherWithClientID(ctx context.Context, clientID 
 	return false, nil
 }
 
-// GetByClientURI retrieves an agent entity by a pre-registered Client ID Metadata Document URL.
-// Returns StorageError with Kind=NotFound if no agent has this URI registered.
+// GetByClientURI retrieves an agent by a pre-registered CIMD URL or URI pattern.
+// Exact registrations take precedence. Matching patterns on multiple agents are conflicts.
 func (r *AgentRepository) GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	agentID, exists := r.byClientURI[uri]
-	if !exists {
-		return nil, storage.NewStorageError(
-			"GetAgentByClientURI",
-			storage.ErrorKindNotFound,
-			ports.ErrNotFound,
-			"agent not found",
-		)
+	if agentID, exists := r.byClientURI[uri]; exists {
+		if agent, ok := r.agents[agentID]; ok {
+			return agent.Copy(), nil
+		}
 	}
 
-	agent, exists := r.agents[agentID]
-	if !exists {
+	matchedAgentIDs := make(map[id.AgentID]struct{})
+	for registeredURI, agentID := range r.byClientURI {
+		if _, exists := r.agents[agentID]; exists && urivalidation.MatchesCIMDClientURI(registeredURI, uri) {
+			matchedAgentIDs[agentID] = struct{}{}
+		}
+	}
+	if len(matchedAgentIDs) > 1 {
 		return nil, storage.NewStorageError(
 			"GetAgentByClientURI",
-			storage.ErrorKindNotFound,
-			ports.ErrNotFound,
-			"agent not found",
+			storage.ErrorKindConflict,
+			nil,
+			"CIMD client URI matches multiple agents",
 		)
 	}
+	for agentID := range matchedAgentIDs {
+		return r.agents[agentID].Copy(), nil
+	}
 
-	return agent.Copy(), nil
+	return nil, storage.NewStorageError(
+		"GetAgentByClientURI",
+		storage.ErrorKindNotFound,
+		ports.ErrNotFound,
+		"agent not found",
+	)
 }
 
 // removeFromClientIDIndex removes a specific agentID from the byClientID slice for clientID.

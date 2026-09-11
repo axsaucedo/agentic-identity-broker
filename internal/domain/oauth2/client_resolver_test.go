@@ -96,6 +96,24 @@ func TestAgentClientResolver_URLNotRegistered(t *testing.T) {
 	assert.Equal(t, "Client not registered", clientErr.Desc)
 }
 
+func TestAgentClientResolver_AmbiguousCIMDPatternRejected(t *testing.T) {
+	repo := NewMockAgentRepository()
+	repo.getByClientURIErr = storage.NewStorageError(
+		"GetAgentByClientURI",
+		storage.ErrorKindConflict,
+		nil,
+		"CIMD client URI matches multiple agents",
+	)
+	resolver := NewAgentClientResolverWithCIMD(repo, cimdServiceForTest(t, nil, nil), slog.Default())
+
+	_, err := resolver.ResolveClient(context.Background(), "https://agent.example.com/client")
+	require.Error(t, err)
+	var clientErr *ports.ClientIDError
+	require.ErrorAs(t, err, &clientErr)
+	assert.Equal(t, "invalid_client", clientErr.Code)
+	assert.Equal(t, "Client not registered", clientErr.Desc)
+}
+
 func TestAgentClientResolver_CIMDFetchFails(t *testing.T) {
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
 	agent := &storage.Agent{

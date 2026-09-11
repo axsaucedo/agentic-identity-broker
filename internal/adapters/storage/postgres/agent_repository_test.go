@@ -1012,3 +1012,54 @@ func TestAgentRepository_ServiceRequirements_RoundTrip(t *testing.T) {
 		assert.Len(t, retrieved.ServiceRequirements, 0)
 	})
 }
+
+func TestAgentRepository_GetByClientURIPattern(t *testing.T) {
+	adapter, cleanup := setupAgentTestDBWithCIMD(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	repo := NewAgentRepository(adapter)
+	newAgent := func(name, uri string) *storage.Agent {
+		now := time.Now().UTC()
+		return &storage.Agent{
+			DisplayName: name,
+			Description: "CIMD pattern lookup test",
+			ClientURIs:  []string{uri},
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+	}
+
+	t.Run("resolves a concrete URL through a pattern", func(t *testing.T) {
+		agent := newAgent("Pattern Agent", "https://chatgpt.com/oauth/codex/*/client.json")
+		require.NoError(t, repo.Create(ctx, agent))
+
+		resolved, err := repo.GetByClientURI(ctx, "https://chatgpt.com/oauth/codex/dIwd44EtAHp-/client.json")
+		require.NoError(t, err)
+		assert.Equal(t, agent.ID, resolved.ID)
+	})
+
+	t.Run("prefers an exact registration", func(t *testing.T) {
+		pattern := newAgent("Matching Pattern Agent", "https://chatgpt.com/oauth/*/literal/client.json")
+		exact := newAgent("Exact Agent", "https://chatgpt.com/oauth/codex/literal/client.json")
+		require.NoError(t, repo.Create(ctx, pattern))
+		require.NoError(t, repo.Create(ctx, exact))
+
+		resolved, err := repo.GetByClientURI(ctx, "https://chatgpt.com/oauth/codex/literal/client.json")
+		require.NoError(t, err)
+		assert.Equal(t, exact.ID, resolved.ID)
+	})
+
+	t.Run("rejects patterns that resolve to different agents", func(t *testing.T) {
+		first := newAgent("First Ambiguous Agent", "https://chatgpt.com/oauth/*/foo/client.json")
+		second := newAgent("Second Ambiguous Agent", "https://chatgpt.com/oauth/test/*/client.json")
+		require.NoError(t, repo.Create(ctx, first))
+		require.NoError(t, repo.Create(ctx, second))
+
+		_, err := repo.GetByClientURI(ctx, "https://chatgpt.com/oauth/test/foo/client.json")
+		require.Error(t, err)
+		var storageErr *storage.StorageError
+		require.ErrorAs(t, err, &storageErr)
+		assert.Equal(t, storage.ErrorKindConflict, storageErr.Kind)
+	})
+}

@@ -9,6 +9,9 @@
 # To test CIMD, register an agent with a client_uri, then send an authorization
 # request with client_id=<that URI>. The broker will fetch the CIMD document at
 # that URL, validate it, and drive consent from the contained metadata.
+# A client_uri can use `*` for one complete non-empty path segment. For example,
+# https://chatgpt.com/oauth/codex/*/client.json matches one installation URL.
+# The broker rejects literal `\`, encoded `/`, and encoded `\` in CIMD URL paths.
 #
 # Requirements:
 #   - The client_id URL must be publicly reachable over HTTPS (use ngrok, caddy,

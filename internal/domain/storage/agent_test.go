@@ -532,6 +532,11 @@ func TestValidateClientURIsForWrite(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("accepts a valid CIMD URI pattern", func(t *testing.T) {
+		err := ValidateClientURIsForWrite([]string{"https://chatgpt.com/oauth/codex/*/client.json"})
+		require.NoError(t, err)
+	})
+
 	t.Run("rejects trailing colon with empty port", func(t *testing.T) {
 		err := ValidateClientURIsForWrite([]string{"https://example.com:/client"})
 		require.Error(t, err)

@@ -166,7 +166,7 @@ func validateClientURIs(uris []string) error {
 }
 
 func validateClientURI(uriStr string) error {
-	return urivalidation.ValidateCIMDClientURL(uriStr)
+	return urivalidation.ValidateCIMDClientURIRegistration(uriStr)
 }
 
 // isValidURL validates that a string is a valid HTTP or HTTPS URL.

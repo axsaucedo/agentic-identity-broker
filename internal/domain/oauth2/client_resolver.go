@@ -2,6 +2,7 @@ package oauth2
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -60,6 +61,11 @@ func (r *AgentClientResolver) resolveCIMD(ctx context.Context, rawURL string) (*
 	agent, err := r.agentRepo.GetByClientURI(ctx, rawURL)
 	if err != nil {
 		if ports.IsNotFoundErr(err) {
+			return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
+		}
+		var storageErr *storage.StorageError
+		if errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindConflict {
+			r.logger.WarnContext(ctx, "cimd_client_uri_ambiguous", "client_uri", rawURL)
 			return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
 		}
 		r.logger.ErrorContext(ctx, "failed to look up agent by client URI", "error", err, "client_uri", rawURL)

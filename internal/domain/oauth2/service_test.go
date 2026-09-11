@@ -47,8 +47,9 @@ func newTestAuthorizationServiceWithSessions(agentRepo ports.AgentRepository, gr
 }
 
 type MockAgentRepository struct {
-	agents map[id.AgentID]*storage.Agent
-	byURI  map[string]*storage.Agent
+	agents            map[id.AgentID]*storage.Agent
+	byURI             map[string]*storage.Agent
+	getByClientURIErr error
 }
 
 func NewMockAgentRepository() *MockAgentRepository {
@@ -102,6 +103,9 @@ func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID id.Cli
 }
 
 func (m *MockAgentRepository) GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error) {
+	if m.getByClientURIErr != nil {
+		return nil, m.getByClientURIErr
+	}
 	if a, ok := m.byURI[uri]; ok {
 		return a, nil
 	}

@@ -759,7 +759,7 @@ Service Layer (OAuth2SessionService):
 
 **New Port**: `internal/ports/cimd.go` defines `CIMDFetcher` (outbound, infrastructure-side) and `ClientResolver` (strategy interface injected into `OAuth2AuthorizationService`).
 
-**New Domain Package**: `internal/domain/oauth2/cimd/` contains `ClientIDMetadataDocumentURL`, `SSRFBlocklist`, `ClientIDMetadataDocument`, `CIMDCache`, `CIMDService`.
+**New Domain Packages**: `internal/domain/oauth2/cimd/` contains the document, SSRF blocklist, cache, and CIMD service. `internal/domain/urivalidation/` validates CIMD client URLs and matches registered URI patterns.
 
 **Authorization Flow with URL-based `client_id`**:
 
@@ -767,20 +767,23 @@ Service Layer (OAuth2SessionService):
 OAuth2 /authorize request
   ↓ ClientResolver.ResolveClient(client_id)
   ↓  ├─ URL detected → AgentClientResolver (cimdService != nil)
-  ↓  │    ↓ Validate URL (scheme, path, no credentials, no dot-segments)
-  ↓  │    ↓ AgentRepository.GetByClientURI → resolve Agent
+  ↓  │    ↓ Validate URL (scheme, path, no credentials, no dot-segments, no wildcard, no literal or encoded path separators)
+  ↓  │    ↓ AgentRepository.GetByClientURI → exact URI, then whole-segment URI pattern
   ↓  │    ↓ CIMDService.FetchAndValidate(url, agent)
   ↓  │         ↓ Cache hit? → return cached document
   ↓  │         ↓ CIMDFetcher.Fetch (SSRF blocklist enforced at dial time)
   ↓  │         ↓ Validate: client_id match, redirect_uris present, auth_method safe
   ↓  │         ↓ Cache store with HTTP-header-derived TTL (clamped to operator bounds)
   ↓  │    ↓ Return ClientResolution{Agent, CIMDDocument}
+
   ↓  └─ UUID detected → AgentClientResolver (opaque path, cimdService may be nil)
   ↓ HandleAuthorization: ALL agent modes create a JWE session token (cimd_metadata nil for non-CIMD)
   ↓ Redirect to consent with ?session_token= (JWE seals agent_id, principal, original_url, TTL)
   ↓ Consent handler decrypts and validates session token (expiry, principal, agent ID binding)
   ↓ User grants → grants endpoint consumes session → authorization code redirect
 ```
+
+**CIMD Client URI Resolution**: `AgentRepository.GetByClientURI` looks for an exact URI before it evaluates patterns. A pattern uses `*` as a complete path segment. It matches one non-empty segment. The broker rejects literal `\`, encoded `/`, and encoded `\` in paths before matching. If patterns on different Agents match, the resolver logs the event. It then returns `invalid_client`.
 
 **Security Properties**: SSRF blocked at TCP-connect time (TOCTOU-safe); authorization context never relay through browser URL as plain params (JWE session_token seals context server-side, SR-013/SR-014). All agent modes (local, proxy, CIMD) use session_token — no redirect_uri fallback.
 
@@ -1255,6 +1258,8 @@ Define any project-specific terms or acronyms.)
 
 **Agent**: An AI agent registered in the identity broker system. Each agent has a unique client_id (the `ClientID` field — a short opaque identifier used in existing OAuth2/consent flows via `GetByClientID`; optional in the Admin API, and when omitted there is no auto-generation fallback per ADR 017, so `client_id` remains NULL), display name, description, and optional URLs for governance documentation and user interface. Agents may additionally register one or more **client_uris** (Client ID Metadata Document URLs per IETF draft-parecki-oauth-client-id-metadata-document) which provide an alternative resolution path via `GetByClientURI` for CIMD-aware clients. The `client_id` remains the canonical primary identifier when present; client_uris are supplementary discovery handles that resolve to the same Agent entity. Agents request delegated OAuth2 permissions from users through the consent flow. Optionally, agents may specify service requirements (mandatory and optional third-party services with required scopes).
 
+**CIMD Client URI Pattern**: A pre-registered `client_uri` that contains `*` as a complete path segment. It identifies a controlled set of concrete CIMD URLs for one Agent. The pattern has a literal scheme, host, and port. `*` matches one non-empty path segment. It never matches an encoded or literal path separator.
+
 **ServiceRequirement**: A value object representing a single third-party OAuth2 service that an agent requires or can optionally use. Each requirement specifies: (1) service_id - which third-party service (UUID reference), (2) requirement_type - whether "mandatory" or "optional", and (3) either required_scopes - the per-agent OAuth2 scope ceiling (string array), or require_all_scopes - a boolean that consumes the full scope union from granted Permission Sets for that service. When require_all_scopes is true, required_scopes must be empty; when false, required_scopes defines the ceiling. Stored as JSONB in the agent's service_requirements column. Validates structure at domain layer and referential integrity at application layer.
 
 **RequirementType**: Enum with two values: "mandatory" (agent cannot function without this service, authorization blocked until requirement satisfied) and "optional" (agent can use if available, authorization proceeds regardless). Case-sensitive, lowercase only. Controls authorization flow behavior - only mandatory requirements block authorization.
@@ -1443,7 +1448,7 @@ Define any project-specific terms or acronyms.)
 
 **CIMDCacheEntry**: In-process (non-persisted) cache record keyed by the Client ID Metadata Document URL. Fields: URL (cache key), parsed Document, FetchedAt timestamp, ExpiresAt (computed from HTTP cache headers clamped to operator TTL bounds). Stored in a `sync.RWMutex`-protected map; expired entries are lazily evicted on next access. Located in `internal/domain/oauth2/cimd/`.
 
-**ClientIDMetadataDocumentURL**: Value object representing a validated HTTPS URL used as a `client_id`. Validated at parse time — invalid URLs cannot be constructed. Enforces: HTTPS scheme only, non-empty path component, no `.`/`..` path segments, no fragment (`#`), no userinfo (credentials), and port must be 443 or absent. Located in `internal/domain/oauth2/cimd/`.
+**ClientIDMetadataDocumentURL**: A validated HTTPS URL used as a concrete `client_id`. Invalid URLs cannot enter client resolution. The validator requires HTTPS, a non-empty path, no `.` or `..` path segments, no fragment, no userinfo, port 443 or absent, no wildcard, and no percent-encoded `/` or `\` in the path. Located in `internal/domain/urivalidation/`.
 
 **SSRFBlocklist**: Immutable value object holding the set of CIDR ranges blocked for CIMD HTTP fetches. Initialized at startup from RFC 6890 Special-Purpose Address Registry defaults plus operator `extra_blocked_cidrs`. Consulted by the SSRF-hardened fetcher adapter's custom `net.Dialer.Control` callback to reject resolved IP addresses before TCP connect. Located in `internal/domain/oauth2/cimd/`.
 

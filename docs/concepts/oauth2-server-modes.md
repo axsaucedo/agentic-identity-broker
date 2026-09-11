@@ -113,6 +113,13 @@ forms:
   document. The consent interface shows its name, description, governance link, and
   documentation links.
 
+An operator can register a CIMD URL pattern in `client_uris`.
+The `*` character matches one complete, non-empty path segment.
+The scheme, host, port, and other path segments stay literal.
+For example, `https://chatgpt.com/oauth/codex/*/client.json` matches one installation identifier.
+The broker uses an exact registration first.
+It rejects multiple matching Agents and literal or encoded path separators.
+
 CIMD provides two functions:
 
 - **Self-describing agents.** An agent can be registered by URL. The broker has metadata for

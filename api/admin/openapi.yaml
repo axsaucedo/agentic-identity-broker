@@ -1804,14 +1804,17 @@ components:
           nullable: true
           description: |
             Pre-registered Client ID Metadata Document URLs for this agent.
-            Each entry must be a valid HTTPS URL and globally unique across all agents.
+            Each entry must be a globally unique HTTPS URL. A `*` can replace one complete,
+            non-empty path segment.
+            The broker uses an exact entry before matching patterns. It rejects ambiguous pattern
+            matches and URI paths containing literal `\`, `%2F`, or `%5C`.
             When CIMD is enabled, authorization requests with a matching URL as client_id
-            are resolved to this agent via CIMD fetch/validate/cache.
+            are resolved to this agent via CIMD fetch, validation, and cache.
           items:
             type: string
             format: uri
           example:
-            - https://agent.example.com/oauth/client-metadata.json
+            - https://chatgpt.com/oauth/codex/*/client.json
         created_at:
           type: string
           format: date-time
@@ -1939,14 +1942,17 @@ components:
           nullable: true
           description: |
             Pre-registered Client ID Metadata Document URLs for this agent.
-            Each entry must be a valid HTTPS URL and globally unique across all agents.
-            Returns 400 for malformed URLs; returns 409 Conflict when a URI is already
+            Each entry must be a globally unique HTTPS URL. A `*` can replace one complete,
+            non-empty path segment.
+            The broker uses an exact entry before matching patterns. It rejects ambiguous pattern
+            matches and URI paths containing literal `\`, `%2F`, or `%5C`.
+            Returns 400 for malformed URLs. Returns 409 Conflict when a URI is already
             registered to a different agent.
           items:
             type: string
             format: uri
           example:
-            - https://agent.example.com/oauth/client-metadata.json
+            - https://chatgpt.com/oauth/codex/*/client.json
 
     AgentUpdateRequest:
       type: object
@@ -2070,14 +2076,17 @@ components:
           description: |
             Pre-registered Client ID Metadata Document URLs for this agent.
             Replaces the previous list on PUT (full replacement semantics).
-            Each entry must be a valid HTTPS URL and globally unique across all agents.
-            Returns 400 for malformed URLs; returns 409 Conflict when a URI is already
+            Each entry must be a globally unique HTTPS URL. A `*` can replace one complete,
+            non-empty path segment.
+            The broker uses an exact entry before matching patterns. It rejects ambiguous pattern
+            matches and URI paths containing literal `\`, `%2F`, or `%5C`.
+            Returns 400 for malformed URLs. Returns 409 Conflict when a URI is already
             registered to a different agent.
           items:
             type: string
             format: uri
           example:
-            - https://agent.example.com/oauth/client-metadata.json
+            - https://chatgpt.com/oauth/codex/*/client.json
 
     ServiceRequirement:
       type: object

@@ -15,6 +15,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -733,6 +734,47 @@ func (r *AgentRepository) ExistsOtherWithClientID(ctx context.Context, clientID 
 	return exists, nil
 }
 
+func (r *AgentRepository) findAgentByCIMDClientURIPattern(ctx context.Context, candidate string) (id.AgentID, error) {
+	rows, err := r.adapter.db.QueryContext(ctx, `SELECT agent_id, client_uri FROM agent_client_uris WHERE client_uri LIKE '%*%'`)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return id.AgentID{}, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+		}
+		return id.AgentID{}, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindConnection, err, "failed to find CIMD client URI patterns")
+	}
+	defer func() { _ = rows.Close() }()
+
+	matchedAgentIDs := make(map[id.AgentID]struct{})
+	for rows.Next() {
+		var agentID id.AgentID
+		var pattern string
+		if err := rows.Scan(&agentID, &pattern); err != nil {
+			return id.AgentID{}, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindConnection, err, "failed to scan CIMD client URI pattern")
+		}
+		if urivalidation.MatchesCIMDClientURI(pattern, candidate) {
+			matchedAgentIDs[agentID] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return id.AgentID{}, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+		}
+		return id.AgentID{}, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindConnection, err, "failed to read CIMD client URI patterns")
+	}
+
+	if len(matchedAgentIDs) == 0 {
+		return id.AgentID{}, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, ports.ErrNotFound, "agent not found")
+	}
+	if len(matchedAgentIDs) > 1 {
+		return id.AgentID{}, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindConflict, nil, "CIMD client URI matches multiple agents")
+	}
+	for agentID := range matchedAgentIDs {
+		return agentID, nil
+	}
+
+	panic("unreachable: non-empty map has no entries")
+}
+
 // GetByClientURI retrieves an agent entity by a pre-registered Client ID Metadata Document URL.
 // Returns StorageError with Kind=NotFound if no agent has this URI registered.
 func (r *AgentRepository) GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error) {
@@ -769,8 +811,12 @@ func (r *AgentRepository) GetByClientURI(ctx context.Context, uri string) (*stor
 		&agent.CreatedAt, &agent.UpdatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, ports.ErrNotFound, "agent not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			patternAgentID, patternErr := r.findAgentByCIMDClientURIPattern(queryCtx, uri)
+			if patternErr != nil {
+				return nil, patternErr
+			}
+			return r.Get(ctx, patternAgentID)
 		}
 		if strings.Contains(err.Error(), "context deadline exceeded") {
 			return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindTimeout, err, "operation exceeded timeout")

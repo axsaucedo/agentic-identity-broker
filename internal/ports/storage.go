@@ -107,6 +107,8 @@ type AgentRepository interface {
 	List(ctx context.Context) ([]*storage.Agent, error)
 	GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error)
 	ExistsOtherWithClientID(ctx context.Context, clientID id.ClientID, excludeAgentID *id.AgentID) (bool, error)
+	// GetByClientURI resolves an exact CIMD URL first, then a URI pattern.
+	// It returns a conflict error when patterns match multiple agents.
 	GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error)
 }
 
