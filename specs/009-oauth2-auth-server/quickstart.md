@@ -338,8 +338,8 @@ package enduser
 import (
     "io"
     "log/slog"
+    "mime"
     "net/http"
-    "strings"
     "time"
 )
 
@@ -362,9 +362,9 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
     // Validate Content-Type (CSRF protection)
     contentType := r.Header.Get("Content-Type")
-    if !strings.HasPrefix(contentType, "application/x-www-form-urlencoded") &&
-       !strings.HasPrefix(contentType, "application/json") {
-        http.Error(w, "Unsupported Media Type", http.StatusUnsupportedMediaType)
+    mediaType, _, err := mime.ParseMediaType(contentType)
+    if err != nil || mediaType != "application/x-www-form-urlencoded" {
+        http.Error(w, "Bad Request", http.StatusBadRequest)
         return
     }
 
@@ -376,14 +376,10 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Copy headers (excluding hop-by-hop)
-    for key, values := range r.Header {
-        if !isHopByHopHeader(key) {
-            for _, value := range values {
-                upstreamReq.Header.Add(key, value)
-            }
-        }
-    }
+    // Forward only the validated form Content-Type request header. Client credentials
+    // supplied as form fields remain in the request body; credential headers, cookies,
+    // and proxy identity headers must not cross the upstream boundary.
+    upstreamReq.Header.Set("Content-Type", contentType)
 
     // Execute request
     upstreamResp, err := h.upstreamClient.Do(upstreamReq)
@@ -394,29 +390,20 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     }
     defer upstreamResp.Body.Close()
 
-    // Copy response headers
-    for key, values := range upstreamResp.Header {
-        if !isHopByHopHeader(key) {
-            for _, value := range values {
-                w.Header().Add(key, value)
-            }
+    // Relay only OAuth2 response metadata. Upstream cookies and arbitrary
+    // response headers must not reach the caller.
+    for _, header := range []string{"Content-Type", "Cache-Control", "Pragma", "WWW-Authenticate"} {
+        for _, value := range upstreamResp.Header.Values(header) {
+            w.Header().Add(header, value)
         }
     }
+
 
     // Write status code and stream body
     w.WriteHeader(upstreamResp.StatusCode)
     io.Copy(w, upstreamResp.Body)
 }
 
-func isHopByHopHeader(header string) bool {
-    hopByHop := []string{"Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailers", "Transfer-Encoding", "Upgrade"}
-    for _, h := range hopByHop {
-        if strings.EqualFold(header, h) {
-            return true
-        }
-    }
-    return false
-}
 ```
 
 ### 3.3 Metadata Endpoint Handler (`internal/adapters/http/enduser/oauth2_metadata.go`)
@@ -563,7 +550,7 @@ func TestOAuth2Flow_E2E(t *testing.T) {
 4. **Parameter Preservation**: Preserve ALL original query parameters when redirecting to upstream
 5. **HTTP Status Codes**: Use 302 (Found) for OAuth2 redirects, not 303 or 307
 6. **Error Handling**: Return RFC 6749 compliant error codes (invalid_client, server_error, etc.)
-7. **Hop-by-Hop Headers**: Filter Connection, Keep-Alive, etc. when proxying
+7. **Header Allowlists**: Forward only the validated form Content-Type request header and relay only safe response metadata
 8. **Grant Expiration**: Check grant.ValidUntil timestamp (treat NULL as indefinite)
 
 ---

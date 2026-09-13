@@ -31,7 +31,7 @@ info:
     - Authorization endpoint for initiating OAuth2 flow
     - Token endpoint for exchanging authorization codes for access tokens
     - Server metadata discovery endpoint for OIDC compatibility
-    - Upstream OAuth2 provider proxying with hop-by-hop header filtering
+    - Upstream OAuth2 provider proxying with allowlisted request and response headers
     - PKCE (RFC 7636) support for public clients
 
     ## Authentication
@@ -1331,8 +1331,12 @@ paths:
 
         ### Authorization Code Grant (RFC 6749 - Proxy Mode)
         Exchange an authorization code for an access token via the upstream OAuth2 server.
-        This is the standard OAuth2 authorization code flow used for initial user consent.
-
+        This is the standard OAuth2 authorization code flow used for initial user consent. The
+        broker forwards form fields, including `client_secret` when supplied, in the request body
+        and forwards only the validated form `Content-Type` request header. It does not forward
+        credential headers such as `Authorization`, cookies, or proxy identity headers. The broker
+        returns only `Content-Type`, `Cache-Control`, `Pragma`, and `WWW-Authenticate` from upstream
+        responses. It never returns upstream cookies or arbitrary response headers.
         ### Token Exchange Grant (RFC 8693)
         Exchange a token issued by the Upstream OAuth2 Server for a third-party OAuth2 token
         stored in the token vault.

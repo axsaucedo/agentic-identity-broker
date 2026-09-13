@@ -157,19 +157,13 @@ func TestOAuth2TokenEndpoint_InvalidGrantError(t *testing.T) {
 	assert.Contains(t, string(respBody), "expired")
 }
 
-// TestOAuth2TokenEndpoint_HeadersFiltered tests hop-by-hop headers are filtered
+// TestOAuth2TokenEndpoint_HeadersFiltered verifies that proxy token grants do not disclose inbound credentials upstream.
 func TestOAuth2TokenEndpoint_HeadersFiltered(t *testing.T) {
 	agentID := id.NewAgentID()
+	var upstreamHeaders http.Header
 
-	// Mock upstream server that verifies hop-by-hop headers were filtered
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check that hop-by-hop headers were not forwarded
-		if r.Header.Get("Connection") != "" {
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"error": "hop-by-hop headers not filtered"}`))
-			return
-		}
-
+		upstreamHeaders = r.Header.Clone()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer"}`))
@@ -181,23 +175,29 @@ func TestOAuth2TokenEndpoint_HeadersFiltered(t *testing.T) {
 	body := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
 	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", body)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	// Add hop-by-hop headers that should be filtered
-	req.Header.Set("Connection", "keep-alive")
-	req.Header.Set("Transfer-Encoding", "chunked")
+	req.Header.Set("Authorization", "Basic aW5ib3VuZC1jcmVkZW50aWFs")
+	req.Header.Set("Cookie", "broker_session=inbound-credential")
+	req.Header.Set("X-Remote-User", "user@example.com")
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/x-www-form-urlencoded", upstreamHeaders.Get("Content-Type"))
+	for _, header := range []string{"Authorization", "Cookie", "X-Remote-User"} {
+		assert.Empty(t, upstreamHeaders.Get(header), "inbound %s must not be forwarded upstream", header)
+	}
 }
 
-// TestOAuth2TokenEndpoint_StandardHeadersPreserved tests standard headers are preserved
+// TestOAuth2TokenEndpoint_StandardHeadersPreserved verifies only OAuth2 response metadata is relayed.
 func TestOAuth2TokenEndpoint_StandardHeadersPreserved(t *testing.T) {
 	agentID := id.NewAgentID()
 
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Set-Cookie", "upstream_session=credential; Secure; HttpOnly")
 		w.Header().Set("X-Custom-Header", "custom-value")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer"}`))
@@ -214,9 +214,11 @@ func TestOAuth2TokenEndpoint_StandardHeadersPreserved(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	// Verify response headers preserved
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 	assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
-	assert.Equal(t, "custom-value", w.Header().Get("X-Custom-Header"))
+	assert.Equal(t, "no-cache", w.Header().Get("Pragma"))
+	assert.Empty(t, w.Header().Values("Set-Cookie"))
+	assert.Empty(t, w.Header().Get("X-Custom-Header"))
 }
 
 // TestOAuth2TokenEndpoint_StatusCodePreserved tests various status codes are preserved
@@ -224,9 +226,10 @@ func TestOAuth2TokenEndpoint_StatusCodePreserved(t *testing.T) {
 	agentID := id.NewAgentID()
 
 	tests := []struct {
-		name           string
-		upstreamStatus int
-		upstreamBody   string
+		name            string
+		upstreamStatus  int
+		upstreamBody    string
+		wwwAuthenticate string
 	}{
 		{
 			name:           "200 OK",
@@ -239,9 +242,10 @@ func TestOAuth2TokenEndpoint_StatusCodePreserved(t *testing.T) {
 			upstreamBody:   `{"error": "invalid_request"}`,
 		},
 		{
-			name:           "401 Unauthorized",
-			upstreamStatus: http.StatusUnauthorized,
-			upstreamBody:   `{"error": "invalid_client"}`,
+			name:            "401 Unauthorized",
+			upstreamStatus:  http.StatusUnauthorized,
+			upstreamBody:    `{"error": "invalid_client"}`,
+			wwwAuthenticate: `Basic realm="upstream"`,
 		},
 		{
 			name:           "500 Internal Server Error",
@@ -254,6 +258,9 @@ func TestOAuth2TokenEndpoint_StatusCodePreserved(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
+				if tt.wwwAuthenticate != "" {
+					w.Header().Set("WWW-Authenticate", tt.wwwAuthenticate)
+				}
 				w.WriteHeader(tt.upstreamStatus)
 				_, _ = w.Write([]byte(tt.upstreamBody))
 			}))
@@ -270,6 +277,7 @@ func TestOAuth2TokenEndpoint_StatusCodePreserved(t *testing.T) {
 
 			// Verify status code preserved
 			assert.Equal(t, tt.upstreamStatus, w.Code)
+			assert.Equal(t, tt.wwwAuthenticate, w.Header().Get("WWW-Authenticate"))
 		})
 	}
 }

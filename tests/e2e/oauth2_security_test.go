@@ -435,8 +435,8 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			Expect(resp.Header.Get("Pragma")).To(Equal("no-cache"))
 		})
 
-		It("should preserve custom headers from upstream", func() {
-			// Given: Mock upstream with custom response headers and valid discovery metadata
+		It("should not relay arbitrary headers from upstream", func() {
+			// Given: Mock upstream with arbitrary response headers and valid discovery metadata
 			mockUpstream := newDiscoverableUpstream(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("X-Custom-Header", "custom-value")
@@ -474,11 +474,12 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			// Then: Custom headers are preserved
-			// Specification T044: Custom headers enable client customization
+			// Then: Only allowlisted OAuth2 response metadata is relayed
+			// Specification T044: Arbitrary upstream headers must not reach the client
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			Expect(resp.Header.Get("X-Custom-Header")).To(Equal("custom-value"))
-			Expect(resp.Header.Get("X-RateLimit-Limit")).To(Equal("100"))
+			Expect(resp.Header.Get("Content-Type")).To(ContainSubstring("application/json"))
+			Expect(resp.Header.Get("X-Custom-Header")).To(BeEmpty())
+			Expect(resp.Header.Get("X-RateLimit-Limit")).To(BeEmpty())
 		})
 	})
 

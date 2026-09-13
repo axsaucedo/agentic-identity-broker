@@ -35,6 +35,13 @@ type proxyTokenGrantStrategy struct {
 	logger             *slog.Logger
 }
 
+var proxyTokenResponseHeaders = [...]string{
+	"Content-Type",
+	"Cache-Control",
+	"Pragma",
+	"WWW-Authenticate",
+}
+
 // NewProxyTokenGrantStrategy returns a strategy that proxies token grants to an upstream server.
 func NewProxyTokenGrantStrategy(
 	upstreamTokenURL string,
@@ -76,13 +83,8 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 		return
 	}
 
-	for key, values := range r.Header {
-		if isHopByHopHeader(key) {
-			continue
-		}
-		for _, value := range values {
-			upstreamReq.Header.Add(key, value)
-		}
+	if contentType := r.Header.Get("Content-Type"); contentType != "" {
+		upstreamReq.Header.Set("Content-Type", contentType)
 	}
 
 	client := s.client
@@ -103,12 +105,9 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 
 	span.SetAttributes(attribute.Int("http.status_code", upstreamResp.StatusCode))
 
-	for key, values := range upstreamResp.Header {
-		if isHopByHopHeader(key) || strings.EqualFold(key, "traceresponse") {
-			continue
-		}
-		for _, value := range values {
-			w.Header().Add(key, value)
+	for _, headerName := range proxyTokenResponseHeaders {
+		for _, value := range upstreamResp.Header.Values(headerName) {
+			w.Header().Add(headerName, value)
 		}
 	}
 
@@ -384,20 +383,4 @@ func (s *hybridTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *ht
 		}
 		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "unexpected client mode in hybrid dispatch")
 	}
-}
-
-// hopByHopHeaders is the set of hop-by-hop headers per RFC 7230 that must not be forwarded.
-var hopByHopHeaders = map[string]bool{
-	"connection":          true,
-	"keep-alive":          true,
-	"proxy-authenticate":  true,
-	"proxy-authorization": true,
-	"te":                  true,
-	"trailers":            true,
-	"transfer-encoding":   true,
-	"upgrade":             true,
-}
-
-func isHopByHopHeader(headerName string) bool {
-	return hopByHopHeaders[strings.ToLower(headerName)]
 }

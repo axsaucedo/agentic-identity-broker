@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -51,9 +52,8 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// OAuth 2.0 token endpoint must accept application/x-www-form-urlencoded per RFC 6749 Section 4.1.3
-	contentType := r.Header.Get("Content-Type")
-	if !strings.HasPrefix(contentType, "application/x-www-form-urlencoded") {
+	// OAuth 2.0 token endpoint must accept application/x-www-form-urlencoded per RFC 6749 Section 4.1.3.
+	if mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mediaType != "application/x-www-form-urlencoded" {
 		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "invalid Content-Type: expected application/x-www-form-urlencoded")
 		return
 	}
