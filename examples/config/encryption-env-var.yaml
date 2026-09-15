@@ -1,0 +1,134 @@
+# Environment Variable Encryption Configuration (Development)
+#
+# Demonstrates the memory encryption backend with key material injected via
+# environment variable. Recommended for development, testing, and CI/CD
+# environments where AWS KMS is not available or desired.
+
+encryption:
+  memory:
+    # Base64-encoded 32-byte AES-256 key.
+    # Set via IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY.
+    raw_key: "${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}"
+
+  # AWS KMS backend is NOT configured (exactly one backend must be specified).
+  # aws_kms: null
+
+  # DynamoDB branch key caching is only used with AWS KMS.
+  # The memory backend uses an in-memory raw AES keyring.
+
+# Environment variable setup:
+#
+# Linux/macOS:
+# export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY="generated-base64-key-here"
+#
+# Windows:
+# set IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=generated-base64-key-here
+#
+# Docker:
+# docker run \
+#   -e IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY="generated-base64-key-here" \
+#   your-image
+#
+# Kubernetes Secret:
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: identity-broker-secrets
+# data:
+#   IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY: <base64-encoded-32-byte-key>
+
+# Generate a secure 32-byte base64-encoded key:
+#
+# Using OpenSSL:
+# openssl rand -base64 32
+#
+# Using Go:
+# go run -c 'package main; import ("crypto/rand"; "encoding/base64"; "fmt");
+# func main() { key := make([]byte, 32); rand.Read(key);
+# fmt.Println(base64.StdEncoding.EncodeToString(key)) }'
+#
+# Using Python:
+# python3 -c "import os, base64;
+# print(base64.b64encode(os.urandom(32)).decode())"
+#
+# Example (DO NOT USE IN PRODUCTION):
+# export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY="\
+#   aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890AB=="
+
+log:
+  level: debug
+  format: text
+
+storage:
+  backend: memory
+  timeouts:
+    read: 1s
+    write: 2s
+
+server:
+  enduser:
+    port: 8000
+    bind: "::"
+    public_url: "http://localhost:8000"
+  admin:
+    port: 14000
+    bind: "::"
+    public_url: "http://localhost:14000"
+  shutdown:
+    timeout: 5s
+
+security:
+  # Allow HTTP OAuth2 services for development only.
+  skip_thirdparty_https_validation: true
+
+third_party_oauth2:
+  # Generate with: openssl rand -base64 32
+  jwe_signing_key: "your-base64-encoded-32-byte-jwe-key"
+  state_token_ttl: 10m
+  pkce_verifier_length: 32
+
+# Docker Compose example:
+# version: '3.8'
+# services:
+#   identity-broker:
+#     image: identity-broker:latest
+#     environment:
+#       # IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY: base64-encoded 32-byte key
+#       #   (store securely, not in compose file)
+#       - GO_ENV=development
+#     ports:
+#       - "8000:8000"
+#       - "14000:14000"
+#     volumes:
+#       - ./config:/app/config
+#     command: ["--config", "/app/config/encryption-env-var.yaml"]
+#
+# Usage:
+# export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY="$(openssl rand -base64 32)"
+# docker-compose up
+
+# CI/CD Pipeline example (GitHub Actions):
+# env:
+#   IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY: >-
+#     ${{ secrets.IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY }}
+#
+# Store IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY as a repository secret with a
+# base64-encoded 32-byte key.
+
+# Security considerations for environment variable approach:
+#
+# Pros:
+# - No cloud provider dependencies
+# - Suitable for local development and testing
+# - Easy to inject via CI/CD pipelines
+# - No additional service setup required
+#
+# Cons:
+# - Key material stored in process environment (visible in ps, /proc)
+# - No automatic key rotation
+# - No hardware security module protection
+# - No centralized audit logging of key usage
+# - Risk of accidental exposure in logs or error dumps
+#
+# Recommendation: Use this approach only for development/testing.
+# For production, prefer AWS KMS configuration (see encryption-aws-kms.yaml).

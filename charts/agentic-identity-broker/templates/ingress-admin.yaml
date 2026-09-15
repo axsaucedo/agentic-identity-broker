@@ -1,0 +1,43 @@
+{{- if .Values.ingress.admin.enabled -}}
+apiVersion: {{ include "agentic-identity-broker.ingress.apiVersion" . }}
+kind: Ingress
+metadata:
+  name: {{ include "agentic-identity-broker.fullname" . }}-admin
+  namespace: {{ include "agentic-identity-broker.namespace" . }}
+  labels:
+    {{- include "agentic-identity-broker.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin
+  {{- with .Values.ingress.admin.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.admin.className }}
+  ingressClassName: {{ .Values.ingress.admin.className }}
+  {{- end }}
+  {{- if .Values.ingress.admin.tls }}
+  tls:
+    {{- range .Values.ingress.admin.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.admin.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "agentic-identity-broker.fullname" $ }}
+                port:
+                  number: {{ $.Values.service.ports.admin }}
+          {{- end }}
+    {{- end }}
+{{- end }}

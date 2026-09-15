@@ -1,0 +1,91 @@
+---
+# Memory Encryption Configuration (Development)
+#
+# Demonstrates the in-memory encryption backend with a base64-encoded AES-256
+# key. Recommended for development, testing, and CI/CD environments where AWS
+# KMS is not available or desired.
+
+encryption:
+  memory:
+    # Base64-encoded 32-byte AES-256 key.
+    # Generate with: openssl rand -base64 32
+    # SECURITY: Sensitive key material is redacted in logs.
+    raw_key: "aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890AB=="
+
+  # AWS KMS backend is NOT configured (exactly one backend must be specified).
+  # aws_kms: null
+
+# Environment variable usage (recommended for secrets):
+#
+# Instead of hardcoding the key in YAML, use environment variable injection:
+# encryption:
+#   memory:
+#     raw_key: "${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}"
+#
+# Set via environment variable:
+# export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY="$(openssl rand -base64 32)"
+
+log:
+  level: debug
+  format: text
+
+storage:
+  backend: memory
+  timeouts:
+    read: 1s
+    write: 2s
+
+server:
+  enduser:
+    port: 8000
+    bind: "::"
+    public_url: "http://localhost:8000"
+  admin:
+    port: 14000
+    bind: "::"
+    public_url: "http://localhost:14000"
+  shutdown:
+    timeout: 5s
+
+security:
+  # Allow HTTP OAuth2 services for development only.
+  skip_thirdparty_https_validation: true
+
+third_party_oauth2:
+  # Generate with: openssl rand -base64 32
+  jwe_signing_key: "your-base64-encoded-32-byte-jwe-key"
+  state_token_ttl: 10m
+  pkce_verifier_length: 32
+
+# Generate secure keys for development:
+#
+# Using OpenSSL:
+# openssl rand -base64 32
+#
+# Using Go:
+# go run -c 'package main; import ("crypto/rand"; "encoding/base64"; "fmt");
+# func main() { key := make([]byte, 32); rand.Read(key);
+# fmt.Println(base64.StdEncoding.EncodeToString(key)) }'
+#
+# Using Python:
+# python3 -c "import os, base64;
+# print(base64.b64encode(os.urandom(32)).decode())"
+
+# Security considerations for the memory backend:
+#
+# Pros:
+# - No cloud provider dependencies
+# - Suitable for local development and testing
+# - Easy to inject via CI/CD pipelines
+# - No additional service setup required
+# - Fast initialization (no network calls)
+#
+# Cons:
+# - Key material stored in process environment (visible in ps, /proc)
+# - No automatic key rotation
+# - No hardware security module protection
+# - No centralized audit logging of key usage
+# - Risk of accidental exposure in logs or error dumps
+#
+# Recommendation: Use this backend only for development/testing.
+# For production, prefer AWS KMS backend (see encryption-aws-kms.yaml).

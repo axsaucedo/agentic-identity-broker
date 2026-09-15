@@ -1,0 +1,118 @@
+# Agentic Identity Broker Configuration - Docker Compose
+# This configuration file is specifically for Docker Compose deployments
+# For native development (just run), use config.yaml instead
+
+# Logging configuration
+log:
+  level: debug
+  format: json
+
+# Server configuration - dual-port HTTP servers
+server:
+  # End-user facing server (public API)
+  enduser:
+    port: 8000
+    bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
+    # Use port 3000, which points to the Vite dev server locally.
+    public_url: http://localhost:3000
+    # Pre-auth mode trusts principals from reverse proxy headers.
+    authentication:
+      preauth:
+        principal_header_name: X-Remote-User
+    # CORS configuration for Docker Compose development (allows all origins)
+    cors:
+      allowed_origins:
+        - "*"
+
+  # Admin server (internal management API)
+  admin:
+    port: 14000
+    bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
+    # Optional for the admin server in local development.
+    public_url: http://localhost:14000
+    # Pre-auth mode trusts principals from reverse proxy headers.
+    authentication:
+      preauth:
+        principal_header_name: X-Remote-User
+
+  # Graceful shutdown configuration
+  shutdown:
+    timeout: 30s # Maximum time to wait for in-flight requests to complete
+
+third_party_oauth2:
+  # JWE signing key for state tokens (REQUIRED)
+  # Must be 32 bytes, base64 encoded
+  # Load from environment variable (never commit actual keys!)
+  jwe_signing_key: ${IDENTITY_BROKER_JWE_SIGNING_KEY}
+
+# OAuth2 Authorization Server
+oauth2_authorization_server:
+  mode: hybrid
+
+  # Proxy path: agents with a ClientID are forwarded upstream.
+  # Uses internal container DNS names for server-to-server traffic.
+  proxy:
+    upstream_issuer_uri: http://upstream-oauth2:9001
+    upstream_authorize_endpoint: http://localhost:9001/oauth/authorize
+    upstream_token_endpoint: http://upstream-oauth2:9001/oauth/token
+    upstream_timeout: 10s
+
+  # Local path: agents without a ClientID are issued tokens locally.
+  local:
+    token_ttl: 1h
+    token_claims_expression: '{"aud": "token-exchange-broker"}'
+
+
+  # CIMD: resolve agents via Client ID Metadata Document URLs.
+  cimd:
+    enabled: true
+    fetch_timeout: 5s
+    max_response_bytes: 5120
+    cache:
+      min_ttl: 60s
+      max_ttl: 1h
+      max_entries: 100
+
+  # Supported OAuth2 response types
+  supported_response_types:
+    - code
+
+  # Supported OAuth2 grant types
+  supported_grant_types:
+    - authorization_code
+    - refresh_token
+    - urn:ietf:params:oauth:grant-type:token-exchange
+
+# Security configuration
+security:
+  # Skip HTTPS validation for third-party OAuth2 services (dev/test only!)
+  # Allows HTTP connections to mock OAuth2 services during development
+  skip_thirdparty_https_validation: true
+  # Skip SSRF blocklist and TLS verification for CIMD fetches (dev/test only!)
+  # Allows fetching from private IPs (docker network) with self-signed certs.
+  skip_cimd_ssrf_validation: true
+
+encryption:
+  # Memory backend configuration
+  memory:
+    # Base64-encoded 32-byte AES-256 key (REQUIRED)
+    # Must be exactly 32 bytes (256 bits) when base64-decoded
+    # Generate with: openssl rand -base64 32
+    # SECURITY: Sensitive key material is redacted in logs.
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
+
+# RFC 8693 Token Exchange configuration
+# Enables the ExtProc gateway to exchange user Bearer tokens for
+# third-party service tokens.
+token_exchange:
+  claim_extraction:
+    # Extract user principal from the subject_token's sub claim
+    principal_expression: "subject_token.sub"
+    # Local tokens carry agent_id. Upstream tokens use azp and resolve it to an agent ID.
+    agent_id_expression: "has(subject_token.agent_id) ? subject_token.agent_id : resolveAgentIdByClientId(subject_token.azp)"
+  authorization:
+    type: "cel"
+    cel:
+      # Allow all agents with a valid client_assertion.
+      expression: "true"
+      evaluation_timeout: "5s"

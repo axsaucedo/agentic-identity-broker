@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_signing_keys_single_current_active;

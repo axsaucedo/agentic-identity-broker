@@ -1,0 +1,113 @@
+# Agentic Identity Broker - Production Configuration
+# Use this configuration for production environments
+# IMPORTANT: All sensitive values MUST be provided via environment variables
+# Never commit actual values to version control
+# To run: agentic-identity-broker --config ./examples/config/config.production.yaml
+
+log:
+  # Production uses info level (reduce noise while maintaining visibility)
+  # Override with --log-level flag if needed at runtime
+  level: ${IDENTITY_BROKER_LOG_LEVEL:info}
+  # JSON format enables structured logging for monitoring and log aggregation
+  format: ${IDENTITY_BROKER_LOG_FORMAT:json}
+
+server:
+  # End-user server configuration (public-facing API)
+  enduser:
+    # Standard port for end-user traffic
+    port: 8000
+    # Bind to all interfaces (dual-stack IPv6/IPv4)
+    # In containerized environments, this allows traffic from load balancers
+    bind: "::"
+    # Public URL for OAuth2 callback redirects
+    # MUST be set to the external URL that users access the broker at
+    # REQUIRED for OAuth2 sessions feature
+    # Example: https://broker.example.com (with HTTPS in production!)
+    public_url: ${IDENTITY_BROKER_SERVER_ENDUSER_PUBLIC_URL:http://localhost:8000}
+    # Authentication configuration for end-user server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        # Set by trusted reverse proxy (nginx, Traefik, HAProxy, etc.)
+        # SECURITY: Never expose Identity Broker directly - always use a reverse proxy
+        principal_header_name: ${IDENTITY_BROKER_PRINCIPAL_HEADER:X-Remote-User}
+
+  # Admin server configuration (internal management API)
+  admin:
+    # Standard admin port
+    port: 14000
+    # SECURITY: In production, admin server should be restricted to private network
+    # Options:
+    #   - Use firewall rules to restrict access
+    #   - Bind to internal IP (e.g., 10.0.1.0)
+    #   - Use separate network namespace in Kubernetes
+    # For this example, we bind to all interfaces but firewall rules should restrict access
+    bind: "::"
+    # Public URL (optional for admin server, but can be set for completeness)
+    public_url: ${IDENTITY_BROKER_SERVER_ADMIN_PUBLIC_URL:http://localhost:14000}
+    # Authentication configuration for admin server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        principal_header_name: ${IDENTITY_BROKER_PRINCIPAL_HEADER:X-Remote-User}
+
+  # Graceful shutdown configuration
+  shutdown:
+    # Longer timeout in production to allow in-flight requests to complete
+    # Adjust based on your application's longest request duration
+    timeout: 60s
+
+storage:
+  # Production uses PostgreSQL for persistence and high availability
+  backend: postgres
+  postgres:
+    # Connection URL MUST come from environment variable in production
+    # Uses in-memory backend if not provided (for testing/demos)
+    connection_url: ${IDENTITY_BROKER_STORAGE_POSTGRES_URL:postgresql://localhost:5432/identity_broker}
+  timeouts:
+    read: 5s
+    write: 10s
+
+encryption:
+  # AWS KMS backend for production (recommended for security)
+  aws_kms:
+    # AWS KMS Customer-Managed Key ARN (REQUIRED)
+    # SECURITY: Must be set via environment variable, never hardcoded
+    key_arn: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN}
+    # DynamoDB table for branch key caching
+    dynamodb_table_name: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME:IdentityBrokerEncryptionBranchKeys}
+    # Branch key TTL (default: 1h)
+    branch_key_ttl: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL:1h}
+
+  # Alternative: Memory backend (not recommended for production)
+  # memory:
+  #   # Base64-encoded 32-byte AES-256 key
+  #   # SECURITY: Must be set via environment variable, never hardcoded
+  #   raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
+
+oauth2_authorization_server:
+  # Production uses proxy mode — all OAuth2 requests forwarded to upstream authorization server
+  # MUST be set to the correct mode for your deployment (proxy, local, or hybrid)
+  mode: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE:proxy}
+  proxy:
+    # Upstream OAuth2 server issuer URI (required in proxy/hybrid mode)
+    upstream_issuer_uri: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI}
+    # Upstream authorize endpoint
+    upstream_authorize_endpoint: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT}
+    # Upstream token endpoint
+    upstream_token_endpoint: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT}
+    # Optional JWKS refresh bounds (defaults shown here for operator visibility)
+    upstream_jwks_min_refresh: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_JWKS_MIN_REFRESH:15m}
+    upstream_jwks_max_refresh: ${IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_JWKS_MAX_REFRESH:1h}
+
+# Future sections for expanded configuration:
+#
+# monitoring:
+#   # Metrics endpoint for Prometheus
+#   metrics_enabled: true
+#   metrics_port: 9090
+#   # Health check settings
+#   health_check_enabled: true
+#   health_check_interval: 30s

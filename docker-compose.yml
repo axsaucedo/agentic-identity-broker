@@ -1,0 +1,285 @@
+# Custom bridge network for service DNS resolution
+networks:
+  aib-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# Shared volumes
+volumes:
+  broker-tmp:
+  # Preserves containerized npm dependencies and avoids host conflicts.
+  aib-frontend-node-modules:
+  sample-agent-tmp:
+  # Shared volume for the CIMD mock self-signed CA certificate.
+  cimd-certs:
+  # OPA policy bundle volume — populated by opa-bundle-build, served by opa-bundle-server.
+  opa-bundles:
+
+services:
+  # Primary application: Identity broker with hot-reload
+  identity-broker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: aib-broker
+    ports:
+      - "8000:8000"
+      - "14000:14000"
+    volumes:
+      # Mount source code for Air hot reload
+      - ./cmd:/app/cmd
+      - ./internal:/app/internal
+      - ./config.docker.yaml:/app/config.docker.yaml:ro
+      - ./migrations:/app/migrations
+      - ./scripts:/app/scripts:ro
+      - ./tests:/app/tests:ro
+      - ./mocks:/app/mocks:ro
+      - broker-tmp:/app/tmp
+      # Mount .air.docker.toml for Docker-optimized hot reload configuration
+      - ./.air.docker.toml:/app/.air.docker.toml:ro
+      # Mount go.mod and go.sum to keep them in sync with the host.
+      # This avoids the "updates to go.mod needed" error in the container.
+      - ./go.mod:/app/go.mod
+      - ./go.sum:/app/go.sum
+    environment:
+      - IDENTITY_BROKER_CONFIG_PATH=config.docker.yaml
+      - IDENTITY_BROKER_LOG_LEVEL=debug
+      - IDENTITY_BROKER_JWE_SIGNING_KEY=${IDENTITY_BROKER_JWE_SIGNING_KEY}
+      - IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
+      - IDENTITY_BROKER_STATE_TOKEN_TTL=10m
+      - IDENTITY_BROKER_PKCE_VERIFIER_LENGTH=32
+      - IDENTITY_BROKER_STORAGE_BACKEND=memory
+    networks:
+      - aib-network
+    healthcheck:
+      # Cold container builds can take several minutes before the broker binds :8000.
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 4m
+    depends_on:
+      upstream-oauth2:
+        condition: service_started
+      third-party-oauth2:
+        condition: service_started
+      cimd-mock:
+        condition: service_healthy
+
+  # Mock CIMD (Client ID Metadata Document) server
+  # Serves a self-signed TLS CIMD document for the CIMD Demo Agent.
+  cimd-mock:
+    build:
+      context: .
+      dockerfile: Dockerfile.cimd
+    container_name: aib-cimd-mock
+    ports:
+      - "9004:443"
+    environment:
+      - CIMD_HOST=cimd-mock
+      - CIMD_PORT=443
+      - CIMD_DOC_PATH=/oauth/client-metadata.json
+      - CIMD_REDIRECT_URIS=http://localhost:9002/oauth2/callback
+      - CIMD_CLIENT_NAME=CIMD Demo Agent
+      - CIMD_CA_CERT_PATH=/certs/cimd-ca.crt
+    volumes:
+      - cimd-certs:/certs
+    networks:
+      - aib-network
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-f", "https://localhost:443/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+  # Mock upstream OAuth2 server
+  upstream-oauth2:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+      args:
+        SERVICE_PATH: >-
+          mocks/upstream-oauth2-server/cmd/mock-upstream-oauth2-server
+    container_name: aib-upstream-oauth2
+    ports:
+      - "9001:9001"
+    volumes:
+      - ./mocks/upstream-oauth2-server/config.yaml:/app/config.yaml:ro
+    networks:
+      - aib-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9001/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  # Mock third-party OAuth2 service
+  third-party-oauth2:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+      args:
+        SERVICE_PATH: mocks/third-party-service/cmd/mock-oauth2-server
+    container_name: aib-third-party-oauth2
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./mocks/third-party-service/config.yaml:/app/config.yaml:ro
+    networks:
+      - aib-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  # Mock sample agent service
+  sample-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: aib-sample-agent
+    command: ["air", "-c", ".air.sample-agent.toml"]
+    ports:
+      - "9002:9002"
+    volumes:
+      - ./mocks/sample-agent:/app/mocks/sample-agent
+      - ./scripts:/app/scripts:ro
+      - ./.air.sample-agent.toml:/app/.air.sample-agent.toml:ro
+      - sample-agent-tmp:/app/tmp
+    networks:
+      - aib-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9002/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+    depends_on:
+      identity-broker:
+        condition: service_healthy
+
+  opa-bundle-volume-init:
+    image: alpine:latest
+    user: "0:0" # Required to give the non-root builder ownership of /output.
+    network_mode: none
+    volumes: [opa-bundles:/output]
+    command: ["chown", "-R", "1000:1000", "/output"]
+
+  # Compiles mocks/opa/bundle/ into the opa-bundles volume at startup.
+  # For local policy development and testing, use `just opa-check` instead.
+  opa-bundle-build:
+    image: openpolicyagent/opa:latest
+    container_name: aib-opa-bundle-build
+    working_dir: /bundle
+    volumes:
+      - ./mocks/opa/bundle:/bundle:ro
+      - opa-bundles:/output
+    command: ["build", "--debug", "-o", "/output/mcp-authz.tar.gz", "."]
+    restart: "no"
+    depends_on:
+      opa-bundle-volume-init:
+        condition: service_completed_successfully
+
+  # Serves the compiled bundle as a static file for OPA to poll.
+  opa-bundle-server:
+    image: nginx:alpine
+    container_name: aib-opa-bundle-server
+    ports:
+      - "8080:80"  # exposed for local testing only; extproc uses container-internal port 80
+    volumes:
+      - opa-bundles:/usr/share/nginx/html:ro
+    networks:
+      - aib-network
+    depends_on:
+      opa-bundle-build:
+        condition: service_completed_successfully
+
+  # ExtProc Token Exchange Service (gRPC, container-internal only)
+  extproc-token-exchange:
+    build:
+      context: .
+      dockerfile: Dockerfile.extproc
+      target: development
+    container_name: aib-extproc
+    volumes:
+      - ./config.extproc.docker.yaml:/app/config.yaml:ro
+      - ./mocks/opa/opa-config.yaml:/etc/extproc/opa-config.yaml:ro
+    environment:
+      - EXTPROC_CONFIG_PATH=/app/config.yaml
+      - EXTPROC_CLIENT_SECRET=${EXTPROC_CLIENT_SECRET:-extproc-dev-secret}
+      - EXTPROC_LOG_LEVEL=${EXTPROC_LOG_LEVEL:-debug}
+      - EXTPROC_AUTHORIZATION_ENABLED=${EXTPROC_AUTHORIZATION_ENABLED:-false}
+      - EXTPROC_AUTHORIZATION_POLICY_CONFIG_FILE=${EXTPROC_AUTHORIZATION_POLICY_CONFIG_FILE:-}
+    networks:
+      - aib-network
+    depends_on:
+      identity-broker:
+        condition: service_healthy
+      upstream-oauth2:
+        condition: service_healthy
+
+  # MCP server mock (Streamable HTTP transport, port 9003)
+  mcp-server-mock:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+      args:
+        SERVICE_PATH: mocks/mcp-server/cmd/mcp-server
+    container_name: aib-mcp-server
+    ports:
+      - "9003:9003"
+    volumes:
+      - ./mocks/mcp-server/config.yaml:/app/config.yaml:ro
+    networks:
+      - aib-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9003/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  # Agentgateway routes MCP calls through ExtProc for token exchange.
+  agentgateway:
+    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.5.0}
+    container_name: aib-agentgateway
+    ports:
+      - "4000:4000"
+      - "15000:15000"
+    volumes:
+      - ./mocks/agentgateway/config.yaml:/config.yaml:ro
+    command: ["-f", "/config.yaml"]
+    networks:
+      - aib-network
+    depends_on:
+      extproc-token-exchange:
+        condition: service_started
+      mcp-server-mock:
+        condition: service_healthy
+
+  # Frontend: React + Vite with HMR
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: aib-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount the entire web directory for full hot reload.
+      - ./web:/app
+      # Preserve containerized node_modules (won't be overwritten by host mount)
+      - aib-frontend-node-modules:/app/node_modules
+    environment:
+      # Use internal service name for Docker Compose network DNS resolution
+      - VITE_API_URL=http://identity-broker:8000
+      - VITE_LOG_LEVEL=debug
+      # Enable polling and HMR for Docker hot-reload
+      - VITE_USE_POLLING=true
+      - VITE_HMR_HOST=localhost
+    networks:
+      - aib-network
+    depends_on:
+      identity-broker:
+        condition: service_healthy

@@ -1,0 +1,92 @@
+# Agentic Identity Broker — Local CIMD Development Configuration
+#
+# Enables URL-based client_id (CIMD) for local testing.
+# Uses in-memory storage and memory encryption — no external dependencies needed.
+#
+# Run:
+#   IDENTITY_BROKER_CONFIG_PATH=examples/config/config.cimd-local.yaml just dev
+#
+# To test CIMD, register an agent with a client_uri, then send an authorization
+# request with client_id=<that URI>. The broker will fetch the CIMD document at
+# that URL, validate it, and drive consent from the contained metadata.
+# A client_uri can use `*` for one complete non-empty path segment. For example,
+# https://chatgpt.com/oauth/codex/*/client.json matches one installation URL.
+# The broker rejects literal `\`, encoded `/`, and encoded `\` in CIMD URL paths.
+#
+# Requirements:
+#   - The client_id URL must be publicly reachable over HTTPS (use ngrok, caddy,
+#     or similar for local CIMD endpoints — httptest servers work in E2E tests).
+#   - The CIMD document must include a "client_id" field matching the request URL.
+
+log:
+  level: debug
+  format: text
+
+server:
+  enduser:
+    port: 8000
+    bind: "::"
+    public_url: "http://localhost:8000"
+    authentication:
+      preauth:
+        principal_header_name: X-Remote-User
+  admin:
+    port: 14000
+    bind: "::"
+    public_url: "http://localhost:14000"
+    authentication:
+      preauth:
+        principal_header_name: X-Remote-User
+  shutdown:
+    timeout: 5s
+
+storage:
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s
+
+# Memory encryption — dev key only, never use in production.
+# Generate your own: openssl rand -base64 32
+encryption:
+  memory:
+    raw_key: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+
+third_party_oauth2:
+  # Fixed dev key — never use in production. Generate a real one with: openssl rand -base64 32
+  jwe_signing_key: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+  state_token_ttl: 10m
+  pkce_verifier_length: 32
+
+oauth2_authorization_server:
+  # CIMD requires local mode — proxy mode cannot mint local tokens.
+  mode: "local"
+
+  cimd:
+    # Enable URL-based client_id support.
+    enabled: true
+
+    # Timeout for fetching the CIMD document. Keep short to avoid latency in
+    # the authorization flow. Increase for slow local tunnels (e.g. ngrok free tier).
+    fetch_timeout: 5s
+
+    # Maximum response body in bytes. Default 5 KiB is sufficient for any valid document.
+    max_response_bytes: 5120
+
+    cache:
+      # Operator ceiling: HTTP Cache-Control max-age values above this are clamped down.
+      max_ttl: 1h
+      # Operator floor: prevents stampeding on documents with very short cache headers.
+      min_ttl: 30s
+
+    ssrf:
+      # RFC 6890 private/loopback/link-local ranges are always blocked.
+      # Add extra CIDRs here if needed (e.g. cloud metadata endpoints).
+      extra_blocked_cidrs: []
+
+    # Reject CIMD documents whose client_name matches any of these (case-insensitive).
+    client_name_blocklist: []
+
+# Relaxed HTTPS validation for local third-party OAuth2 services (e.g. mock servers).
+security:
+  skip_thirdparty_https_validation: true

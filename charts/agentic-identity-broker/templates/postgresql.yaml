@@ -1,0 +1,66 @@
+{{- if and (eq .Values.storage.type "postgres") .Values.postgresql.operator.enabled }}
+apiVersion: "acid.zalan.do/v1"
+kind: postgresql
+metadata:
+  name: {{ .Values.postgresql.operator.teamId }}-{{ include "agentic-identity-broker.fullname" . }}
+  namespace: {{ include "agentic-identity-broker.namespace" . }}
+  labels:
+    {{- $commonLabels := .Values.commonLabels | default dict -}}
+    {{- $postgresLabels := .Values.postgresql.labels | default dict -}}
+    {{- $baseLabels := fromYaml (include "agentic-identity-broker.baseLabels" .) -}}
+    {{- $componentLabel := dict "app.kubernetes.io/component" "database" -}}
+    {{- $mergedLabels := mergeOverwrite $baseLabels $commonLabels $postgresLabels $componentLabel -}}
+    {{- toYaml $mergedLabels | nindent 4 }}
+  annotations:
+    # Create PostgreSQL cluster before migration Job
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    {{- with .Values.postgresql.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  teamId: {{ .Values.postgresql.operator.teamId | quote }}
+  numberOfInstances: {{ .Values.postgresql.operator.numberOfInstances }}
+  
+  # PostgreSQL version
+  postgresql:
+    version: {{ .Values.postgresql.operator.version | quote }}
+  
+  # Volume configuration
+  volume:
+    size: {{ .Values.postgresql.operator.volume.size }}
+    {{- if .Values.postgresql.operator.volume.storageClass }}
+    storageClass: {{ .Values.postgresql.operator.volume.storageClass }}
+    {{- end }}
+  
+  # Resource limits
+  resources:
+    requests:
+      cpu: {{ .Values.postgresql.operator.resources.requests.cpu }}
+      memory: {{ .Values.postgresql.operator.resources.requests.memory }}
+    limits:
+      cpu: {{ .Values.postgresql.operator.resources.limits.cpu }}
+      memory: {{ .Values.postgresql.operator.resources.limits.memory }}
+  
+  # Database users
+  # The operator will create Kubernetes Secrets for each user
+  # Secret name format: {username}.{teamId}-{instanceName}.credentials.postgresql.acid.zalan.do
+  users:
+    # Migration user (schema permissions)
+    {{ .Values.postgresql.operator.users.migration.name }}:
+      {{- toYaml .Values.postgresql.operator.users.migration.permissions | nindent 6 }}
+    # Broker user (data access)
+    {{ .Values.postgresql.operator.users.broker.name }}:
+      {{- toYaml .Values.postgresql.operator.users.broker.permissions | nindent 6 }}
+  
+  # Databases
+  databases:
+    {{ .Values.postgresql.operator.database }}: {{ .Values.postgresql.operator.users.migration.name }}
+  
+  # Enable connection pooler (optional, recommended for production)
+  enableConnectionPooler: false
+  
+  # Enable logical backup (optional, recommended for production)
+  enableLogicalBackup: false
+{{- end }}

@@ -1,0 +1,19 @@
+# Test Configuration
+# In-memory storage for automated test suites with isolated data
+
+log:
+  level: warn
+  format: text
+
+storage:
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s
+
+approvals:
+  pending_ttl: 10m
+  sync_coalesce_window: 1s
+  rate_limit:
+    max_pending_per_pair: 50
+    max_requests_per_minute: 10

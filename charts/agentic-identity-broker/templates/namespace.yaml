@@ -1,0 +1,8 @@
+{{- if .Values.namespace.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "agentic-identity-broker.namespace" . }}
+  labels:
+    {{- include "agentic-identity-broker.labels" . | nindent 4 }}
+{{- end }}

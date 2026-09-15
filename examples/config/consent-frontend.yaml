@@ -1,0 +1,37 @@
+# Agentic Identity Broker - Consent Frontend Configuration
+# Example configuration for enabling the consent management SPA
+# To run: agentic-identity-broker --config ./examples/config/consent-frontend.yaml
+
+log:
+  # Use info level for production
+  level: info
+  # JSON format for structured logging
+  format: json
+
+server:
+  # End-user server configuration (public-facing API + SPA)
+  enduser:
+    port: 3000
+    bind: 0.0.0.0
+    authentication:
+      preauth:
+        # HTTP header containing the authenticated user principal
+        principal_header_name: X-Custom-Principal
+
+  # Admin server configuration (internal management API)
+  admin:
+    port: 3001
+    bind: 127.0.0.1
+    authentication:
+      preauth:
+        principal_header_name: X-Custom-Principal
+
+  shutdown:
+    timeout: 30s
+
+storage:
+  # Use PostgreSQL for production or memory for development
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s

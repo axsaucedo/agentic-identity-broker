@@ -1,0 +1,32 @@
+# Dependabot Configuration for Agentic Identity Broker
+# Documentation: https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+
+version: 2
+updates:
+  # Go Module Dependencies (Backend)
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "06:00"
+    labels:
+      - "dependabot"
+      - "go"
+      - "backend"
+      - "minor"
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+    allow:
+      - dependency-type: "direct"
+    open-pull-requests-limit: 5
+    pull-request-branch-name:
+      separator: "/"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    reviewers:
+      - "jan-brennenstuhl_zse"
+      - "magnus-jungsbluth_zse"

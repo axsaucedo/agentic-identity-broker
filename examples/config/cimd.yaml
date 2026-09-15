@@ -1,0 +1,47 @@
+oauth2_authorization_server:
+  # CIMD requires local mode — proxy mode has no local token minting.
+  mode: "local"
+
+  # Client ID Metadata Document (CIMD) support
+  # Enables AI agents to use HTTPS URLs as client_id values.
+  # The broker fetches, validates, and caches the metadata document at the URL.
+  # CIMD is disabled by default; enable explicitly when URL-based client_id is required.
+  # Reference: draft-ietf-oauth-client-id-metadata-document-01
+  cimd:
+    # -- Enable URL-based client_id support. Default: false.
+    # When false, URL-format client_id values are rejected with invalid_client.
+    # When true, HTTPS URLs are resolved to agents via their pre-registered client_uris.
+    enabled: false
+
+    # -- HTTP request timeout for CIMD document fetches. Default: 1s.
+    # Kept short to avoid adding latency to the authorization flow.
+    fetch_timeout: 1s
+
+    # -- Maximum response body size in bytes. Default: 5120 (5 KiB).
+    # Responses exceeding this limit are rejected to prevent memory exhaustion.
+    max_response_bytes: 5120
+
+    cache:
+      # -- Maximum TTL for cached CIMD documents. Default: 1h.
+      # HTTP Cache-Control max-age values above this are clamped down.
+      max_ttl: 1h
+      # -- Minimum TTL for cached CIMD documents. Default: 60s.
+      # Prevents stampeding on documents with very short or absent cache headers.
+      min_ttl: 60s
+
+    ssrf:
+      # -- Additional CIDR ranges blocked for CIMD fetches (in addition to RFC 6890 defaults).
+      # Use to block cloud metadata endpoints (e.g. 169.254.169.254/32) or internal CIDRs.
+      # Default: [] (RFC 6890 defaults always active regardless of this setting).
+      extra_blocked_cidrs: []
+        # - "169.254.169.254/32"   # AWS/GCP/Azure instance metadata
+        # - "100.64.0.0/10"        # Shared CGN space (already in defaults)
+        # - "192.0.2.0/24"         # TEST-NET-1 (already in defaults)
+
+    # -- Case-insensitive keyword blocklist for CIMD client_name values.
+    # Documents whose client_name matches any entry are rejected.
+    # Default: [] (no additional blocklist entries beyond built-in defaults).
+    # Built-in defaults: admin, system, operator, administrator, root.
+    client_name_blocklist: []
+      # - "internal-service"
+      # - "privileged-agent"

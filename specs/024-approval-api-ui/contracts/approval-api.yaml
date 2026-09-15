@@ -1,0 +1,756 @@
+# API Contract: Tool Approval Endpoints
+# To be merged into /api/enduser/openapi.yaml during implementation
+
+openapi: 3.0.3
+info:
+  title: Tool Approval API (Fragment)
+  version: 1.0.0
+
+paths:
+  /api/approvals:
+    post:
+      operationId: createApproval
+      summary: Create a pending tool approval
+      description: |
+        Creates a pending approval record for a tool invocation that requires human-in-the-loop authorization.
+        Called by ExtProc when a tool call is intercepted that requires approval.
+
+        **Authentication**: Dual-auth required:
+        - `Authorization: Bearer {subject_token}` — binds the request to the user and agent context
+        - Client assertion (validated via CEL expression) — proves the trusted gateway caller that is authorized to mint approval prompts
+
+        **Idempotency**: If a pending unconsumed approval already exists for the same
+        (principal, agent_id, tool_name, arguments_hash), the existing record is returned.
+
+        **Rate Limiting**: Per (principal, agent_id) pair — max 50 pending, max 10 creations/minute.
+      tags:
+        - Approvals
+      security:
+        - BearerSubjectToken: []
+          ClientAssertion: []
+      parameters:
+        - name: traceparent
+          in: header
+          required: false
+          description: W3C Trace Context propagation header.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApprovalRequest'
+            example:
+              metadata:
+                mcp_session_id: "mcp-123"
+                agent_session_id: "sess-xyz"
+                tool_invocation_id: "inv-abc"
+                description: "Create a pull request in acme/app"
+              tool_name: "create_pull_request"
+              arguments:
+                repo: "acme/app"
+                title: "Fix bug"
+      responses:
+        '201':
+          description: New pending approval created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateApprovalResponse'
+              example:
+                data:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  status: "pending"
+                  approval_url: "https://broker.example.com/consent/approvals/550e8400-e29b-41d4-a716-446655440000"
+                  created_at: "2026-03-28T14:30:00Z"
+        '200':
+          description: Existing pending approval returned (idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateApprovalResponse'
+        '401':
+          description: Missing or invalid subject token or client assertion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "unauthorized"
+                message: "valid subject token and client assertion required"
+        '429':
+          description: Rate limit exceeded for (principal, agent_id) pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "rate_limit_exceeded"
+                message: "too many pending approvals for this principal and agent"
+
+    get:
+      operationId: syncApprovals
+      summary: Sync approval state (long-poll)
+      description: |
+        Returns all active approvals grouped by (principal, agent) pair, with optional long-poll
+        semantics for real-time cache synchronization.
+
+        **Long-poll activation**: Send `If-None-Match` with the last known ETag and
+        `X-Long-Poll-Timeout` with maximum wait time in seconds. The server holds the
+        connection until data changes or timeout expires.
+
+        **Without long-poll headers**: Returns current state immediately with ETag.
+
+        **Authentication**: Client assertion validated via CEL expression (gateway control-plane auth; no subject token required).
+      tags:
+        - Approvals
+      security:
+        - ClientAssertion: []
+      parameters:
+        - name: If-None-Match
+          in: header
+          description: ETag from previous response. Activates long-poll when combined with X-Long-Poll-Timeout.
+          schema:
+            type: string
+            example: '"v42"'
+        - name: X-Long-Poll-Timeout
+          in: header
+          description: Maximum seconds to wait for changes (long-poll mode).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 120
+            example: 30
+        - name: principal
+          in: query
+          description: Filter results to a specific principal.
+          schema:
+            type: string
+            example: "alice@example.com"
+      responses:
+        '200':
+          description: Current approval state with ETag
+          headers:
+            ETag:
+              description: Version-based ETag for conditional requests
+              schema:
+                type: string
+                example: '"v42"'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalSyncResponse'
+        '304':
+          description: No changes within long-poll timeout
+        '401':
+          description: Missing or invalid client assertion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/approvals/{id}:
+    get:
+      operationId: getApproval
+      summary: Get a single approval record
+      description: |
+        Retrieves a tool approval record by ID. Used by the Approval UI to display
+        tool call details and current status.
+
+        **Authentication**: X-Remote-User header (browser proxy) — principal must match the approval's stored principal.
+      tags:
+        - Approvals
+      security:
+        - PreauthHeader: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Approval UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Approval record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalDetailResponse'
+        '400':
+          description: Invalid UUID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing principal header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Principal does not match approval owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Approval not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/approvals/{id}/approve:
+    post:
+      operationId: approveApproval
+      summary: Approve a pending tool call
+      description: |
+        Transitions a pending approval to approved state with the selected persistence scope.
+        Called by the Approval UI when the user clicks Approve.
+
+        **Authentication**: X-Remote-User header (browser proxy). Acting user must match
+        the approval's stored principal.
+      tags:
+        - Approvals
+      security:
+        - PreauthHeader: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveRequest'
+            example:
+              persistence: "once"
+      responses:
+        '200':
+          description: Approval accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApproveResponse'
+              example:
+                data:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  status: "approved"
+                  persistence: "once"
+                  approved_at: "2026-03-28T14:31:00Z"
+        '400':
+          description: Invalid UUID or missing persistence field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing principal header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Acting user does not match approval principal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Approval not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: Approval expired or already actioned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "gone"
+                message: "approval has expired"
+
+  /api/approvals/{id}/deny:
+    post:
+      operationId: denyApproval
+      summary: Deny a pending tool call
+      description: |
+        Transitions a pending approval to denied state. Optionally accepts permanent persistence
+        to permanently block the tool for this agent.
+
+        **Authentication**: X-Remote-User header (browser proxy). Acting user must match
+        the approval's stored principal.
+      tags:
+        - Approvals
+      security:
+        - PreauthHeader: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DenyRequest'
+            example:
+              persistence: "permanent"
+      responses:
+        '200':
+          description: Denial recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DenyResponse'
+              example:
+                data:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  status: "denied"
+                  persistence: "permanent"
+                  denied_at: "2026-03-28T14:31:00Z"
+        '400':
+          description: Invalid UUID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing principal header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Acting user does not match approval principal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Approval not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: Approval expired or already actioned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/approvals/{id}/consume:
+    post:
+      operationId: consumeApproval
+      summary: Consume a one-time approval
+      description: |
+        Marks an approved once-persistence approval as consumed, preventing it from being
+        matched again on subsequent tool calls. Called by ExtProc after using the approval.
+
+        **Idempotency**: Consuming an already-consumed approval returns 200.
+
+        **Authentication**: Subject token (Bearer) only — principal must match approval owner. No client assertion is required because consume is a per-approval, principal-scoped mutation.
+      tags:
+        - Approvals
+      security:
+        - BearerSubjectToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Approval consumed (or already consumed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsumeResponse'
+              example:
+                data:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  consumed: true
+                  consumed_at: "2026-03-28T14:32:00Z"
+        '400':
+          description: Invalid UUID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid subject token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Approval not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Approval is not once-persistence or not approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "unprocessable_entity"
+                message: "only once-persistence approved approvals can be consumed"
+
+components:
+  securitySchemes:
+    BearerSubjectToken:
+      type: http
+      scheme: bearer
+      description: Subject token identifying the principal and agent
+    ClientAssertion:
+      type: http
+      scheme: bearer
+      description: Gateway client assertion validated via CEL expression
+    PreauthHeader:
+      type: apiKey
+      in: header
+      name: X-Remote-User
+      description: Principal from upstream authentication proxy
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+          example: "unauthorized"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "authentication required"
+
+    CreateApprovalRequest:
+      type: object
+      required:
+        - metadata
+        - tool_name
+        - arguments
+      properties:
+        metadata:
+          type: object
+          required:
+            - description
+          properties:
+            mcp_session_id:
+              type: string
+              description: MCP session identifier
+              example: "mcp-123"
+            agent_session_id:
+              type: string
+              description: Agent session identifier
+              example: "sess-xyz"
+            tool_invocation_id:
+              type: string
+              description: Unique tool invocation identifier
+              example: "inv-abc"
+            description:
+              type: string
+              description: Human-readable description of the action
+              example: "Create a pull request in acme/app"
+        tool_name:
+          type: string
+          description: MCP tool name — programmatic identifier
+          maxLength: 255
+          example: "create_pull_request"
+        arguments:
+          type: object
+          description: Actual argument values passed to the tool call
+          additionalProperties: true
+          example:
+            repo: "acme/app"
+            title: "Fix bug"
+        risk_level:
+          type: string
+          enum: [low, medium, critical]
+          description: Risk classification for the tool call (optional — UI gracefully hides badge when absent)
+          example: "medium"
+
+    CreateApprovalResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - id
+            - status
+            - approval_url
+            - created_at
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [pending]
+            approval_url:
+              type: string
+              format: uri
+              description: Browser URL for user to review and act on the approval
+            created_at:
+              type: string
+              format: date-time
+
+    ApprovalDetailResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/ToolApproval'
+
+    ToolApproval:
+      type: object
+      required:
+        - id
+        - principal
+        - agent_id
+        - tool_name
+        - arguments
+        - status
+        - approval_url
+        - created_at
+        - expires_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        principal:
+          type: string
+        agent_id:
+          type: string
+          format: uuid
+        agent_display_name:
+          type: string
+          description: Agent display name (populated by broker for UI)
+        tool_name:
+          type: string
+          description: MCP tool name — programmatic identifier
+        arguments:
+          type: object
+          description: Actual argument values passed to the tool call
+          additionalProperties: true
+        description:
+          type: string
+          description: |
+            Caller-provided human-readable action description.
+            This is the primary text shown to the user in the Approval UI.
+        risk_level:
+          type: string
+          enum: [low, medium, critical]
+        status:
+          type: string
+          enum: [pending, approved, denied]
+        persistence:
+          type: string
+          enum: [once, session, permanent]
+          nullable: true
+        consumed:
+          type: boolean
+        approval_url:
+          type: string
+          format: uri
+        created_at:
+          type: string
+          format: date-time
+        approved_at:
+          type: string
+          format: date-time
+          nullable: true
+        denied_at:
+          type: string
+          format: date-time
+          nullable: true
+        consumed_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+
+    ApproveRequest:
+      type: object
+      required:
+        - persistence
+      properties:
+        persistence:
+          type: string
+          enum: [once, session, permanent]
+          description: How long the approval should persist
+
+    ApproveResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - id
+            - status
+            - persistence
+            - approved_at
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [approved]
+            persistence:
+              type: string
+              enum: [once, session, permanent]
+            approved_at:
+              type: string
+              format: date-time
+
+    DenyRequest:
+      type: object
+      properties:
+        persistence:
+          type: string
+          enum: [permanent]
+          description: Optional — set to "permanent" to permanently block this tool for the agent
+
+    DenyResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - id
+            - status
+            - denied_at
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [denied]
+            persistence:
+              type: string
+              enum: [permanent]
+              nullable: true
+            denied_at:
+              type: string
+              format: date-time
+
+    ConsumeResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - id
+            - consumed
+            - consumed_at
+          properties:
+            id:
+              type: string
+              format: uuid
+            consumed:
+              type: boolean
+            consumed_at:
+              type: string
+              format: date-time
+
+    ApprovalSyncResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - pairs
+          properties:
+            pairs:
+              type: array
+              items:
+                $ref: '#/components/schemas/ApprovalPair'
+
+    ApprovalPair:
+      type: object
+      required:
+        - principal
+        - agent_id
+        - approvals
+        - granted_permission_sets
+      properties:
+        principal:
+          type: string
+        agent_id:
+          type: string
+          format: uuid
+        approvals:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolApprovalSummary'
+        granted_permission_sets:
+          type: object
+          description: Permission sets granted to this agent by this principal (future feature — empty initially)
+          additionalProperties: true
+
+    ToolApprovalSummary:
+      type: object
+      required:
+        - id
+        - tool_name
+        - arguments_hash
+        - status
+        - persistence
+        - consumed
+      properties:
+        id:
+          type: string
+          format: uuid
+        tool_name:
+          type: string
+        arguments_hash:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, denied]
+        persistence:
+          type: string
+          enum: [once, session, permanent]
+          nullable: true
+        consumed:
+          type: boolean
+        agent_session_id:
+          type: string
+          nullable: true
+          description: Agent session ID (for session-scoped filtering by ExtProc — stable across MCP reconnects)

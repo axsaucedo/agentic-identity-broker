@@ -1,0 +1,43 @@
+{{- if .Values.ingress.enduser.enabled -}}
+apiVersion: {{ include "agentic-identity-broker.ingress.apiVersion" . }}
+kind: Ingress
+metadata:
+  name: {{ include "agentic-identity-broker.fullname" . }}-enduser
+  namespace: {{ include "agentic-identity-broker.namespace" . }}
+  labels:
+    {{- include "agentic-identity-broker.labels" . | nindent 4 }}
+    app.kubernetes.io/component: enduser
+  {{- with .Values.ingress.enduser.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.enduser.className }}
+  ingressClassName: {{ .Values.ingress.enduser.className }}
+  {{- end }}
+  {{- if .Values.ingress.enduser.tls }}
+  tls:
+    {{- range .Values.ingress.enduser.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.enduser.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "agentic-identity-broker.fullname" $ }}
+                port:
+                  number: {{ $.Values.service.ports.enduser }}
+          {{- end }}
+    {{- end }}
+{{- end }}

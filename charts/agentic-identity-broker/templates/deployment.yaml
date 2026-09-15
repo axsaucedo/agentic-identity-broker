@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentic-identity-broker.fullname" . }}
+  namespace: {{ include "agentic-identity-broker.namespace" . }}
+  labels:
+    {{- include "agentic-identity-broker.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "agentic-identity-broker.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "agentic-identity-broker.podLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "agentic-identity-broker.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: enduser
+          containerPort: {{ .Values.service.ports.enduser }}
+          protocol: TCP
+        - name: admin
+          containerPort: {{ .Values.service.ports.admin }}
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: enduser
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: enduser
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+        env:
+        # JWE signing key for state tokens
+        {{- if or .Values.broker.thirdPartyOauth2.jweSigningKey .Values.broker.thirdPartyOauth2.jweSigningKeyBase64 }}
+        - name: IDENTITY_BROKER_JWE_SIGNING_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.fullname" . }}-jwe-key
+              key: signing-key
+        {{- else if .Values.broker.thirdPartyOauth2.jweSigningKeySecret.name }}
+        - name: IDENTITY_BROKER_JWE_SIGNING_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.broker.thirdPartyOauth2.jweSigningKeySecret.name }}
+              key: {{ .Values.broker.thirdPartyOauth2.jweSigningKeySecret.key | default "signing-key" }}
+        {{- end }}
+        {{- if .Values.broker.encryption.memory.rawKey }}
+        - name: IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.fullname" . }}-encryption
+              key: memory-raw-key
+        {{- end }}
+        {{- if eq .Values.storage.type "postgres" }}
+        # PostgreSQL storage configuration
+        - name: IDENTITY_BROKER_STORAGE_BACKEND
+          value: "postgres"
+        # Database credentials (must be set before POSTGRES_URL for expansion)
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.brokerSecretName" . }}
+              key: {{ .Values.postgresql.external.brokerSecretKeys.username | default "username" }}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.brokerSecretName" . }}
+              key: {{ .Values.postgresql.external.brokerSecretKeys.password | default "password" }}
+        # PostgreSQL connection URL with variable expansion
+        # Uses $(VAR) syntax for Kubernetes variable expansion
+        - name: IDENTITY_BROKER_STORAGE_POSTGRES_URL
+          value: {{ include "agentic-identity-broker.postgresURL" . | quote }}
+        {{- end }}
+        {{- with .Values.broker.extraEnv }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        volumeMounts:
+        - name: config
+          mountPath: /app/config.yaml
+          subPath: config.yaml
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "agentic-identity-broker.fullname" . }}-config
+      - name: tmp
+        emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

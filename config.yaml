@@ -1,0 +1,107 @@
+# Agentic Identity Broker Configuration
+# This is the default configuration file for development
+
+# Logging configuration
+log:
+  level: debug
+  format: json
+
+# Server configuration - dual-port HTTP servers
+server:
+  # End-user facing server (public API)
+  enduser:
+    port: 8000
+    bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
+    # Use port 3000, which points to the Vite dev server locally.
+    public_url: http://localhost:3000
+    # Pre-auth mode trusts principals from reverse proxy headers.
+    authentication:
+      preauth:
+        principal_header_name: X-Remote-User
+    # CORS configuration for local development (allows all origins)
+    cors:
+      allowed_origins:
+        - "*"
+
+  # Admin server (internal management API)
+  admin:
+    port: 14000
+    bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
+    # Optional for the admin server in local development.
+    public_url: http://localhost:14000
+    # Pre-auth mode trusts principals from reverse proxy headers.
+    authentication:
+      preauth:
+        principal_header_name: X-Remote-User
+
+  # Graceful shutdown configuration
+  shutdown:
+    timeout: 30s # Maximum time to wait for in-flight requests to complete
+
+third_party_oauth2:
+  # JWE signing key for state tokens (REQUIRED)
+  # Must be 32 bytes, base64 encoded
+  # Load from environment variable (never commit actual keys!)
+  jwe_signing_key: ${IDENTITY_BROKER_JWE_SIGNING_KEY}
+
+encryption:
+  # Memory backend configuration
+  memory:
+    # Base64-encoded 32-byte AES-256 key (REQUIRED)
+    # Must be exactly 32 bytes (256 bits) when base64-decoded
+    # Generate with: openssl rand -base64 32
+    # SECURITY: Sensitive key material is redacted in logs.
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
+
+# OAuth2 Authorization Server (upstream provider)
+oauth2_authorization_server:
+  # Operation mode: proxy (default), local, or hybrid
+  mode: proxy
+
+  # Upstream OAuth2 server configuration (proxy and hybrid modes)
+  proxy:
+    upstream_issuer_uri: http://127.0.0.1:9001
+    upstream_authorize_endpoint: http://127.0.0.1:9001/oauth/authorize
+    upstream_token_endpoint: http://127.0.0.1:9001/oauth/token
+    # Upstream request timeout
+    upstream_timeout: 10s
+
+  # Supported OAuth2 response types
+  supported_response_types:
+    - code
+
+  # Supported OAuth2 grant types
+  supported_grant_types:
+    - authorization_code
+    - refresh_token
+
+# Security configuration
+security:
+  # Skip HTTPS validation for third-party OAuth2 services (dev/test only!)
+  # Allows HTTP connections to mock OAuth2 services during development
+  skip_thirdparty_https_validation: true
+
+# OpenTelemetry observability configuration
+# Disabled by default. Enable to export traces and metrics to an OTLP collector.
+# Full configuration reference: examples/config/telemetry.yaml
+telemetry:
+  enabled: false
+  # service_name: agentic-identity-broker
+  #
+  # traces:
+  #   enabled: true
+  #   sampling_rate: 0.1   # 10% in production
+  #
+  # metrics:
+  #   enabled: true
+  #   export_interval: 30s
+  #
+  # logs:
+  #   enabled: true  # set false if collector lacks LogsService support
+  #
+  # exporter:
+  #   protocol: grpc       # grpc, http, or https
+  #   endpoint: otel-collector.monitoring.svc:4317
+  #   timeout: 10s
+  #   insecure: false      # TLS enabled by default (gRPC only)
+  #   compression: none    # none or gzip

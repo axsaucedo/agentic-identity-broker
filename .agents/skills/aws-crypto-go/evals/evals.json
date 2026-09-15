@@ -1,0 +1,105 @@
+{
+  "skill_name": "aws-crypto-go",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need to encrypt OAuth2 refresh tokens before storing them in postgres. We're using Go and have a KMS key ARN already. What's the best way to do envelope encryption so we're not hammering KMS on every read?",
+      "should_trigger": true
+    },
+    {
+      "id": 2,
+      "prompt": "how do i set up the hierarchical keyring with dynamodb branch key storage in go? we have a multi-tenant saas and need per-tenant isolation via encryption context",
+      "should_trigger": true
+    },
+    {
+      "id": 3,
+      "prompt": "getting a context_mismatch error when i try to decrypt — the encrypt call used service_id in the encryption context but the decrypt is failing. Go, aws-encryption-sdk",
+      "should_trigger": true
+    },
+    {
+      "id": 4,
+      "prompt": "we want to rotate branch keys in our hierarchical keyring setup. what's the right approach and how does the go sdk handle key versioning?",
+      "should_trigger": true
+    },
+    {
+      "id": 5,
+      "prompt": "I'm writing a Secret value object in Go that wraps ciphertext from the aws encryption sdk. Should i use RequireEncryptRequireDecrypt or RequireEncryptAllowDecrypt for the commitment policy?",
+      "should_trigger": true
+    },
+    {
+      "id": 6,
+      "prompt": "need to add encryption to our token vault service in internal/domain/oauth2session/service.go — we store access and refresh tokens, service_id is the only AAD we want to bind",
+      "should_trigger": true
+    },
+    {
+      "id": 7,
+      "prompt": "setting up the mpl client and esdk client in builder.go for dependency injection. want to wire up the hierarchical keyring once and reuse it. examples?",
+      "should_trigger": true
+    },
+    {
+      "id": 8,
+      "prompt": "what are the import paths for github.com/aws/aws-encryption-sdk in go and how do i initialize NewClient with the right config? getting confused by the release module layout",
+      "should_trigger": true
+    },
+    {
+      "id": 9,
+      "prompt": "we use the java aws encryption sdk today and want to port our service to go. the caching cmm isn't available in go — what's the equivalent?",
+      "should_trigger": true
+    },
+    {
+      "id": 10,
+      "prompt": "implementing an EncryptionPort interface for our hexagonal architecture in go. the port needs Encrypt(ctx, plaintext []byte, context map[string]string) and Decrypt. should use aws kms hierarchical keyring under the hood",
+      "should_trigger": true
+    },
+    {
+      "id": 11,
+      "prompt": "how do i create a KMS key with terraform and set up the key policy so my Go service can call GenerateDataKey?",
+      "should_trigger": false
+    },
+    {
+      "id": 12,
+      "prompt": "I want to encrypt a string in Go using AES-GCM from the standard library. what's the right nonce size and how do i handle key derivation?",
+      "should_trigger": false
+    },
+    {
+      "id": 13,
+      "prompt": "setting up aws secrets manager in Go to store database credentials and rotate them automatically",
+      "should_trigger": false
+    },
+    {
+      "id": 14,
+      "prompt": "how do i sign JWT tokens in go using RS256? i have a private key in PEM format and want to use the golang-jwt library",
+      "should_trigger": false
+    },
+    {
+      "id": 15,
+      "prompt": "i need to encrypt files at rest in an S3 bucket using SSE-KMS. what's the right bucket policy and do i need to do anything on the client side?",
+      "should_trigger": false
+    },
+    {
+      "id": 16,
+      "prompt": "our python microservice uses the aws encryption sdk to encrypt user data — can you review this encrypt call and make sure the encryption context is right?",
+      "should_trigger": false
+    },
+    {
+      "id": 17,
+      "prompt": "how do I use golang.org/x/crypto/nacl/secretbox for symmetric encryption? I just want simple encrypt/decrypt without any key management infrastructure",
+      "should_trigger": false
+    },
+    {
+      "id": 18,
+      "prompt": "we're using AWS KMS directly (not the encryption sdk) in Go — just calling kms.Encrypt and kms.Decrypt. is that ok for our use case or should we switch to envelope encryption?",
+      "should_trigger": false
+    },
+    {
+      "id": 19,
+      "prompt": "setting up end-to-end encryption for messages using libsodium bindings in Go — need sealed boxes for asymmetric encryption between clients",
+      "should_trigger": false
+    },
+    {
+      "id": 20,
+      "prompt": "I want to hash passwords in Go for a user database. should i use bcrypt or argon2? what cost factors are reasonable for a web app in 2025?",
+      "should_trigger": false
+    }
+  ]
+}

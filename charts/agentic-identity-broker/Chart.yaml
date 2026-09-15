@@ -1,0 +1,16 @@
+apiVersion: v2
+name: agentic-identity-broker
+description: Helm chart for deploying the Agentic Identity Broker on Kubernetes
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - oauth2
+  - identity
+  - broker
+  - authentication
+maintainers:
+  - name: Agentic Identity Broker Team
+home: https://github.com/zalando-incubator/agentic-identity-broker
+sources:
+  - https://github.com/zalando-incubator/agentic-identity-broker

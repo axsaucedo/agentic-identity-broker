@@ -1,0 +1,81 @@
+# OAuth2 Hybrid Mode Configuration
+#
+# Hybrid mode allows both proxy agents (with an upstream client_id) and local
+# agents (plain or CIMD) to coexist in a single broker deployment.
+#
+# Agent classification is property-based — no new config fields on agents:
+#   - Agent.ClientID is set        → ProxyClient  (forwarded to upstream)
+#   - Agent.ClientURIs is set      → CIMDClient   (tokens issued locally, CIMD)
+#   - Neither field is set         → LocalClient  (tokens issued locally)
+#
+# Both the `proxy` and `local` sections are REQUIRED in hybrid mode.
+
+# Dual-server architecture: end-user and admin on separate ports
+server:
+  enduser:
+    port: 8000
+    bind: "0.0.0.0"
+    public_url: "https://broker.example.com"
+    authentication:
+      preauth:
+        principal_header_name: "X-Remote-User"
+  admin:
+    port: 14000
+    bind: "0.0.0.0"
+    public_url: "https://broker.example.com:14000"
+    authentication:
+      preauth:
+        principal_header_name: "X-Remote-User"
+
+# OAuth2 authorization server configuration
+oauth2_authorization_server:
+  # Mode: "hybrid" accepts all client modes in a single deployment.
+  mode: "hybrid"
+
+  # Proxy section: upstream OAuth2 server for ProxyClient agents (required in hybrid mode)
+  proxy:
+    upstream_issuer_uri: "https://auth.example.com"
+    upstream_authorize_endpoint: "https://auth.example.com/authorize"
+    upstream_token_endpoint: "https://auth.example.com/token"
+    upstream_timeout: 30s
+    upstream_jwks_min_refresh: "15m"
+    upstream_jwks_max_refresh: "1h"
+
+  # Local section: token issuance for LocalClient and CIMDClient agents (required in hybrid mode)
+  local:
+    token_ttl: "1h"
+    token_claims_expression: ""
+    signing_keys:
+      # Startup budget for initial signing-key bootstrap in hybrid mode.
+      bootstrap_timeout: 90s
+
+  # Optional: enable CIMD support for CIMDClient agents (allowed in hybrid mode)
+  # cimd:
+  #   enabled: true
+  #   fetch_timeout: "1s"
+  #   max_response_bytes: 5120
+  #   cache:
+  #     min_ttl: "60s"
+  #     max_ttl: "1h"
+  #     max_entries: 1000
+
+  supported_response_types:
+    - code
+
+  supported_grant_types:
+    - authorization_code
+    - client_credentials
+
+# Storage backend
+storage:
+  backend: "memory" # Use "postgres" for production
+
+# Encryption for signing key private material (required in hybrid/local mode)
+encryption:
+  memory:
+    raw_key: "base64-encoded-32-byte-key" # Use "aws_kms" for production
+
+# Logging
+log:
+  level: "info"
+  format: "json"

@@ -1,0 +1,200 @@
+{{- if and (eq .Values.storage.type "postgres") .Values.migration.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "agentic-identity-broker.fullname" . }}-migrate
+  namespace: {{ include "agentic-identity-broker.namespace" . }}
+  labels:
+    {{- include "agentic-identity-broker.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    # Run before broker deployment is created/upgraded
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "{{ .Values.migration.hookWeight }}"
+    # Delete previous migration Job before creating new one
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  ttlSecondsAfterFinished: {{ .Values.migration.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      name: {{ include "agentic-identity-broker.fullname" . }}-migrate
+      labels:
+        {{- include "agentic-identity-broker.podLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # Use dedicated ServiceAccount for migration (least privilege)
+      serviceAccountName: {{ include "agentic-identity-broker.fullname" . }}-migrate
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if or .Values.postgresql.operator.enabled .Values.migration.grants.enabled }}
+      initContainers:
+      {{- else }}
+      initContainers: []
+      {{- end }}
+      {{- if .Values.postgresql.operator.enabled }}
+      # Init container to wait for PostgreSQL to be ready
+      - name: wait-for-postgres
+        image: {{ .Values.migration.grants.image | quote }}
+        command:
+          - sh
+          - -c
+          - |
+            echo "Waiting for PostgreSQL to be ready..."
+            until pg_isready -h {{ include "agentic-identity-broker.postgresHost" . }} -p 5432 -U ${DB_USERNAME}; do
+              echo "PostgreSQL is unavailable - sleeping 5s"
+              sleep 5
+            done
+            echo "PostgreSQL is ready!"
+        env:
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.migrationSecretName" . }}
+              key: {{ .Values.postgresql.external.migrationSecretKeys.username | default "username" }}
+        resources:
+          {{- toYaml .Values.postgresql.operator.initContainerResources | nindent 10 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 999
+          capabilities:
+            drop:
+              - ALL
+      {{- end }}
+      {{- if .Values.migration.grants.enabled }}
+      # Init container to run schema migrations before grants are applied
+      - name: migrate
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.migration.image.repository }}:{{ .Values.migration.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.migration.image.pullPolicy }}
+        # Uses migration image entrypoint (/usr/local/bin/migrate)
+        args:
+          - "-path"
+          - "/app/migrations"
+          - "-database"
+          - "{{ include "agentic-identity-broker.postgresURL" . }}"
+          - "up"
+        resources:
+          {{- toYaml .Values.migration.resources | nindent 10 }}
+        env:
+        # Migration user credentials (schema permissions)
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.migrationSecretName" . }}
+              key: {{ .Values.postgresql.external.migrationSecretKeys.username | default "username" }}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.migrationSecretName" . }}
+              key: {{ .Values.postgresql.external.migrationSecretKeys.password | default "password" }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      {{- end }}
+      containers:
+      {{- if .Values.migration.grants.enabled }}
+      # Main container: apply SQL grants to the broker user after migrations complete
+      - name: apply-grants
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 999
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        image: {{ .Values.migration.grants.image | quote }}
+        imagePullPolicy: IfNotPresent
+        command: ["sh", "-c"]
+        args:
+          - |
+            set -euo pipefail
+            echo "Applying database grants for broker user: $BROKER_USERNAME"
+            psql -v ON_ERROR_STOP=1 -1 -v broker_user="$BROKER_USERNAME" -f /etc/grants/grants.sql
+            echo "Grants applied successfully"
+        resources:
+          {{- toYaml .Values.migration.resources | nindent 10 }}
+        env:
+        # Connection details (migration user has privileges to grant)
+        - name: PGHOST
+          value: {{ include "agentic-identity-broker.postgresHost" . }}
+        - name: PGPORT
+          value: "5432"
+        - name: PGDATABASE
+          value: {{ if .Values.postgresql.external.enabled }}{{ .Values.postgresql.external.database }}{{ else }}{{ .Values.postgresql.operator.database }}{{ end }}
+        - name: PGUSER
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.migrationSecretName" . }}
+              key: {{ .Values.postgresql.external.migrationSecretKeys.username | default "username" }}
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.migrationSecretName" . }}
+              key: {{ .Values.postgresql.external.migrationSecretKeys.password | default "password" }}
+        - name: PGSSLMODE
+          value: {{ if .Values.postgresql.external.enabled }}{{ .Values.postgresql.external.sslMode }}{{ else }}require{{ end }}
+        # Broker username to receive the grants
+        - name: BROKER_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.brokerSecretName" . }}
+              key: {{ .Values.postgresql.external.brokerSecretKeys.username | default "username" }}
+        - name: PSQL_HISTORY
+          value: /tmp/.psql_history
+        volumeMounts:
+        - name: grants
+          mountPath: /etc/grants
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+      {{- else }}
+      # Grants disabled: run schema migrations as the main container
+      - name: migrate
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.migration.image.repository }}:{{ .Values.migration.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.migration.image.pullPolicy }}
+        # Uses migration image entrypoint (/usr/local/bin/migrate)
+        args:
+          - "-path"
+          - "/app/migrations"
+          - "-database"
+          - "{{ include "agentic-identity-broker.postgresURL" . }}"
+          - "up"
+        resources:
+          {{- toYaml .Values.migration.resources | nindent 10 }}
+        env:
+        # Migration user credentials (schema permissions)
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.migrationSecretName" . }}
+              key: {{ .Values.postgresql.external.migrationSecretKeys.username | default "username" }}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.migrationSecretName" . }}
+              key: {{ .Values.postgresql.external.migrationSecretKeys.password | default "password" }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      {{- end }}
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      {{- if .Values.migration.grants.enabled }}
+      - name: grants
+        configMap:
+          name: {{ include "agentic-identity-broker.fullname" . }}-grants
+          defaultMode: 0444
+      {{- end }}
+{{- end }}

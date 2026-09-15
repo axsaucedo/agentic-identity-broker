@@ -1,0 +1,281 @@
+# OAuth2 User Impersonation Configuration (RFC 8693, signed + unverified subject)
+#
+# Configures the identity broker as a standalone OAuth2 authorization server
+# ("local" mode) that additionally accepts RFC 8693 token-exchange requests to
+# impersonate an end user. A privileged client presents a SIGNED client assertion
+# and a SIGNED actor token, plus a subject credential that is either a SIGNED
+# subject token (rules 1-2) or an UNSIGNED (alg:none) unverified subject JWT under
+# the RFC 8693 JWT token type when rule 3 declares `verification: none` (FR-003d / ADR 031). The broker mints a
+# locally signed access token whose `sub` is the impersonated subject and whose
+# `act` claim records the actor.
+#
+# when its single `audience` is `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`. Both forms resolve
+# to the same registered target agent; its UUID, not the requested identifier, supplies issued `agent_id`.
+# Local `token_claims_expression` controls `aud` exactly as it does for normal local issuance.
+# This example is a COMPLETE, bootable local-mode configuration: it can be run
+# directly with `--config ./examples/config/impersonation.yaml`.
+
+# Logging
+log:
+  level: "info"
+  format: "json"
+
+# Dual-server architecture: end-user and admin on separate ports
+server:
+  enduser:
+    port: 8000
+    bind: "0.0.0.0"
+    public_url: "https://broker.example.com"
+    authentication:
+      preauth:
+        principal_header_name: "X-Remote-User"
+  admin:
+    port: 14000
+    bind: "0.0.0.0"
+    public_url: "https://broker.example.com:14000"
+    authentication:
+      preauth:
+        principal_header_name: "X-Remote-User"
+
+# Storage backend
+storage:
+  backend: "memory" # Use "postgres" for production
+
+# Encryption for signing key private material
+encryption:
+  memory:
+    # Base64-encoded 32-byte AES-256 key. Fixed dev key — never use in production.
+    # Generate a real one with: openssl rand -base64 32
+    raw_key: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+
+# Third-party OAuth2 token vault. jwe_signing_key is required to seal ephemeral state tokens;
+# impersonation does not use the vault but the broker requires this key to start.
+third_party_oauth2:
+  # Base64-encoded 32-byte key. Fixed dev key — never use in production.
+  jwe_signing_key: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+  state_token_ttl: "10m"
+  pkce_verifier_length: 32
+
+# OAuth2 authorization server configuration
+oauth2_authorization_server:
+  # Impersonation requires "local" mode; the broker mints its own tokens.
+  mode: "local"
+
+  # Local section: token issuance configuration (required in local mode).
+  local:
+    issuer_uri: "https://broker.example.com"
+    token_ttl: "1h"
+    # Existing local-token policy receives the audience-selected target as `agent` and owns aud.
+    token_claims_expression: |
+      principal.email == "" ? {"aud": "https://policy.example.com"} : {
+        "aud": "https://policy.example.com", "email": principal.email
+      }
+    signing_keys:
+      # Startup budget for initial signing-key bootstrap in local mode.
+      bootstrap_timeout: 90s
+
+  # RFC 8693 user impersonation (signed subject).
+  impersonation:
+    # CR-001: routing-only URI prefix. Requests must use
+    # `<audience_prefix>/<canonical lower-case AgentID UUID or canonical_id>`; the target must be
+    # registered. This does not set the issued token's `aud`; local token_claims_expression remains authoritative.
+    audience_prefix: "https://broker.example.com/impersonation"
+
+    # Every successful impersonation also requires an active UserGrant for the subject extracted
+    # from subject_token and the audience-selected target agent. This is mandatory for every
+    # rule, including verification:none; a missing or expired grant returns access_denied with
+    # an error_uri to that target agent's existing consent-management page.
+
+    # CR-002: non-empty, ordered; evaluated first-match (FR-004a). Both rules
+    # below trust the SAME issuer (https://idp.internal.example.com), demonstrating
+    # cross-rule trusted-issuer reuse (FR-014); CR-008 uniqueness is scoped WITHIN
+    # a rule, so reuse across rules is permitted.
+    rules:
+
+      # -------- Rule 1: production gateway impersonation --------
+      - name: "internal-gateway-prod" # CR-003: unique, operator-facing name.
+
+        # CR-003: role semantics keyed by role name (a role cannot be declared
+        # twice); client_assertion, actor, and subject are all required. Field
+        # names match token_exchange / jwt (`expected_audience`,
+        # `principal_expression`, `email_expression`).
+        roles:
+          client_assertion:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "client_assertion.sub"
+          actor:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "actor_token.sub"
+          subject:
+            # Signed subject validated against a trusted issuer.
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "subject_token.sub"
+            email_expression: "has(subject_token.email) ? subject_token.email : ''"
+
+        # Trust ANCHORS (CR-007/CR-008): issuer + JWKS discovery + algorithms +
+        # which roles the issuer may sign.
+        trusted_issuers:
+          - issuer_uri: "https://idp.internal.example.com"
+            jwks_uri: "https://idp.internal.example.com/.well-known/jwks.json"
+            jwks_min_refresh: "15m"
+            jwks_max_refresh: "1h"
+            allowed_algorithms: ["ES256", "RS256"] # CR-007: asymmetric only; no HS*/none
+            # CR-008: every signed role is covered by at least one trusted issuer.
+            signs_roles: ["client_assertion", "actor", "subject"]
+
+        # CR-005: symmetric with token_exchange AuthorizationConfig
+        # (type + cel.expression + cel.evaluation_timeout).
+        authorization:
+          type: cel
+          cel:
+            expression: |
+              client_assertion.iss == "https://idp.internal.example.com" &&
+              client_assertion.sub == "gateway-prod"
+            evaluation_timeout: "100ms"
+
+      # -------- Rule 2: staging gateway impersonation (same trusted issuer) --------
+      - name: "internal-gateway-staging"
+
+        roles:
+          client_assertion:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "client_assertion.sub"
+          actor:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "actor_token.sub"
+          subject:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "subject_token.sub"
+            email_expression: "has(subject_token.email) ? subject_token.email : ''"
+
+        trusted_issuers:
+          # FR-014: same issuer_uri reused across rules (trusted independently here).
+          - issuer_uri: "https://idp.internal.example.com"
+            jwks_uri: "https://idp.internal.example.com/.well-known/jwks.json"
+            jwks_min_refresh: "15m"
+            jwks_max_refresh: "1h"
+            allowed_algorithms: ["ES256", "RS256"]
+            signs_roles: ["client_assertion", "actor", "subject"]
+
+        authorization:
+          type: cel
+          cel:
+            expression: |
+              client_assertion.iss == "https://idp.internal.example.com" &&
+              client_assertion.sub == "gateway-staging"
+            evaluation_timeout: "100ms"
+
+      # -------- Rule 3: chat-bridge impersonation (UNVERIFIED subject, FR-003d) --------
+      # A privileged client (e.g. a Slack / Google Chat bridge) holds no signed subject
+      # token. It sends subject_token_type = urn:ietf:params:oauth:token-type:jwt with an
+      # UNSIGNED (alg:none) subject JWT carrying the principal id and email.
+      #
+      # Governance: this is the single bounded exception to Constitution Principle I,
+      # authorized by ADR 031. The subject is NOT signature-verified and NOT resolved
+      # against any trusted issuer; trust derives solely from the signed client_assertion
+      # plus this rule's subject-binding authorization predicate.
+      - name: "chat-bridge"
+
+        roles:
+          client_assertion:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "client_assertion.sub"
+          actor:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "actor_token.sub"
+          subject:
+            # FR-003d: unsigned unverified subject. No expected_audience (there is no
+            # signature or audience to check). The client sends it under the RFC 8693 JWT token
+            # type shown above.
+            verification: "none"
+            principal_expression: "subject_token.sub"
+            # FR-006a: this caller-controlled email is minted ONLY because the authorization
+            # predicate below binds subject_token.email.
+            email_expression: "has(subject_token.email) ? subject_token.email : ''"
+
+        trusted_issuers:
+          # FR-014: the SAME issuer_uri is reused again — here it signs only the
+          # client_assertion and actor roles. CR-008: the unverified subject role MUST NOT
+          # appear in any signs_roles (it is never signature-verified).
+          - issuer_uri: "https://idp.internal.example.com"
+            jwks_uri: "https://idp.internal.example.com/.well-known/jwks.json"
+            jwks_min_refresh: "15m"
+            jwks_max_refresh: "1h"
+            allowed_algorithms: ["ES256", "RS256"]
+            signs_roles: ["client_assertion", "actor"]
+
+        # FR-007a/CR-005a: a rule that accepts the unverified subject mode MUST reference
+        # subject_token in its single authorization predicate (verified at startup from the
+        # compiled expression). This one also binds subject_token.email so the minted email
+        # is authorized (FR-006a). A predicate constraining only client_assertion would fail
+        # startup for an unverified rule.
+        authorization:
+          type: cel
+          cel:
+            expression: |
+              client_assertion.iss == "https://idp.internal.example.com" &&
+              client_assertion.sub == "chat-bridge" &&
+              subject_token.sub != "" &&
+              has(subject_token.email) && subject_token.email.endsWith("@example.com")
+            evaluation_timeout: "100ms"
+
+      # -------- Rule 4: audience-less client assertion (CR-009) --------
+      # The client-assertion IdP mints signed assertions without an aud claim. This role sets
+      # audience_requirement: absent instead of expected_audience. The broker accepts the
+      # credential only when it has no aud. The authorization predicate must reference
+      # client_assertion (CR-009).
+      - name: "audienceless-gateway"
+        roles:
+          client_assertion:
+            audience_requirement: absent
+            principal_expression: "client_assertion.sub"
+          actor:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "actor_token.sub"
+          subject:
+            expected_audience: "https://broker.example.com/impersonation"
+            principal_expression: "subject_token.sub"
+            email_expression: "has(subject_token.email) ? subject_token.email : ''"
+        trusted_issuers:
+          - issuer_uri: "https://idp.internal.example.com"
+            jwks_uri: "https://idp.internal.example.com/.well-known/jwks.json"
+            jwks_min_refresh: "15m"
+            jwks_max_refresh: "1h"
+            allowed_algorithms: ["ES256", "RS256"]
+            signs_roles: ["client_assertion", "actor", "subject"]
+        authorization:
+          type: cel
+          cel:
+            expression: |
+              client_assertion.iss == "https://idp.internal.example.com" &&
+              client_assertion.sub == "audienceless-gateway"
+            evaluation_timeout: "100ms"
+
+# ---------------------------------------------------------------------------
+# Startup validation contract (fail-closed); every failure yields an actionable
+# config error with an indexed field path, e.g.
+#   oauth2_authorization_server.impersonation.rules[1].trusted_issuers[0].allowed_algorithms
+#   CR-001  audience_prefix is a valid routing URI prefix; requests require a canonical lower-case AgentID UUID or canonical_id suffix.
+#   CR-002  rules non-empty, ordered.
+#   CR-003  each rule: unique name; roles map keys subset of
+#           {client_assertion, actor, subject}; all three required; each role
+#           requires principal_expression; email_expression allowed on subject only.
+#   CR-004  local issuer_uri MUST NOT be a trusted issuer that signs client_assertion.
+#   CR-005  authorization.type == "cel"; authorization.cel.expression required,
+#           compiles at startup; evaluation_timeout in [10ms,5s], default 100ms.
+#   CR-005a unverified subject (verification: none) is OFF unless a rule declares it; a rule
+#           that accepts it MUST reference subject_token in its authorization predicate
+#           (verified at startup); a caller-controlled email is minted only when the predicate
+#           binds subject_token.email (FR-006a).
+#   CR-006  impersonation block rejected outside local mode.
+#   CR-007  allowed_algorithms subset of
+#           {RS256,RS384,RS512,PS256,PS384,PS512,ES256,ES384,ES512,EdDSA}; none/HS* rejected.
+#           Governs SIGNED credentials only; the unsigned unverified subject is not checked.
+#   CR-008  within a rule: issuer_uri unique across trusted_issuers; every signs_roles entry
+#           is a defined signed role; each SIGNED role is covered by at least one trusted
+#           issuer; a subject whose verification is "none" MUST NOT appear in any signs_roles.
+#           Duplicates across rules OK.
+#   CR-009  a signed role may set audience_requirement: absent (the only value) instead of
+#           expected_audience. These fields are mutually exclusive. This setting is forbidden
+#           on an unverified subject. The rule's predicate MUST reference the role.
+# ---------------------------------------------------------------------------

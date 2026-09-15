@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "agentic-identity-broker.fullname" . }}-test-connection"
+  namespace: {{ include "agentic-identity-broker.namespace" . }}
+  labels:
+    {{- include "agentic-identity-broker.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  containers:
+  - name: wget
+    image: busybox:1.36
+    command: ['wget']
+    args:
+    - '--spider'
+    - '--timeout=5'
+    - 'http://{{ include "agentic-identity-broker.fullname" . }}:{{ .Values.service.ports.enduser }}/health'
+  restartPolicy: Never

@@ -1,0 +1,24 @@
+# Agentic Identity Broker - Minimal Configuration
+# This is the most minimal valid configuration using all defaults
+# Log settings are optional - if not provided, defaults are used:
+#   level: info
+#   format: text
+#
+# Server settings (port, bind, authentication) use defaults:
+#   enduser.port: 8000
+#   enduser.bind: ::
+#   admin.port: 14000
+#   admin.bind: ::
+#   authentication.preauth.principal_header_name: X-Remote-User
+
+log:
+  level: info
+  format: text
+
+storage:
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s
+
+# All other settings (including server and authentication) use built-in defaults

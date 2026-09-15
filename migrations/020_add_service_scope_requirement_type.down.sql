@@ -1,0 +1,1 @@
+ALTER TABLE permission_set_service_scopes DROP COLUMN requirement_type;

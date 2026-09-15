@@ -1,0 +1,25 @@
+server:
+  port: 9001
+  bind: "0.0.0.0"
+
+oauth2:
+  client_id: "upstream-oauth2-client"
+  client_secret: "upstream-oauth2-secret-xyz"
+  access_token_ttl: 3600s
+  refresh_token_ttl: 604800s
+  authorization_code_ttl: 300s
+
+  scopes:
+    - name: "openid"
+      description: "OpenID Connect scope"
+    - name: "profile"
+      description: "Access user profile information"
+    - name: "email"
+      description: "Access email address"
+    - name: "groups"
+      description: "Access user group memberships"
+
+mock_user:
+  sub: "dev@example.com"
+  name: "Upstream Test User"
+  email: "dev@example.com"

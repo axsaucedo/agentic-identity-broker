@@ -1,0 +1,105 @@
+# Agentic Identity Broker - AWS Emulator Development Configuration
+# Use this configuration for local development and testing with a LocalStack-compatible AWS emulator
+# This demonstrates the AWS SDK configuration injection capabilities
+# Floci is the repo's default emulator: docker run -d -p 4566:4566 floci/floci:1.5.23
+# LocalStack also works: docker run -d -p 4566:4566 localstack/localstack
+# To run: agentic-identity-broker --config ./examples/config/config.aws-emulator.yaml
+
+log:
+  # Debug level for development
+  level: debug
+  # Text format for easier reading during development
+  format: text
+
+server:
+  # End-user server configuration
+  enduser:
+    port: 8000
+    bind: "127.0.0.1" # localhost for development
+    public_url: "http://localhost:8000"
+    authentication:
+      preauth:
+        principal_header_name: "X-Remote-User"
+
+  # Admin server configuration
+  admin:
+    port: 14000
+    bind: "127.0.0.1" # localhost for development
+    public_url: "http://localhost:14000"
+    authentication:
+      preauth:
+        principal_header_name: "X-Remote-User"
+
+  # Quick shutdown for development
+  shutdown:
+    timeout: 5s
+
+storage:
+  # Memory backend for development
+  backend: memory
+  timeouts:
+    read: 2s
+    write: 5s
+
+encryption:
+  # AWS KMS backend configured for LocalStack-compatible AWS emulator testing
+  aws_kms:
+    # Test KMS key ARN (LocalStack-compatible emulators typically use account ID 000000000000)
+    key_arn: "arn:aws:kms:eu-central-1:000000000000:key/test-encryption-key"
+
+    # DynamoDB table for branch key caching
+    dynamodb_table_name: "TestBranchKeys"
+    branch_key_ttl: "30m" # Shorter TTL for testing
+
+    # AWS SDK Configuration (NEW CAPABILITIES)
+    # These fields enable flexible AWS configuration injection
+
+    # Region override (required for most AWS emulators)
+    region: "eu-central-1"
+
+    # Custom endpoints for emulator services
+    kms_endpoint: "http://localhost:4566"
+    dynamodb_endpoint: "http://localhost:4566"
+
+    # Static credentials for emulator use (prefer environment variables in production)
+    access_key_id: "${AWS_ACCESS_KEY_ID}"
+    secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+
+    # Disable SSL verification for local emulator HTTP endpoints
+    # WARNING: Only use for development/testing!
+    disable_ssl: true
+
+    # Alternative configurations (commented out):
+
+    # Production IAM role assumption:
+    # assume_role_arn: "arn:aws:iam::123456789012:role/EncryptionRole"
+
+    # AWS profile for credentials:
+    # profile: "development"
+
+    # Custom region for DynamoDB (if different from KMS region):
+    # dynamodb_region: "us-west-2"
+
+# Environment variable alternatives:
+# You can also use environment variables for these settings:
+#
+# IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN=arn:aws:kms:eu-central-1:000000000000:key/test
+# IDENTITY_BROKER_ENCRYPTION_AWS_KMS_REGION=eu-central-1
+# IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KMS_ENDPOINT=http://localhost:4566
+# IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_ENDPOINT=http://localhost:4566
+# IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ACCESS_KEY_ID=test
+# IDENTITY_BROKER_ENCRYPTION_AWS_KMS_SECRET_ACCESS_KEY=test
+# IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DISABLE_SSL=true
+
+# Additional use cases demonstrated by this configuration:
+#
+# 1. AWS Emulator Testing: Custom endpoints + static credentials + SSL disable
+# 2. Production Flexibility: Region overrides, IAM role assumption
+# 3. Multi-Region Deployment: Separate regions for KMS and DynamoDB
+# 4. Credential Management: Static keys, profiles, or role assumption
+# 5. Development Iteration: Shorter TTLs, custom table names
+#
+# This configuration maintains backward compatibility:
+# - Empty/omitted fields use AWS SDK defaults
+# - Existing configurations continue to work unchanged
+# - Port interfaces remain unchanged (hexagonal architecture preserved)

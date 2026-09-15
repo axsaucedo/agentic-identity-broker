@@ -1,0 +1,3051 @@
+openapi: 3.0.3
+info:
+  title: Agentic Identity Broker - Admin Server API
+  version: 1.0.0
+  description: |
+    Administrative REST APIs for the Agentic Identity Broker running on Port 14000.
+
+    ## Overview
+
+    The Admin Server provides full CRUD operations for managing:
+    - **AI Agents**: Registry of agents that can request delegated user permissions
+    - **Third-Party OAuth2 Services**: External OAuth2 providers (GitHub, Google, Databricks, etc.)
+    - **System Health**: Monitoring and health check endpoints
+
+    ## Dual-Port Architecture
+
+    The Agentic Identity Broker uses a dual-port HTTP server architecture:
+    - **Port 8000** (default): End-user server for consent management
+    - **Port 14000** (default): Admin server for configuration (this API)
+
+    ## Authentication & Authorization
+
+    All endpoints require authentication via reverse proxy (oauth2-proxy, nginx, etc.).
+    The proxy validates user credentials and sets the principal identifier in the
+    `X-Remote-User` header (configurable via `auth.principal_header`).
+
+    - **Admin endpoints**: Require administrative privileges (enforced at proxy level)
+    - **Health endpoint**: Public, no authentication required
+
+    ## Security Considerations
+
+    ### Client Secret Protection (SR-003)
+
+    - Client secrets are **NEVER** transmitted in plaintext to the frontend
+    - All API responses redact secrets with the value `"REDACTED"`
+    - Secrets are encrypted at rest using AES-256-GCM
+    - Update operations support secret rotation
+
+    ### URL Validation
+
+    - All URLs must use HTTP or HTTPS schemes
+    - OAuth2 issuer URIs **must** use HTTPS
+    - Metadata URLs **must** use HTTPS
+    - URL validation prevents injection attacks
+
+    ### Referential Integrity
+
+    - Services cannot be deleted if user grants reference them (409 Conflict)
+    - Agent deletion cascades to associated grants (logged for audit)
+
+    ## OAuth2 Discovery Support
+
+    Services can be configured with automatic endpoint discovery:
+    - **Enabled**: System fetches endpoints from `{issuer_uri}/.well-known/oauth-authorization-server`
+    - **Disabled**: Requires manual `token_endpoint` and `authorize_endpoint` configuration
+    - **Metadata URL**: Optional override for non-standard discovery locations
+
+
+    ## Trace Correlation
+
+    By default, every HTTP response from this API includes the additive W3C
+    `traceresponse` response header.
+
+    - The header applies globally across this API, including successful responses and error responses.
+    - Its `<trace-id>` field is the request correlation identifier operators can use to find matching logs.
+    - The header is additive only; no request or response body schema changes are introduced by this feature.
+    - Emission is enabled by default and can be disabled only through `request_context.trace.response_enabled`.
+
+    ## Error Handling
+
+    All error responses follow a consistent format with appropriate HTTP status codes.
+    See the ErrorResponse schema for details.
+
+  contact:
+    name: Agentic Identity Broker Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:14000
+    description: Admin server (default port 14000)
+  - url: http://localhost:8000
+    description: End-user server (health endpoint only)
+
+tags:
+  - name: Health
+    description: Health check and monitoring endpoints
+  - name: Agents
+    description: Administrative operations for AI agent registry management
+  - name: Services
+    description: Administrative operations for third-party OAuth2 service configurations
+  - name: PermissionSets
+    description: CRUD operations for permission set management
+  - name: Client Credentials
+    description: Broker-issued client credential management for agents
+  - name: Signing Keys
+    description: OAuth2 server signing key management
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      description: |
+        Returns the current health status of the HTTP server. Each server (end-user and admin)
+        has its own independent health endpoint that reports only that server's status.
+
+        This endpoint is **public** and does not require authentication.
+
+        **Status Codes**:
+        - `200 OK`: Server is healthy and accepting requests
+        - `503 Service Unavailable`: Server is starting, shutting down, or unhealthy
+
+        **Health States**:
+        - `healthy`: Server is operational and processing requests normally
+        - `starting`: Server is initializing (binding to port, setting up routes)
+        - `shutting_down`: Graceful shutdown in progress, completing in-flight requests
+        - `unhealthy`: Server encountered an error and requires restart
+      operationId: getHealth
+      tags:
+        - Health
+      security: []  # Public endpoint, no authentication required
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                healthy_admin:
+                  summary: Healthy admin server
+                  value:
+                    status: healthy
+                    timestamp: '2025-12-19T10:30:00Z'
+                    uptime_seconds: 3600
+        '503':
+          description: Server is unavailable (starting, shutting down, or unhealthy)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                starting:
+                  summary: Server starting
+                  value:
+                    status: starting
+                    timestamp: '2025-12-19T10:25:00Z'
+                    uptime_seconds: 0
+                shutting_down:
+                  summary: Server shutting down
+                  value:
+                    status: shutting_down
+                    timestamp: '2025-12-19T11:30:00Z'
+                    uptime_seconds: 7200
+
+  /api/agents:
+    get:
+      summary: List all agents
+      description: |
+        Retrieve a list of all registered agents in the system.
+
+        Returns a direct array of agent objects (no envelope).
+        Agents are returned in no guaranteed order.
+      operationId: listAgents
+      tags:
+        - Agents
+      parameters:
+        - $ref: '#/components/parameters/PreferCanonicalReferences'
+      responses:
+        '200':
+          description: List of agents retrieved successfully
+          headers:
+            Preference-Applied:
+              $ref: '#/components/headers/PreferenceApplied'
+            Vary:
+              $ref: '#/components/headers/VaryPrefer'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Agent'
+              examples:
+                multiple_agents:
+                  summary: Multiple agents
+                  value:
+                    - id: 550e8400-e29b-41d4-a716-446655440000
+                      client_id: agent-research-assistant
+                      display_name: Research Assistant
+                      description: AI assistant that helps with academic research
+                      governance_url: https://example.com/governance/research-assistant
+                      user_documentation_url: https://example.com/docs/research-assistant
+                      permission_sets:
+                        - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                          requirement_type: mandatory
+                      created_at: '2025-12-01T10:00:00Z'
+                      updated_at: '2025-12-01T10:00:00Z'
+                    - id: 660e8400-e29b-41d4-a716-446655440001
+                      client_id: agent-data-analyst
+                      external_id: gov-sys-12345
+                      display_name: Data Analyst
+                      description: Analyzes datasets and generates insights
+                      permission_sets:
+                        - permission_set_id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                          requirement_type: mandatory
+                      created_at: '2025-12-05T14:30:00Z'
+                      updated_at: '2025-12-10T09:15:00Z'
+                empty_list:
+                  summary: No agents configured
+                  value: []
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create a new agent
+      description: |
+        Register a new AI agent in the identity broker system.
+
+        The `client_id` field is the upstream OAuth2 client ID used when proxying
+        authorization requests to the upstream server.
+
+        **client_id uniqueness depends on configuration**:
+        - When `multi_agent_client.enabled = false` (default): `client_id` must be unique
+          across all agents. Returns `409 Conflict` if a duplicate `client_id` is detected.
+        - When `multi_agent_client.enabled = true`: Multiple agents may share the same
+          `client_id`. No uniqueness validation is performed.
+
+        **Validation Rules**:
+        - `client_id`: Optional; when provided must be non-empty; unique across all agents when `multi_agent_client.enabled = false`
+        - `display_name`: Required, max 255 characters
+        - `description`: Required, max 1000 characters
+        - URLs: Must be valid HTTP/HTTPS URLs if provided
+
+        **ID Generation**: System generates a UUID for the agent ID. `client_id` is not auto-generated — omit it for agents that do not need one.
+      operationId: createAgent
+      tags:
+        - Agents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentCreateRequest'
+            examples:
+              minimal:
+                summary: Minimal agent
+                value:
+                  client_id: agent-simple-assistant
+                  display_name: Simple Assistant
+                  description: A basic AI assistant for general tasks
+                  permission_sets:
+                    - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                      requirement_type: mandatory
+              full:
+                summary: Full agent with all fields
+                value:
+                  client_id: agent-research-assistant
+                  external_id: gov-sys-12345
+                  display_name: Research Assistant
+                  description: AI assistant that helps with academic research by accessing papers, datasets, and citation databases
+                  governance_url: https://example.com/governance/research-assistant
+                  user_documentation_url: https://example.com/docs/research-assistant
+                  agent_interface_url: https://example.com/agent/research-assistant
+                  permission_sets:
+                    - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                      requirement_type: mandatory
+                    - permission_set_id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                      requirement_type: optional
+      responses:
+        '201':
+          description: Agent created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440000
+                client_id: agent-research-assistant
+                external_id: gov-sys-12345
+                display_name: Research Assistant
+                description: AI assistant that helps with academic research
+                governance_url: https://example.com/governance/research-assistant
+                user_documentation_url: https://example.com/docs/research-assistant
+                agent_interface_url: https://example.com/agent/research-assistant
+                permission_sets:
+                  - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                    requirement_type: mandatory
+                created_at: '2025-12-19T10:30:00Z'
+                updated_at: '2025-12-19T10:30:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/agents/{agent-id}:
+    get:
+      summary: Get agent by ID
+      description: |
+        Retrieve detailed information about a specific agent.
+
+        Returns the complete agent configuration including all optional fields.
+      operationId: getAgent
+      tags:
+        - Agents
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/PreferCanonicalReferences'
+      responses:
+        '200':
+          description: Agent retrieved successfully
+          headers:
+            Preference-Applied:
+              $ref: '#/components/headers/PreferenceApplied'
+            Vary:
+              $ref: '#/components/headers/VaryPrefer'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440000
+                client_id: agent-research-assistant
+                display_name: Research Assistant
+                description: AI assistant that helps with academic research
+                governance_url: https://example.com/governance/research-assistant
+                permission_sets:
+                  - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                    requirement_type: mandatory
+                created_at: '2025-12-19T10:30:00Z'
+                updated_at: '2025-12-19T10:30:00Z'
+        '400':
+          description: Invalid agent ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: agent ID is required
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update agent
+      description: |
+        Update configuration for an existing agent.
+
+        **Update Semantics**:
+        - All fields in the request body will update the agent
+        - Omitted optional fields are preserved from existing configuration
+        - `created_at` timestamp is preserved
+        - `updated_at` timestamp is set to current time
+
+        **client_id uniqueness depends on configuration**:
+        - When `multi_agent_client.enabled = false` (default): `client_id` must be unique
+          across all agents (excluding the current agent). Returns `409 Conflict` if a
+          duplicate `client_id` is detected on another agent.
+        - When `multi_agent_client.enabled = true`: Multiple agents may share the same
+          `client_id`. No uniqueness validation is performed.
+
+        **Validation**:
+        - `client_id`: Three-state — omitted preserves existing value, explicit `null` clears it, string value updates it (must be non-empty); unique across all agents (excluding the current agent) when `multi_agent_client.enabled = false`
+        - Other fields follow the same rules as creation
+      operationId: updateAgent
+      tags:
+        - Agents
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentUpdateRequest'
+            examples:
+              update_display_name:
+                summary: Update display name only
+                value:
+                  client_id: agent-research-assistant
+                  display_name: Advanced Research Assistant
+                  description: AI assistant that helps with academic research
+                  permission_sets:
+                    - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                      requirement_type: mandatory
+              update_urls:
+                summary: Update documentation URLs
+                value:
+                  client_id: agent-research-assistant
+                  display_name: Research Assistant
+                  description: AI assistant that helps with academic research
+                  governance_url: https://example.com/governance/v2/research-assistant
+                  user_documentation_url: https://docs.example.com/research-assistant
+                  permission_sets:
+                    - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                      requirement_type: mandatory
+      responses:
+        '200':
+          description: Agent updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440000
+                client_id: agent-research-assistant
+                display_name: Advanced Research Assistant
+                description: AI assistant that helps with academic research
+                permission_sets:
+                  - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                    requirement_type: mandatory
+                created_at: '2025-12-19T10:30:00Z'
+                updated_at: '2025-12-19T15:45:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete agent
+      description: |
+        Remove an agent from the system.
+
+        **Cascade Behavior**:
+        - All user grants associated with this agent are automatically deleted
+        - Deletion is logged for audit purposes
+
+        **Irreversible**: This operation cannot be undone
+      operationId: deleteAgent
+      tags:
+        - Agents
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '204':
+          description: Agent deleted successfully (no content)
+        '400':
+          description: Invalid agent ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: agent ID is required
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/services:
+    get:
+      summary: List all OAuth2 services
+      description: |
+        Retrieve a list of all configured third-party OAuth2 services.
+
+        Returns a direct array of service objects (no envelope).
+
+        **Security**: All `client_secret` fields are redacted as `"REDACTED"`
+      operationId: listServices
+      tags:
+        - Services
+      parameters:
+        - $ref: '#/components/parameters/PreferCanonicalReferences'
+      responses:
+        '200':
+          description: List of services retrieved successfully
+          headers:
+            Preference-Applied:
+              $ref: '#/components/headers/PreferenceApplied'
+            Vary:
+              $ref: '#/components/headers/VaryPrefer'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Service'
+              examples:
+                multiple_services:
+                  summary: Multiple services
+                  value:
+                    - id: 770e8400-e29b-41d4-a716-446655440002
+                      display_name: GitHub Production
+                      client_id: Iv1.1234567890abcdef
+                      client_secret: REDACTED
+                      issuer_uri: https://github.com
+                      discovery:
+                        enable_discovery: true
+                      endpoints:
+                        token_endpoint: https://github.com/login/oauth/access_token
+                        authorize_endpoint: https://github.com/login/oauth/authorize
+                      scopes:
+                        - scope_value: repo
+                          description: Full control of private repositories
+                        - scope_value: read:org
+                          description: Read organization membership
+                      created_at: '2025-12-01T09:00:00Z'
+                      updated_at: '2025-12-15T14:30:00Z'
+                    - id: 880e8400-e29b-41d4-a716-446655440003
+                      display_name: Google Cloud
+                      client_id: 123456789-abcdef.apps.googleusercontent.com
+                      client_secret: REDACTED
+                      issuer_uri: https://accounts.google.com
+                      discovery:
+                        enable_discovery: true
+                      endpoints:
+                        token_endpoint: https://oauth2.googleapis.com/token
+                        authorize_endpoint: https://accounts.google.com/o/oauth2/v2/auth
+                      scopes:
+                        - scope_value: https://www.googleapis.com/auth/drive.readonly
+                          description: View and download Google Drive files
+                      created_at: '2025-12-05T11:20:00Z'
+                      updated_at: '2025-12-05T11:20:00Z'
+                empty_list:
+                  summary: No services configured
+                  value: []
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create a new OAuth2 service
+      description: |
+        Configure a new third-party OAuth2 service provider.
+
+        **Validation Rules**:
+        - `display_name`: Required, max 255 characters
+        - `client_id`: Required, unique across all services
+        - `client_secret`: Required (encrypted at rest, never returned)
+        - `issuer_uri`: Required, must be HTTPS URL
+        - `scopes`: Optional. Omit it or provide an empty array when the provider does not use OAuth2 scopes.
+
+        **Discovery Modes**:
+
+        1. **Automatic Discovery** (`enable_discovery: true`):
+           - System fetches endpoints from `{issuer_uri}/.well-known/oauth-authorization-server`
+           - Optional `metadata_url` can override default discovery location
+           - Falls back to manual `endpoints` if discovery fails
+
+        2. **Manual Configuration** (`enable_discovery: false`):
+           - Requires `endpoints.token_endpoint` and `endpoints.authorize_endpoint`
+
+        **Security**: `client_secret` is encrypted with AES-256-GCM before storage
+      operationId: createService
+      tags:
+        - Services
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceCreateRequest'
+            examples:
+              github_discovery:
+                summary: GitHub with automatic discovery
+                value:
+                  display_name: GitHub Production
+                  client_id: Iv1.1234567890abcdef
+                  client_secret: ghp_secretkey1234567890abcdef
+                  issuer_uri: https://github.com
+                  discovery:
+                    enable_discovery: true
+                  scopes:
+                    - scope_value: repo
+                      description: Full control of private repositories
+                    - scope_value: read:org
+                      description: Read organization membership
+                    - scope_value: user:email
+                      description: Read user email addresses
+              manual_endpoints:
+                summary: Custom OAuth2 provider with manual endpoints
+                value:
+                  display_name: Corporate SSO
+                  client_id: corp-sso-client-123
+                  client_secret: secret-value-never-exposed
+                  issuer_uri: https://sso.corp.example.com
+                  discovery:
+                    enable_discovery: false
+                  endpoints:
+                    token_endpoint: https://sso.corp.example.com/oauth/token
+                    authorize_endpoint: https://sso.corp.example.com/oauth/authorize
+                  scopes:
+                    - scope_value: profile
+                      description: Access user profile information
+                    - scope_value: corporate_data
+                      description: Access corporate data systems
+      responses:
+        '201':
+          description: Service created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+              example:
+                id: 770e8400-e29b-41d4-a716-446655440002
+                display_name: GitHub Production
+                client_id: Iv1.1234567890abcdef
+                client_secret: REDACTED
+                issuer_uri: https://github.com
+                discovery:
+                  enable_discovery: true
+                endpoints:
+                  token_endpoint: https://github.com/login/oauth/access_token
+                  authorize_endpoint: https://github.com/login/oauth/authorize
+                scopes:
+                  - scope_value: repo
+                    description: Full control of private repositories
+                  - scope_value: read:org
+                    description: Read organization membership
+                created_at: '2025-12-19T10:30:00Z'
+                updated_at: '2025-12-19T10:30:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '409':
+          description: Conflict - duplicate client_id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: conflict
+                message: Service with client_id 'Iv1.1234567890abcdef' already exists
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/services/{service-id}:
+    get:
+      summary: Get OAuth2 service by ID
+      description: |
+        Retrieve detailed configuration for a specific OAuth2 service.
+
+        **Security**: `client_secret` is always redacted as `"REDACTED"`
+      operationId: getService
+      tags:
+        - Services
+      parameters:
+        - $ref: '#/components/parameters/ServiceId'
+        - $ref: '#/components/parameters/PreferCanonicalReferences'
+      responses:
+        '200':
+          description: Service retrieved successfully
+          headers:
+            ETag:
+              description: Current strong service ETag.
+              schema:
+                type: string
+            Preference-Applied:
+              $ref: '#/components/headers/PreferenceApplied'
+            Vary:
+              $ref: '#/components/headers/VaryPrefer'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+              example:
+                id: 770e8400-e29b-41d4-a716-446655440002
+                display_name: GitHub Production
+                client_id: Iv1.1234567890abcdef
+                client_secret: REDACTED
+                issuer_uri: https://github.com
+                discovery:
+                  enable_discovery: true
+                endpoints:
+                  token_endpoint: https://github.com/login/oauth/access_token
+                  authorize_endpoint: https://github.com/login/oauth/authorize
+                scopes:
+                  - scope_value: repo
+                    description: Full control of private repositories
+                created_at: '2025-12-19T10:30:00Z'
+                updated_at: '2025-12-19T10:30:00Z'
+        '400':
+          description: Invalid service ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: client ID is required
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update OAuth2 service
+      description: |
+        Update configuration for an existing OAuth2 service.
+
+        **Update Semantics**:
+        - All fields in the request body will update the service
+        - Omitted optional fields are preserved from existing configuration
+        - `created_at` timestamp is preserved
+        - `updated_at` timestamp is set to current time
+
+        **Secret Rotation**:
+        - Provide new `client_secret` to rotate credentials
+        - New secret is encrypted before storage
+        - Old secret is securely discarded
+
+        **Discovery Re-run**:
+        - If `enable_discovery: true`, endpoints are re-fetched
+        - Useful for services that change endpoint URLs
+
+        **Security**: `client_secret` is redacted in response
+        - `protected_resources` omitted or `null`: preserves the current protected-resource set
+        - `protected_resources` present (including `[]`): replaces the entire set and requires `If-Match`
+
+      operationId: updateService
+      tags:
+        - Services
+      parameters:
+        - $ref: '#/components/parameters/ServiceId'
+        - $ref: '#/components/parameters/IfMatch'
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceUpdateRequest'
+            examples:
+              rotate_secret:
+                summary: Rotate client secret
+                value:
+                  display_name: GitHub Production
+                  client_id: Iv1.1234567890abcdef
+                  client_secret: ghp_newsecretkey9876543210zyxwvu
+                  issuer_uri: https://github.com
+                  discovery:
+                    enable_discovery: true
+                  scopes:
+                    - scope_value: repo
+                      description: Full control of private repositories
+                    - scope_value: read:org
+                      description: Read organization membership
+              add_scopes:
+                summary: Add new OAuth2 scopes
+                value:
+                  display_name: GitHub Production
+                  client_id: Iv1.1234567890abcdef
+                  client_secret: ghp_secretkey1234567890abcdef
+                  issuer_uri: https://github.com
+                  discovery:
+                    enable_discovery: true
+                  scopes:
+                    - scope_value: repo
+                      description: Full control of private repositories
+                    - scope_value: read:org
+                      description: Read organization membership
+                    - scope_value: workflow
+                      description: Update GitHub Actions workflows
+      responses:
+        '200':
+          description: Service updated successfully
+          headers:
+            ETag:
+              description: Current strong service ETag.
+              schema:
+                type: string
+
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+              example:
+                id: 770e8400-e29b-41d4-a716-446655440002
+                display_name: GitHub Production
+                client_id: Iv1.1234567890abcdef
+                client_secret: REDACTED
+                issuer_uri: https://github.com
+                discovery:
+                  enable_discovery: true
+                endpoints:
+                  token_endpoint: https://github.com/login/oauth/access_token
+                  authorize_endpoint: https://github.com/login/oauth/authorize
+                scopes:
+                  - scope_value: repo
+                    description: Full control of private repositories
+                  - scope_value: read:org
+                    description: Read organization membership
+                  - scope_value: workflow
+                    description: Update GitHub Actions workflows
+                created_at: '2025-12-19T10:30:00Z'
+                updated_at: '2025-12-19T16:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete OAuth2 service
+      description: |
+        Remove an OAuth2 service from the system.
+
+        **Referential Integrity Check**:
+        - Operation fails with 409 Conflict if user grants reference this service
+        - Administrators must revoke or modify grants before deletion
+        - This prevents breaking active user permissions
+
+        **Irreversible**: This operation cannot be undone
+      operationId: deleteService
+      tags:
+        - Services
+      parameters:
+        - $ref: '#/components/parameters/ServiceId'
+      responses:
+        '204':
+          description: Service deleted successfully (no content)
+        '400':
+          description: Invalid service ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: client ID is required
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Cannot delete service with active grants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                grants_exist:
+                  summary: Service has active grants
+                  value:
+                    error: conflict
+                    message: Cannot delete service 'GitHub Production' - 15 user grants reference it. Revoke grants first.
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/services/{service-id}/protected-resources:
+    parameters:
+      - $ref: '#/components/parameters/ServiceId'
+    get:
+      summary: List a service's protected resources
+      operationId: listProtectedResources
+      tags:
+        - Services
+      responses:
+        '200':
+          description: The service's normalized protected resource URIs.
+          headers:
+            ETag:
+              description: Strong service ETag (version). Use as If-Match on protected-resource replacement PUTs.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceSet'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      summary: Add one protected resource from the collection
+      description: |
+        Adds the body `resource_uri` after server-side validation and normalization. A newly added URI
+        returns 201. A URI already owned by this service returns 200 with the set unchanged; a URI owned
+        by another service returns 409 Conflict.
+      operationId: createProtectedResource
+      tags:
+        - Services
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProtectedResourceCreateRequest'
+            examples:
+              add:
+                value:
+                  resource_uri: https://api.example.com/v2
+      responses:
+        '201':
+          description: Resource added.
+          headers:
+            ETag:
+              description: New strong service ETag.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMutationResult'
+        '200':
+          description: The service already owned the normalized URI; set unchanged.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMutationResult'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ProtectedResourceConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/services/{service-id}/protected-resources/{resource}:
+    parameters:
+      - $ref: '#/components/parameters/ServiceId'
+      - $ref: '#/components/parameters/ResourcePathSegment'
+    put:
+      summary: Add one protected resource
+      description: |
+        Idempotently adds the resource URI identified by the fully percent-encoded final path segment.
+        The server decodes the segment exactly once, then validates and normalizes it. Adding a URI this
+        service already owns returns 200 with the set unchanged; a URI owned by another service returns 409.
+      operationId: addProtectedResource
+      tags:
+        - Services
+      responses:
+        '201':
+          description: Resource added.
+          headers:
+            ETag:
+              description: New strong service ETag.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMutationResult'
+        '200':
+          description: The service already owned the normalized URI; set unchanged.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMutationResult'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ProtectedResourceConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      summary: Rename a protected resource in place
+      description: |
+        Atomically changes the percent-encoded source URI in `{resource}` to the target URI in the body.
+        A source equal to the normalized target succeeds as a no-op. A target already owned by any service
+        returns 409; a source not owned by this service returns 404.
+      operationId: renameProtectedResource
+      tags:
+        - Services
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProtectedResourceRenameTarget'
+            examples:
+              rename:
+                value:
+                  to: https://api.example.com/v2
+      responses:
+        '200':
+          description: Resource renamed, or unchanged when source and target are equal.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMutationResult'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ProtectedResourceConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Remove one protected resource
+      description: |
+        Removes the resource identified by the fully percent-encoded path segment after decoding exactly
+        once and normalizing it. A resource not owned by this service returns 404.
+      operationId: removeProtectedResource
+      tags:
+        - Services
+      responses:
+        '200':
+          description: Resource removed. Returns the removed normalized URI and the resulting set (FR-016).
+          headers:
+            ETag:
+              description: New strong service ETag.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMutationResult'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/permission-sets:
+    post:
+      summary: Create a permission set
+      operationId: createPermissionSet
+      tags:
+        - PermissionSets
+      description: |
+        Creates a new named permission set grouping OAuth2 scopes across one or more
+        third-party services.
+
+        **Validation rules**:
+        - `name` must be unique (409 Conflict if duplicate)
+        - `service_scopes` must contain at least one entry (400)
+        - Each `service_id` in `service_scopes` must reference an existing service (400)
+        - Each `scopes` list may be empty for a scope-less service; supplied values
+          must be non-empty (400)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePermissionSetRequest'
+      responses:
+        '201':
+          description: Permission set created successfully
+          headers:
+            Location:
+              description: URL of the created permission set
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionSetResponse'
+        '400':
+          description: |
+            Invalid request format, missing service_scopes, blank supplied scopes, or
+            referenced service_id does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Permission set name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List permission sets
+      operationId: listPermissionSets
+      tags:
+        - PermissionSets
+      description: |
+        Returns all permission sets. Optionally filter by service ID to find all
+        permission sets that include scopes for a specific third-party service.
+      parameters:
+        - name: service_id
+          in: query
+          required: false
+          description: UUID or canonical identifier of the service used to filter permission sets
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PreferCanonicalReferences'
+      responses:
+        '200':
+          description: List of permission sets
+          headers:
+            Preference-Applied:
+              $ref: '#/components/headers/PreferenceApplied'
+            Vary:
+              $ref: '#/components/headers/VaryPrefer'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PermissionSetResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/permission-sets/{permission-set-id}:
+    get:
+      summary: Get permission set by ID
+      operationId: getPermissionSet
+      tags:
+        - PermissionSets
+      parameters:
+        - $ref: '#/components/parameters/PermissionSetId'
+        - $ref: '#/components/parameters/PreferCanonicalReferences'
+      responses:
+        '200':
+          description: Permission set found
+          headers:
+            Preference-Applied:
+              $ref: '#/components/headers/PreferenceApplied'
+            Vary:
+              $ref: '#/components/headers/VaryPrefer'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionSetResponse'
+        '400':
+          description: Invalid permission set ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Replace a permission set
+      operationId: updatePermissionSet
+      tags:
+        - PermissionSets
+      description: |
+        Fully replaces a permission set's name, description, and service_scopes.
+        All fields are required (PUT semantics — full replacement).
+
+        **Note**: Changing `service_scopes` takes effect immediately; the next token exchange
+        for any grant referencing this set will use the updated scopes (cache TTL ≤ 60s delay).
+      parameters:
+        - $ref: '#/components/parameters/PermissionSetId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePermissionSetRequest'
+      responses:
+        '200':
+          description: Permission set updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionSetResponse'
+        '400':
+          description: |
+            Invalid request format or ID, missing service_scopes, blank supplied scopes, or
+            referenced service_id does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Name conflict with another permission set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a permission set
+      operationId: deletePermissionSet
+      tags:
+        - PermissionSets
+      description: |
+        Deletes a permission set by ID.
+
+        **Rejected with 409 Conflict** if any agent's `permission_sets` list references this ID,
+        or if any active user grant references this permission set.
+        Admins must remove the permission set from all agents and revoke all active grants
+        referencing it before deletion.
+
+        **Irreversible**: This operation cannot be undone.
+      parameters:
+        - $ref: '#/components/parameters/PermissionSetId'
+      responses:
+        '204':
+          description: Permission set deleted successfully (no content). Idempotent — returns 204 even if the permission set does not exist.
+        '400':
+          description: Invalid permission set ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Permission set is referenced by one or more agents or active user grants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/agents/{agent-id}/client-credentials:
+    post:
+      summary: Generate or rotate broker-issued client credentials for an agent
+      description: |
+        Generate new broker-issued client credentials for an agent, or rotate existing
+        credentials. This allows the broker to act as an OAuth2 authorization server
+        and authenticate agents directly.
+
+        **Runtime usage**: Agents use the `client_id` returned here as `client_id` at
+        the `/oauth2/token` endpoint. The value is the agent's UUID.
+
+        **First Generation** (no existing credentials):
+        - Returns `201 Created` with new `client_id` (metadata) and `client_secret`
+        - The `client_secret` is only returned in this response — store it securely
+
+        **Rotation** (existing credentials):
+        - Returns `200 OK` with new credentials and `previous_invalidated_at` timestamp
+        - Previous credentials are immediately invalidated
+        - Active tokens issued with previous credentials remain valid until expiry
+      operationId: generateAgentClientCredentials
+      tags:
+        - Client Credentials
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '201':
+          description: Client credentials generated for the first time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrokerClientCredentialResponse'
+              example:
+                client_id: 550e8400-e29b-41d4-a716-446655440000
+                client_secret: brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+                created_at: '2025-12-19T10:30:00Z'
+        '200':
+          description: Client credentials rotated (previous credentials invalidated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrokerClientCredentialResponse'
+              example:
+                client_id: 550e8400-e29b-41d4-a716-446655440000
+                client_secret: brk_sec_q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2
+                created_at: '2025-12-19T15:45:00Z'
+                previous_invalidated_at: '2025-12-19T15:45:00Z'
+        '400':
+          description: Invalid agent ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid request
+                message: agent ID must be a valid UUID
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get credential metadata (never returns secret)
+      description: |
+        Retrieve metadata about an agent's broker-issued client credentials.
+
+        **Security**: The `client_secret` is never returned by this endpoint.
+        Only the `client_id` and timestamps are returned.
+
+        Returns `404 Not Found` if no credentials have been generated for the agent.
+      operationId: getAgentClientCredentials
+      tags:
+        - Client Credentials
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Credential metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrokerClientCredentialMetadata'
+              example:
+                client_id: 550e8400-e29b-41d4-a716-446655440000
+                created_at: '2025-12-19T10:30:00Z'
+                rotated_at: '2025-12-19T15:45:00Z'
+        '400':
+          description: Invalid agent ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid request
+                message: agent ID must be a valid UUID
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Revoke broker-issued credentials
+      description: |
+        Revoke an agent's broker-issued client credentials.
+
+        After revocation, the agent can no longer authenticate using these credentials.
+        Active tokens issued with these credentials remain valid until expiry.
+
+        **Irreversible**: New credentials must be generated via POST after revocation.
+      operationId: revokeAgentClientCredentials
+      tags:
+        - Client Credentials
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '204':
+          description: Client credentials revoked successfully (no content)
+        '400':
+          description: Invalid agent ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid request
+                message: agent ID must be a valid UUID
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/oauth2-server/signing-keys:
+    post:
+      summary: Add a new signing key
+      description: |
+        Generate a new signing key for the broker's OAuth2 server.
+        The new key is marked as `is_current: true` but does not start signing tokens
+        until `activates_at` has passed (grace period = 2 × JWKS `Cache-Control: max-age`
+        value, currently 600 s). During this window the key is already present in the JWKS
+        response, so every client cache will have learned about it before the first token
+        signed with it appears.
+
+        **Algorithm Support**:
+        - `ES256`: ECDSA using P-256 curve and SHA-256 (default, only supported algorithm)
+
+        **Key Lifecycle**:
+        - New key is immediately published to `GET /oauth2/jwks.json`
+        - New key starts signing tokens only after `activates_at` (now + 600 s)
+        - Previous current key continues signing during the grace period
+        - Private key material is never exposed via the API
+      operationId: createSigningKey
+      tags:
+        - Signing Keys
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SigningKeyCreateRequest'
+            examples:
+              default_algorithm:
+                summary: Use default algorithm (ES256)
+                value: {}
+              explicit_es256:
+                summary: Explicit ES256
+                value:
+                  algorithm: ES256
+      responses:
+        '201':
+          description: Signing key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SigningKeyResponse'
+              example:
+                kid: key-2025-12-19-001
+                algorithm: ES256
+                is_current: true
+                activates_at: '2025-12-19T10:40:00Z'
+                created_at: '2025-12-19T10:30:00Z'
+        '400':
+          description: Invalid algorithm specified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: validation failed
+                message: "algorithm must be ES256"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List active signing keys (no private material)
+      description: |
+        Retrieve all active signing keys for the broker's OAuth2 server.
+
+        **Security**: Private key material is never included in the response.
+        Only public metadata (kid, algorithm, status, timestamps) is returned.
+
+        Keys are returned in creation order (newest first).
+      operationId: listSigningKeys
+      tags:
+        - Signing Keys
+      responses:
+        '200':
+          description: Signing keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SigningKeyListResponse'
+              examples:
+                multiple_keys:
+                  summary: Multiple signing keys
+                  value:
+                    items:
+                      - kid: key-2025-12-19-001
+                        algorithm: ES256
+                        is_current: true
+                        activates_at: '2025-12-19T10:40:00Z'
+                        created_at: '2025-12-19T10:30:00Z'
+                      - kid: key-2025-12-01-001
+                        algorithm: ES256
+                        is_current: false
+                        activates_at: '2025-12-01T09:00:00Z'
+                        created_at: '2025-12-01T09:00:00Z'
+                single_key:
+                  summary: Single signing key
+                  value:
+                    items:
+                      - kid: key-2025-12-19-001
+                        algorithm: ES256
+                        is_current: true
+                        activates_at: '2025-12-19T10:00:00Z'
+                        created_at: '2025-12-19T10:00:00Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/oauth2-server/signing-keys/{kid}/current:
+    put:
+      summary: Promote signing key to current
+      description: |
+        Promote an existing signing key to be the current signing key.
+        The current key is used for signing new tokens.
+
+        **Behavior**:
+        - The specified key becomes `is_current: true`
+        - The previous current key is set to `is_current: false`
+        - Previous key remains active for token verification
+      operationId: promoteSigningKey
+      tags:
+        - Signing Keys
+      parameters:
+        - $ref: '#/components/parameters/SigningKeyId'
+      responses:
+        '200':
+          description: Signing key promoted to current
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SigningKeyResponse'
+              example:
+                kid: key-2025-12-01-001
+                algorithm: ES256
+                is_current: true
+                created_at: '2025-12-01T09:00:00Z'
+        '404':
+          description: Signing key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: not found
+                message: "Signing key with kid 'key-unknown' does not exist"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/oauth2-server/signing-keys/{kid}:
+    delete:
+      summary: Remove signing key (soft delete)
+      description: |
+        Remove a signing key from the active key set.
+
+        **Soft Delete**: The key is deactivated but retained for audit purposes.
+        Tokens previously signed with this key can no longer be verified.
+
+        **Constraints**:
+        - Cannot delete the last remaining signing key (returns `409 Conflict`)
+        - Cannot delete the current signing key without first promoting another key
+      operationId: deleteSigningKey
+      tags:
+        - Signing Keys
+      parameters:
+        - $ref: '#/components/parameters/SigningKeyId'
+      responses:
+        '204':
+          description: Signing key removed successfully (no content)
+        '404':
+          description: Signing key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: not found
+                message: "Signing key with kid 'key-unknown' does not exist"
+        '409':
+          description: Cannot delete the last remaining signing key or the current signing key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                last_key:
+                  summary: Last remaining signing key
+                  value:
+                    error: last_key
+                    message: cannot delete the last remaining signing key
+                current_key:
+                  summary: Current signing key
+                  value:
+                    error: current_key
+                    message: promote another signing key before removing the current key
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  parameters:
+    AgentId:
+      name: agent-id
+      in: path
+      required: true
+      description: UUID or canonical identifier of the agent
+      schema:
+        type: string
+      examples:
+        uuid: { value: 550e8400-e29b-41d4-a716-446655440000 }
+        canonical: { value: research-agent }
+
+    PreferCanonicalReferences:
+      name: Prefer
+      in: header
+      required: false
+      description: |
+        Request canonical rendering of nested service and permission-set references. The default
+        representation uses UUIDs. May be combined with other Prefer preferences (e.g.
+        `return=minimal, reference-id=canonical`); unrecognized preferences are ignored.
+      schema:
+        type: string
+      example: reference-id=canonical
+    ServiceId:
+      name: service-id
+      in: path
+      required: true
+      description: UUID or canonical identifier of the OAuth2 service
+      schema:
+        type: string
+      examples:
+        uuid: { value: 770e8400-e29b-41d4-a716-446655440002 }
+        canonical: { value: github-prod }
+
+    ResourcePathSegment:
+      name: resource
+      in: path
+      required: true
+      description: |
+        Normalized protected resource URI, fully RFC 3986 percent-encoded as one path segment (`:` to
+        `%3A`, `/` to `%2F`, `?` to `%3F`, and `#` to `%23`). The server preserves the escaped segment,
+        decodes it exactly once, then validates it as an absolute URI and normalizes its trailing slash.
+      schema:
+        type: string
+      example: https%3A%2F%2Fapi.example.com%2Fv2
+
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: |
+        Required when a service update request includes `protected_resources`, because that field replaces
+        the complete set. Supply the current strong service ETag from a prior GET or protected-resource
+        collection GET. Omit it only when `protected_resources` is omitted or `null`; a missing required
+        header returns 428 and a stale value returns 412.
+      schema:
+        type: string
+
+    PermissionSetId:
+      name: permission-set-id
+      in: path
+      required: true
+      description: UUID or canonical identifier of the permission set
+      schema:
+        type: string
+      examples:
+        uuid: { value: a1b2c3d4-e5f6-7890-abcd-ef1234567890 }
+        canonical: { value: github-read }
+    SigningKeyId:
+      name: kid
+      in: path
+      required: true
+      description: Key identifier of the signing key
+      schema:
+        type: string
+        example: key-2025-12-19-001
+
+  headers:
+    PreferenceApplied:
+      description: "Sent only when Prefer: reference-id=canonical was honored."
+      schema:
+        type: string
+        enum: [reference-id=canonical]
+    VaryPrefer:
+      description: Indicates that the read representation varies by the `Prefer` request header.
+      schema:
+        type: string
+        enum: [Prefer]
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - uptime_seconds
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - starting
+            - shutting_down
+            - unhealthy
+          description: Current health state of the server
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the health check (RFC3339 format)
+          example: '2025-12-19T10:30:00Z'
+        uptime_seconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Number of seconds since the server started
+          example: 3600
+      example:
+        status: healthy
+        timestamp: '2025-12-19T10:30:00Z'
+        uptime_seconds: 3600
+
+    Agent:
+      type: object
+      required:
+        - id
+        - display_name
+        - description
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the agent (system-generated UUID)
+          example: 550e8400-e29b-41d4-a716-446655440000
+          readOnly: true
+        canonical_id:
+          type: string
+          nullable: true
+          readOnly: true
+          description: Optional canonical administrative identifier
+          example: research-agent
+        client_id:
+          type: string
+          nullable: true
+          description: |
+            OAuth2 client_id for this agent. Absent when the agent has no upstream
+            client_id (e.g. CIMD agents resolved via client_uris). When present,
+            used to identify the agent in OAuth2 flows.
+          example: agent-research-assistant
+          maxLength: 255
+        external_id:
+          type: string
+          nullable: true
+          description: Optional external governance system identifier for tracking and audit
+          example: gov-sys-12345
+          maxLength: 255
+        display_name:
+          type: string
+          description: Human-readable name for the agent displayed to end users
+          example: Research Assistant
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          description: Detailed description of the agent's purpose and capabilities
+          example: AI assistant that helps with academic research by accessing papers and datasets
+          minLength: 1
+          maxLength: 1000
+        governance_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to governance and compliance information (must be HTTP/HTTPS)
+          example: https://example.com/agents/research-assistant/governance
+        user_documentation_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to user-facing documentation (must be HTTP/HTTPS)
+          example: https://example.com/docs/research-assistant
+        agent_interface_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL where users can interact with the agent (must be HTTP/HTTPS)
+          example: https://example.com/agent/research-assistant
+        service_requirements:
+          type: array
+          nullable: true
+          description: |
+            List of third-party OAuth2 services that the agent requires access to.
+            - **Mandatory requirements**: Block authorization if user lacks active sessions with required scopes
+            - **Optional requirements**: Display in consent UI but never block authorization
+            - Referential integrity enforced: service_id must exist, required_scopes must match service definition
+          items:
+            $ref: '#/components/schemas/ServiceRequirement'
+          example:
+            - service_id: 550e8400-e29b-41d4-a716-446655440001
+              service_name: GitHub
+              requirement_type: mandatory
+              required_scopes:
+                - repo
+                - user:email
+            - service_id: 550e8400-e29b-41d4-a716-446655440002
+              service_name: Google Drive
+              requirement_type: optional
+              required_scopes:
+                - https://www.googleapis.com/auth/drive.readonly
+        permission_sets:
+          type: array
+          description: Permission set declarations for this agent (FR-006).
+          items:
+            $ref: '#/components/schemas/AgentPermissionSetEntry'
+          example:
+            - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+              requirement_type: mandatory
+        redirect_uris:
+          type: array
+          nullable: true
+          description: |
+            List of allowed redirect URIs for OAuth2 authorization code flow.
+            When the broker acts as an OAuth2 server, only these URIs are accepted
+            as valid redirect targets for this agent.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://agent.example.com/callback
+            - http://localhost:9002/callback
+        allowed_scopes:
+          type: array
+          nullable: true
+          description: |
+            List of OAuth2 scopes that this agent is permitted to request
+            when the broker acts as an OAuth2 authorization server.
+          items:
+            type: string
+          example:
+            - openid
+            - profile
+            - email
+        client_uris:
+          type: array
+          nullable: true
+          description: |
+            Pre-registered Client ID Metadata Document URLs for this agent.
+            Each entry must be a globally unique HTTPS URL. A `*` can replace one complete,
+            non-empty path segment.
+            The broker uses an exact entry before matching patterns. It rejects ambiguous pattern
+            matches and URI paths containing literal `\`, `%2F`, or `%5C`.
+            When CIMD is enabled, authorization requests with a matching URL as client_id
+            are resolved to this agent via CIMD fetch, validation, and cache.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://chatgpt.com/oauth/codex/*/client.json
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the agent was created (RFC3339 format)
+          example: '2025-12-19T10:30:00Z'
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the agent was last updated (RFC3339 format)
+          example: '2025-12-19T15:45:00Z'
+          readOnly: true
+
+    AgentCreateRequest:
+      type: object
+      required:
+        - display_name
+        - description
+        - permission_sets
+      properties:
+        canonical_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._-]+$'
+          example: research-agent
+        client_id:
+          type: string
+          description: |
+            OAuth2 client_id for this agent. Optional — omit for agents resolved
+            via client_uris (CIMD) or agents that do not need an upstream client_id.
+            When provided, must be non-empty.
+          example: agent-research-assistant
+          maxLength: 255
+        external_id:
+          type: string
+          nullable: true
+          description: Optional external governance system identifier
+          example: gov-sys-12345
+          maxLength: 255
+        display_name:
+          type: string
+          description: Human-readable name for the agent
+          example: Research Assistant
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          description: Detailed description of the agent's purpose and capabilities
+          example: AI assistant that helps with academic research by accessing papers and datasets
+          minLength: 1
+          maxLength: 1000
+        governance_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to governance and compliance information (must be HTTP/HTTPS)
+          example: https://example.com/agents/research-assistant/governance
+        user_documentation_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to user-facing documentation (must be HTTP/HTTPS)
+          example: https://example.com/docs/research-assistant
+        agent_interface_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL where users can interact with the agent (must be HTTP/HTTPS)
+          example: https://example.com/agent/research-assistant
+        service_requirements:
+          type: array
+          nullable: true
+          description: |
+            List of third-party OAuth2 services that the agent requires access to.
+            Referential integrity is validated: service_id must exist and supplied required_scopes must match the service definition. Omit or provide an empty list for scope-less services.
+          items:
+            $ref: '#/components/schemas/ServiceRequirementRequest'
+          example:
+            - service_id: 550e8400-e29b-41d4-a716-446655440001
+              requirement_type: mandatory
+              required_scopes:
+                - repo
+                - user:email
+        permission_sets:
+          type: array
+          description: |
+            List of permission set declarations for this agent (FR-006).
+            Must contain at least one entry — an empty list or omitted field is a 400 error.
+            All referenced permission_set_id values must exist.
+          items:
+            $ref: '#/components/schemas/AgentPermissionSetEntry'
+          minItems: 1
+          example:
+            - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+              requirement_type: mandatory
+        redirect_uris:
+          type: array
+          nullable: true
+          description: |
+            List of allowed redirect URIs for OAuth2 authorization code flow.
+            When the broker acts as an OAuth2 server, only these URIs are accepted
+            as valid redirect targets for this agent.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://agent.example.com/callback
+            - http://localhost:9002/callback
+        allowed_scopes:
+          type: array
+          nullable: true
+          description: |
+            List of OAuth2 scopes that this agent is permitted to request
+            when the broker acts as an OAuth2 authorization server.
+          items:
+            type: string
+          example:
+            - openid
+            - profile
+            - email
+        client_uris:
+          type: array
+          nullable: true
+          description: |
+            Pre-registered Client ID Metadata Document URLs for this agent.
+            Each entry must be a globally unique HTTPS URL. A `*` can replace one complete,
+            non-empty path segment.
+            The broker uses an exact entry before matching patterns. It rejects ambiguous pattern
+            matches and URI paths containing literal `\`, `%2F`, or `%5C`.
+            Returns 400 for malformed URLs. Returns 409 Conflict when a URI is already
+            registered to a different agent.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://chatgpt.com/oauth/codex/*/client.json
+
+    AgentUpdateRequest:
+      type: object
+      required:
+        - display_name
+        - description
+        - permission_sets
+      properties:
+        canonical_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._-]+$'
+          description: Omitted preserves the current canonical ID; null removes it; a string replaces it.
+          example: research-agent
+        client_id:
+          type: string
+          nullable: true
+          description: |
+            OAuth2 client_id for this agent.
+
+            **Three-state semantics**:
+            - **Omitted** (key absent from JSON): existing value is preserved
+            - **Explicit null** (`"client_id": null`): clears the client_id (sets to NULL)
+            - **String value** (`"client_id": "foo"`): updates the client_id; must be non-empty
+
+            Agents without a client_id cannot participate in proxy-mode OAuth2 flows.
+          example: agent-research-assistant
+          maxLength: 255
+        external_id:
+          type: string
+          nullable: true
+          description: Optional external governance system identifier
+          example: gov-sys-12345
+          maxLength: 255
+        display_name:
+          type: string
+          description: Human-readable name for the agent
+          example: Advanced Research Assistant
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          description: Detailed description of the agent's purpose and capabilities
+          example: AI assistant that helps with academic research by accessing papers and datasets
+          minLength: 1
+          maxLength: 1000
+        governance_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to governance and compliance information (must be HTTP/HTTPS)
+          example: https://example.com/governance/v2/research-assistant
+        user_documentation_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to user-facing documentation (must be HTTP/HTTPS)
+          example: https://docs.example.com/research-assistant
+        agent_interface_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL where users can interact with the agent (must be HTTP/HTTPS)
+          example: https://example.com/agent/research-assistant
+        service_requirements:
+          type: array
+          nullable: true
+          description: |
+            List of third-party OAuth2 services that the agent requires access to.
+            Referential integrity is validated: service_id must exist and supplied required_scopes must match the service definition. Omit or provide an empty list for scope-less services.
+          items:
+            $ref: '#/components/schemas/ServiceRequirementRequest'
+          example:
+            - service_id: 550e8400-e29b-41d4-a716-446655440001
+              requirement_type: mandatory
+              required_scopes:
+                - repo
+                - user:email
+        permission_sets:
+          type: array
+          description: |
+            List of permission set declarations for this agent (FR-006).
+            Must contain at least one entry — an empty list or omitted field is a 400 error.
+            All referenced permission_set_id values must exist.
+          items:
+            $ref: '#/components/schemas/AgentPermissionSetEntry'
+          minItems: 1
+          example:
+            - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+              requirement_type: mandatory
+        redirect_uris:
+          type: array
+          nullable: true
+          description: |
+            List of allowed redirect URIs for OAuth2 authorization code flow.
+            When the broker acts as an OAuth2 server, only these URIs are accepted
+            as valid redirect targets for this agent.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://agent.example.com/callback
+            - http://localhost:9002/callback
+        allowed_scopes:
+          type: array
+          nullable: true
+          description: |
+            List of OAuth2 scopes that this agent is permitted to request
+            when the broker acts as an OAuth2 authorization server.
+          items:
+            type: string
+          example:
+            - openid
+            - profile
+            - email
+        client_uris:
+          type: array
+          nullable: true
+          description: |
+            Pre-registered Client ID Metadata Document URLs for this agent.
+            Replaces the previous list on PUT (full replacement semantics).
+            Each entry must be a globally unique HTTPS URL. A `*` can replace one complete,
+            non-empty path segment.
+            The broker uses an exact entry before matching patterns. It rejects ambiguous pattern
+            matches and URI paths containing literal `\`, `%2F`, or `%5C`.
+            Returns 400 for malformed URLs. Returns 409 Conflict when a URI is already
+            registered to a different agent.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://chatgpt.com/oauth/codex/*/client.json
+
+    ServiceRequirement:
+      type: object
+      required:
+        - service_id
+        - requirement_type
+      properties:
+        service_id:
+          type: string
+          format: uuid
+          description: UUID of the third-party OAuth2 service this requirement references
+          example: 550e8400-e29b-41d4-a716-446655440001
+        service_name:
+          type: string
+          description: Display name of the referenced service (resolved from service configuration)
+          example: GitHub
+          readOnly: true
+        requirement_type:
+          type: string
+          enum:
+            - mandatory
+            - optional
+          description: |
+            - **mandatory**: Authorization fails if user lacks active session with required scopes
+            - **optional**: Displayed in consent UI but never blocks authorization
+          example: mandatory
+        required_scopes:
+          type: array
+          items:
+            type: string
+          description: |
+            Optional OAuth2 scopes the agent requires from this service. Must be empty when
+            `require_all_scopes` is true. Omit or provide an empty array for a scope-less service.
+            Supplied scopes are case-sensitive and must match service definitions.
+          example:
+            - repo
+            - user:email
+        require_all_scopes:
+          type: boolean
+          default: false
+          description: |
+            When true, the agent receives the full scope union its granted permission sets
+            provide for this service; required_scopes must be empty. When false (default),
+            required_scopes is the per-agent scope ceiling.
+
+    ServiceRequirementRequest:
+      type: object
+      required:
+        - service_id
+        - requirement_type
+      properties:
+        service_id:
+          type: string
+          description: UUID or canonical identifier of the third-party OAuth2 service
+          examples:
+            uuid: { value: 550e8400-e29b-41d4-a716-446655440001 }
+            canonical: { value: github-prod }
+        requirement_type:
+          type: string
+          enum:
+            - mandatory
+            - optional
+          description: |
+            - **mandatory**: Authorization fails if user lacks active session with required scopes
+            - **optional**: Displayed in consent UI but never blocks authorization
+          example: mandatory
+        required_scopes:
+          type: array
+          items:
+            type: string
+          description: |
+            Optional OAuth2 scopes the agent requires from this service. Must be empty when
+            `require_all_scopes` is true. Omit or provide an empty array for a scope-less service.
+            Supplied scopes must exist in the referenced service's scope definitions.
+          example:
+            - repo
+            - user:email
+        require_all_scopes:
+          type: boolean
+          default: false
+          description: |
+            When true, the agent receives the full scope union its granted permission sets
+            provide for this service; required_scopes must be empty. When false (default),
+            required_scopes is the per-agent scope ceiling.
+
+    Service:
+      type: object
+      required:
+        - id
+        - display_name
+        - client_id
+        - client_secret
+        - oauth2_flavor
+        - issuer_uri
+        - discovery
+        - endpoints
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the service (system-generated UUID)
+          example: 770e8400-e29b-41d4-a716-446655440002
+          readOnly: true
+        canonical_id:
+          type: string
+          nullable: true
+          readOnly: true
+          description: Optional canonical administrative identifier
+          example: github-prod
+        display_name:
+          type: string
+          description: Human-readable name for the service displayed to end users
+          example: GitHub Production
+          minLength: 1
+          maxLength: 255
+        client_id:
+          type: string
+          description: |
+            OAuth2 client_id for this service.
+
+            For `oauth2_flavor: standard`: must be provided in the request.
+            For `oauth2_flavor: google`: automatically extracted from the `client_id` field
+            in the service account JSON credential; the request `client_id` field is ignored.
+          example: Iv1.1234567890abcdef
+        client_secret:
+          type: string
+          description: |
+            Authentication credential for this service. The meaning varies by `oauth2_flavor`:
+            - **standard**: Plain OAuth2 client secret string
+            - **google**: Serialized Google service account JSON key document
+
+            **SECURITY**: Always returns "REDACTED" in API responses per SR-003.
+            Client secrets are never transmitted to the frontend.
+            Secrets are encrypted at rest using AES-256-GCM.
+          example: REDACTED
+          readOnly: true
+        oauth2_flavor:
+          type: string
+          enum:
+            - standard
+            - google
+            - github
+          default: standard
+          description: |
+            OAuth2 authentication variant for this service.
+
+            - **standard**: Plain client secret string (default behavior, backward compatible)
+            - **google**: Google service account JSON key; `client_id` is derived from the credential
+            - **github**: GitHub OAuth2 app; scopes in token responses are comma-separated
+
+            For `google` flavor, the `client_secret` field contains a serialized Google service account
+            JSON document. The `client_id` in responses is extracted automatically from the JSON's
+            `client_id` field; it need not be provided in requests.
+
+            If omitted, the flavor is auto-detected as `github` when the token endpoint host
+            equals `github.com`; otherwise defaults to `standard`.
+          example: standard
+        issuer_uri:
+          type: string
+          format: uri
+          description: |
+            OAuth2 issuer URI.
+
+            For `oauth2_flavor: standard`: required, must be HTTPS.
+            For `oauth2_flavor: google`: optional. If provided, its scheme and host must be consistent
+            with the `token_uri` in the service account JSON. If omitted, the `token_uri` from the
+            service account JSON is used as the authoritative token endpoint.
+          example: https://github.com
+        discovery:
+          $ref: '#/components/schemas/DiscoveryConfig'
+        endpoints:
+          $ref: '#/components/schemas/OAuth2Endpoints'
+        scopes:
+          type: array
+          description: Optional OAuth2 scopes for this service. Omit or provide an empty array when the provider does not use scopes.
+          items:
+            $ref: '#/components/schemas/OAuth2Scope'
+        protected_resources:
+          type: array
+          description: |
+            List of protected resource URIs for RFC 8693 token exchange.
+            These URIs identify which resources this service can provide tokens for.
+            URIs are normalized (trailing slashes removed) for consistent matching.
+            Example: ["https://api.github.com", "https://github.com/api/v3"]
+          items:
+            type: string
+            format: uri
+          example:
+            - https://api.github.com
+            - https://github.com/api/v3
+        authorization_params:
+          type: object
+          description: Static provider authorization parameters. Broker-owned OAuth2 names are rejected.
+          additionalProperties:
+            type: string
+          example:
+            business_partner_id: "12345"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the service was created (RFC3339 format)
+          example: '2025-12-19T10:30:00Z'
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the service was last updated (RFC3339 format)
+          example: '2025-12-19T15:45:00Z'
+          readOnly: true
+
+    ServiceCreateRequest:
+      type: object
+      required:
+        - display_name
+        - client_secret
+        - discovery
+      properties:
+        canonical_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._-]+$'
+          example: github-prod
+        display_name:
+          type: string
+          description: Human-readable name for the service
+          example: GitHub Production
+          minLength: 1
+          maxLength: 255
+        oauth2_flavor:
+          type: string
+          enum:
+            - standard
+            - google
+            - github
+          default: standard
+          description: |
+            OAuth2 authentication variant. Defaults to `standard` if omitted.
+            Auto-detected as `github` when the token endpoint host equals `github.com`.
+
+            - **standard**: `client_secret` must be a non-empty plain string; `client_id` is required
+            - **google**: `client_secret` must be a valid Google service account JSON key (≤32 KB);
+              `client_id` is derived from the JSON's `client_id` field and need not be provided;
+              `issuer_uri` is optional; `endpoints` are derived from the service account JSON
+            - **github**: Same as `standard` but scopes in token responses are parsed as comma-separated
+          example: standard
+        client_id:
+          type: string
+          description: |
+            OAuth2 client_id for this service.
+
+            Required when `oauth2_flavor` is `standard` or `github`.
+            Optional when `oauth2_flavor` is `google` — automatically extracted from the service account JSON.
+          example: Iv1.1234567890abcdef
+          minLength: 1
+        client_secret:
+          type: string
+          description: |
+            Authentication credential for this service.
+
+            The content depends on `oauth2_flavor`:
+            - **standard** / **github**: Non-empty OAuth2 client secret string
+            - **google**: Serialized Google service account JSON key document. Must contain:
+                `type` (must be `"service_account"`), `private_key` (non-empty),
+                `client_email` (non-empty), `token_uri` (non-empty), `client_id` (non-empty).
+                Maximum size: 32 KB.
+
+            **SECURITY**: Encrypted at rest using AES-256-GCM.
+            Never returned in API responses (always "REDACTED").
+          example: ghp_secretkey1234567890abcdef
+          minLength: 1
+          writeOnly: true
+        issuer_uri:
+          type: string
+          format: uri
+          description: |
+            OAuth2 issuer URI.
+
+            Required when `oauth2_flavor` is `standard` (must be HTTPS).
+            Optional when `oauth2_flavor` is `google`. If provided, its scheme and host must match
+            the `token_uri` in the service account JSON. If omitted, the `token_uri` from the
+            service account JSON serves as the token endpoint.
+          example: https://github.com
+        discovery:
+          $ref: '#/components/schemas/DiscoveryConfigRequest'
+        endpoints:
+          $ref: '#/components/schemas/OAuth2EndpointsRequest'
+        scopes:
+          type: array
+          description: Optional OAuth2 scopes for this service. Omit or provide an empty array when the provider does not use scopes.
+          items:
+            $ref: '#/components/schemas/OAuth2ScopeRequest'
+          example:
+            - scope_value: repo
+              description: Full control of private repositories
+            - scope_value: read:org
+              description: Read organization membership
+        protected_resources:
+          type: array
+          description: |
+            List of protected resource URIs for RFC 8693 token exchange (optional).
+            These URIs identify which resources this service can provide tokens for.
+            URIs are normalized (trailing slashes removed) for consistent matching.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://api.github.com
+            - https://github.com/api/v3
+        authorization_params:
+          type: object
+          description: Static provider authorization parameters. Broker-owned OAuth2 names are rejected.
+          additionalProperties:
+            type: string
+          example:
+            business_partner_id: "12345"
+
+    ServiceUpdateRequest:
+      type: object
+      required:
+        - display_name
+        - client_secret
+        - discovery
+      properties:
+        canonical_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._-]+$'
+          description: Omitted preserves the current canonical ID; null removes it; a string replaces it.
+          example: github-prod
+        display_name:
+          type: string
+          description: Human-readable name for the service
+          example: GitHub Production
+          minLength: 1
+          maxLength: 255
+        oauth2_flavor:
+          type: string
+          enum:
+            - standard
+            - google
+            - github
+          default: standard
+          description: |
+            OAuth2 authentication variant. Defaults to `standard` if omitted.
+            Auto-detected as `github` when the token endpoint host equals `github.com`.
+
+            - **standard**: `client_secret` must be a non-empty plain string; `client_id` is required
+            - **google**: `client_secret` must be a valid Google service account JSON key (≤32 KB);
+              `client_id` is derived from the JSON's `client_id` field and need not be provided;
+              `issuer_uri` is optional; `endpoints` are derived from the service account JSON
+            - **github**: Same as `standard` but scopes in token responses are parsed as comma-separated
+          example: standard
+        client_id:
+          type: string
+          description: |
+            OAuth2 client_id for this service.
+
+            Required when `oauth2_flavor` is `standard` or `github`.
+            Optional when `oauth2_flavor` is `google` — automatically extracted from the service account JSON.
+          example: Iv1.1234567890abcdef
+          minLength: 1
+        client_secret:
+          type: string
+          description: |
+            Authentication credential for this service (provide new value to rotate).
+
+            The content depends on `oauth2_flavor`:
+            - **standard** / **github**: Non-empty OAuth2 client secret string
+            - **google**: Serialized Google service account JSON key document (≤32 KB)
+
+            **SECURITY**: Encrypted at rest, never returned in responses.
+          example: ghp_newsecretkey9876543210zyxwvu
+          minLength: 1
+          writeOnly: true
+        issuer_uri:
+          type: string
+          format: uri
+          description: |
+            OAuth2 issuer URI.
+
+            Required when `oauth2_flavor` is `standard` (must be HTTPS).
+            Optional when `oauth2_flavor` is `google`. If provided, its scheme and host must match
+            the `token_uri` in the service account JSON.
+          example: https://github.com
+        discovery:
+          $ref: '#/components/schemas/DiscoveryConfigRequest'
+        endpoints:
+          $ref: '#/components/schemas/OAuth2EndpointsRequest'
+        scopes:
+          type: array
+          description: Optional OAuth2 scopes for this service. Omit or provide an empty array when the provider does not use scopes.
+          items:
+            $ref: '#/components/schemas/OAuth2ScopeRequest'
+        protected_resources:
+          type: array
+          nullable: true
+          description: |
+            Optional protected resource URIs for RFC 8693 token exchange. Omit or set to `null` to preserve
+            the current set. When present, including an empty array, this field authoritatively replaces the
+            entire set and requires the `If-Match` header with the service's current strong ETag. URIs are
+            normalized by trailing-slash trim before matching; an empty array clears the set.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://api.github.com
+            - https://github.com/api/v3
+        authorization_params:
+          type: object
+          description: Static provider authorization parameters. Omission preserves the current map; an empty object clears it.
+          additionalProperties:
+            type: string
+          example:
+            business_partner_id: "12345"
+
+    ProtectedResourceSet:
+      type: object
+      required:
+        - protected_resources
+      properties:
+        protected_resources:
+          type: array
+          items:
+            type: string
+            format: uri
+          example:
+            - https://api.github.com
+            - https://github.com/api/v3
+
+    ProtectedResourceCreateRequest:
+      type: object
+      required:
+        - resource_uri
+      properties:
+        resource_uri:
+          type: string
+          format: uri
+          description: Absolute resource URI (scheme and host required), normalized by trailing-slash trim.
+          example: https://api.example.com/v2
+
+    ProtectedResourceRenameTarget:
+      type: object
+      required:
+        - to
+      properties:
+        to:
+          type: string
+          format: uri
+          description: Absolute target URI (scheme and host required), normalized by trailing-slash trim.
+          example: https://api.example.com/v2
+
+    ProtectedResourceMutationResult:
+      type: object
+      required:
+        - resource
+        - protected_resources
+      properties:
+        resource:
+          type: string
+          format: uri
+          description: Normalized URI affected by the operation.
+        protected_resources:
+          type: array
+          description: The service's resulting protected-resource set.
+          items:
+            type: string
+            format: uri
+
+    DiscoveryConfig:
+      type: object
+      required:
+        - enable_discovery
+      properties:
+        enable_discovery:
+          type: boolean
+          description: |
+            Whether to automatically discover OAuth2 endpoints.
+
+            - `true`: Fetch from `{issuer_uri}/.well-known/oauth-authorization-server`
+            - `false`: Use manually configured endpoints (required)
+          example: true
+        metadata_url:
+          type: string
+          format: uri
+          nullable: true
+          description: |
+            Optional override for metadata discovery URL (must be HTTPS).
+            If not provided, defaults to `{issuer_uri}/.well-known/oauth-authorization-server`
+          example: https://github.com/.well-known/oauth-authorization-server
+
+    DiscoveryConfigRequest:
+      type: object
+      required:
+        - enable_discovery
+      properties:
+        enable_discovery:
+          type: boolean
+          description: Whether to automatically discover OAuth2 endpoints
+          example: true
+        metadata_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional override for metadata discovery URL (must be HTTPS)
+          example: https://github.com/.well-known/oauth-authorization-server
+
+    OAuth2Endpoints:
+      type: object
+      required:
+        - token_endpoint
+        - authorize_endpoint
+      properties:
+        token_endpoint:
+          type: string
+          format: uri
+          description: OAuth2 token endpoint URL
+          example: https://github.com/login/oauth/access_token
+        authorize_endpoint:
+          type: string
+          format: uri
+          description: OAuth2 authorization endpoint URL
+          example: https://github.com/login/oauth/authorize
+
+    OAuth2EndpointsRequest:
+      type: object
+      description: |
+        OAuth2 endpoints configuration.
+
+        **Required when** `discovery.enable_discovery = false`
+        **Optional when** `discovery.enable_discovery = true` (used as fallback)
+      properties:
+        token_endpoint:
+          type: string
+          format: uri
+          description: OAuth2 token endpoint URL
+          example: https://github.com/login/oauth/access_token
+        authorize_endpoint:
+          type: string
+          format: uri
+          description: OAuth2 authorization endpoint URL
+          example: https://github.com/login/oauth/authorize
+
+    OAuth2Scope:
+      type: object
+      required:
+        - scope_value
+        - description
+      properties:
+        scope_value:
+          type: string
+          description: OAuth2 scope value used in authorization requests
+          example: repo
+          minLength: 1
+        description:
+          type: string
+          description: Human-readable description of what this scope allows
+          example: Full control of private repositories
+          minLength: 1
+
+    OAuth2ScopeRequest:
+      type: object
+      required:
+        - scope_value
+        - description
+      properties:
+        scope_value:
+          type: string
+          description: OAuth2 scope value used in authorization requests
+          example: repo
+          minLength: 1
+        description:
+          type: string
+          description: Human-readable description of what this scope allows
+          example: Full control of private repositories
+          minLength: 1
+
+    BrokerClientCredentialResponse:
+      type: object
+      required:
+        - client_id
+        - client_secret
+        - created_at
+      properties:
+        client_id:
+          type: string
+          format: uuid
+          description: Broker-issued client identifier for the agent
+          example: 550e8400-e29b-41d4-a716-446655440000
+        client_secret:
+          type: string
+          description: |
+            Broker-issued client secret. Only returned on generation or rotation.
+            Store securely — this value cannot be retrieved again.
+          example: brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+          writeOnly: true
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the credentials were created (RFC3339 format)
+          example: '2025-12-19T10:30:00Z'
+        previous_invalidated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Timestamp when the previous credentials were invalidated (RFC3339 format).
+            Only present on rotation responses (HTTP 200).
+          example: '2025-12-19T15:45:00Z'
+
+    BrokerClientCredentialMetadata:
+      type: object
+      required:
+        - client_id
+        - created_at
+      properties:
+        client_id:
+          type: string
+          format: uuid
+          description: Broker-issued client identifier for the agent
+          example: 550e8400-e29b-41d4-a716-446655440000
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the credentials were created (RFC3339 format)
+          example: '2025-12-19T10:30:00Z'
+        rotated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Timestamp when the credentials were last rotated (RFC3339 format).
+            Null if credentials have never been rotated.
+          example: '2025-12-19T15:45:00Z'
+
+    SigningKeyCreateRequest:
+      type: object
+      properties:
+        algorithm:
+          type: string
+          enum:
+            - ES256
+          default: ES256
+          description: |
+            Signing algorithm for the new key.
+            - `ES256`: ECDSA using P-256 curve and SHA-256 (default, only supported algorithm)
+          example: ES256
+
+    SigningKeyResponse:
+      type: object
+      required:
+        - kid
+        - algorithm
+        - is_current
+        - activates_at
+        - created_at
+      properties:
+        kid:
+          type: string
+          description: Key identifier (unique within the signing key set)
+          example: key-2025-12-19-001
+        algorithm:
+          type: string
+          description: Signing algorithm used by this key
+          example: ES256
+        is_current:
+          type: boolean
+          description: Whether this key is the designated current signing key
+          example: true
+        activates_at:
+          type: string
+          format: date-time
+          description: |
+            Timestamp when the key starts signing tokens (RFC3339 format).
+            For keys created via POST, this is `created_at + 600 s` (2 × JWKS Cache-Control
+            max-age value). The key is present in the JWKS response immediately so clients
+            can cache it before it becomes active. For keys promoted via PUT /…/current,
+            this equals the promotion time.
+          example: '2025-12-19T10:40:00Z'
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the key was created (RFC3339 format)
+          example: '2025-12-19T10:30:00Z'
+
+    SigningKeyListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          description: List of active signing keys (newest first)
+          items:
+            $ref: '#/components/schemas/SigningKeyResponse'
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error type or category
+          example: validation failed
+        message:
+          type: string
+          description: Additional context about the error
+          example: display_name exceeds 255 characters (got 300)
+
+    ServiceScope:
+      type: object
+      required:
+        - service_id
+      properties:
+        service_id:
+          type: string
+          description: UUID on responses; UUID or canonical service identifier on writes
+          examples:
+            uuid: { value: 550e8400-e29b-41d4-a716-446655440001 }
+            canonical: { value: github-prod }
+        scopes:
+          type: array
+          items:
+            type: string
+          description: |
+            Optional OAuth2 scope strings for this service. Omit or provide an empty
+            array for a scope-less service; supplied values must be non-empty.
+          example:
+            - repo:read
+            - user:email
+        requirement_type:
+          type: string
+          enum:
+            - mandatory
+            - optional
+          default: optional
+          description: Whether this service is mandatory or optional within the permission set
+
+    AgentPermissionSetEntry:
+      type: object
+      required:
+        - permission_set_id
+        - requirement_type
+      properties:
+        permission_set_id:
+          type: string
+          description: UUID on responses; UUID or canonical permission-set identifier on writes
+          examples:
+            uuid: { value: a1b2c3d4-e5f6-7890-abcd-ef1234567890 }
+            canonical: { value: github-read }
+        requirement_type:
+          type: string
+          enum:
+            - mandatory
+            - optional
+          description: |
+            Whether this permission set is mandatory (always granted, non-negotiable) or
+            optional (user-togglable in the consent UI).
+          example: mandatory
+
+    CreatePermissionSetRequest:
+      type: object
+      required:
+        - name
+        - description
+        - service_scopes
+      properties:
+        canonical_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._-]+$'
+          example: github-read
+        name:
+          type: string
+          maxLength: 255
+          description: Unique human-readable name for the permission set
+          example: GitHub Read Access
+        description:
+          type: string
+          description: Human-readable explanation of what capabilities this set grants
+          example: Read repository contents and user profile from GitHub
+        service_scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceScope'
+          minItems: 1
+          description: One or more service/scope entries covered by this permission set
+
+    PermissionSetResponse:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - service_scopes
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Stable UUID assigned on creation
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+          readOnly: true
+        canonical_id:
+          type: string
+          nullable: true
+          readOnly: true
+          description: Optional canonical administrative identifier
+          example: github-read
+        name:
+          type: string
+          description: Unique human-readable name for the permission set
+          example: GitHub Read Access
+        description:
+          type: string
+          description: Human-readable explanation of capabilities
+          example: Read repository contents and user profile from GitHub
+        service_scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceScope'
+          description: Scopes across one or more third-party services
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the permission set was created (RFC3339 format)
+          example: '2026-03-25T12:00:00Z'
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the permission set was last updated (RFC3339 format)
+          example: '2026-03-25T12:00:00Z'
+          readOnly: true
+
+  responses:
+    BadRequestError:
+      description: Invalid request parameters or validation errors
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_required:
+              summary: Missing required field
+              value:
+                error: invalid request body
+                message: display_name is required
+            validation_failed:
+              summary: Validation failure
+              value:
+                error: validation failed
+                message: display_name exceeds 255 characters (got 300)
+            invalid_url:
+              summary: Invalid URL format
+              value:
+                error: validation failed
+                message: governance_url is not a valid HTTP/HTTPS URL
+            invalid_issuer:
+              summary: Issuer URI must be HTTPS
+              value:
+                error: validation failed
+                message: issuer_uri must be a valid HTTPS URL
+            missing_endpoints:
+              summary: Endpoints required when discovery disabled
+              value:
+                error: validation failed
+                message: token_endpoint is required when discovery is disabled
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            agent_not_found:
+              summary: Agent not found
+              value:
+                error: agent not found
+                message: Agent with ID '550e8400-e29b-41d4-a716-446655440000' does not exist
+            service_not_found:
+              summary: Service not found
+              value:
+                error: service not found
+                message: Service with ID '770e8400-e29b-41d4-a716-446655440002' does not exist
+
+    ConflictError:
+      description: Resource conflict (duplicate identifier)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            duplicate_agent:
+              summary: Duplicate agent client_id
+              value:
+                error: conflict
+                message: Agent with client_id 'agent-research-assistant' already exists
+            duplicate_service:
+              summary: Duplicate service client_id
+              value:
+                error: conflict
+                message: Service with client_id 'Iv1.1234567890abcdef' already exists
+
+    ProtectedResourceConflict:
+      description: Protected resource URI is already owned by another service, or a rename target already exists.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    PreconditionFailed:
+      description: The supplied If-Match value does not equal the service's current strong ETag. Re-fetch and retry.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    PreconditionRequired:
+      description: The request includes protected_resources but omits the required If-Match header.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: internal server error
+
+  securitySchemes:
+    PreAuthProxy:
+      type: apiKey
+      in: header
+      name: X-Remote-User
+      description: |
+        Pre-authentication via reverse proxy (oauth2-proxy, nginx, etc.).
+
+        The proxy validates user credentials and sets the principal (user identifier)
+        in the configured HTTP header (default: `X-Remote-User`).
+
+        **Configuration**: Header name is configurable via `auth.principal_header`
+
+        **Admin Access**: All admin endpoints require administrative privileges,
+        enforced at the proxy level before requests reach this API.
+
+security:
+  - PreAuthProxy: []

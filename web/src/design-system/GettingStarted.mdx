@@ -1,0 +1,102 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Design System/Getting Started" />
+
+# Agentic Identity Broker Design System
+
+Welcome to the **Refined Trust Architecture** design system for the consent management frontend.
+
+## Overview
+
+This design system provides a comprehensive component library optimized for capturing consent from non-technical end-users who delegate permissions to AI agents. Every component is designed to communicate **trustworthiness, clarity, and control**.
+
+## Design Philosophy
+
+### Refined Trust Architecture
+
+The aesthetic blends the visual gravity of a **bank vault** with the approachability of **modern SaaS**. This is where users make critical decisions about AI agent permissions, so every pixel must communicate authority and trust.
+
+**Core Principles:**
+
+- **Serif Authority with Warm Humanity**: Crimson Pro (serif) for headings creates trust, Manrope (sans) for body text adds approachability
+- **Color as Semantic Signal**: Navy for authority, Emerald for success, Amber for attention
+- **Elevation Through Shadow**: Multi-layer shadows create depth without borders
+- **Motion That Guides**: Purposeful animations (150-500ms) that guide without entertaining
+- **Whitespace as Luxury**: Generous padding and spacing create a premium feel
+
+## Typography
+
+```css
+Headings: Crimson Pro (serif) - 600/700 weight
+Body: Manrope (sans-serif) - 400/500 weight
+Monospace: JetBrains Mono - 500 weight
+```
+
+## Color System
+
+### Semantic Tokens
+
+- **trust-deep** (#0A2540): Primary actions, critical UI
+- **trust** (#1E4D6B): Medium authority elements
+- **trust-light** (#E8F1F5): Light backgrounds
+- **cta** (#D97706): Call-to-action buttons, warnings
+- **success-primary** (#059669): Success states, granted permissions
+- **error-primary** (#DC2626): Error states
+
+## Component Categories
+
+### Primitives
+
+Button, Badge, Avatar, Divider, Spinner, Icon
+
+### Inputs
+
+TextInput, TextArea, Select, Checkbox, Radio, Switch, DatePicker
+
+### Feedback
+
+Alert, Toast, InlineError, EmptyState, Skeleton
+
+### Overlays
+
+Modal, Tooltip, Dropdown, Popover
+
+### Navigation
+
+Tabs, Breadcrumb, Pagination
+
+### Data Display
+
+Table, Card, GrantStatusBadge, ScopeList
+
+### Layout
+
+Container, Stack, Grid, AppLayout, PageTransition
+
+### Advanced
+
+Accordion, Progress
+
+## Usage
+
+Import components from the design system:
+
+```typescript
+import { Button } from '@design-system/components/primitives/Button';
+import { cn } from '@design-system/utils';
+import { semanticColors } from '@design-system/tokens';
+```
+
+## Accessibility
+
+All components follow **WCAG 2.1 AA** guidelines:
+
+- Keyboard navigation support
+- Screen reader compatibility
+- Visible focus indicators
+- Proper ARIA labels
+- Color contrast compliance
+
+## Getting Started
+
+Browse the component categories in the sidebar to explore interactive examples, view all variants, and experiment with the Playground stories.

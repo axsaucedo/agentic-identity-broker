@@ -1,0 +1,1558 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of broker pod replicas"
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Container image configuration",
+      "properties": {
+        "repository": {
+          "type": "string",
+          "description": "Container image repository"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"],
+          "description": "Image pull policy"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Image tag (defaults to chart appVersion if not set)"
+        }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "description": "Image pull secrets for private registries",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": ["name"]
+      }
+    },
+    "nameOverride": {
+      "type": "string",
+      "description": "Override the chart name"
+    },
+    "fullnameOverride": {
+      "type": "string",
+      "description": "Override the full resource name"
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "ServiceAccount configuration",
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Create a ServiceAccount"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Annotations for the ServiceAccount"
+        },
+        "name": {
+          "type": "string",
+          "description": "ServiceAccount name (generated if not set)"
+        },
+        "irsa": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "AWS IAM Roles for Service Accounts (IRSA) configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable IRSA annotation injection"
+            },
+            "role": {
+              "type": "string",
+              "description": "IAM role ARN or name to bind to the ServiceAccount"
+            }
+          }
+        }
+      }
+    },
+    "podAnnotations": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Pod annotations"
+    },
+    "commonLabels": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Common labels applied to all resources"
+    },
+    "namespace": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Namespace configuration",
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Create a Namespace resource"
+        },
+        "name": {
+          "type": "string",
+          "description": "Namespace name (defaults to .Release.Namespace if empty)"
+        }
+      }
+    },
+    "podSecurityContext": {
+      "type": "object",
+      "description": "Pod-level security context"
+    },
+    "securityContext": {
+      "type": "object",
+      "description": "Container-level security context"
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Service configuration",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["ClusterIP", "NodePort", "LoadBalancer"],
+          "description": "Service type"
+        },
+        "ports": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Port configuration",
+          "properties": {
+            "enduser": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "End-user API port"
+            },
+            "admin": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "Admin API port"
+            }
+          }
+        }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Ingress configuration",
+      "properties": {
+        "enduser": {
+          "$ref": "#/definitions/ingress",
+          "description": "End-user API Ingress"
+        },
+        "admin": {
+          "$ref": "#/definitions/ingress",
+          "description": "Admin API Ingress"
+        }
+      }
+    },
+    "resources": {
+      "$ref": "#/definitions/resourceRequirements",
+      "description": "Resource limits and requests for the broker container"
+    },
+    "autoscaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "HorizontalPodAutoscaler configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable HorizontalPodAutoscaler"
+        },
+        "minReplicas": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Minimum replicas"
+        },
+        "maxReplicas": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum replicas"
+        },
+        "targetCPUUtilizationPercentage": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Target CPU utilization percentage"
+        },
+        "targetMemoryUtilizationPercentage": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Target memory utilization percentage"
+        }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "PodDisruptionBudget configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable PodDisruptionBudget"
+        },
+        "minAvailable": {
+          "anyOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "pattern": "^(100|[1-9]?\\d)%$" }
+          ],
+          "description": "Minimum available pods (integer or percentage string)"
+        },
+        "maxUnavailable": {
+          "anyOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "pattern": "^(100|[1-9]?\\d)%$" }
+          ],
+          "description": "Maximum unavailable pods (integer or percentage string)"
+        }
+      }
+    },
+    "nodeSelector": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Node selector for pod assignment"
+    },
+    "tolerations": {
+      "type": "array",
+      "description": "Tolerations for pod assignment",
+      "items": {
+        "type": "object"
+      }
+    },
+    "affinity": {
+      "type": "object",
+      "description": "Affinity rules for pod assignment"
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Storage configuration",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["memory", "postgres"],
+          "description": "Storage type: memory (ephemeral) or postgres (persistent)"
+        }
+      },
+      "required": ["type"]
+    },
+    "postgresql": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "PostgreSQL configuration",
+      "properties": {
+        "external": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "External PostgreSQL configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable external PostgreSQL"
+            },
+            "host": {
+              "type": "string",
+              "description": "PostgreSQL host"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "PostgreSQL port"
+            },
+            "database": {
+              "type": "string",
+              "description": "Database name"
+            },
+            "sslMode": {
+              "type": "string",
+              "description": "SSL mode (disable, require, verify-ca, verify-full)"
+            },
+            "migrationSecretName": {
+              "type": "string",
+              "description": "Kubernetes Secret name containing migration user credentials"
+            },
+            "migrationSecretKeys": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Secret keys for migration credentials",
+              "properties": {
+                "username": {
+                  "type": "string",
+                  "description": "Username key in secret"
+                },
+                "password": {
+                  "type": "string",
+                  "description": "Password key in secret"
+                }
+              }
+            },
+            "brokerSecretName": {
+              "type": "string",
+              "description": "Kubernetes Secret name containing broker user credentials"
+            },
+            "brokerSecretKeys": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Secret keys for broker credentials",
+              "properties": {
+                "username": {
+                  "type": "string",
+                  "description": "Username key in secret"
+                },
+                "password": {
+                  "type": "string",
+                  "description": "Password key in secret"
+                }
+              }
+            }
+          }
+        },
+        "operator": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Zalando PostgreSQL Operator configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable Zalando PostgreSQL Operator integration"
+            },
+            "teamId": {
+              "type": "string",
+              "description": "Team ID (required by Zalando operator)"
+            },
+            "version": {
+              "type": "string",
+              "description": "PostgreSQL version"
+            },
+            "numberOfInstances": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of PostgreSQL instances (cluster size)"
+            },
+            "database": {
+              "type": "string",
+              "description": "Database name"
+            },
+            "volume": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Volume configuration",
+              "properties": {
+                "size": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei)$",
+                  "description": "Persistent volume size (e.g. 10Gi)"
+                },
+                "storageClass": {
+                  "type": "string",
+                  "description": "Storage class (optional, uses cluster default if not set)"
+                }
+              }
+            },
+            "resources": {
+              "$ref": "#/definitions/resourceRequirements",
+              "description": "Resource configuration for PostgreSQL pods"
+            },
+            "initContainerResources": {
+              "$ref": "#/definitions/resourceRequirements",
+              "description": "Resource configuration for wait-for-postgres init container"
+            },
+            "users": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "User configuration",
+              "properties": {
+                "migration": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Migration user (database owner)",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+                      "description": "Migration user name (RFC 1123 compliant)"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Migration user role attributes"
+                    }
+                  }
+                },
+                "broker": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Broker user (runtime data access)",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+                      "description": "Broker user name (RFC 1123 compliant)"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Broker user role attributes"
+                    }
+                  }
+                }
+              }
+            },
+            "secretSuffix": {
+              "type": "string",
+              "description": "Secret name suffix for operator-managed credentials"
+            }
+          }
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Labels applied only to the PostgreSQL resource"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Annotations applied only to the PostgreSQL resource"
+        }
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Migration Job configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Run database migrations"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Migration container image configuration",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "Migration container image repository"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": ["Always", "IfNotPresent", "Never"],
+              "description": "Image pull policy"
+            },
+            "tag": {
+              "type": "string",
+              "description": "Image tag (defaults to chart appVersion if not set)"
+            }
+          }
+        },
+        "hookWeight": {
+          "type": ["integer", "string"],
+          "description": "Helm hook weight (controls execution order)"
+        },
+        "backoffLimit": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Job backoff limit (retry attempts)"
+        },
+        "ttlSecondsAfterFinished": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "TTL for completed/failed jobs (seconds)"
+        },
+        "resources": {
+          "$ref": "#/definitions/resourceRequirements",
+          "description": "Resource limits for migration Job"
+        },
+        "grants": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Database grants configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable automatic privilege grants after migration"
+            },
+            "image": {
+              "type": "string",
+              "description": "PostgreSQL client image used to run the grants script"
+            },
+            "sql": {
+              "type": "string",
+              "description": "Custom grants SQL script (optional)"
+            }
+          }
+        }
+      }
+    },
+    "broker": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Broker application configuration",
+      "properties": {
+        "log": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Logging configuration",
+          "properties": {
+            "level": {
+              "type": "string",
+              "description": "Log level (debug, info, warn, error)"
+            },
+            "format": {
+              "type": "string",
+              "description": "Log format (json, text)"
+            }
+          }
+        },
+        "server": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Server configuration",
+          "properties": {
+            "enduser": {
+              "$ref": "#/definitions/serverConfig",
+              "description": "End-user server configuration"
+            },
+            "admin": {
+              "$ref": "#/definitions/serverConfig",
+              "description": "Admin server configuration"
+            },
+            "shutdown": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Graceful shutdown configuration",
+              "properties": {
+                "timeout": {
+                  "type": "string",
+                  "description": "Graceful shutdown timeout (e.g. 30s)"
+                }
+              }
+            }
+          }
+        },
+        "requestContext": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Request security context configuration. Capture is always enabled; this block only controls trusted-proxy handling and traceresponse emission.",
+          "properties": {
+            "trustedProxy": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Trusted-proxy configuration for caller IP resolution",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Trust the configured forwarded header when deriving caller IPs"
+                },
+                "forwardedHeader": {
+                  "type": "string",
+                  "description": "Forwarded header to inspect when trusted proxy mode is enabled"
+                }
+              }
+            },
+            "trace": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Trace-response configuration",
+              "properties": {
+                "responseEnabled": {
+                  "type": "boolean",
+                  "description": "Emit the additive W3C traceresponse response header on HTTP responses"
+                }
+              }
+            }
+          }
+        },
+
+        "thirdPartyOauth2": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "OAuth2 third-party service configuration",
+          "properties": {
+            "jweSigningKey": {
+              "type": "string",
+              "description": "Raw 32-byte JWE signing key for state tokens"
+            },
+            "jweSigningKeyBase64": {
+              "type": "string",
+              "description": "Base64-encoded JWE signing key (highest precedence)"
+            },
+            "jweSigningKeySecret": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Secret reference for JWE signing key",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Secret name"
+                },
+                "key": {
+                  "type": "string",
+                  "description": "Key within the secret"
+                }
+              }
+            }
+          }
+        },
+        "encryption": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Encryption configuration",
+          "properties": {
+            "memory": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "In-memory encryption backend",
+              "properties": {
+                "rawKey": {
+                  "type": "string",
+                  "description": "Base64-encoded 32-byte key for the in-memory encryption backend"
+                }
+              }
+            },
+            "awsKms": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "AWS KMS encryption backend",
+              "properties": {
+                "keyArn": {
+                  "type": "string",
+                  "description": "ARN of the AWS KMS key used for encryption"
+                },
+                "dynamodbTableName": {
+                  "type": "string",
+                  "description": "DynamoDB table name for storing branch encryption keys"
+                },
+                "branchKeyTtl": {
+                  "type": "string",
+                  "description": "Time-to-live for branch keys (e.g. 1h, 24h)"
+                },
+                "region": {
+                  "type": "string",
+                  "description": "AWS region for KMS and SDK base configuration"
+                },
+                "dynamodbRegion": {
+                  "type": "string",
+                  "description": "AWS region of the DynamoDB table"
+                },
+                "dynamodbTimeout": {
+                  "type": "string",
+                  "description": "Per-operation timeout for DynamoDB-backed encryption work (e.g. 1s, 5s)"
+                }
+              }
+            }
+          }
+        },
+        "oauth2AuthorizationServer": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "OAuth2 Authorization Server configuration",
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["proxy", "local", "hybrid"],
+              "description": "Operation mode: proxy, local, or hybrid. Required."
+            },
+            "proxy": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Upstream OAuth2 server configuration (required in proxy/hybrid mode)",
+              "properties": {
+                "upstreamIssuerUri": {
+                  "type": "string",
+                  "description": "Upstream OAuth2 issuer URI"
+                },
+                "upstreamAuthorizeEndpoint": {
+                  "type": "string",
+                  "description": "Upstream authorize endpoint"
+                },
+                "upstreamTokenEndpoint": {
+                  "type": "string",
+                  "description": "Upstream token endpoint"
+                },
+                "upstreamTimeout": {
+                  "type": "string",
+                  "description": "Upstream request timeout (empty = use application default of 30s; accepts Go duration syntax: 30s, 500ms, 2m)"
+                },
+                "upstreamJwksMinRefresh": {
+                  "type": "string",
+                  "description": "Minimum interval between upstream JWKS refresh attempts (empty = use application default of 15m)"
+                },
+                "upstreamJwksMaxRefresh": {
+                  "type": "string",
+                  "description": "Maximum interval between upstream JWKS refresh attempts (empty = use application default of 1h)"
+                }
+              }
+            },
+            "supportedResponseTypes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Supported OAuth2 response types"
+            },
+            "supportedGrantTypes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Supported OAuth2 grant types"
+            },
+            "local": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Local token issuance configuration (local/hybrid mode)",
+              "properties": {
+                "tokenTtl": {
+                  "type": "string",
+                  "description": "Access token TTL (e.g. '1h', '30m'). Defaults to 1h if empty."
+                },
+                "tokenClaimsExpression": {
+                  "type": "string",
+                  "description": "CEL expression for custom token claims"
+                },
+                "signingKeys": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Local signing-key startup configuration",
+                  "properties": {
+                    "bootstrapTimeout": {
+                      "type": "string",
+                      "description": "Startup budget for signing-key bootstrap in local/hybrid mode"
+                    }
+                  }
+                }
+              }
+            },
+            "multiAgentClient": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Multi-agent client sharing configuration",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable multi-agent client sharing"
+                },
+                "agentIdParamName": {
+                  "type": "string",
+                  "description": "Query parameter name for agent UUID in upstream authorize redirect"
+                },
+                "agentIdClaimName": {
+                  "type": "string",
+                  "description": "JWT claim name containing the agent UUID"
+                }
+              },
+              "if": {
+                "properties": { "enabled": { "const": true } },
+                "required": ["enabled"]
+              },
+              "then": {
+                "required": ["agentIdParamName", "agentIdClaimName"],
+                "properties": {
+                  "agentIdParamName": { "minLength": 1 },
+                  "agentIdClaimName": { "minLength": 1 }
+                }
+              }
+            },
+            "cimd": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Client ID Metadata Document (CIMD) configuration. Only valid when mode is 'local' or 'hybrid'.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable URL-based client_id support via CIMD"
+                },
+                "fetchTimeout": {
+                  "type": "string",
+                  "description": "HTTP timeout for CIMD document fetches (e.g. 1s)"
+                },
+                "maxResponseBytes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Maximum response body size in bytes"
+                },
+                "cache": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Cache TTL bounds for CIMD responses",
+                  "properties": {
+                    "maxTtl": {
+                      "type": "string",
+                      "description": "Maximum TTL for cached documents (e.g. 1h)"
+                    },
+                    "minTtl": {
+                      "type": "string",
+                      "description": "Minimum TTL for cached documents (e.g. 60s)"
+                    }
+                  }
+                },
+                "ssrf": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "SSRF protection settings",
+                  "properties": {
+                    "extraBlockedCidrs": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "description": "Extra CIDR ranges blocked beyond RFC 6890 defaults"
+                    }
+                  }
+                },
+                "clientNameBlocklist": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "Keyword blocklist for CIMD client_name values (case-insensitive)"
+                }
+              }
+            },
+            "impersonation": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "RFC 8693 user impersonation (signed or unverified subject). Only valid when mode is 'local'. Keys use the broker config's snake_case names.",
+              "required": ["audience_prefix", "rules"],
+              "properties": {
+                "audience_prefix": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Routing-only HTTP(S) URI prefix. A request must append exactly one target agent's canonical lower-case UUID or canonical_id; this value never sets issued-token aud (CR-001)."
+                },
+                "rules": {
+                  "type": "array",
+                  "minItems": 1,
+                  "description": "Ordered, first-match impersonation rules (CR-002)",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name", "roles", "trusted_issuers", "authorization"],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Unique, operator-facing rule name (CR-003)"
+                      },
+                      "roles": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "description": "Per-role semantics; client_assertion, actor, and subject all required (CR-003)",
+                        "required": ["client_assertion", "actor", "subject"],
+                        "properties": {
+                          "client_assertion": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["principal_expression"],
+                            "oneOf": [{"required": ["expected_audience"], "not": {"required": ["audience_requirement"]}}, {"required": ["audience_requirement"], "not": {"required": ["expected_audience"]}}],
+                            "properties": {
+                              "expected_audience": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "aud each signed client assertion must carry; omit when audience_requirement is 'absent'"
+                              },
+                              "audience_requirement": {
+                                "type": "string",
+                                "enum": ["absent"],
+                                "description": "Set to 'absent' to accept only a credential that carries no aud claim; mutually exclusive with expected_audience (CR-009)"
+                              },
+                              "principal_expression": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "CEL expression extracting the non-empty client identity"
+                              }
+                            }
+                          },
+                          "actor": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["principal_expression"],
+                            "oneOf": [{"required": ["expected_audience"], "not": {"required": ["audience_requirement"]}}, {"required": ["audience_requirement"], "not": {"required": ["expected_audience"]}}],
+                            "properties": {
+                              "expected_audience": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "aud each signed actor token must carry; omit when audience_requirement is 'absent'"
+                              },
+                              "audience_requirement": {
+                                "type": "string",
+                                "enum": ["absent"],
+                                "description": "Set to 'absent' to accept only a credential that carries no aud claim; mutually exclusive with expected_audience (CR-009)"
+                              },
+                              "principal_expression": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "CEL expression extracting the non-empty actor identity"
+                              }
+                            }
+                          },
+                          "subject": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["principal_expression"],
+                            "allOf": [
+                              {
+                                "if": {
+                                  "properties": {"verification": {"const": "none"}},
+                                  "required": ["verification"]
+                                },
+                                "then": {
+                                  "not": {
+                                    "anyOf": [
+                                      {"required": ["expected_audience"]},
+                                      {"required": ["audience_requirement"]}
+                                    ]
+                                  }
+                                },
+                                "else": {
+                                  "oneOf": [
+                                    {"required": ["expected_audience"], "not": {"required": ["audience_requirement"]}},
+                                    {"required": ["audience_requirement"], "not": {"required": ["expected_audience"]}}
+                                  ]
+                                }
+                              }
+                            ],
+                            "properties": {
+                              "verification": {
+                                "type": "string",
+                                "enum": ["jwks", "none"],
+                                "description": "Subject mode: 'jwks' (signed, validated against a trusted issuer, default) or 'none' (unverified unsigned JWT, broker profile extension per ADR 031)"
+                              },
+                              "expected_audience": {
+                                "type": "string",
+                                "description": "aud a signed subject token must carry; required when verification is 'jwks', MUST be omitted when 'none' or when audience_requirement is 'absent'"
+                              },
+                              "audience_requirement": {
+                                "type": "string",
+                                "enum": ["absent"],
+                                "description": "Set to 'absent' to accept only a credential that carries no aud claim; mutually exclusive with expected_audience (CR-009)"
+                              },
+                              "principal_expression": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "CEL expression extracting the non-empty subject identity"
+                              },
+                              "email_expression": {
+                                "type": "string",
+                                "description": "Optional CEL expression extracting the subject email (subject role only)"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "trusted_issuers": {
+                        "type": "array",
+                        "minItems": 1,
+                        "description": "Trust anchors for the signed roles (CR-008)",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["issuer_uri", "allowed_algorithms", "signs_roles"],
+                          "properties": {
+                            "issuer_uri": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Issuer identifier matched against each credential's iss claim"
+                            },
+                            "jwks_uri": {
+                              "type": "string",
+                              "description": "Explicit JWKS endpoint; empty discovers it from issuer metadata"
+                            },
+                            "jwks_min_refresh": {
+                              "type": "string",
+                              "description": "Minimum JWKS refresh interval (Go duration); default 15m"
+                            },
+                            "jwks_max_refresh": {
+                              "type": "string",
+                              "description": "Maximum JWKS refresh interval (Go duration); default max(min,1h)"
+                            },
+                            "allowed_algorithms": {
+                              "type": "array",
+                              "minItems": 1,
+                              "description": "Permitted signing algorithms (asymmetric only; CR-007)",
+                              "items": {
+                                "type": "string",
+                                "enum": ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512", "EdDSA"]
+                              }
+                            },
+                            "signs_roles": {
+                              "type": "array",
+                              "minItems": 1,
+                              "description": "Signed roles this issuer may sign (CR-008)",
+                              "items": {
+                                "type": "string",
+                                "enum": ["client_assertion", "actor", "subject"]
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "authorization": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "description": "CEL authorization predicate (token-exchange schema; CR-005)",
+                        "required": ["type", "cel"],
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "enum": ["cel"],
+                            "description": "Authorization type; only 'cel' is supported"
+                          },
+                          "cel": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["expression"],
+                            "properties": {
+                              "expression": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "CEL boolean predicate; compiled at startup"
+                              },
+                              "evaluation_timeout": {
+                                "type": "string",
+                                "description": "CEL evaluation timeout in [10ms,5s]; default 100ms"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": { "mode": { "enum": ["proxy", "hybrid"] } },
+                "required": ["mode"]
+              },
+              "then": {
+                "required": ["proxy"],
+                "properties": {
+                  "proxy": {
+                    "required": ["upstreamIssuerUri", "upstreamAuthorizeEndpoint", "upstreamTokenEndpoint"],
+                    "properties": {
+                      "upstreamIssuerUri": { "minLength": 1 },
+                      "upstreamAuthorizeEndpoint": { "minLength": 1 },
+                      "upstreamTokenEndpoint": { "minLength": 1 }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "cimd": {
+                    "properties": { "enabled": { "const": true } },
+                    "required": ["enabled"]
+                  }
+                },
+                "required": ["cimd"]
+              },
+              "then": {
+                "properties": {
+                  "mode": { "enum": ["local", "hybrid"] }
+                },
+                "required": ["mode"]
+              }
+            }
+          ]
+        },
+        "tokenExchange": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Token exchange configuration (RFC 8693)",
+          "properties": {
+            "expectedAudience": {
+              "type": "string",
+              "description": "Expected audience claim value for subject_token and client_assertion JWTs"
+            },
+            "clientAssertion": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "External IdP trust anchor for privileged-gateway client assertions",
+              "properties": {
+                "issuerUri": {
+                  "type": "string",
+                  "description": "External IdP issuer URI; required for configured token exchange in local mode"
+                },
+                "jwksUri": {
+                  "type": "string",
+                  "description": "Explicit client-assertion JWKS URI; empty discovers it from issuerUri"
+                },
+                "jwksMinRefresh": {
+                  "type": "string",
+                  "description": "Minimum client-assertion JWKS refresh interval as a Go duration"
+                },
+                "jwksMaxRefresh": {
+                  "type": "string",
+                  "description": "Maximum client-assertion JWKS refresh interval as a Go duration"
+                }
+              }
+            },
+
+            "claimExtraction": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Claim extraction expressions",
+              "properties": {
+                "principalExpression": {
+                  "type": "string",
+                  "description": "CEL expression to extract the user principal from subject_token"
+                },
+                "agentIdExpression": {
+                  "type": "string",
+                  "description": "CEL expression to extract the agent identifier from subject_token"
+                }
+              }
+            },
+            "authorization": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Authorization configuration",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Authorization type (cel)"
+                },
+                "cel": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "CEL authorization configuration",
+                  "properties": {
+                    "expression": {
+                      "type": "string",
+                      "description": "CEL boolean expression evaluated per token exchange request"
+                    },
+                    "evaluationTimeout": {
+                      "type": "string",
+                      "description": "CEL evaluation timeout (e.g. 100ms, 5s)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Security configuration",
+          "properties": {
+            "skipThirdpartyHttpsValidation": {
+              "type": "boolean",
+              "description": "Skip HTTPS validation for third-party services (dev/test only)"
+            }
+          }
+        },
+        "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "OpenTelemetry observability configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable OpenTelemetry distributed tracing and metrics export"
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Service name reported in every telemetry signal"
+            },
+            "resourceAttributes": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Additional OTel resource attributes"
+            },
+            "traces": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Distributed tracing configuration",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable trace export via OTLP"
+                },
+                "samplingRate": {
+                  "type": "number",
+                  "minimum": 0.0,
+                  "maximum": 1.0,
+                  "description": "Fractional sampling rate (0.0-1.0)"
+                },
+                "propagators": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Trace-context propagators to register globally (ottrace, b3multi, b3, tracecontext, baggage)"
+                }
+              }
+            },
+            "metrics": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Metrics collection and export configuration",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable metrics export via OTLP"
+                },
+                "exportInterval": {
+                  "type": "string",
+                  "description": "Metrics push interval (e.g. 30s, 1m)"
+                }
+              }
+            },
+            "logs": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "OTLP log export configuration",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable OTLP log export via the slog bridge"
+                }
+              }
+            },
+            "exporter": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "OTLP exporter connection parameters",
+              "properties": {
+                "protocol": {
+                  "type": "string",
+                  "description": "Transport protocol (grpc, http, https)"
+                },
+                "endpoint": {
+                  "type": "string",
+                  "description": "OTLP collector endpoint"
+                },
+                "headers": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Additional HTTP/gRPC headers sent with every export request"
+                },
+                "timeout": {
+                  "type": "string",
+                  "description": "Export request timeout (e.g. 10s, 30s)"
+                },
+                "compression": {
+                  "type": "string",
+                  "description": "Payload compression for all OTLP exporters (none, gzip)"
+                },
+                "insecure": {
+                  "type": "boolean",
+                  "description": "Disable TLS for the OTLP connection (must not be true in production)"
+                }
+              }
+            }
+          }
+        },
+        "extraEnv": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/envVar"
+          },
+          "description": "Additional broker environment variables"
+        },
+        "extraConfig": {
+          "type": "object",
+          "description": "Additional broker configuration (merged into config.yaml)"
+        }
+      }
+    },
+    "approvals": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Tool approval configuration",
+      "properties": {
+        "pending_ttl": {
+          "type": "string",
+          "description": "Time before a pending approval expires (e.g. 10m)"
+        },
+        "sync_coalesce_window": {
+          "type": "string",
+          "description": "Coalesce window for long-poll sync notifications (e.g. 1s)"
+        },
+        "rate_limit": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Rate limiting for approval creation",
+          "properties": {
+            "max_pending_per_pair": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum pending approvals per principal/agent pair"
+            },
+            "max_requests_per_minute": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum approval creation requests per minute per principal/agent pair"
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "envVar": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string"
+        },
+        "valueFrom": {
+          "type": "object"
+        }
+      },
+      "required": ["name"],
+      "oneOf": [
+        {
+          "required": ["value"]
+        },
+        {
+          "required": ["valueFrom"]
+        }
+      ]
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable Ingress"
+        },
+        "className": {
+          "type": "string",
+          "description": "Ingress class name (e.g. nginx, skipper)"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Ingress annotations"
+        },
+        "hosts": {
+          "type": "array",
+          "description": "Ingress hosts configuration",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host": {
+                "type": "string",
+                "description": "Hostname"
+              },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Path"
+                    },
+                    "pathType": {
+                      "type": "string",
+                      "enum": ["Prefix", "Exact", "ImplementationSpecific"],
+                      "description": "Path type"
+                    }
+                  },
+                  "required": ["path", "pathType"]
+                }
+              }
+            },
+            "required": ["host", "paths"]
+          }
+        },
+        "tls": {
+          "type": "array",
+          "description": "TLS configuration",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "secretName": {
+                "type": "string",
+                "description": "TLS secret name"
+              },
+              "hosts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "TLS hostnames"
+              }
+            },
+            "required": ["secretName", "hosts"]
+          }
+        }
+      }
+    },
+    "resourceRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requests": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "description": "CPU request (e.g. 100m, 0.5)"
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory request (e.g. 128Mi, 1Gi)"
+            }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "description": "CPU limit (e.g. 500m, 1)"
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory limit (e.g. 256Mi, 2Gi)"
+            }
+          }
+        }
+      }
+    },
+    "serverConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Server port"
+        },
+        "bind": {
+          "type": "string",
+          "description": "Bind address"
+        },
+        "publicUrl": {
+          "type": "string",
+          "description": "Public URL"
+        },
+        "authentication": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Authentication configuration",
+          "properties": {
+            "preauth": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Pre-authentication via header",
+              "properties": {
+                "principalHeaderName": {
+                  "type": "string",
+                  "description": "Header name containing authenticated principal"
+                }
+              }
+            },
+            "jwt": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "JWT pre-authentication configuration",
+              "properties": {
+                "header_name": {
+                  "type": "string",
+                  "description": "HTTP header containing the JWT"
+                },
+                "verification": {
+                  "type": "string",
+                  "description": "Verification method (jwks, none)"
+                },
+                "jwks_uri": {
+                  "type": "string",
+                  "description": "JWKS URI (required when verification is jwks)"
+                },
+                "expected_audience": {
+                  "type": "string",
+                  "description": "Expected audience claim"
+                },
+                "expected_issuer": {
+                  "type": "string",
+                  "description": "Expected issuer claim"
+                },
+                "claim_extraction": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Claim extraction expressions",
+                  "properties": {
+                    "principal_expression": {
+                      "type": "string"
+                    },
+                    "display_name_expression": {
+                      "type": "string"
+                    },
+                    "email_expression": {
+                      "type": "string"
+                    },
+                    "picture_url_expression": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

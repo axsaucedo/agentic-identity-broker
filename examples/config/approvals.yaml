@@ -1,0 +1,17 @@
+# Tool Approval Configuration
+# Controls the human-in-the-loop approval flow for agent tool calls.
+
+approvals:
+  # Time before a pending approval expires (default: 10m)
+  pending_ttl: 10m
+
+  # Coalesce window for long-poll sync notifications (default: 1s)
+  # Notifications within this window are batched into a single wake-up.
+  sync_coalesce_window: 1s
+
+  rate_limit:
+    # Maximum pending approvals per (principal, agent) pair (default: 50)
+    max_pending_per_pair: 50
+
+    # Maximum approval creation requests per minute per (principal, agent) pair (default: 10)
+    max_requests_per_minute: 10
