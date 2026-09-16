@@ -49,7 +49,7 @@ jobs:
       - name: Build artifacts
         run: |
           just build-all
-          test -f web/dist/consent/index.html
+          test -f web/dist/index.html
 
       - name: Upload test results
         if: always()
