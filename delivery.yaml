@@ -89,6 +89,7 @@ pipeline:
           fi
 
           IMAGE_NAME="${CDP_REGISTRY}/infosec/agentic-identity-broker"
+          export BASE_IMAGE="container-registry.zalando.net/library/alpine-3:latest"
           if [ -z "${CDP_PULL_REQUEST_NUMBER:-}" ]; then
             VERSION="${RELEASE_VERSION}" IMAGE_NAME="${IMAGE_NAME}" \
               just docker-push
