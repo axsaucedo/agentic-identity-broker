@@ -93,9 +93,9 @@ pipeline:
           if [ -z "${CDP_PULL_REQUEST_NUMBER:-}" ]; then
             VERSION="${RELEASE_VERSION}" IMAGE_NAME="${IMAGE_NAME}" \
               just docker-push
+            git gh-tag "${RELEASE_VERSION}"
             VERSION="${RELEASE_VERSION}" IMAGE_NAME="${IMAGE_NAME}" \
               just docker-promote
-            git gh-tag "${RELEASE_VERSION}"
           else
             VERSION="${RELEASE_VERSION}" IMAGE_NAME="${IMAGE_NAME}" \
               just docker-build-all
