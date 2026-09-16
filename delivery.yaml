@@ -1,5 +1,6 @@
 version: "2017-09-20"
 allow_concurrent_pipelines: false
+allow_concurrent_steps: true
 
 tags:
   application: agentic-identity-broker
