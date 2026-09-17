@@ -116,22 +116,12 @@ Broker settings only and add no TLS bypass or HTTP client-assertion JWKS URI.
 
 **Acceptance-spec content for T016**:
 
-- **US1-S1**: Record the real `POST /oauth2/token` form. Assert the RFC 8693 grant, `subject_token`,
-  access-token type, configured `resource`, jwt-bearer assertion type, and decoded assertion
-  `iss == sub == https://agentgateway-direct-e2e.example.test` plus `aud == token-exchange-broker`.
-- **US1-S2**: Assert successful MCP completion. The downstream recorder sees the exchanged token and
-  never the inbound token.
-- **US1-S3**: Assert the rendered direct route has no `extProc` policy. An exposed ExtProc stand-in
-  listener records zero connections.
-- **US2-S1**: Keep one `It()` and use subcases for an untrusted signing key, mismatched assertion
-  issuer, mismatched assertion audience, and wrong subject-token audience. Configure an invalid
-  resource or absent grant where useful to prove credential validation occurs first. Assert the
-  documented status and zero downstream requests. Assert an unsupported algorithm as gateway
-  configuration-load rejection, not assertion tampering.
-- **US2-S2**: Use a valid assertion and subject JWT but omit the active `UserGrant`. Assert the
-  gateway returns 400 and the backend sees no request.
-- **US2-S3**: Use an unavailable Broker endpoint. Also cover the gateway handling of validation and
-  authorization errors through real Broker paths. Assert a failure response and zero backend requests.
+- **US1-S1**: Record two real `POST /oauth2/token` forms. Assert the RFC 8693 grant, `subject_token`, access-token type, configured `resource`, jwt-bearer assertion type, decoded assertion `iss == sub == https://agentgateway-direct-e2e.example.test`, `aud == token-exchange-broker`, and a distinct `jti` for each exchange.
+- **US1-S2**: Assert successful MCP completion. The downstream recorder sees the exchanged token and never the inbound token.
+- **US1-S3**: Assert the direct route sends an RFC 8693 request to the Broker, has no `extProc` policy, and gives an exposed ExtProc stand-in listener zero connections.
+- **US2-S1**: Keep one `It()` and use subcases for an untrusted signing key, mismatched assertion issuer, mismatched assertion audience, a subject-token issuer different from the configured upstream fixture issuer, and wrong subject-token audience. Assert the documented status and zero downstream requests. Assert an unsupported algorithm as gateway configuration-load rejection, not assertion tampering.
+- **US2-S2**: Use a valid assertion and subject JWT but omit the active `UserGrant`. Assert the gateway returns 400 and the backend sees no request.
+- **US2-S3**: Use valid direct routes with a missing resource, an unmapped resource, no stored session, insufficient stored-session scope, unavailable client-assertion JWKS, and an unavailable Broker endpoint. Assert `invalid_request` and agent 400 for the missing resource, `invalid_target` and agent 400 for the unmapped resource, and `invalid_grant` and agent 400 for each stored-session condition. Assert `server_error` and agent 500 for unavailable JWKS and agent 500 for an unavailable Broker. Assert zero backend requests and no inbound-token fallback for every subcase.
 
 **Acceptance-spec content for T017**:
 
@@ -166,7 +156,7 @@ production Broker boundary and a real agentgateway container.
 - [ ] T022 [P] Implement `tests/e2e/gateway/support/downstream_backend.go` with a `0.0.0.0:0` streamable-MCP `whoami` backend that records each Authorization header and a separate TCP ExtProc stand-in that records connection attempts without importing `internal/extproc`.
 - [ ] T023 [P] Implement `tests/e2e/gateway/support/recording_token_endpoint.go` as an outer handler wrapper that copies and restores the `POST /oauth2/token` body, records parsed form values, and delegates unchanged to the production Broker router.
 - [ ] T024 [P] Replace the red-phase baseline route in `tests/e2e/gateway/support/agentgateway_container.go` with the pinned v1.5.0 testcontainers helper: honor `AGENTGATEWAY_IMAGE`, validate rendered YAML with `testdata/agentgateway-config-v1.5.0.schema.json`, mount the key file, register Broker/MCP/stand-in ports through `HostAccessPorts`, wait for port 4000, and prove route liveness.
-- [ ] T025 Replace the red-phase baseline in `tests/e2e/gateway/support/agentgateway_container.go` with per-`It()` direct-route orchestration: use `bootstrap.NewStorageFactory(logger).NewTestStorage()`, production `app.Builder`, `fixtures.OAuth2ConfigWithTokenExchange`, `ValidAgent`, `GitHubService`, `SeedPlaceholderGrantData`, `ActiveGrant`, and `GitHubSessionForPrincipal`; configure the HTTPS client-assertion JWKS trust tuple, disable only the E2E gateway cache, and close servers, listeners, containers, temporary keys, storage, and the transport override in cleanup.
+- [ ] T025 Replace the red-phase baseline in `tests/e2e/gateway/support/agentgateway_container.go` with per-`It()` direct-route orchestration: use `bootstrap.NewStorageFactory(logger).NewTestStorage()`, production `app.Builder`, `fixtures.OAuth2ConfigWithTokenExchange`, `ValidAgent`, `GitHubService`, `SeedPlaceholderGrantData`, `ActiveGrant`, and `GitHubSessionForPrincipal`; configure the existing upstream fixture issuer and HTTPS client-assertion JWKS trust tuple; disable only the E2E gateway cache; and close servers, listeners, containers, temporary keys, storage, and the transport override in cleanup.
 
 **Checkpoint**: Every test starts a fresh real Broker boundary, real agentgateway v1.5.0 container,
 HTTPS JWKS fixture, and downstream recorder. The foundation contains no ExtProc service, mock Broker,
@@ -212,9 +202,9 @@ The US2 specs were written in T016 and observed red in T018. Keep US2-S1 as one 
 
 ### Implementation for User Story 2
 
-- [ ] T029 [US2] Extend `tests/e2e/gateway/support/agentgateway_container.go` and `tests/e2e/gateway/support/signing_key.go` with per-case rendering for an untrusted signer, wrong client ID, wrong assertion audience, wrong subject audience, absent `UserGrant`, unavailable Broker host, and unsupported `clientAuth.alg` startup rejection; preserve the real Broker for every runtime case.
-- [ ] T030 [US2] Wire the existing US2-S1 table and US2-S2/US2-S3 scenarios in `tests/e2e/gateway/native_token_exchange_e2e_test.go` to those options; retain one `It()` per spec scenario, assert the exact 400/500 status from `contracts/broker-token-exchange-request.md`, and assert zero downstream requests and no inbound-token fallback.
-- [ ] T031 [US2] Run `ginkgo -v --procs=1 --focus "Preserve Broker Authorization Boundaries" ./tests/e2e/gateway/`; make the credential-validation, no-delegation, and Broker-unavailable scenarios green without a mock Broker or an ExtProc fallback.
+- [ ] T029 [US2] Extend `tests/e2e/gateway/support/agentgateway_container.go` and `tests/e2e/gateway/support/signing_key.go` with per-case rendering for an untrusted signer, wrong client ID, wrong assertion audience, a subject issuer different from the configured upstream fixture issuer, wrong subject audience, missing resource, unmapped resource, absent `UserGrant`, no stored session, insufficient stored-session scope, unavailable client-assertion JWKS, unavailable Broker host, and unsupported `clientAuth.alg` startup rejection; preserve the real Broker for every runtime case.
+- [ ] T030 [US2] Wire the existing US2-S1 table and US2-S2/US2-S3 scenarios in `tests/e2e/gateway/native_token_exchange_e2e_test.go` to those options. Retain one `It()` per spec scenario. Assert `invalid_request` and 400 for a missing resource, `invalid_target` and 400 for an unmapped resource, `invalid_grant` and 400 for missing or insufficient stored-session scope, and `server_error` and 500 for unavailable client-assertion JWKS. Assert 500 for an unavailable Broker. Assert zero downstream requests and no inbound-token fallback.
+- [ ] T031 [US2] Run `ginkgo -v --procs=1 --focus "Preserve Broker Authorization Boundaries" ./tests/e2e/gateway/`; make the credential-validation, resource, no-delegation, stored-session, JWKS, and Broker-unavailable scenarios green without a mock Broker or an ExtProc fallback.
 
 **Checkpoint**: US2 rejects invalid or unavailable exchanges before a protected backend receives a
 request. The direct path stays fail-closed.
@@ -380,6 +370,11 @@ tasks that create all nine scenario-specific `It()` blocks.
 | FR-008, FR-009 | T016, T022, T026, T033, T049 |
 | FR-010, FR-011, FR-018 | T009, T010, T032–T036, T042 |
 | FR-012, FR-013, FR-015 | T001–T004, T015–T025, T048 |
+| SC-001 | T016, T022, T027–T028, T036 |
+| SC-002 | T016, T029–T031 |
+| SC-003 | T016–T018, T040, T048 |
+| SC-004 | T009–T010, T032–T033, T036 |
+| SC-005 | T009–T010, T032–T035 |
 
 Every acceptance scenario maps to one `It()` in T016 or T017. T040 makes the final one-to-one mapping
 reviewable before merge.

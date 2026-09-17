@@ -164,13 +164,13 @@ configuration. It is one unit: changing one member without the others breaks the
 | `clientAuth.clientId` (⇒ assertion `iss`, `sub`) | `token_exchange.client_assertion.issuer_uri` | `https://agentgateway-direct-e2e.example.test` |
 | `clientAuth.assertionAudience` (⇒ assertion `aud`) | `token_exchange.expected_audience` | `token-exchange-broker` |
 | subject JWT `aud` (minted by the IdP) | `token_exchange.expected_audience` | `token-exchange-broker` |
+| subject JWT `iss` (minted by the IdP) | existing Broker-configured subject-token issuer | fixture issuer |
 | public half of `clientAuth.signingKey` | `token_exchange.client_assertion.jwks_uri` | fixture HTTPS JWKS endpoint |
 | `resources[0]` | protected-resource mapping of a Broker service | service fixture protected-resource URI |
 
 **Validation rules**
 
-- V15 — FR-018: the reference configuration MUST require operators to replace the issuer, assertion
-  audience, subject-token audience, JWKS URI and key locations **together**.
+- V15 — FR-018: the reference configuration and documentation MUST require operators to replace the client-assertion issuer and audience, subject-token issuer and audience, JWKS URI and key locations as one validation contract.
 - V16 — R8: a single Broker instance has exactly one client-assertion trust anchor, so an ExtProc
   route and a direct route cannot both authenticate against the same Broker instance unless they
   present assertions from the same issuer.

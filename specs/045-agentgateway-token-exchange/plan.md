@@ -163,7 +163,7 @@ docs/guides/token-exchange-gateway-direct.md  # NEW — direct-path operator gui
 docs/concepts/token-exchange.md               # EXTEND — two alternative paths
 docs/reference/token-exchange.md              # EXTEND — gateway-emitted form fields, error mapping
 ARCHITECTURE.md                               # EXTEND — glossary + integration-path note
-adrs/0NN-gateway-native-token-exchange.md     # NEW — two alternative paths; one anchor per instance
+adrs/036-agentgateway-native-token-exchange.md # NEW — two alternative paths; one anchor per instance
 ```
 
 **Structure Decision**: No `internal/` change and no Compose change. This feature is a committed
@@ -233,42 +233,38 @@ MCP client (mcp-go)
 
 | Spec Scenario | E2E Test Location | Test Description |
 |---------------|-------------------|------------------|
-| US1, Scenario 1 | `native_token_exchange_e2e_test.go` | `It("sends an RFC 8693 request carrying the subject token, resource and a client assertion with the documented iss, sub and aud", …)` |
+| US1, Scenario 1 | `native_token_exchange_e2e_test.go` | `It("sends two RFC 8693 requests with documented claims and distinct client-assertion jti values", …)` |
 | US1, Scenario 2 | `native_token_exchange_e2e_test.go` | `It("replaces the inbound credential with the exchanged token before reaching the backend", …)` |
-| US1, Scenario 3 | `native_token_exchange_e2e_test.go` | `It("completes the exchange with no extProc policy and no ExtProc endpoint contact", …)` |
-| US2, Scenario 1 | `native_token_exchange_e2e_test.go` | `It("rejects an untrusted assertion or a mismatched subject-token audience before resource and delegation checks", …)` |
+| US1, Scenario 3 | `native_token_exchange_e2e_test.go` | `It("sends an exchange request with no extProc policy or ExtProc endpoint contact", …)` |
+| US2, Scenario 1 | `native_token_exchange_e2e_test.go` | `It("rejects an untrusted assertion or a mismatched assertion or subject-token issuer or audience before resource and delegation checks", …)` |
 | US2, Scenario 2 | `native_token_exchange_e2e_test.go` | `It("denies the exchange when the agent has no active delegation for the resource", …)` |
-| US2, Scenario 3 | `native_token_exchange_e2e_test.go` | `It("fails closed and sends no backend request when the Broker is unavailable", …)` |
+| US2, Scenario 3 | `native_token_exchange_e2e_test.go` | `It("fails closed for missing or unmapped resources and an unavailable Broker", …)` |
 | US3, Scenario 1 | `reference_config_e2e_test.go` | `It("ships the ExtProc and direct configurations as alternatives, never combined", …)` |
 | US3, Scenario 2 | `reference_config_e2e_test.go` | `It("completes an exchange from the reference configuration without any embedded secret", …)` |
 | US3, Scenario 3 | `reference_config_e2e_test.go` | `It("verifies a direct deployment through the documented steps", …)` |
 
 *Line numbers are filled in during Phase 2f when the tests are written.*
 
-**US2, Scenario 1 stays one `It()` with real subcases.** The spec lists several rejection causes for
-that scenario, so the single spec drives a table of independently rendered gateway environments and
-asserts each one: untrusted signing key, `clientId` that does not match
-`client_assertion.issuer_uri`, `assertionAudience` that does not match `expected_audience`, and a
-subject JWT minted with the wrong `aud`. Each subcase asserts the documented agent-visible status and
-zero backend requests. The spec's "invalid algorithm" edge case is covered as a **gateway
-configuration-load rejection** — `clientAuth.alg` is a closed asymmetric enum, so a real gateway
-cannot emit a bad algorithm at runtime — and never by tampering with the assertion in flight, which
-would stop testing a real gateway (research R2).
+**US2, Scenario 1 stays one `It()` with real subcases.** The test uses independently rendered gateway environments for:
+
+- An untrusted signing key.
+- A `clientId` that does not match `client_assertion.issuer_uri`.
+- An `assertionAudience` that does not match `expected_audience`.
+- A subject JWT with an issuer different from the configured upstream fixture issuer or an invalid `aud`.
+
+Each subcase asserts the documented agent-visible status and zero backend requests. An unsupported `clientAuth.alg` causes gateway configuration-load rejection. A real gateway cannot emit that algorithm at runtime. The test must not tamper with an assertion in flight.
+
+**US2, Scenario 3 stays one `It()` with real subcases.** It covers a missing `resource`, an unmapped `resource`, a missing or insufficient stored session, client-assertion JWKS failure, and an unavailable Broker. The expected results are `invalid_request` with 400, `invalid_target` with 400, and `invalid_grant` with 400. The JWKS failure returns `server_error` with 500. The unavailable Broker returns 500. Every subcase asserts zero backend requests.
 
 **Red Phase Requirements**:
 
-- Tests compile and fail on realistic assertions: exact form field values, decoded assertion claims
-  (`iss`, `sub`, `aud`), HTTP status codes from
-  [contracts/broker-token-exchange-request.md](./contracts/broker-token-exchange-request.md) §5, and
-  a recorded backend-request count of zero on every failure path
-- No `XIt`, `PIt`, `XDescribe`, `PDescribe`, `XContext`, `PContext` or `Skip()`
-- No red-phase comments
+- Tests compile and fail on realistic assertions: exact form field values, decoded assertion claims (`iss`, `sub`, `aud`), HTTP status codes from [contracts/broker-token-exchange-request.md](./contracts/broker-token-exchange-request.md) §5, and a recorded backend-request count of zero on every failure path.
+- No `XIt`, `PIt`, `XDescribe`, `PDescribe`, `XContext`, `PContext` or `Skip()`.
+- No red-phase comments.
 
 **Test Data Strategy**:
 
-- Reuse `tests/e2e/fixtures`: `ValidAgent`, `GitHubService` (supplies the protected-resource URI),
-  `SeedPlaceholderGrantData` + `ActiveGrant` for delegation, `GitHubSessionForPrincipal` for the
-  stored downstream token, `OAuth2ConfigWithTokenExchange` as the configuration base
+- Reuse `tests/e2e/fixtures`: `ValidAgent`, `GitHubService` (supplies the protected-resource URI), `SeedPlaceholderGrantData` + `ActiveGrant` for delegation, `GitHubSessionForPrincipal` for the stored downstream token, and `OAuth2ConfigWithTokenExchange` as the configuration base. Use its configured upstream fixture issuer to mint valid subject JWTs and a different issuer for the rejection subcase.
 - Reuse `tests/e2e/helpers`: `GenerateTestRSAKeyPair`, `SignTestJWT`, `GenerateJWKSFromPublicKey`
 - New suite-local fixtures (`tests/e2e/gateway/support/`): HTTPS JWKS server, gateway signing-key
   material written to a file for the container mount, agentgateway container helper, and the
@@ -290,14 +286,7 @@ would stop testing a real gateway (research R2).
   variant binds `0.0.0.0:0` and advertises `http://host.testcontainers.internal:<port>` so the gateway
   container can dial it; the test itself keeps calling the Broker over the host-mapped address
   (research R4)
-- **Per-scenario environment, not a shared `Ordered` container.** Six of the nine scenarios need a
-  *different rendered gateway configuration* — untrusted signing key, wrong `clientId`, wrong
-  `assertionAudience`, the reference file, and so on — so a single shared container cannot serve them.
-  Each scenario gets its own Broker, storage, key material, JWKS fixture and gateway container, torn
-  down in `DeferCleanup`. Scenarios that genuinely share one configuration (US1-S1 through US1-S3, and
-  US3-S3, which all exercise the happy path) may share one environment inside a single `Ordered`
-  container; nothing else does. This is the isolation `tests/e2e/README.md` requires, and it is why
-  the suite budgets container startup per scenario rather than per suite
+- **Per-scenario environment.** Each scenario gets its own Broker, storage, key material, JWKS fixture, gateway container, and downstream recorder. `DeferCleanup` tears down every resource. No scenario shares an `Ordered` environment or depends on another scenario's state. This satisfies the isolation required by `tests/e2e/README.md`. It also budgets container startup per scenario.
 - **Before asserting behaviour**, each environment validates its rendered configuration against the
   vendored `v1.5.0` schema and waits for the route to serve, so a drifted field or a route that failed
   to load fails as setup rather than as a misleading routing assertion (research R12)

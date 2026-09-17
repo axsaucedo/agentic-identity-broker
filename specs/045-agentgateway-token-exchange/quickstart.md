@@ -58,12 +58,12 @@ Expected result: **9 specs pass, 0 skipped** — one per acceptance scenario (SC
 
 | Scenario | Assertion in short |
 |---|---|
-| US1.1 | The recorded `/oauth2/token` form carries `grant_type=…token-exchange`, the configured `resource`, a `subject_token` with `aud=token-exchange-broker`, and a `client_assertion` with `iss=sub=https://agentgateway-direct-e2e.example.test` and `aud=token-exchange-broker` |
+| US1.1 | Two `/oauth2/token` forms show the token-exchange grant, configured `resource`, and subject-token audience. The assertions have documented `iss`, `sub`, and `aud` values with distinct `jti` values. |
 | US1.2 | The MCP backend observes the exchanged token, never the inbound one; the agent request succeeds |
-| US1.3 | The rendered gateway configuration contains no `extProc` key and the ExtProc stand-in listener records zero connections |
-| US2.1 | Untrusted signing key, wrong assertion `iss`, wrong assertion `aud`, or wrong subject-token `aud` → the agent sees the documented failure status and the backend receives zero requests |
+| US1.3 | The Broker token endpoint receives an exchange request. The rendered gateway configuration contains no `extProc` key, and the ExtProc stand-in listener records zero connections. |
+| US2.1 | Untrusted signing key, wrong assertion `iss` or `aud`, or subject-token `iss` different from the configured upstream fixture issuer or wrong `aud` → the agent sees the documented failure status and the backend receives zero requests |
 | US2.2 | Valid assertion but no active delegation → Broker `access_denied`, agent sees 400, backend receives zero requests |
-| US2.3 | Broker unavailable → agent sees 500, backend receives zero requests |
+| US2.3 | Missing resource → `invalid_request`, 400. Unmapped resource → `invalid_target`, 400. Missing or insufficient stored session → `invalid_grant`, 400. Client-assertion JWKS failure → `server_error`, 500. Broker unavailability → 500. Every case sends zero backend requests. |
 | US3.1 | The shipped direct configuration has `backendAuth.oauthTokenExchange` and no `extProc`; the shipped ExtProc configuration has `extProc` and no `oauthTokenExchange` |
 | US3.2 | The shipped reference configuration, with documented placeholders substituted, completes an exchange and contains no `clientSecret` and no inline private key |
 | US3.3 | Following the guide's verification steps shows a downstream token different from the inbound credential, with no ExtProc contact |
@@ -157,9 +157,10 @@ Follow `docs/guides/token-exchange-gateway-direct.md`. In short:
 | Point `resources[0]` at an unmapped URI | Broker `invalid_target` (400), agent sees 400, no backend request |
 | Stop the Broker | agent sees 500, no backend request |
 | Set `clientAuth.alg` to an unsupported value | the gateway rejects the configuration at load; the route never serves |
+| Remove the stored session or use a session without the required scope | Broker `invalid_grant` (400), agent sees 400, no backend request |
+| Make the client-assertion JWKS unavailable | Broker `server_error` (500), agent sees 500, no backend request |
 
-Each of these has a matching automated scenario in the E2E suite; running them by hand is a fast way
-to confirm a real deployment before trusting it.
+The E2E suite automates the acceptance scenarios in Section 2. It does not automate every manual diagnostic in this section.
 
 ---
 

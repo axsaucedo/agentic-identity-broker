@@ -97,7 +97,8 @@ and fails the request.
 | Untrusted key, wrong assertion `iss`, wrong assertion `aud`, expired assertion | `invalid_client` | 401 | **500** | 0 |
 | Subject token wrong `aud`, wrong issuer, expired | `invalid_grant` | 400 | **400** | 0 |
 | Subject token malformed or bad signature | `invalid_request` | 400 | **400** | 0 |
-| `resource` missing or not mapped to a service | `invalid_target` | 400 | **400** | 0 |
+| `resource` missing | `invalid_request` | 400 | **400** | 0 |
+| `resource` not mapped to a service | `invalid_target` | 400 | **400** | 0 |
 | No user delegation, expired delegation, CEL policy denies | `access_denied` | 400 | **400** | 0 |
 | No stored session, session expired, scope not covered, stale permission set | `invalid_grant` | 400 | **400** | 0 |
 | CEL evaluation failure, JWKS unavailable | `server_error` | 500 | **500** | 0 |
