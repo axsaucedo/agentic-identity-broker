@@ -95,19 +95,18 @@ and fails the request.
 | Failure | Broker `error` | Broker status | Agent-visible status | Backend requests |
 |---|---|---|---|---|
 | Untrusted key, wrong assertion `iss`, wrong assertion `aud`, expired assertion | `invalid_client` | 401 | **500** | 0 |
-| Subject token wrong `aud`, wrong issuer, expired | `invalid_grant` | 400 | **400** | 0 |
-| Subject token malformed or bad signature | `invalid_request` | 400 | **400** | 0 |
-| `resource` missing | `invalid_request` | 400 | **400** | 0 |
-| `resource` not mapped to a service | `invalid_target` | 400 | **400** | 0 |
-| No user delegation, expired delegation, CEL policy denies | `access_denied` | 400 | **400** | 0 |
-| No stored session, session expired, scope not covered, stale permission set | `invalid_grant` | 400 | **400** | 0 |
+| Subject token wrong `aud`, wrong issuer, expired | `invalid_grant` | 400 | **500** | 0 |
+| Subject token malformed or bad signature | `invalid_request` | 400 | **500** | 0 |
+| `resource` missing | `invalid_request` | 400 | **500** | 0 |
+| `resource` not mapped to a service | `invalid_target` | 400 | **500** | 0 |
+| No user delegation, expired delegation, CEL policy denies | `access_denied` | 403 | **500** | 0 |
+| No stored session, session expired, scope not covered, stale permission set | `invalid_grant` | 400 | **500** | 0 |
 | CEL evaluation failure, JWKS unavailable | `server_error` | 500 | **500** | 0 |
 | Broker unreachable | — | — | **500** | 0 |
 
 Broker status mapping: `internal/adapters/http/enduser/oauth2_token.go:395-406` (RFC 6749 §5.2).
-Gateway classification: `crates/agentgateway/src/http/auth/oauth/transport.rs:236-249` plus
-`crates/agentgateway/src/proxy/mod.rs:378-391` — a 4xx other than 401/403 becomes a client error
-(400), while 401/403 and transport failures become an upstream failure (500).
+Gateway MCP handling: the MCP route wraps every Broker-originated direct-exchange error as HTTP 500.
+The Broker status remains visible only at the Broker boundary.
 
 **Invariant**: in every row the protected backend receives zero requests, and the inbound credential
 is never forwarded (FR-007, SC-002).

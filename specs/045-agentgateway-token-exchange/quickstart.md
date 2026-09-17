@@ -61,9 +61,9 @@ Expected result: **9 specs pass, 0 skipped** — one per acceptance scenario (SC
 | US1.1 | Two `/oauth2/token` forms show the token-exchange grant, configured `resource`, and subject-token audience. The assertions have documented `iss`, `sub`, and `aud` values with distinct `jti` values. |
 | US1.2 | The MCP backend observes the exchanged token, never the inbound one; the agent request succeeds |
 | US1.3 | The Broker token endpoint receives an exchange request. The rendered gateway configuration contains no `extProc` key, and the ExtProc stand-in listener records zero connections. |
-| US2.1 | Untrusted signing key, wrong assertion `iss` or `aud`, or subject-token `iss` different from the configured upstream fixture issuer or wrong `aud` → the agent sees the documented failure status and the backend receives zero requests |
-| US2.2 | Valid assertion but no active delegation → Broker `access_denied`, agent sees 400, backend receives zero requests |
-| US2.3 | Missing resource → `invalid_request`, 400. Unmapped resource → `invalid_target`, 400. Missing or insufficient stored session → `invalid_grant`, 400. Client-assertion JWKS failure → `server_error`, 500. Broker unavailability → 500. Every case sends zero backend requests. |
+| US2.1 | Untrusted signing key, wrong assertion `iss` or `aud`, or subject-token `iss` different from the configured upstream fixture issuer or wrong `aud` → the MCP route returns agent-visible 500 and the backend receives zero requests |
+| US2.2 | Valid assertion but no active delegation → Broker `access_denied`, 403; the MCP route returns agent-visible 500 and the backend receives zero requests |
+| US2.3 | Missing resource → Broker `invalid_request`, 400. Unmapped resource → Broker `invalid_target`, 400. Missing or insufficient stored session → Broker `invalid_grant`, 400. Client-assertion JWKS failure → Broker `server_error`, 500. Broker unavailability has no Broker response. The MCP route returns agent-visible 500 for every case. Every case sends zero backend requests. |
 | US3.1 | The shipped direct configuration has `backendAuth.oauthTokenExchange` and no `extProc`; the shipped ExtProc configuration has `extProc` and no `oauthTokenExchange` |
 | US3.2 | The shipped reference configuration, with documented placeholders substituted, completes an exchange and contains no `clientSecret` and no inline private key |
 | US3.3 | Following the guide's verification steps shows a downstream token different from the inbound credential, with no ExtProc contact |
@@ -152,12 +152,12 @@ Follow `docs/guides/token-exchange-gateway-direct.md`. In short:
 | Set `clientAuth.assertionAudience` to the Broker token-endpoint URL | Broker `invalid_client` (401), agent sees 500, no backend request |
 | Set `clientAuth.clientId` to a value other than `client_assertion.issuer_uri` | same as above |
 | Publish a JWKS that does not contain the signing key | same as above |
-| Mint the subject JWT with a different `aud` | Broker `invalid_grant` (400), agent sees 400, no backend request |
-| Remove `resources` from the policy | Broker `invalid_request` "resource parameter is required" (400), agent sees 400 |
-| Point `resources[0]` at an unmapped URI | Broker `invalid_target` (400), agent sees 400, no backend request |
+| Mint the subject JWT with a different `aud` | Broker `invalid_grant` (400), MCP agent sees 500, no backend request |
+| Remove `resources` from the policy | Broker `invalid_request` "resource parameter is required" (400), MCP agent sees 500 |
+| Point `resources[0]` at an unmapped URI | Broker `invalid_target` (400), MCP agent sees 500, no backend request |
 | Stop the Broker | agent sees 500, no backend request |
 | Set `clientAuth.alg` to an unsupported value | the gateway rejects the configuration at load; the route never serves |
-| Remove the stored session or use a session without the required scope | Broker `invalid_grant` (400), agent sees 400, no backend request |
+| Remove the stored session or use a session without the required scope | Broker `invalid_grant` (400), MCP agent sees 500, no backend request |
 | Make the client-assertion JWKS unavailable | Broker `server_error` (500), agent sees 500, no backend request |
 
 The E2E suite automates the acceptance scenarios in Section 2. It does not automate every manual diagnostic in this section.
@@ -181,7 +181,7 @@ gateway suite. This is the gate for the feature being complete.
 |---|---|---|
 | Gateway logs `oauth token exchange subject token missing` | a route-level auth policy stripped `Authorization` before the exchange | use `subjectToken.source.expression: jwt.rawToken.unredacted()` or `preserveToken: true` |
 | Agent sees 500 and the Broker logs `invalid_client` | assertion `iss`/`aud` or the JWKS does not match the Broker trust anchor | re-check the five trust-tuple values as one unit (FR-018) |
-| Agent sees 400 with no Broker entry at all | the gateway did not reach the Broker, or `resource` is missing | verify `host`/`path` and that `resources[0]` is an absolute URI |
-| A later test passes without contacting the Broker | the gateway token cache served a cached exchange | the E2E fixture sets `cache: {inMemory: {maxEntries: 0}}`; keep it |
+| Agent sees a token-exchange error with no Broker entry at all | the gateway did not reach the Broker, or `resource` is missing | verify `host`/`path` and that `resources[0]` is an absolute URI |
+| A later test passes without contacting the Broker | the gateway token cache served a cached exchange | the E2E fixture sets `cache: {maxEntries: 0}`; keep it |
 | Broker refuses to start: `jwks_uri … expected HTTPS URL` | the JWKS URI is `http://` | publish the JWKS over HTTPS. Do not reach for `security.skip_thirdparty_https_validation`: it exists so a dev stack can talk to an HTTP mock upstream, and using it to admit an HTTP JWKS URI drops the scheme guarantee the direct path relies on |
 | `agentgateway` container fails to start | wrong field case (`PrivateKeyJwt` in standalone YAML) or two backend-auth methods set | use camelCase in standalone YAML and exactly one method |

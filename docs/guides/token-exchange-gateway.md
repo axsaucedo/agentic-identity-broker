@@ -5,6 +5,16 @@ description: Deploy the ExtProc token-exchange sidecar with Agentgateway. Agentg
 
 # Set up token exchange at the gateway
 
+## Choose a gateway path
+
+This guide documents the existing ExtProc sidecar alternative. It remains supported for Envoy-based gateway deployments.
+
+agentgateway v1.5.0 also supports a direct `backendAuth.oauthTokenExchange` path. It sends exchanges to the Broker without an ExtProc sidecar.
+
+Use [the direct token-exchange guide](/docs/guides/token-exchange-gateway-direct) for the direct path.
+
+For each route, configure either `extProc` or `backendAuth.oauthTokenExchange`. Do not configure both policies on one route.
+
 The ExtProc token-exchange service (`extproc-token-exchange`) is a standalone gRPC sidecar.
 Agentgateway validates the inbound JWT and publishes trusted token-exchange inputs as Envoy dynamic metadata.
 The sidecar performs [RFC 8693 token exchange](/docs/concepts/token-exchange) with those inputs.

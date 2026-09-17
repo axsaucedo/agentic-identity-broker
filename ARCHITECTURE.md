@@ -840,6 +840,13 @@ POST /oauth2/token (grant_type=urn:ietf:params:oauth:grant-type:token-exchange)
 
 **Purpose**: Standalone gRPC microservice that implements the Envoy External Processor protocol for transparent OAuth2 token exchange. When deployed alongside agentgateway, the service intercepts incoming HTTP requests via Envoy's ExtProc filter, extracts Bearer tokens from request headers, performs RFC 8693 token exchange against the identity broker, and replaces the Authorization header with the exchanged token. Exchanged tokens are cached in-memory with singleflight deduplication to optimize performance.
 
+**Gateway integration paths**:
+
+- **ExtProc path**: An agentgateway route has an `extProc` policy. It delegates transparent exchange to the standalone `extproc-token-exchange` service.
+- **Native direct path**: An agentgateway route has a `backendAuth.oauthTokenExchange` policy. It sends RFC 8693 requests directly to the Broker `/oauth2/token` endpoint and has no `extProc` policy, ExtProc endpoint, or ExtProc service dependency.
+
+A route uses exactly one of these policies. Existing ExtProc routes remain supported.
+
 **Architecture**: Hexagonal (ports and adapters)
 
 **Components**:
@@ -1371,6 +1378,10 @@ Every third-party authorization request uses PKCE with `code_challenge_method=S2
 **TokenExchangeResponse**: RFC 8693 compliant response containing access_token, token_type, issued_token_type, and optional expires_in. Returned as JSON from successful token exchange. Format enables clients to use the exchanged token with third-party services.
 
 **ClientAssertion**: JWT authenticating the privileged client (API gateway or reverse proxy) making the token exchange request. Contains privileged client identifier in the `sub` claim. Validated against the external client-assertion trust anchor's JWKS, not against broker-minted credentials. Represents the privileged client's identity and authorization to perform token exchange.
+
+**Native Gateway Exchange Policy**: An agentgateway `backendAuth.oauthTokenExchange` route policy that performs the RFC 8693 exchange against the Broker directly, without ExtProc.
+
+**Gateway Client Assertion**: A short-lived JWT signed by the gateway private key. Its `iss` and `sub` equal the gateway client ID. Its `aud` equals the Broker expected audience. It provides RFC 7523 client authentication at the Broker token endpoint.
 
 **ClientAssertion Trust Anchor**: The external identity provider configured by `token_exchange.client_assertion.issuer_uri` whose issuer and JWKS validate privileged-client `ClientAssertion` JWTs. It may use an explicit `token_exchange.client_assertion.jwks_uri` when the IdP has no discovery endpoint. It defaults to the proxy upstream in `proxy` and `hybrid` modes; `local` mode has no proxy upstream and therefore requires an explicit external issuer. The broker's own issuer is rejected as this anchor so broker-minted tokens can never authenticate as privileged-client assertions.
 

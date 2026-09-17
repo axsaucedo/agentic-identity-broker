@@ -32,7 +32,7 @@ agentgateway standalone YAML configuration.
 | `clientAuth` | object | yes here | see **E3** |
 | `subjectToken` | object | no | omitted — defaults to `Authorization: Bearer`, type `…:token-type:access_token` |
 | `authorizationLocation` | object | no | omitted — defaults to `Authorization: Bearer` |
-| `cache` | object | no | default in the operator reference; `{inMemory: {maxEntries: 0}}` in the E2E fixture (research R6) |
+| `cache` | object | no | default in the operator reference; `{maxEntries: 0}` in the E2E fixture (research R6) |
 | `audiences`, `scopes` | `[]string` | no | omitted — the Broker ignores `audience` on this path and derives scope from the stored session |
 | `actorToken`, `additionalParams`, `requestedTokenType` | — | no | omitted — out of scope (FR-016) |
 
@@ -62,7 +62,7 @@ supply a downstream credential. **Existing Broker concept — unchanged by this 
 | Producer | the direct route's `resources[0]` |
 | Consumer | Broker protected-resource lookup (ADR 030 normalized child records) |
 | Normalization | trailing slash normalized before lookup |
-| Failure | no mapping → OAuth2 `invalid_target`, HTTP 400, agent sees 400 |
+| Failure | no mapping → OAuth2 `invalid_target`, HTTP 400, MCP agent sees 500 |
 
 **Relationships**: one mapping resolves to one `ThirdpartyOAuth2Service`, which is what the
 `UserGrant` delegation and permission-set authorization are evaluated against.
@@ -124,8 +124,8 @@ The agent credential that the direct route exchanges.
 - V12 — signature, issuer, audience and time validated **before** the client assertion
   (`internal/domain/tokenexchange/service.go:170-190`). Tests MUST NOT assert a client-assertion-first
   ordering.
-- V13 — issuer, audience or expiry failure → `invalid_grant`, HTTP 400, agent sees 400.
-- V14 — malformed token or bad signature → `invalid_request`, HTTP 400, agent sees 400.
+- V13 — issuer, audience or expiry failure → `invalid_grant`, HTTP 400, MCP agent sees 500.
+- V14 — malformed token or bad signature → `invalid_request`, HTTP 400, MCP agent sees 500.
 
 **State transitions**: `presented by agent → read by policy → sent as subject_token → removed from
 the request on success`. On success agentgateway removes the inbound credential before writing the

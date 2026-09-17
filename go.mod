@@ -34,6 +34,7 @@ require (
 	github.com/open-policy-agent/opa-envoy-plugin v1.20.1-envoy
 	github.com/ory/fosite v0.49.0
 	github.com/sony/gobreaker/v2 v2.4.0
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.12.1
@@ -83,7 +84,6 @@ require (
 	github.com/ory/go-acc v0.2.9-0.20230103102148-6b1c9a70dbbe // indirect
 	github.com/ory/go-convenience v0.1.0 // indirect
 	github.com/ory/x v0.0.665 // indirect
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/seatgeek/logrus-gelf-formatter v0.0.0-20210414080842-5b05eb8ff761 // indirect
 	github.com/tetratelabs/wazero v1.12.0 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.36 // indirect

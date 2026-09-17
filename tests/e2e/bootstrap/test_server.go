@@ -25,6 +25,9 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// HTTPHandlerWrapper decorates the production HTTP handler without replacing its routing boundary.
+type HTTPHandlerWrapper func(http.Handler) http.Handler
+
 // TestServer wraps production app with HTTP test interface.
 // This is a THIN WRAPPER that provides test-friendly methods while using
 // PRODUCTION app and routes exactly as deployed.
@@ -45,6 +48,8 @@ type TestServer struct {
 	logger                  *slog.Logger
 	client                  *http.Client
 	requestSecurityObserver *SecurityContextObserver
+	baseURL                 string
+	containerURL            string
 }
 
 // SecurityContextObservation captures a test-only request-security-context observation.
@@ -569,10 +574,19 @@ func (ts *TestServer) RequestSecurityObserver() *SecurityContextObserver {
 // BaseURL returns the server's base URL for requests.
 // Returns: "http://127.0.0.1:PORT" format string
 func (ts *TestServer) BaseURL() string {
+	if ts.baseURL != "" {
+		return ts.baseURL
+	}
 	if ts.server == nil {
 		return ""
 	}
 	return ts.server.URL
+}
+
+// ContainerURL returns the address reachable from a testcontainers container.
+// It is empty unless the server was built with WithContainerReachability.
+func (ts *TestServer) ContainerURL() string {
+	return ts.containerURL
 }
 
 // AuthenticatedGET makes an authenticated GET request with Principal injection.
@@ -849,10 +863,21 @@ func NewTestServerBuilder(
 
 // TestServerBuilderImpl implements the builder pattern for TestServer with URL alignment.
 type TestServerBuilderImpl struct {
-	config  *ports.Config
-	storage interface{}
-	factory *ServerFactory
-	logger  *slog.Logger
+	config             *ports.Config
+	storage            interface{}
+	factory            *ServerFactory
+	logger             *slog.Logger
+	containerReachable bool
+	handlerWrapper     HTTPHandlerWrapper
+}
+
+// WithContainerReachability binds the server to all interfaces and advertises an address that
+// testcontainers containers can reach. BaseURL remains loopback; ContainerURL and the app's
+// PublicURL use the container-reachable address. The optional wrapper decorates the production router.
+func (b *TestServerBuilderImpl) WithContainerReachability(wrapper HTTPHandlerWrapper) *TestServerBuilderImpl {
+	b.containerReachable = true
+	b.handlerWrapper = wrapper
+	return b
 }
 
 // Build constructs and returns a fully configured TestServer with URL alignment.
@@ -863,18 +888,31 @@ type TestServerBuilderImpl struct {
 //   - *TestServer: Fully configured and ready to use
 //   - error: If any step fails
 func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listenAddress := "127.0.0.1:0"
+	if b.containerReachable {
+		listenAddress = "0.0.0.0:0"
+	}
+
+	listener, err := net.Listen("tcp", listenAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen for test server: %w", err)
 	}
 
-	actualURL := "http://" + listener.Addr().String()
+	port := listener.Addr().(*net.TCPAddr).Port
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	containerURL := ""
+	publicURL := baseURL
+	if b.containerReachable {
+		containerURL = fmt.Sprintf("http://host.testcontainers.internal:%d", port)
+		publicURL = containerURL
+	}
+
 	b.logger.Info(
 		"Updating PublicURL for test server alignment",
 		"configured_url", b.config.Server.EndUser.PublicURL,
-		"actual_url", actualURL,
+		"public_url", publicURL,
 	)
-	b.config.Server.EndUser.PublicURL = actualURL
+	b.config.Server.EndUser.PublicURL = publicURL
 
 	appInstance, err := b.factory.BuildApp(b.storage)
 	if err != nil {
@@ -908,19 +946,30 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 		appInstance.Logger,
 	))
 
+	handler := http.Handler(router)
+	if b.handlerWrapper != nil {
+		handler = b.handlerWrapper(handler)
+		if handler == nil {
+			_ = listener.Close()
+			return nil, fmt.Errorf("container reachability handler wrapper returned nil")
+		}
+	}
+
 	testServer := &httptest.Server{
 		Listener: listener,
-		Config:   &http.Server{Handler: router},
+		Config:   &http.Server{Handler: handler},
 	}
 	testServer.Start()
 
-	appInstance.Logger.Info("Test server created and configured", "url", testServer.URL)
+	appInstance.Logger.Info("Test server created and configured", "url", baseURL)
 
 	return &TestServer{
 		app:                     appInstance,
 		server:                  testServer,
 		logger:                  appInstance.Logger,
 		requestSecurityObserver: nil,
+		baseURL:                 baseURL,
+		containerURL:            containerURL,
 		client: &http.Client{
 			Timeout: 5 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {

@@ -18,7 +18,7 @@ Authenticate with `clientAuth.method: privateKeyJwt`.
 | Fact | Source |
 |---|---|
 | `oauthTokenExchange` exists in the released standalone schema | `schema/config.json` → `$defs.BackendAuth.oneOf[7].properties.oauthTokenExchange` → `$defs.OAuthTokenExchangeAuth` |
-| Token endpoint is a backend reference: `host: <host:port>` (or `service:`), plus `path` (defaults `/`) | `$defs.OAuthTokenExchangeAuth` `oneOf` + `properties.path` |
+| Token endpoint is a backend reference: use a scheme-bearing `host: https://<authority>` for production TLS (or `http://` only in the E2E fixture), plus separate `path` (defaults `/`) | `$defs.OAuthTokenExchangeAuth` `oneOf` + `properties.path`; `SimpleBackendReferenceWithPolicies` |
 | Default grant is RFC 8693 (`grantType` defaults to `tokenExchange`) | `$defs.OAuthTokenExchangeAuth.properties.grantType.default` |
 | Form fields emitted: `grant_type`, `subject_token`, `subject_token_type`, `audience`, `scope`, `resource`, `requested_token_type`, `client_id`, `client_assertion_type`, `client_assertion` | `crates/agentgateway/src/http/auth/oauth/transport.rs:284-345`, `mod.rs:158-173` |
 | `requested_token_type` is **omitted** unless configured | `mod.rs:69-74`, `transport.rs` |
@@ -54,21 +54,19 @@ precisely what the Broker's `token_exchange.client_assertion.issuer_uri` check r
 
 **Decision**: Assert these exact status codes in the E2E failure scenarios.
 
-Agentgateway classifies token-endpoint responses in
-`crates/agentgateway/src/http/auth/oauth/transport.rs:236-249` and maps them to a client response in
-`crates/agentgateway/src/proxy/mod.rs:378-391`:
+Agentgateway's MCP route wraps each direct-exchange upstream error as an HTTP 500 response:
 
-| Broker outcome | Broker HTTP status | Agentgateway classification | Status the agent sees |
+| Broker outcome | Broker HTTP status | MCP route handling | Status the agent sees |
 |---|---|---|---|
-| `invalid_client` (bad/untrusted client assertion) | `401` | `FetchError::Upstream` → `BackendAuthenticationFailed` | **500** |
-| `invalid_grant` (subject-token issuer/audience/expiry, stale permission set, no session) | `400` | `FetchError::Client` → `InvalidRequest` | **400** |
-| `access_denied` (no/expired user delegation, CEL policy false) | `400` | `FetchError::Client` → `InvalidRequest` | **400** |
-| `invalid_target` (no protected-resource mapping) | `400` | `FetchError::Client` → `InvalidRequest` | **400** |
-| `server_error` (CEL failure, JWKS fetch failure) | `500` | `FetchError::Upstream` | **500** |
-| Broker unreachable / connection refused | — | `FetchError::Upstream` | **500** |
+| `invalid_client` (bad/untrusted client assertion) | `401` | Wraps the upstream exchange error | **500** |
+| `invalid_grant` (subject-token issuer/audience/expiry, stale permission set, no session) | `400` | Wraps the upstream exchange error | **500** |
+| `access_denied` (no/expired user delegation, CEL policy false) | `403` | Wraps the upstream exchange error | **500** |
+| `invalid_target` (no protected-resource mapping) | `400` | Wraps the upstream exchange error | **500** |
+| `server_error` (CEL failure, JWKS fetch failure) | `500` | Wraps the upstream exchange error | **500** |
+| Broker unreachable / connection refused | — | Wraps the upstream exchange error | **500** |
 
 Broker status mapping is `internal/adapters/http/enduser/oauth2_token.go:395-406`
-(RFC 6749 §5.2: `invalid_client` → 401, `server_error` → 500, everything else → 400).
+(`invalid_client` → 401, `access_denied` → 403, `server_error` → 500, and the remaining validation errors → 400).
 
 **Rationale**: FR-007 requires fail-closed behaviour; the table turns "fails closed" into concrete,
 non-vacuous assertions. In every row the exchange fails before agentgateway replaces the credential,
@@ -178,7 +176,7 @@ replacement, not a mocked Broker exchange interface") still holds.
 
 ## R6 — Deterministic exchanges: the gateway token cache
 
-**Decision**: Set `cache: { inMemory: { maxEntries: 0 } }` on the direct route in the E2E gateway
+**Decision**: Set `cache: { maxEntries: 0 }` on the direct route in the E2E gateway
 configuration. Keep the default cache in the operator reference configuration and document it.
 
 **Rationale**: The default cache keys on subject token plus grant parameters with a 300 s TTL

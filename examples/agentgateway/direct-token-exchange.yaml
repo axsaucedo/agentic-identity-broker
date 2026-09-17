@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://agentgateway.dev/schema/config
+# Agentgateway v1.5.0 native MCP token-exchange route.
+# Replace the Broker endpoint, MCP target, protected-resource URI, signing-key file,
+# and key ID with deployment values. Keep the gateway identity and audience aligned
+# with examples/config/token-exchange-direct-gateway.yaml.
+binds:
+- port: 4000
+  listeners:
+  - routes:
+    - backends:
+      - mcp:
+          targets:
+          - name: tools
+            mcp:
+              host: https://mcp.example.com/mcp
+        policies:
+          backendAuth:
+            oauthTokenExchange:
+              host: https://broker.example.com
+              path: /oauth2/token
+              resources:
+              - https://api.github.com
+              clientAuth:
+                method: privateKeyJwt
+                clientId: https://agentgateway-direct-e2e.example.test
+                assertionAudience: token-exchange-broker
+                signingKey:
+                  file: /etc/agentgateway/keys/gateway-signing.key
+                alg: RS256
+                kid: gateway-2026-09

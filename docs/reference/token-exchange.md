@@ -46,9 +46,9 @@ request under RFC 8693. The same endpoint also supports `authorization_code` and
 identifier. CEL expressions select these values. The default user claim is `sub`. The
 default agent claim is `azp`. The privileged client presents the token for exchange.
 
-**Client assertion** (`client_assertion`) — A JWT that identifies the privileged client,
-such as a gateway or reverse proxy. The broker validates it with the upstream OAuth2 server
-JWKS. Its `sub` identifies the gateway in audit data.
+**Client assertion** (`client_assertion`) — A JWT that identifies a privileged client, such as a
+gateway or reverse proxy. The broker validates it through the configured client-assertion trust
+anchor. Its `sub` identifies the gateway in audit data.
 
 **Third-party token** — The OAuth2 access token held in the broker token vault for a target
 service, such as GitHub or Google. A successful exchange returns this token.
@@ -77,6 +77,115 @@ Before it returns a token, the broker validates the user grant. The subject toke
 the user and agent. The grant must permit the agent to use the target service. Without an
 active, unexpired grant, the broker denies token exchange. This enforces consent at request
 time.
+
+## Native Agentgateway direct path
+
+Agentgateway v1.5.0 can exchange tokens directly on an MCP backend with
+`backendAuth.oauthTokenExchange`. The policy calls this token endpoint and then forwards only the
+exchanged credential to the protected backend.
+
+The direct path and the ExtProc path are alternatives for a route. A direct route contains no
+`extProc` policy, ExtProc endpoint, or ExtProc service dependency.
+
+Use these reference configurations as one trust contract:
+
+- [Direct Agentgateway route reference](../../examples/agentgateway/direct-token-exchange.yaml)
+- [Matching Broker configuration reference](../../examples/config/token-exchange-direct-gateway.yaml)
+
+Replace the gateway identity, public-JWKS URI, expected audience, subject-token issuer, resource,
+and key locations together. Store the private key outside the route configuration and point
+`signingKey.file` to that file.
+
+### Native policy configuration
+
+Configure the standalone policy at `routes[].backends[].policies.backendAuth`. The `host` value is
+a scheme-bearing Broker end-user URI. Use an HTTPS URI in production and configure `/oauth2/token`
+in `path` separately.
+
+| Field | Direct-path contract |
+|---|---|
+| `oauthTokenExchange.host` | Broker end-user URI, for example `https://broker.example.com`. |
+| `oauthTokenExchange.path` | `/oauth2/token`. |
+| `oauthTokenExchange.resources` | One absolute protected-resource URI without a fragment. |
+| `oauthTokenExchange.grantType` | Omit this field. Agentgateway uses the RFC 8693 `tokenExchange` default. |
+| `clientAuth.method` | `privateKeyJwt`. This exact camelCase spelling is required in standalone YAML. |
+| `clientAuth.clientId` | Gateway identity. The Broker must use this value for `token_exchange.client_assertion.issuer_uri`. |
+| `clientAuth.assertionAudience` | Must equal the Broker `token_exchange.expected_audience`. It is not the Broker token-endpoint URI. |
+| `clientAuth.signingKey.file` | Path to the PEM private key. Do not inline the key in route configuration. |
+| `clientAuth.alg` | Optional signing algorithm. The default is `RS256`. |
+| `clientAuth.kid` | Optional key ID. Set it when the published JWKS has more than one key. |
+
+Do not use shared-secret client authentication for this path. Do not configure another grant type
+or `extProc` on the direct route.
+
+### Form fields sent by the native policy
+
+The policy sends `application/x-www-form-urlencoded` to `<host><path>`. It reads the inbound
+credential from `Authorization: Bearer` by default.
+
+| Form field | Value sent by the direct reference route |
+|---|---|
+| `grant_type` | `urn:ietf:params:oauth:grant-type:token-exchange`. |
+| `subject_token` | The inbound agent credential. |
+| `subject_token_type` | `urn:ietf:params:oauth:token-type:access_token`. |
+| `resource` | The value of `resources[0]`. |
+| `client_id` | The value of `clientAuth.clientId`. |
+| `client_assertion_type` | `urn:ietf:params:oauth:client-assertion-type:jwt-bearer`. |
+| `client_assertion` | A fresh `privateKeyJwt` assertion. |
+| `audience`, `scope` | Sent only when configured. The reference route omits them. |
+| `requested_token_type` | Sent only when configured. The reference route omits it. |
+
+The Broker ignores `audience` on this third-party exchange path. It derives the returned token
+scope from the stored session.
+
+### `privateKeyJwt` assertion
+
+Agentgateway signs a fresh client assertion for each exchange. The assertion contains these
+claims:
+
+| Claim | Value |
+|---|---|
+| `iss` | `clientAuth.clientId`. |
+| `sub` | `clientAuth.clientId`. |
+| `aud` | `clientAuth.assertionAudience`. |
+| `jti` | A new UUID for each exchange request. |
+| `iat`, `nbf`, `exp` | Assertion issue, validity-start, and expiry times. |
+
+The JWS header uses `clientAuth.alg` and can include `clientAuth.kid`. The Broker validates the
+assertion signature with the dedicated HTTPS JWKS at
+`token_exchange.client_assertion.jwks_uri`.
+
+The Broker validates the inbound subject JWT separately. Its issuer and signature must match the
+configured upstream trust anchor. Its `aud` must contain `token_exchange.expected_audience`, the
+same value as the client assertion audience.
+
+### Protected-resource mapping
+
+`resources[0]` becomes the RFC 8707 `resource` form field. It must match one protected-resource
+record for the Broker-managed service that supplies the downstream credential. An unmapped URI
+returns `invalid_target`.
+
+The Broker normalizes a trailing slash before it compares the URI. A protected-resource URI can
+belong to only one service.
+
+### Direct-path error status behavior
+
+The agent-visible status can differ from the Broker status. On an MCP route, Agentgateway wraps every Broker-originated direct-exchange error as HTTP 500. The protected backend receives no request and never receives the inbound credential.
+
+| Failure | Broker error and status | Agent-visible status |
+|---|---|---|
+| Untrusted key, wrong assertion issuer or audience, or expired assertion | `invalid_client`, 401 | 500 |
+| Subject token has a wrong issuer or audience, or is expired | `invalid_grant`, 400 | 500 |
+| Subject token is malformed or has a bad signature | `invalid_request`, 400 | 500 |
+| `resource` is missing | `invalid_request`, 400 | 500 |
+| `resource` has no protected-resource mapping | `invalid_target`, 400 | 500 |
+| User delegation is absent or expired, or CEL denies access | `access_denied`, 403 | 500 |
+| Session is missing or expired, scope is insufficient, or permission data is stale | `invalid_grant`, 400 | 500 |
+| CEL evaluation or the client-assertion JWKS fetch fails | `server_error`, 500 | 500 |
+| The Broker is unreachable | No Broker response | 500 |
+
+On success, Agentgateway replaces the inbound `Authorization` credential with the exchanged
+`Bearer` credential before it sends the backend request.
 
 ## Third-party token exchange request
 
@@ -221,8 +330,8 @@ and cannot be refreshed.
 }
 ```
 
-The `client_assertion` signature did not validate against the upstream JWKS. The assertion
-can also be expired or have no broker audience.
+The `client_assertion` signature did not validate against the configured client-assertion JWKS. The
+assertion can also be expired or have no broker audience.
 
 ### 403 access_denied
 
@@ -455,9 +564,9 @@ curl -H "Authorization: Bearer ghu_..." https://api.github.com/user
 
 ## Security considerations
 
-- **Both JWTs are verified.** The `client_assertion` and `subject_token` signatures are
-  validated against the upstream OAuth2 server's JWKS; expired or wrongly-audienced tokens are
-  rejected.
+- **Both JWTs are verified.** The broker validates the `client_assertion` through its configured
+  client-assertion trust anchor. It validates the `subject_token` against the configured upstream
+  OAuth2 trust anchor. Expired or wrongly-audienced tokens are rejected.
 - **A user grant is always required.** The broker returns a token only when the principal has
   an active, non-expired grant for the agent and service.
 - **Token values are never logged.** The returned `access_token` does not appear in logs;
@@ -470,5 +579,9 @@ curl -H "Authorization: Bearer ghu_..." https://api.github.com/user
 - [Token exchange (concept)](/docs/concepts/token-exchange) — the model and request flow.
 - [Token-exchange gateway guide](/docs/guides/token-exchange-gateway) — transparent exchange
   at an Envoy-based gateway.
+- [Native direct-route reference](../../examples/agentgateway/direct-token-exchange.yaml) — native
+  `oauthTokenExchange` configuration for Agentgateway v1.5.0.
+- [Direct-path Broker reference](../../examples/config/token-exchange-direct-gateway.yaml) — matching
+  `token_exchange` trust configuration.
 - [End-user API reference](/api/enduser) — the generated `/oauth2/token` contract.
 - [RFC 8693 — OAuth 2.0 Token Exchange](https://www.rfc-editor.org/rfc/rfc8693).

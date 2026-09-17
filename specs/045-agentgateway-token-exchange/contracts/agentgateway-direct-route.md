@@ -27,7 +27,7 @@ binds:
         policies:
           backendAuth:
             oauthTokenExchange:
-              host: broker.example.com:443          # Broker end-user server; :443 enables backend TLS
+              host: https://broker.example.com      # Scheme-bearing host enables backend TLS
               path: /oauth2/token
               resources:
               - https://api.example.com             # MUST match a Broker protected-resource mapping
@@ -39,7 +39,6 @@ binds:
                   file: /etc/agentgateway/keys/gateway-signing.key
                 alg: RS256
                 kid: gateway-2026-09
-```
 
 **Placeholders an operator MUST replace as one unit** (FR-018):
 `host`, `resources[0]`, `clientAuth.clientId`, `clientAuth.assertionAudience`,
@@ -47,10 +46,8 @@ binds:
 `token_exchange.client_assertion.issuer_uri`, `token_exchange.client_assertion.jwks_uri`,
 `token_exchange.expected_audience`.
 
-**Attachment points**: `routes[].backends[].policies.backendAuth` (one backend) or
-`routes[].policies.backendAuth` (all backends on the route). The simplified MCP style uses
-`mcp.policies.backendAuth`.
-
+**Attachment point**: `routes[].backends[].policies.backendAuth`. The direct route configures one
+backend-auth method for its MCP backend.
 ---
 
 ## 2. Kubernetes — equivalent policy
@@ -137,7 +134,7 @@ shape differs.
 | `clientAuth.kid` (`clientAuth.privateKeyJwt.kid`) | no | Set when the published JWKS holds more than one key |
 | `subjectToken` | no | Default (`Authorization: Bearer`, `…token-type:access_token`) is correct for the Broker |
 | `authorizationLocation` (`location`) | no | Default (`Authorization: Bearer`) is correct for the backend |
-| `cache` | no | Production: keep the default. Tests: `{inMemory: {maxEntries: 0}}` for determinism |
+| `cache` | no | Production: keep the default. Tests: `{maxEntries: 0}` for determinism |
 | `audiences`, `scopes` | no | Omit. The Broker ignores `audience` on this path and derives scope from the stored session |
 | `actorToken`, `additionalParams`, `requestedTokenType`, `chainedExchange` | no | Omit — out of scope |
 | `extProc` (route policy) | — | MUST be absent on a direct route (FR-008) |

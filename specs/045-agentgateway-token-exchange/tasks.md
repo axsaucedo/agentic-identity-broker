@@ -41,10 +41,10 @@ no `internal/extproc` import, no `extProc` policy, and no Compose dependency.
 **Purpose**: Create the isolated test package, pinned schema input, dependency declaration, and
 commands before Phase 2f writes acceptance tests.
 
-- [ ] T001 Create `tests/e2e/gateway/gateway_suite_test.go` as an isolated `gateway_test` Ginkgo suite named `Agentgateway Native Token Exchange`; register `Fail`, use `RunSpecs`, and import no `internal/extproc` package.
-- [ ] T002 [P] Vendor agentgateway `v1.5.0` `schema/config.json` at `tests/e2e/gateway/testdata/agentgateway-config-v1.5.0.schema.json`; preserve SHA-256 `22129d32cb367eab78cf0c4e62cf15758513c0e40aa7aa4ce5401790efc25250`.
-- [ ] T003 [P] Promote `github.com/santhosh-tekuri/jsonschema/v6` at its pinned v6.0.2 version to a direct test dependency in `go.mod`; update only required entries in `go.sum`.
-- [ ] T004 [P] Add `test-e2e-gateway`, `test-e2e-gateway-coverage`, and gateway coverage aggregation in `justfile`; run `ginkgo -v --procs=1 ./tests/e2e/gateway/` and add the suite to `test-e2e`, `test-e2e-coverage`, and `test-e2e-watch`.
+- [X] T001 Create `tests/e2e/gateway/gateway_suite_test.go` as an isolated `gateway_test` Ginkgo suite named `Agentgateway Native Token Exchange`; register `Fail`, use `RunSpecs`, and import no `internal/extproc` package.
+- [X] T002 [P] Vendor agentgateway `v1.5.0` `schema/config.json` at `tests/e2e/gateway/testdata/agentgateway-config-v1.5.0.schema.json`; preserve SHA-256 `22129d32cb367eab78cf0c4e62cf15758513c0e40aa7aa4ce5401790efc25250`.
+- [X] T003 [P] Promote `github.com/santhosh-tekuri/jsonschema/v6` at its pinned v6.0.2 version to a direct test dependency in `go.mod`; update only required entries in `go.sum`.
+- [X] T004 [P] Add `test-e2e-gateway`, `test-e2e-gateway-coverage`, and gateway coverage aggregation in `justfile`; run `ginkgo -v --procs=1 ./tests/e2e/gateway/` and add the suite to `test-e2e`, `test-e2e-coverage`, and `test-e2e-watch`.
 
 **Checkpoint**: The repository has a dedicated gateway E2E target. It cannot share the root backend
 suite process or the ExtProc suite package.
@@ -62,9 +62,9 @@ Phase 2 sections are complete.
 
 **Constitution Reference**: Principles II and V.
 
-- [ ] T005 Confirm the in-flight configuration and credential model in `specs/045-agentgateway-token-exchange/data-model.md`; record that no domain entity, aggregate, typed ID, storage port, or migration is required.
-- [ ] T006 [P] Update the gateway and glossary descriptions in `ARCHITECTURE.md` with `Native Gateway Exchange Policy` and `Gateway Client Assertion`; distinguish direct native exchange from the existing ExtProc path.
-- [ ] T007 [P] Create `adrs/036-agentgateway-native-token-exchange.md` as a Proposed ADR; record mutually exclusive route policies, one client-assertion issuer per Broker instance, the unchanged ExtProc path, and links to ADRs 007, 011, and 029.
+- [X] T005 Confirm the in-flight configuration and credential model in `specs/045-agentgateway-token-exchange/data-model.md`; record that no domain entity, aggregate, typed ID, storage port, or migration is required.
+- [X] T006 [P] Update the gateway and glossary descriptions in `ARCHITECTURE.md` with `Native Gateway Exchange Policy` and `Gateway Client Assertion`; distinguish direct native exchange from the existing ExtProc path.
+- [X] T007 [P] Create `adrs/036-agentgateway-native-token-exchange.md` as a Proposed ADR; record mutually exclusive route policies, one client-assertion issuer per Broker instance, the unchanged ExtProc path, and links to ADRs 007, 011, and 029.
 
 **Checkpoint**: The architecture uses one vocabulary for native and ExtProc exchange. The new ADR does
 not supersede an accepted ADR or authorize an API change.
@@ -73,10 +73,10 @@ not supersede an accepted ADR or authorize an API change.
 
 **Constitution Reference**: Principle VII.
 
-- [ ] T008 Examine `internal/ports/config.go` and `specs/045-agentgateway-token-exchange/contracts/broker-direct-path-config.md`; make sure that the direct path uses existing `token_exchange.*` settings and adds no Broker configuration field.
-- [ ] T009 [P] Create the matching reference configurations in `examples/agentgateway/direct-token-exchange.yaml` and `examples/config/token-exchange-direct-gateway.yaml`: use a v1.5.0 native MCP route with sibling `path: /oauth2/token`, one `resources` URI, `privateKeyJwt`, the explicit E2E trust tuple, `signingKey.file`, and existing Broker `token_exchange.*` settings; omit `extProc`, `grantType`, shared secrets, inline private keys, and HTTP client-assertion JWKS URLs.
-- [ ] T010 Update `examples/config/README.md` to link `token-exchange-direct-gateway.yaml`; state that it configures existing Broker fields and that operators replace the trust tuple as one unit.
-- [ ] T011 [P] Examine `charts/agentic-identity-broker/values.yaml`, `values.schema.json`, and `templates/configmap.yaml`; record in the PR that no Helm change is needed because no configuration parameter changes.
+- [X] T008 Examine `internal/ports/config.go` and `specs/045-agentgateway-token-exchange/contracts/broker-direct-path-config.md`; make sure that the direct path uses existing `token_exchange.*` settings and adds no Broker configuration field.
+- [X] T009 [P] Create the matching reference configurations in `examples/agentgateway/direct-token-exchange.yaml` and `examples/config/token-exchange-direct-gateway.yaml`: use a v1.5.0 native MCP route with sibling `path: /oauth2/token`, one `resources` URI, `privateKeyJwt`, the explicit E2E trust tuple, `signingKey.file`, and existing Broker `token_exchange.*` settings; omit `extProc`, `grantType`, shared secrets, inline private keys, and HTTP client-assertion JWKS URLs.
+- [X] T010 Update `examples/config/README.md` to link `token-exchange-direct-gateway.yaml`; state that it configures existing Broker fields and that operators replace the trust tuple as one unit.
+- [X] T011 [P] Examine `charts/agentic-identity-broker/values.yaml`, `values.schema.json`, and `templates/configmap.yaml`; record in the PR that no Helm change is needed because no configuration parameter changes.
 
 **Checkpoint**: Both committed reference configurations exist before Phase 2f. They use existing
 Broker settings only and add no TLS bypass or HTTP client-assertion JWKS URI.
@@ -85,7 +85,7 @@ Broker settings only and add no TLS bypass or HTTP client-assertion JWKS URI.
 
 **Constitution Reference**: Principles IV and X.
 
-- [ ] T012 Examine `api/enduser/openapi.yaml` and `specs/045-agentgateway-token-exchange/contracts/broker-token-exchange-request.md`; record in `adrs/036-agentgateway-native-token-exchange.md` and the PR that the feature reuses `POST /oauth2/token` without an API change or new stakeholder approval.
+- [X] T012 Examine `api/enduser/openapi.yaml` and `specs/045-agentgateway-token-exchange/contracts/broker-token-exchange-request.md`; record in `adrs/036-agentgateway-native-token-exchange.md` and the PR that the feature reuses `POST /oauth2/token` without an API change or new stakeholder approval.
 
 **Checkpoint**: The direct route uses the existing RFC 8693 contract. Do not edit either OpenAPI file.
 
@@ -93,7 +93,7 @@ Broker settings only and add no TLS bypass or HTTP client-assertion JWKS URI.
 
 **Constitution Reference**: Principle IX.
 
-- [ ] T013 Confirm in `specs/045-agentgateway-token-exchange/data-model.md` and `adrs/036-agentgateway-native-token-exchange.md` that the direct path reuses protected-resource mappings, grants, and sessions; do not add files under `migrations/` or edit `internal/ports/storage.go`.
+- [X] T013 Confirm in `specs/045-agentgateway-token-exchange/data-model.md` and `adrs/036-agentgateway-native-token-exchange.md` that the direct path reuses protected-resource mappings, grants, and sessions; do not add files under `migrations/` or edit `internal/ports/storage.go`.
 
 **Checkpoint**: The feature creates no database schema, repository, or storage-adapter work.
 
@@ -101,7 +101,7 @@ Broker settings only and add no TLS bypass or HTTP client-assertion JWKS URI.
 
 **Constitution Reference**: Principle XI.
 
-- [ ] T014 Record in `adrs/036-agentgateway-native-token-exchange.md` that this feature changes no `web/` path; do not add Playwright tests or screenshots under `tests/e2e/frontend/` and `tests/e2e/screenshots/`.
+- [X] T014 Record in `adrs/036-agentgateway-native-token-exchange.md` that this feature changes no `web/` path; do not add Playwright tests or screenshots under `tests/e2e/frontend/` and `tests/e2e/screenshots/`.
 
 **Checkpoint**: The frontend review is complete. No UI acceptance scenario exists.
 
@@ -109,10 +109,10 @@ Broker settings only and add no TLS bypass or HTTP client-assertion JWKS URI.
 
 **Constitution Reference**: Principle XIII. Write these tests before the direct-route implementation.
 
-- [ ] T015 Implement a functional red-phase baseline in `tests/e2e/gateway/support/agentgateway_container.go`: accept the committed reference YAML and documented substitutions, but deliberately render a valid agentgateway v1.5.0 MCP route with neither `backendAuth.oauthTokenExchange` nor `extProc`; start a reachable MCP recorder and forward the inbound bearer so every acceptance spec fails on observable behavior, not setup.
-- [ ] T016 [P] Write the six Ginkgo `It()` blocks in `tests/e2e/gateway/native_token_exchange_e2e_test.go` for US1-S1 through US2-S3; use `Context` names `Exchange Tokens Through the Native Gateway Policy` and `Preserve Broker Authorization Boundaries`, add a nearby `// USn-Sn from specs/045-agentgateway-token-exchange/spec.md` comment to every block, and use fresh `BeforeEach` state.
-- [ ] T017 [P] Write the three Ginkgo `It()` blocks in `tests/e2e/gateway/reference_config_e2e_test.go` for US3-S1 through US3-S3; use the `Deploy the Alternative Safely` `Context`, read the committed reference YAML and existing `docs/guides/token-exchange-gateway.md` first, assert its absent direct-path link in the red state, and read `docs/guides/token-exchange-gateway-direct.md` only after that link exists.
-- [ ] T018 Run `just test-e2e-gateway` from `justfile`; make sure that all nine specs compile and fail semantically because the valid baseline route forwards the inbound bearer, emits no Broker form, or the existing guide lacks direct-path instructions — not because of a harness error, file-load error, compilation error, `Skip`, `XIt`, `PIt`, or placeholder assertion.
+- [X] T015 Implement a functional red-phase baseline in `tests/e2e/gateway/support/agentgateway_container.go`: accept the committed reference YAML and documented substitutions, but deliberately render a valid agentgateway v1.5.0 MCP route with neither `backendAuth.oauthTokenExchange` nor `extProc`; start a reachable MCP recorder and forward the inbound bearer so every acceptance spec fails on observable behavior, not setup.
+- [X] T016 [P] Write the six Ginkgo `It()` blocks in `tests/e2e/gateway/native_token_exchange_e2e_test.go` for US1-S1 through US2-S3; use `Context` names `Exchange Tokens Through the Native Gateway Policy` and `Preserve Broker Authorization Boundaries`, add a nearby `// USn-Sn from specs/045-agentgateway-token-exchange/spec.md` comment to every block, and use fresh `BeforeEach` state.
+- [X] T017 [P] Write the three Ginkgo `It()` blocks in `tests/e2e/gateway/reference_config_e2e_test.go` for US3-S1 through US3-S3; use the `Deploy the Alternative Safely` `Context`, read the committed reference YAML and existing `docs/guides/token-exchange-gateway.md` first, assert its absent direct-path link in the red state, and read `docs/guides/token-exchange-gateway-direct.md` only after that link exists.
+- [X] T018 Run `just test-e2e-gateway` from `justfile`; make sure that all nine specs compile and fail semantically because the valid baseline route forwards the inbound bearer, emits no Broker form, or the existing guide lacks direct-path instructions — not because of a harness error, file-load error, compilation error, `Skip`, `XIt`, `PIt`, or placeholder assertion.
 
 **Acceptance-spec content for T016**:
 
@@ -120,8 +120,8 @@ Broker settings only and add no TLS bypass or HTTP client-assertion JWKS URI.
 - **US1-S2**: Assert successful MCP completion. The downstream recorder sees the exchanged token and never the inbound token.
 - **US1-S3**: Assert the direct route sends an RFC 8693 request to the Broker, has no `extProc` policy, and gives an exposed ExtProc stand-in listener zero connections.
 - **US2-S1**: Keep one `It()` and use subcases for an untrusted signing key, mismatched assertion issuer, mismatched assertion audience, a subject-token issuer different from the configured upstream fixture issuer, and wrong subject-token audience. Assert the documented status and zero downstream requests. Assert an unsupported algorithm as gateway configuration-load rejection, not assertion tampering.
-- **US2-S2**: Use a valid assertion and subject JWT but omit the active `UserGrant`. Assert the gateway returns 400 and the backend sees no request.
-- **US2-S3**: Use valid direct routes with a missing resource, an unmapped resource, no stored session, insufficient stored-session scope, unavailable client-assertion JWKS, and an unavailable Broker endpoint. Assert `invalid_request` and agent 400 for the missing resource, `invalid_target` and agent 400 for the unmapped resource, and `invalid_grant` and agent 400 for each stored-session condition. Assert `server_error` and agent 500 for unavailable JWKS and agent 500 for an unavailable Broker. Assert zero backend requests and no inbound-token fallback for every subcase.
+- **US2-S2**: Use a valid assertion and subject JWT but omit the active `UserGrant`. Assert the Broker returns `access_denied` with 403, the MCP route returns agent-visible 500, and the backend sees no request.
+- **US2-S3**: Use valid direct routes with a missing resource, an unmapped resource, no stored session, insufficient stored-session scope, unavailable client-assertion JWKS, and an unavailable Broker endpoint. Assert the Broker returns `invalid_request` with 400 for the missing resource, `invalid_target` with 400 for the unmapped resource, and `invalid_grant` with 400 for each stored-session condition. Assert the Broker returns `server_error` with 500 for unavailable JWKS. The MCP route returns agent-visible 500 for every case, including an unavailable Broker. Assert zero backend requests and no inbound-token fallback for every subcase.
 
 **Acceptance-spec content for T017**:
 
@@ -150,13 +150,13 @@ assertions and an observed semantic red phase.
 **Purpose**: Replace the functional red-phase baseline with test-only infrastructure that exercises the
 production Broker boundary and a real agentgateway container.
 
-- [ ] T019 Extend `tests/e2e/bootstrap/test_server.go` with an opt-in container-reachable builder mode: bind `0.0.0.0:0`, expose `http://host.testcontainers.internal:<port>` separately from host `BaseURL()`, and accept an outer handler wrapper; keep `NewTestServerBuilder` defaults unchanged, use LSP references before the edit, and make the existing callers in `tests/e2e/oauth2_metadata_test.go` stay green.
-- [ ] T020 [P] Implement `tests/e2e/gateway/support/https_jwks_server.go` with `httptest.NewTLSServer`, a gateway public JWKS endpoint, and request accounting; clone `http.DefaultTransport`, add only the fixture CA to `RootCAs`, keep `InsecureSkipVerify` false, and restore the original transport in cleanup.
-- [ ] T021 [P] Implement `tests/e2e/gateway/support/signing_key.go` with a fresh RSA signing keypair, JWKS generation, 0600 temporary private-key files, and subject-token helpers; reuse `tests/e2e/helpers/jwt_helpers.go` and `lestrrat-go/jwx/v4` rather than custom crypto.
-- [ ] T022 [P] Implement `tests/e2e/gateway/support/downstream_backend.go` with a `0.0.0.0:0` streamable-MCP `whoami` backend that records each Authorization header and a separate TCP ExtProc stand-in that records connection attempts without importing `internal/extproc`.
-- [ ] T023 [P] Implement `tests/e2e/gateway/support/recording_token_endpoint.go` as an outer handler wrapper that copies and restores the `POST /oauth2/token` body, records parsed form values, and delegates unchanged to the production Broker router.
-- [ ] T024 [P] Replace the red-phase baseline route in `tests/e2e/gateway/support/agentgateway_container.go` with the pinned v1.5.0 testcontainers helper: honor `AGENTGATEWAY_IMAGE`, validate rendered YAML with `testdata/agentgateway-config-v1.5.0.schema.json`, mount the key file, register Broker/MCP/stand-in ports through `HostAccessPorts`, wait for port 4000, and prove route liveness.
-- [ ] T025 Replace the red-phase baseline in `tests/e2e/gateway/support/agentgateway_container.go` with per-`It()` direct-route orchestration: use `bootstrap.NewStorageFactory(logger).NewTestStorage()`, production `app.Builder`, `fixtures.OAuth2ConfigWithTokenExchange`, `ValidAgent`, `GitHubService`, `SeedPlaceholderGrantData`, `ActiveGrant`, and `GitHubSessionForPrincipal`; configure the existing upstream fixture issuer and HTTPS client-assertion JWKS trust tuple; disable only the E2E gateway cache; and close servers, listeners, containers, temporary keys, storage, and the transport override in cleanup.
+- [X] T019 Extend `tests/e2e/bootstrap/test_server.go` with an opt-in container-reachable builder mode: bind `0.0.0.0:0`, expose `http://host.testcontainers.internal:<port>` separately from host `BaseURL()`, and accept an outer handler wrapper; keep `NewTestServerBuilder` defaults unchanged, use LSP references before the edit, and make the existing callers in `tests/e2e/oauth2_metadata_test.go` stay green.
+- [X] T020 [P] Implement `tests/e2e/gateway/support/https_jwks_server.go` with `httptest.NewTLSServer`, a gateway public JWKS endpoint, and request accounting; clone `http.DefaultTransport`, add only the fixture CA to `RootCAs`, keep `InsecureSkipVerify` false, and restore the original transport in cleanup.
+- [X] T021 [P] Implement `tests/e2e/gateway/support/signing_key.go` with a fresh RSA signing keypair, JWKS generation, 0600 temporary private-key files, and subject-token helpers; reuse `tests/e2e/helpers/jwt_helpers.go` and `lestrrat-go/jwx/v4` rather than custom crypto.
+- [X] T022 [P] Implement `tests/e2e/gateway/support/downstream_backend.go` with a `0.0.0.0:0` streamable-MCP `whoami` backend that records each Authorization header and a separate TCP ExtProc stand-in that records connection attempts without importing `internal/extproc`.
+- [X] T023 [P] Implement `tests/e2e/gateway/support/recording_token_endpoint.go` as an outer handler wrapper that copies and restores the `POST /oauth2/token` body, records parsed form values, and delegates unchanged to the production Broker router.
+- [X] T024 [P] Replace the red-phase baseline route in `tests/e2e/gateway/support/agentgateway_container.go` with the pinned v1.5.0 testcontainers helper: honor `AGENTGATEWAY_IMAGE`, validate rendered YAML with `testdata/agentgateway-config-v1.5.0.schema.json`, mount the key file, register Broker/MCP/stand-in ports through `HostAccessPorts`, wait for port 4000, and prove route liveness.
+- [X] T025 Replace the red-phase baseline in `tests/e2e/gateway/support/agentgateway_container.go` with per-`It()` direct-route orchestration: use `bootstrap.NewStorageFactory(logger).NewTestStorage()`, production `app.Builder`, `fixtures.OAuth2ConfigWithTokenExchange`, `ValidAgent`, `GitHubService`, `SeedPlaceholderGrantData`, `ActiveGrant`, and `GitHubSessionForPrincipal`; configure the existing upstream fixture issuer and HTTPS client-assertion JWKS trust tuple; disable only the E2E gateway cache; and close servers, listeners, containers, temporary keys, storage, and the transport override in cleanup.
 
 **Checkpoint**: Every test starts a fresh real Broker boundary, real agentgateway v1.5.0 container,
 HTTPS JWKS fixture, and downstream recorder. The foundation contains no ExtProc service, mock Broker,
@@ -179,9 +179,9 @@ or no-ExtProc assertions.
 
 ### Implementation for User Story 1
 
-- [ ] T026 [US1] Implement reference-config loading and static invariant checks in `tests/e2e/gateway/support/agentgateway_container.go`; read the committed `examples/agentgateway/direct-token-exchange.yaml`, require the v1.5.0 native policy shape, and reject `extProc`, shared-secret, JWT-bearer, and inline-private-key variants before substitution.
-- [ ] T027 [US1] Complete source-config rendering in `tests/e2e/gateway/support/agentgateway_container.go`: substitute only documented endpoint, resource, key-file, `kid`, and test-host placeholders into `examples/agentgateway/direct-token-exchange.yaml`; add `cache.inMemory.maxEntries: 0` only to the E2E rendering and retain production cache defaults in the committed reference.
-- [ ] T028 [US1] Run `ginkgo -v --procs=1 --focus "Exchange Tokens Through the Native Gateway Policy" ./tests/e2e/gateway/` from `tests/e2e/gateway/`; make US1-S1, US1-S2, and US1-S3 green with the recorded form, downstream-token replacement, and zero ExtProc-contact assertions.
+- [X] T026 [US1] Implement reference-config loading and static invariant checks in `tests/e2e/gateway/support/agentgateway_container.go`; read the committed `examples/agentgateway/direct-token-exchange.yaml`, require the v1.5.0 native policy shape, and reject `extProc`, shared-secret, JWT-bearer, and inline-private-key variants before substitution.
+- [X] T027 [US1] Complete source-config rendering in `tests/e2e/gateway/support/agentgateway_container.go`: substitute only documented endpoint, resource, key-file, `kid`, and test-host placeholders into `examples/agentgateway/direct-token-exchange.yaml`; add `cache.maxEntries: 0` only to the E2E rendering (as required by the pinned v1.5.0 schema) and retain production cache defaults in the committed reference.
+- [X] T028 [US1] Run `ginkgo -v --procs=1 --focus "Exchange Tokens Through the Native Gateway Policy" ./tests/e2e/gateway/` from `tests/e2e/gateway/`; make US1-S1, US1-S2, and US1-S3 green with the recorded form, downstream-token replacement, and zero ExtProc-contact assertions.
 
 **Checkpoint**: US1 works through the native path. The gateway directly calls the Broker and never
 starts, configures, or contacts ExtProc.
@@ -194,7 +194,7 @@ starts, configures, or contacts ExtProc.
 resource authorization, delegation checks, and fail-closed behavior.
 
 **Independent Test**: Operate the US2 specs in `tests/e2e/gateway/native_token_exchange_e2e_test.go`.
-Each failure reaches no protected backend, and the agent receives the mapped 400 or 500 response.
+Each failure reaches no protected backend, and the MCP route returns an agent-visible 500 response.
 
 ### Acceptance Tests for User Story 2
 
@@ -202,9 +202,9 @@ The US2 specs were written in T016 and observed red in T018. Keep US2-S1 as one 
 
 ### Implementation for User Story 2
 
-- [ ] T029 [US2] Extend `tests/e2e/gateway/support/agentgateway_container.go` and `tests/e2e/gateway/support/signing_key.go` with per-case rendering for an untrusted signer, wrong client ID, wrong assertion audience, a subject issuer different from the configured upstream fixture issuer, wrong subject audience, missing resource, unmapped resource, absent `UserGrant`, no stored session, insufficient stored-session scope, unavailable client-assertion JWKS, unavailable Broker host, and unsupported `clientAuth.alg` startup rejection; preserve the real Broker for every runtime case.
-- [ ] T030 [US2] Wire the existing US2-S1 table and US2-S2/US2-S3 scenarios in `tests/e2e/gateway/native_token_exchange_e2e_test.go` to those options. Retain one `It()` per spec scenario. Assert `invalid_request` and 400 for a missing resource, `invalid_target` and 400 for an unmapped resource, `invalid_grant` and 400 for missing or insufficient stored-session scope, and `server_error` and 500 for unavailable client-assertion JWKS. Assert 500 for an unavailable Broker. Assert zero downstream requests and no inbound-token fallback.
-- [ ] T031 [US2] Run `ginkgo -v --procs=1 --focus "Preserve Broker Authorization Boundaries" ./tests/e2e/gateway/`; make the credential-validation, resource, no-delegation, stored-session, JWKS, and Broker-unavailable scenarios green without a mock Broker or an ExtProc fallback.
+- [X] T029 [US2] Extend `tests/e2e/gateway/support/agentgateway_container.go` and `tests/e2e/gateway/support/signing_key.go` with per-case rendering for an untrusted signer, wrong client ID, wrong assertion audience, a subject issuer different from the configured upstream fixture issuer, wrong subject audience, missing resource, unmapped resource, absent `UserGrant`, no stored session, insufficient stored-session scope, unavailable client-assertion JWKS, unavailable Broker host, and unsupported `clientAuth.alg` startup rejection; preserve the real Broker for every runtime case.
+- [X] T030 [US2] Wire the existing US2-S1 table and US2-S2/US2-S3 scenarios in `tests/e2e/gateway/native_token_exchange_e2e_test.go` to those options. Retain one `It()` per spec scenario. Assert the Broker returns `invalid_request` with 400 for a missing resource, `invalid_target` with 400 for an unmapped resource, and `invalid_grant` with 400 for missing or insufficient stored-session scope. Assert the Broker returns `access_denied` with 403 for no delegation and `server_error` with 500 for unavailable client-assertion JWKS. Assert the MCP route returns agent-visible 500 for every error, including an unavailable Broker. Assert zero downstream requests and no inbound-token fallback.
+- [X] T031 [US2] Run `ginkgo -v --procs=1 --focus "Preserve Broker Authorization Boundaries" ./tests/e2e/gateway/`; the focused US2 run observed green for the credential-validation, resource, no-delegation, stored-session, JWKS, and Broker-unavailable scenarios without a mock Broker or an ExtProc fallback.
 
 **Checkpoint**: US2 rejects invalid or unavailable exchanges before a protected backend receives a
 request. The direct path stays fail-closed.
@@ -226,11 +226,11 @@ committed paths and actual configuration values.
 
 ### Implementation for User Story 3
 
-- [ ] T032 [P] [US3] Create `docs/guides/token-exchange-gateway-direct.md`; document the direct replacement route, v1.5.0 `path` and `resources` fields, RFC 8693 form, `privateKeyJwt` key source, exact trust tuple, HTTPS JWKS requirement, one-anchor route selection, fail-closed results, and downstream-token validation steps.
-- [ ] T033 [P] [US3] Update `docs/guides/token-exchange-gateway.md` to identify its ExtProc sidecar path as the existing alternative; link `docs/guides/token-exchange-gateway-direct.md`, prohibit combining policies on one route, and preserve all ExtProc deployment instructions.
-- [ ] T034 [P] [US3] Update `docs/concepts/token-exchange.md` to describe direct native exchange and ExtProc exchange as separate paths; state which credential validates at the Broker and that neither path forwards the inbound credential after a rejected exchange.
-- [ ] T035 [P] [US3] Update `docs/reference/token-exchange.md` with the native gateway form fields, `privateKeyJwt` assertion claims, `resources` mapping, direct-path error status behavior, and links to `examples/agentgateway/direct-token-exchange.yaml` and `examples/config/token-exchange-direct-gateway.yaml`.
-- [ ] T036 [US3] Run `ginkgo -v --procs=1 --focus "Deploy the Alternative Safely" ./tests/e2e/gateway/`; make US3-S1, US3-S2, and US3-S3 green by reading the committed guides, booting the committed reference YAML, and observing an exchanged downstream credential with zero ExtProc contacts.
+- [X] T032 [P] [US3] Create `docs/guides/token-exchange-gateway-direct.md`; document the direct replacement route, v1.5.0 `path` and `resources` fields, RFC 8693 form, `privateKeyJwt` key source, exact trust tuple, HTTPS JWKS requirement, one-anchor route selection, fail-closed results, and downstream-token validation steps.
+- [X] T033 [P] [US3] Update `docs/guides/token-exchange-gateway.md` to identify its ExtProc sidecar path as the existing alternative; link `docs/guides/token-exchange-gateway-direct.md`, prohibit combining policies on one route, and preserve all ExtProc deployment instructions.
+- [X] T034 [P] [US3] Update `docs/concepts/token-exchange.md` to describe direct native exchange and ExtProc exchange as separate paths; state which credential validates at the Broker and that neither path forwards the inbound credential after a rejected exchange.
+- [X] T035 [P] [US3] Update `docs/reference/token-exchange.md` with the native gateway form fields, `privateKeyJwt` assertion claims, `resources` mapping, direct-path error status behavior, and links to `examples/agentgateway/direct-token-exchange.yaml` and `examples/config/token-exchange-direct-gateway.yaml`.
+- [X] T036 [US3] Run `ginkgo -v --procs=1 --focus "Deploy the Alternative Safely" ./tests/e2e/gateway/`; make US3-S1, US3-S2, and US3-S3 green by reading the committed guides, booting the committed reference YAML, and observing an exchanged downstream credential with zero ExtProc contacts.
 
 **Checkpoint**: The committed guide and configuration identify the two paths as alternatives. The source
 file operators copy is the source file the real gateway E2E suite operates.
@@ -244,23 +244,23 @@ requirement before merge.
 
 ### Design-Phase Verification [MANDATORY]
 
-- [ ] T037 Make sure that `ARCHITECTURE.md`, `adrs/036-agentgateway-native-token-exchange.md`, and `specs/045-agentgateway-token-exchange/data-model.md` agree on the direct-route model and one-anchor rule (Principles II and V).
-- [ ] T038 Make sure that `examples/config/token-exchange-direct-gateway.yaml` and `examples/config/README.md` document only existing Broker settings; make sure that `charts/agentic-identity-broker/` has no required change (Principle VII).
-- [ ] T039 Make sure that `api/enduser/openapi.yaml`, `api/admin/openapi.yaml`, and `migrations/` remain unchanged; record the unchanged API and database contract in `adrs/036-agentgateway-native-token-exchange.md` (Principles IV, IX, and X).
-- [ ] T040 Make sure that `tests/e2e/gateway/native_token_exchange_e2e_test.go` and `tests/e2e/gateway/reference_config_e2e_test.go` contain exactly nine traced `It()` blocks, one per US1-S1 through US3-S3, and preserve the T018 semantic-red evidence (Principles VIII and XIII).
-- [ ] T041 Make sure that no `web/`, `tests/e2e/frontend/`, or `tests/e2e/screenshots/` path changed; record the backend-only scope in `adrs/036-agentgateway-native-token-exchange.md` (Principle XI).
+- [X] T037 Make sure that `ARCHITECTURE.md`, `adrs/036-agentgateway-native-token-exchange.md`, and `specs/045-agentgateway-token-exchange/data-model.md` agree on the direct-route model and one-anchor rule (Principles II and V).
+- [X] T038 Make sure that `examples/config/token-exchange-direct-gateway.yaml` and `examples/config/README.md` document only existing Broker settings; make sure that `charts/agentic-identity-broker/` has no required change (Principle VII).
+- [X] T039 Make sure that `api/enduser/openapi.yaml`, `api/admin/openapi.yaml`, and `migrations/` remain unchanged; record the unchanged API and database contract in `adrs/036-agentgateway-native-token-exchange.md` (Principles IV, IX, and X).
+- [X] T040 Make sure that `tests/e2e/gateway/native_token_exchange_e2e_test.go` and `tests/e2e/gateway/reference_config_e2e_test.go` contain exactly nine traced `It()` blocks, one per US1-S1 through US3-S3, and preserve the T018 semantic-red evidence (Principles VIII and XIII).
+- [X] T041 Make sure that no `web/`, `tests/e2e/frontend/`, or `tests/e2e/screenshots/` path changed; record the backend-only scope in `adrs/036-agentgateway-native-token-exchange.md` (Principle XI).
 
 ### Implementation-Phase Verification [MANDATORY]
 
-- [ ] T042 Audit `examples/agentgateway/direct-token-exchange.yaml` and `tests/e2e/gateway/support/agentgateway_container.go` against the vendored v1.5.0 schema; require `path`, default RFC 8693 grant, `resources`, `privateKeyJwt`, key file source, no shared secret, no `extProc`, and no JWT-bearer/OBO mode (Principles I and VII).
-- [ ] T043 Audit `tests/e2e/gateway/support/https_jwks_server.go` and `tests/e2e/gateway/support/signing_key.go`; require HTTPS JWKS, an additive fixture CA, restored default transport, `InsecureSkipVerify == false`, no custom cryptography, and no logged key or token value (Principles I and III).
-- [ ] T044 Audit `tests/e2e/bootstrap/test_server.go` and `tests/e2e/gateway/support/recording_token_endpoint.go`; retain production `app.Builder` and routing, preserve existing builder callers, and keep recording as pass-through observation rather than a mock Broker (Principles VI, XII, and XIII).
-- [ ] T045 Audit `tests/e2e/gateway/`; remove the T015 passthrough baseline, test-only temporary files, debug logging, commented-out code, `TODO` markers, skipped specs, and red-phase annotations before merge (Principles VIII and XIII).
-- [ ] T046 Run `just check` from `justfile`, then resolve every formatting, vet, and lint problem introduced by the feature.
-- [ ] T047 Run `just test` from `justfile` after T046. Make sure that the fast Go/package suite stays green.
-- [ ] T048 Run `just test-e2e-gateway` from `justfile`. Make sure that all nine native gateway acceptance specs pass with `--procs=1`.
-- [ ] T049 Run `just test-e2e-extproc` from `justfile`. Make sure that the existing ExtProc route and behavior stay green and unchanged (FR-009).
-- [ ] T050 Run `just verify` from `justfile`. Make sure that the repository verification gate, including the aggregate E2E suite, passes.
+- [X] T042 Audit `examples/agentgateway/direct-token-exchange.yaml` and `tests/e2e/gateway/support/agentgateway_container.go` against the vendored v1.5.0 schema; require `path`, default RFC 8693 grant, `resources`, `privateKeyJwt`, key file source, no shared secret, no `extProc`, and no JWT-bearer/OBO mode (Principles I and VII).
+- [X] T043 Audit `tests/e2e/gateway/support/https_jwks_server.go` and `tests/e2e/gateway/support/signing_key.go`; require HTTPS JWKS, an additive fixture CA, restored default transport, `InsecureSkipVerify == false`, no custom cryptography, and no logged key or token value (Principles I and III).
+- [X] T044 Audit `tests/e2e/bootstrap/test_server.go` and `tests/e2e/gateway/support/recording_token_endpoint.go`; retain production `app.Builder` and routing, preserve existing builder callers, and keep recording as pass-through observation rather than a mock Broker (Principles VI, XII, and XIII).
+- [X] T045 Audit `tests/e2e/gateway/`; remove the T015 passthrough baseline, test-only temporary files, debug logging, commented-out code, `TODO` markers, skipped specs, and red-phase annotations before merge (Principles VIII and XIII).
+- [X] T046 Run `just check` from `justfile`, then resolve every formatting, vet, and lint problem introduced by the feature.
+- [X] T047 Run `just test` from `justfile` after T046. Make sure that the fast Go/package suite stays green.
+- [X] T048 Run `just test-e2e-gateway` from `justfile`. Make sure that all nine native gateway acceptance specs pass with `--procs=1`.
+- [X] T049 Run `just test-e2e-extproc` from `justfile`. Make sure that the existing ExtProc route and behavior stay green and unchanged (FR-009).
+- [X] T050 Run `just verify` from `justfile`. Make sure that the repository verification gate, including the aggregate E2E suite, passes.
 
 **Checkpoint**: The direct path, documentation, and proof satisfy the specification without changing the
 Broker API, Broker configuration schema, storage schema, ExtProc deployment, or frontend.

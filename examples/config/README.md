@@ -206,6 +206,16 @@ token_exchange:
 
 > **Breaking change (Feature 021)**: `agent_id_expression: "subject_token.azp"` is no longer valid. Update to `resolveAgentIdByClientId(subject_token.azp)`. See [docs/changelog.md](../../docs/changelog.md).
 
+### `token-exchange-direct-gateway.yaml`
+
+Broker configuration for agentgateway's direct native RFC 8693 route. It uses only existing
+`token_exchange.*` fields and pairs with
+[`examples/agentgateway/direct-token-exchange.yaml`](../agentgateway/direct-token-exchange.yaml).
+Replace the gateway client ID, client-assertion JWKS URI, expected audience, subject-token issuer and
+audience, protected-resource URI, and signing-key location as one trust contract. See
+[`docs/guides/token-exchange-gateway-direct.md`](../../docs/guides/token-exchange-gateway-direct.md)
+for the required route selection and deployment procedure.
+
 ### `request-context.yaml`
 
 Request security-context configuration. Demonstrates:

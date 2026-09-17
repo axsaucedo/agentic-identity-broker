@@ -9,7 +9,7 @@ NUM_CPUS := num_cpus()
 VERSION := env_var_or_default("VERSION", `git describe --tags --always 2>/dev/null || echo "latest"`)
 REVISION := env_var_or_default("REVISION", `git rev-parse HEAD 2>/dev/null || echo "unknown"`)
 CREATED := env_var_or_default("CREATED", `git show -s --format=%cI HEAD 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%SZ"`)
-GO_FAST_TEST_PACKAGES := `go list -e ./... | grep -Ev '(/assets/docusaurus/build/|/specs/|/web/node_modules/|/tests/e2e$|/tests/e2e/frontend$|/tests/e2e/extproc$|/tests/integration($|/))' | tr '\n' ' '`
+GO_FAST_TEST_PACKAGES := `go list -e ./... | grep -Ev '(/assets/docusaurus/build/|/specs/|/web/node_modules/|/tests/e2e($|/frontend$|/extproc$|/gateway$)|/tests/integration($|/))' | tr '\n' ' '
 INTEGRATION_INFRA_TEST_PACKAGES := "./tests/integration/infra/... ./tests/integration/migrations/... ./tests/integration/storage/infra/... ./internal/adapters/storage/postgres/..."
 INTEGRATION_INFRA_PACKAGE_PROCS := env_var_or_default("INTEGRATION_INFRA_PACKAGE_PROCS", "2")
 GINKGO_FRONTEND_PROCS := env_var_or_default("GINKGO_FRONTEND_PROCS", "2")
@@ -135,6 +135,29 @@ test-e2e-extproc-coverage:
         exit 1; \
     fi
 
+# Run the native Agentgateway E2E acceptance suite with Ginkgo
+test-e2e-gateway:
+    @echo "Running Agentgateway E2E suite..."
+    @if command -v ginkgo > /dev/null; then \
+        ginkgo -v --procs=1 ./tests/e2e/gateway/; \
+    else \
+        echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
+        exit 1; \
+    fi
+
+# Run the native Agentgateway E2E acceptance suite with coverage report
+test-e2e-gateway-coverage:
+    @echo "Running Agentgateway E2E suite with coverage..."
+    @mkdir -p coverage
+    @if command -v ginkgo > /dev/null; then \
+        ginkgo -v --procs=1 --cover --coverprofile=e2e-gateway.out --output-dir=coverage ./tests/e2e/gateway/; \
+        go tool cover -html=coverage/e2e-gateway.out -o coverage/e2e-gateway.html; \
+        echo "Agentgateway E2E coverage report generated at coverage/e2e-gateway.html"; \
+    else \
+        echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
+        exit 1; \
+    fi
+
 # Run the frontend E2E acceptance suite against a built frontend bundle
 test-e2e-frontend: web-build
     #!/usr/bin/env bash
@@ -157,18 +180,18 @@ test-e2e-frontend-coverage: web-build
     go tool cover -html=coverage/e2e-frontend.out -o coverage/e2e-frontend.html
     echo "Frontend E2E coverage report generated at coverage/e2e-frontend.html"
 
-# Run all backend, ExtProc, and frontend E2E acceptance suites
-test-e2e: test-e2e-backend test-e2e-extproc test-e2e-frontend
+# Run all backend, ExtProc, Agentgateway, and frontend E2E acceptance suites
+test-e2e: test-e2e-backend test-e2e-extproc test-e2e-gateway test-e2e-frontend
     @echo "All E2E suites completed"
 
-# Run coverage for all backend, ExtProc, and frontend E2E acceptance suites
-test-e2e-coverage: test-e2e-backend-coverage test-e2e-extproc-coverage test-e2e-frontend-coverage
+# Run coverage for all backend, ExtProc, Agentgateway, and frontend E2E acceptance suites
+test-e2e-coverage: test-e2e-backend-coverage test-e2e-extproc-coverage test-e2e-gateway-coverage test-e2e-frontend-coverage
     @echo "E2E coverage reports generated under coverage/"
 
 # Watch all E2E acceptance suites during development
 test-e2e-watch:
-    @echo "Watching backend, ExtProc, and frontend E2E suites..."
-    @if command -v ginkgo > /dev/null; then E2E_FRONTEND_MODE=built ginkgo watch -v --label-filter="!performance" ./tests/e2e/ ./tests/e2e/extproc/ ./tests/e2e/frontend/; else echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; fi
+    @echo "Watching backend, ExtProc, Agentgateway, and frontend E2E suites..."
+    @if command -v ginkgo > /dev/null; then E2E_FRONTEND_MODE=built ginkgo watch -v --label-filter="!performance" ./tests/e2e/ ./tests/e2e/extproc/ ./tests/e2e/gateway/ ./tests/e2e/frontend/; else echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; fi
 
 
 # Build and run the application

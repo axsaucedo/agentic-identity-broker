@@ -252,9 +252,10 @@ MCP client (mcp-go)
 - An `assertionAudience` that does not match `expected_audience`.
 - A subject JWT with an issuer different from the configured upstream fixture issuer or an invalid `aud`.
 
-Each subcase asserts the documented agent-visible status and zero backend requests. An unsupported `clientAuth.alg` causes gateway configuration-load rejection. A real gateway cannot emit that algorithm at runtime. The test must not tamper with an assertion in flight.
+Each subcase asserts an agent-visible MCP status of 500 and zero backend requests. An unsupported
+`clientAuth.alg` causes gateway configuration-load rejection. A real gateway cannot emit that algorithm at runtime. The test must not tamper with an assertion in flight.
 
-**US2, Scenario 3 stays one `It()` with real subcases.** It covers a missing `resource`, an unmapped `resource`, a missing or insufficient stored session, client-assertion JWKS failure, and an unavailable Broker. The expected results are `invalid_request` with 400, `invalid_target` with 400, and `invalid_grant` with 400. The JWKS failure returns `server_error` with 500. The unavailable Broker returns 500. Every subcase asserts zero backend requests.
+**US2, Scenario 3 stays one `It()` with real subcases.** It covers a missing `resource`, an unmapped `resource`, a missing or insufficient stored session, client-assertion JWKS failure, and an unavailable Broker. The Broker returns `invalid_request` with 400, `invalid_target` with 400, and `invalid_grant` with 400. The JWKS failure returns `server_error` with 500. The unavailable Broker has no Broker response. The MCP route returns agent-visible 500 for every error. Every subcase asserts zero backend requests.
 
 **Red Phase Requirements**:
 

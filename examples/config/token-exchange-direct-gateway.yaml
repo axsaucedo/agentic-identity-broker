@@ -1,0 +1,29 @@
+# Broker settings for the native gateway token-exchange route.
+# Replace the gateway client ID, client-assertion JWKS URI, expected audience, and
+# gateway key locations as one validation contract with
+# examples/agentgateway/direct-token-exchange.yaml. The route resource is
+# https://api.github.com; register that same URI as a protected resource for the
+# Broker-managed third-party service that supplies the downstream credential.
+security:
+  skip_thirdparty_https_validation: false
+
+token_exchange:
+  expected_audience: token-exchange-broker
+
+  client_assertion:
+    issuer_uri: https://agentgateway-direct-e2e.example.test
+    jwks_uri: https://agentgateway-direct-e2e.example.test/.well-known/jwks.json
+    jwks_min_refresh: 15m
+    jwks_max_refresh: 1h
+
+  claim_extraction:
+    principal_expression: "subject_token.sub"
+    agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
+
+  authorization:
+    type: cel
+    cel:
+      expression: |
+        client_assertion.iss == "https://agentgateway-direct-e2e.example.test" &&
+        client_assertion.sub == "https://agentgateway-direct-e2e.example.test"
+      evaluation_timeout: 100ms
