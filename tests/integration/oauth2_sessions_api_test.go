@@ -1593,13 +1593,31 @@ func newSessionDetailIsolationFixture(t *testing.T) sessionDetailIsolationFixtur
 	} {
 		require.NoError(t, sessionRepo.Create(ctx, session))
 	}
-	agentA := &storage.Agent{ID: id.NewAgentID(), DisplayName: "Agent A", Description: "Principal A agent"}
-	agentB := &storage.Agent{ID: id.NewAgentID(), DisplayName: "Agent B", Description: "Principal B agent"}
+	permissionSetAID := id.NewPermissionSetID()
+	permissionSetBID := id.NewPermissionSetID()
+	agentA := &storage.Agent{
+		ID:          id.NewAgentID(),
+		DisplayName: "Agent A",
+		Description: "Principal A agent",
+		PermissionSets: []storage.AgentPermissionSetEntry{{
+			PermissionSetID: permissionSetAID,
+			RequirementType: storage.RequirementTypeMandatory,
+		}},
+	}
+	agentB := &storage.Agent{
+		ID:          id.NewAgentID(),
+		DisplayName: "Agent B",
+		Description: "Principal B agent",
+		PermissionSets: []storage.AgentPermissionSetEntry{{
+			PermissionSetID: permissionSetBID,
+			RequirementType: storage.RequirementTypeMandatory,
+		}},
+	}
 	require.NoError(t, agentRepo.Create(ctx, agentA))
 	require.NoError(t, agentRepo.Create(ctx, agentB))
 	for _, grant := range []*storage.UserGrant{
-		{Principal: principalA, AgentID: agentA.ID, GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{serviceID}}}},
-		{Principal: principalB, AgentID: agentB.ID, GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{serviceID}}}},
+		{Principal: principalA, AgentID: agentA.ID, GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: permissionSetAID, IncludedServiceIDs: []id.ServiceID{serviceID}}}},
+		{Principal: principalB, AgentID: agentB.ID, GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: permissionSetBID, IncludedServiceIDs: []id.ServiceID{serviceID}}}},
 	} {
 		require.NoError(t, grantRepo.Create(ctx, grant))
 	}
