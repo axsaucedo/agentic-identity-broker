@@ -9,7 +9,13 @@
 5. Create a `vX.Y.Z` tag on the release commit with `git tag vX.Y.Z`.
 6. Push the tag to the repository with `git push <remote> vX.Y.Z`.
 
-Patch releases need no documentation action. Use steps 5 and 6 for a patch release.
+Patch releases need no new snapshot. Use steps 5 and 6 for a patch release.
+
+A patch release needing no snapshot does not mean the released documentation needs no
+maintenance. `/docs/` serves the snapshot, so a correction applied only to `docs/` reaches
+`/docs/next/` and never reaches the readers running the released version. Apply corrections
+that affect a supported release to that release's snapshot as well. Keep documentation for
+unreleased behaviour out of the snapshot.
 
 ## Release automation
 

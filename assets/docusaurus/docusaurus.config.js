@@ -101,7 +101,14 @@ const config = {
               : `${githubRepoUrl}/edit/${githubBranch}/assets/docusaurus/${versionDocsDirPath}/${docPath}`,
           lastVersion: '0.1',
           versions: {
-            current: {label: 'next 🚧', path: 'next', banner: 'unreleased'},
+            current: {
+              label: 'next 🚧',
+              path: 'next',
+              banner: 'unreleased',
+              // Keep unreleased docs out of search engines so results point at the
+              // released series rather than splitting across both versions.
+              noIndex: true,
+            },
           },
           onlyIncludeVersions: process.env.DOCS_ONLY_INCLUDE_VERSIONS
             ?.split(',').map((version) => version.trim()),

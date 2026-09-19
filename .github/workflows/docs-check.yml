@@ -7,6 +7,7 @@ on:
       - "api/**"
       - "assets/docusaurus/**"
       - ".github/workflows/docs-check.yml"
+      - ".github/workflows/docs.yml"
 
 permissions:
   contents: read
