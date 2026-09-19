@@ -15,8 +15,8 @@ The broker supports two distinct RFC 8693 flows on `POST /oauth2/token`:
 This page explains third-party token exchange. User impersonation does not resolve a
 third-party resource or return a provider credential. The target agent defines optional
 scope policy. The routing audience does not control issued `aud`. See
-[user impersonation](/docs/reference/token-exchange#user-impersonation) for its request,
-response, error, and audit contract. See [Configuration](/docs/configuration) for its
+[user impersonation](../reference/token-exchange.md#user-impersonation) for its request,
+response, error, and audit contract. See [Configuration](../configuration.md) for its
 operator configuration.
 
 ## Third-party token exchange
@@ -85,7 +85,7 @@ An exchange has two independent policy gates. Both gates must allow the request:
   default, the expression is `true`. You can restrict eligible gateways, agents, and
   resources.
 - **ExtProc OPA — Can this proxied request continue?** The
-  [ExtProc gateway sidecar](/docs/guides/token-exchange-gateway) can use an optional Open
+  [ExtProc gateway sidecar](../guides/token-exchange-gateway.md) can use an optional Open
   Policy Agent gate. It evaluates the proxied request and relevant MCP tool calls. It allows
   or denies the request. This gate is disabled by default.
 
@@ -96,11 +96,11 @@ The sidecar does not forward the original agent token.
 
 ## Related
 
-- [Token exchange reference](/docs/reference/token-exchange) — the request and response
+- [Token exchange reference](../reference/token-exchange.md) — the request and response
   fields in detail.
-- [Token exchange at the gateway](/docs/guides/token-exchange-gateway) — deploy the sidecar
+- [Token exchange at the gateway](../guides/token-exchange-gateway.md) — deploy the sidecar
   that performs exchange transparently.
-- [OAuth2 server modes](/docs/concepts/oauth2-server-modes) — how the agent's subject token is
+- [OAuth2 server modes](./oauth2-server-modes.md) — how the agent's subject token is
   issued in the first place.
-- [Delegation and consent](/docs/concepts/delegation-and-consent) — the grant the broker
+- [Delegation and consent](./delegation-and-consent.md) — the grant the broker
   verifies during every exchange.

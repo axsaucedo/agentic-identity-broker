@@ -1,7 +1,7 @@
 # Protected Resource Subresources API
 
 > **Implemented API — Feature 035.** The admin server implements this protected-resource
-API and full-service update behavior. [`api/admin/openapi.yaml`](/api/admin)
+API and full-service update behavior. [`api/admin/openapi.yaml`](https://github.com/zalando-incubator/agentic-identity-broker/blob/main/api/admin/openapi.yaml)
 is the canonical API definition.
 
 Protected resources are absolute URIs for RFC 8693 token exchange. The API removes trailing

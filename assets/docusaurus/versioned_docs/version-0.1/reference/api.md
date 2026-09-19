@@ -45,7 +45,7 @@ These endpoints require no pre-authentication:
 `GET /oauth2/authorize` and `POST /oauth2/token` do not use pre-authentication. They use
 OAuth2 parameters, such as agent client credentials or `client_assertion`. They do not use
 the principal header. See
-[Configure authentication](/docs/guides/configure-authentication) for the proxy trust
+[Configure authentication](../guides/configure-authentication.md) for the proxy trust
 boundary.
 
 ## Response envelopes
@@ -123,7 +123,7 @@ The full request and response schemas for every endpoint below are in the
 | GET | `/.well-known/oauth-authorization-server` | RFC 8414 authorization-server metadata (public). |
 
 For the `/oauth2/token` grant modes and the RFC 8693 field reference, see
-[Token exchange](/docs/reference/token-exchange).
+[Token exchange](./token-exchange.md).
 
 ## Admin API map (port 14000)
 
@@ -181,7 +181,7 @@ Each admin endpoint requires `X-Remote-User`. The proxy enforces administrator p
 
 - [End-user API reference](/api/enduser) and [Admin API reference](/api/admin) — the full
   generated contracts.
-- [Token exchange](/docs/reference/token-exchange) — the RFC 8693 field reference.
-- [Configuration](/docs/configuration) — every configuration key.
-- [Configure authentication](/docs/guides/configure-authentication) — the proxy trust
+- [Token exchange](./token-exchange.md) — the RFC 8693 field reference.
+- [Configuration](../configuration.md) — every configuration key.
+- [Configure authentication](../guides/configure-authentication.md) — the proxy trust
   boundary.

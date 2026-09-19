@@ -6,7 +6,7 @@ description: Precise definitions of the terms used across the Agentic Identity B
 # Glossary
 
 This page defines the terms used in these documents. The terms are grouped by area. See
-[delegation and consent](/docs/concepts/delegation-and-consent) to see how they work together.
+[delegation and consent](./delegation-and-consent.md) to see how they work together.
 
 ## Delegation model
 
@@ -46,7 +46,7 @@ request in the consent interface.
 
 **Authorization server** — The broker OAuth2 surface for RFC 6749 authorization code and RFC
 8414 metadata. It can proxy an upstream server or issue its own tokens. The selected
-[server mode](/docs/concepts/oauth2-server-modes) determines its behavior.
+[server mode](./oauth2-server-modes.md) determines its behavior.
 
 **Server mode** — `proxy` forwards to an upstream authorization server. `local` issues tokens
 in the broker. `hybrid` uses both modes based on agent registration.
@@ -88,7 +88,7 @@ identifiers from tokens, and add claims to local tokens.
 
 **Envelope encryption** — The broker encrypts data with a new data key. It then encrypts that
 data key with a higher-level key. One key-management request can protect many tokens. See
-[encryption at rest](/docs/concepts/encryption).
+[encryption at rest](./encryption.md).
 
 **KEK / DEK** — Key Encryption Key (KEK) is the production root AWS KMS customer-managed key.
 Data Encryption Key (DEK) encrypts one token for an operation.

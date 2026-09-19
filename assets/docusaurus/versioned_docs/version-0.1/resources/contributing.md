@@ -26,7 +26,7 @@ source documents:
 
 :::warning
 Never open a public issue for a security vulnerability. Report it privately through the
-process on the [Security posture](/docs/resources/security) page.
+process on the [Security posture](./security.md) page.
 :::
 
 ## Governance principles
@@ -50,4 +50,4 @@ describes.
 ## Before you start
 
 If you want to understand the system before you contribute, run the local stack and
-complete a delegation. See [Get started](/docs/get-started).
+complete a delegation. See [Get started](../get-started/index.md).

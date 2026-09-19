@@ -11,7 +11,7 @@ when exactly one encryption backend is configured. It does not fall back to plai
 page explains each backend and how production pods access its keys.
 
 For the key model and per-service context binding, see
-[encryption at rest](/docs/concepts/encryption).
+[encryption at rest](../concepts/encryption.md).
 
 ## Choose a backend
 
@@ -78,7 +78,7 @@ operation. Each data key remains wrapped by KMS.
 
 The project AWS CDK stack in `infra/cdk` can provision both resources. It creates the KMS
 key, a DynamoDB table with the AWS Encryption SDK schema, and a least-privilege IAM role.
-See [deployment checklist](/docs/operations/deployment-checklist) for commands and resource
+See [deployment checklist](../operations/deployment-checklist.md) for commands and resource
 ARNs.
 
 ### Configure it
@@ -104,7 +104,7 @@ encryption:
 ```
 
 For production, set the region and structured JSON log format. See the full schema in
-[configuration](/docs/configuration).
+[configuration](../configuration.md).
 
 ### IAM permissions the broker needs
 
@@ -123,7 +123,7 @@ access.
 On EKS, use **IAM Roles for Service Accounts (IRSA)** instead of static AWS credentials.
 Annotate the broker service account with the IAM role for the KMS key and DynamoDB table.
 The AWS SDK obtains and rotates temporary credentials. See the
-[Kubernetes deployment guide](/docs/guides/deploy-on-kubernetes#grant-aws-access-with-irsa)
+[Kubernetes deployment guide](./deploy-on-kubernetes.md#grant-aws-access-with-irsa)
 for operator steps.
 
 ## Configure the JWE signing key
@@ -154,16 +154,16 @@ material. The output shows the backend and its parameters, but not the key.
 
 To make sure that KMS encryption works end to end, create a third-party OAuth2 session.
 Then read the session. This stores and retrieves encrypted tokens through the complete
-keyring. The [deployment checklist](/docs/operations/deployment-checklist) includes this
+keyring. The [deployment checklist](../operations/deployment-checklist.md) includes this
 smoke test.
 
 ## Related
 
-- [Encryption at rest](/docs/concepts/encryption) — the envelope model and
+- [Encryption at rest](../concepts/encryption.md) — the envelope model and
   per-service context binding.
-- [Deploy on Kubernetes](/docs/guides/deploy-on-kubernetes) — wiring the KMS key,
+- [Deploy on Kubernetes](./deploy-on-kubernetes.md) — wiring the KMS key,
   DynamoDB table, and IRSA role into the Helm release.
-- [Configuration](/docs/configuration) — the full `encryption` and
+- [Configuration](../configuration.md) — the full `encryption` and
   `third_party_oauth2` schema.
-- [Deployment checklist](/docs/operations/deployment-checklist) — provisioning
+- [Deployment checklist](../operations/deployment-checklist.md) — provisioning
   and verifying the encryption infrastructure.

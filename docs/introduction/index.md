@@ -49,13 +49,13 @@ The broker inserts a single, governed trust boundary:
   envelope encryption and refreshes tokens when necessary.
 - **Agents receive scoped access.** At request time, a gateway can exchange an agent
   token for the appropriate third-party token with
-  [RFC 8693 token exchange](/docs/concepts/token-exchange). Agents never hold provider
+  [RFC 8693 token exchange](../concepts/token-exchange.md). Agents never hold provider
   credentials.
 - **The broker records every delegation.** A user can withdraw a grant or end a
   third-party session. Dependent agents then lose access.
 
 The broker supports standard OAuth2. It exposes an
-[authorization-server surface](/docs/concepts/oauth2-server-modes) (RFC 6749
+[authorization-server surface](../concepts/oauth2-server-modes.md) (RFC 6749
 authorization code + PKCE, RFC 8414 metadata, and a JWKS endpoint). It can proxy an
 existing corporate authorization server or issue its own tokens.
 
@@ -73,17 +73,17 @@ existing corporate authorization server or issue its own tokens.
 - It is **not a user identity provider**. The broker does not authenticate humans. A
   trusted reverse proxy authenticates the user and sends the identity in a header.
   Continue to use Keycloak, Auth0, Okta, or your corporate IdP for human login. See
-  [Why not a traditional IdP?](/docs/introduction/why-not-idp).
+  [Why not a traditional IdP?](./why-not-idp.md).
 - It is **not a general secrets manager**. It stores OAuth2 delegations and their
   third-party tokens. It does not store arbitrary application secrets.
 
 ## Where to go next
 
-- **[Use cases](/docs/introduction/use-cases)** — concrete scenarios where delegated agent
+- **[Use cases](./use-cases.md)** — concrete scenarios where delegated agent
   access is the hard part.
-- **[Why not a traditional IdP?](/docs/introduction/why-not-idp)** — how the broker
+- **[Why not a traditional IdP?](./why-not-idp.md)** — how the broker
   complements, rather than replaces, your identity provider.
-- **[Concepts](/docs/concepts)** — the delegation model, architecture, server modes, token
+- **[Concepts](../concepts/index.md)** — the delegation model, architecture, server modes, token
   exchange, and encryption.
-- **[Get started](/docs/get-started)** — run the full stack locally and walk a delegation
+- **[Get started](../get-started/index.md)** — run the full stack locally and walk a delegation
   end to end.

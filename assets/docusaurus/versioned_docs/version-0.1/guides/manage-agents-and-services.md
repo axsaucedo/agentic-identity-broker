@@ -47,7 +47,7 @@ The core fields:
   use an empty list when the provider has no OAuth2 scopes. The broker then omits `scope`
   from its upstream authorization request.
 - `protected_resources` — Optional resource URIs for
-  [token exchange](/docs/concepts/delegation-and-consent#using-a-delegation).
+  [token exchange](../concepts/delegation-and-consent.md#using-a-delegation).
 - `authorization_params` — Optional static provider parameters for upstream authorization
   requests. For Zalando Platform, use `{ "business_partner_id": "12345" }`. These values
   come from the administrator, not the browser. Omit the field during update to retain it.
@@ -169,7 +169,7 @@ The fields:
 - `permission_sets` — At least one `{permission_set_id, requirement_type}` value is
   required. Mandatory sets stop authorization until a user grants them. Optional sets let
   an agent continue without the access. See
-  [delegation and consent](/docs/concepts/delegation-and-consent#mandatory-vs-optional-requirements).
+  [delegation and consent](../concepts/delegation-and-consent.md#mandatory-vs-optional-requirements).
 - `client_id` — Optional. Use it only for an agent that uses an upstream OAuth2 client ID.
   Omit it for agents identified in another way.
 - `governance_url`, `user_documentation_url`, and `agent_interface_url` — Optional URLs for
@@ -200,7 +200,7 @@ an upstream `client_id`.
 
 ## Issue broker client credentials
 
-In `local` or `hybrid` [server mode](/docs/guides/operate-oauth2-server-modes), the broker
+In `local` or `hybrid` [server mode](./operate-oauth2-server-modes.md), the broker
 issues agent credentials for the token endpoint. Generate one credential set for each agent
 with `POST /api/agents/{agent-id}/client-credentials`. Use the agent UUID in the path.
 
@@ -262,7 +262,7 @@ whose session has no refresh token must authenticate again to use the new parame
 
 - **[/api/admin](/api/admin)** — the full admin OpenAPI reference: every field, response
   schema, and error code.
-- **[Delegation and consent](/docs/concepts/delegation-and-consent)** — how the objects you
+- **[Delegation and consent](../concepts/delegation-and-consent.md)** — how the objects you
   create here become grants and sessions.
-- **[Operate OAuth2 server modes](/docs/guides/operate-oauth2-server-modes)** — when an agent
+- **[Operate OAuth2 server modes](./operate-oauth2-server-modes.md)** — when an agent
   needs broker client credentials, and how proxy, local, and hybrid modes differ.

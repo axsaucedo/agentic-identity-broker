@@ -12,7 +12,7 @@ ciphertext cannot be reused for another service.
 
 Encryption is mandatory. The broker does not start without an encryption backend. It has no
 plaintext mode or fallback. This page explains the model. See
-[configure encryption](/docs/guides/configure-encryption) for setup.
+[configure encryption](../guides/configure-encryption.md) for setup.
 
 ## What is protected, and why it matters
 
@@ -20,7 +20,7 @@ Two kinds of sensitive material live in the broker's storage:
 
 - **Third-party tokens** — Access and refresh tokens that the broker receives when a user
   authorizes a service. Agents use these tokens through
-  [token exchange](/docs/concepts/token-exchange). A datastore leak can otherwise expose
+  [token exchange](./token-exchange.md). A datastore leak can otherwise expose
   provider access.
 - **Service secrets** — The `client_secret` for each registered third-party service.
 
@@ -99,9 +99,9 @@ The broker treats encryption as a hard boundary:
 
 ## Related
 
-- [Configure encryption](/docs/guides/configure-encryption) — set up the AWS KMS or memory
+- [Configure encryption](../guides/configure-encryption.md) — set up the AWS KMS or memory
   backend.
-- [Token exchange](/docs/concepts/token-exchange) — where the decrypted third-party tokens are
+- [Token exchange](./token-exchange.md) — where the decrypted third-party tokens are
   put to use.
-- [Delegation and consent](/docs/concepts/delegation-and-consent) — the sessions whose tokens
+- [Delegation and consent](./delegation-and-consent.md) — the sessions whose tokens
   this encryption protects.

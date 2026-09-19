@@ -17,7 +17,7 @@ where authorization requests and tokens originate:
 - **hybrid** — The broker uses both modes. Agent registration selects the mode.
 
 This guide explains the configuration for each mode. It also explains signing-key management
-and CEL claims. See [OAuth2 server modes](/docs/concepts/oauth2-server-modes) for the
+and CEL claims. See [OAuth2 server modes](../concepts/oauth2-server-modes.md) for the
 conceptual model.
 
 ## What you need
@@ -28,7 +28,7 @@ conceptual model.
 - For proxy or hybrid mode, the upstream issuer, authorization endpoint, and token endpoint.
 - For local or hybrid mode, an encryption backend. The broker encrypts signing-key private
   material. It does not start in these modes without encryption. See
-  [configure encryption](/docs/guides/configure-encryption).
+  [configure encryption](./configure-encryption.md).
 - Access to the broker YAML configuration and the admin API on port 14000.
 
 All modes require PKCE `S256` at the authorization endpoint. `/oauth2/authorize` uses the
@@ -126,7 +126,7 @@ Local and hybrid modes use broker-managed **ES256** keys. The broker encrypts th
 key material at rest. It publishes public keys at `/oauth2/jwks.json`. Use the admin API on
 port 14000 to rotate keys. Every request includes the principal header from the proxy. The
 proxy enforces administrator privilege. See
-[configure authentication](/docs/guides/configure-authentication).
+[configure authentication](./configure-authentication.md).
 
 ### Add a key
 
@@ -218,8 +218,8 @@ values. This makes key rotation transparent.
 
 ## Related
 
-- [OAuth2 server modes](/docs/concepts/oauth2-server-modes) — the concept behind these modes.
-- [Manage agents and services](/docs/guides/manage-agents-and-services) — register the agents
+- [OAuth2 server modes](../concepts/oauth2-server-modes.md) — the concept behind these modes.
+- [Manage agents and services](./manage-agents-and-services.md) — register the agents
   that authenticate against this server.
 - [End-user API reference](/api/enduser) — the authorize, token, JWKS, and discovery
   contracts.

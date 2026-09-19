@@ -10,9 +10,9 @@ third-party token exchange and local user impersonation. They share a grant type
 different requests, token issuance, and authorization.
 
 :::note
-For the concept and the request flow, read [Token exchange](/docs/concepts/token-exchange).
+For the concept and the request flow, read [Token exchange](../concepts/token-exchange.md).
 To deploy transparent exchange at an Envoy-based gateway, see the
-[token-exchange gateway guide](/docs/guides/token-exchange-gateway). The complete generated
+[token-exchange gateway guide](../guides/token-exchange-gateway.md). The complete generated
 contract for this endpoint lives in the [end-user API reference](/api/enduser).
 :::
 
@@ -35,8 +35,8 @@ The following sections describe the request and response contracts.
 
 The token endpoint uses `grant_type` to identify an RFC 8693 request. It processes the
 request under RFC 8693. The same endpoint also supports `authorization_code` and
-`client_credentials`. See [API overview](/docs/reference/api) and
-[OAuth2 server modes](/docs/concepts/oauth2-server-modes).
+`client_credentials`. See [API overview](./api.md) and
+[OAuth2 server modes](../concepts/oauth2-server-modes.md).
 
 ## Key concepts
 
@@ -67,7 +67,7 @@ flowchart LR
 ```
 
 Configure `protected_resources` for a service through the [admin API](/api/admin). See
-[Manage agents and services](/docs/guides/manage-agents-and-services). The resource must be
+[Manage agents and services](../guides/manage-agents-and-services.md). The resource must be
 a valid HTTP or HTTPS URI. The broker stores it without a trailing slash. A duplicate URI
 in another service returns `409 conflict`.
 
@@ -341,14 +341,14 @@ identifiers, credential roles, safe identities, OAuth error or failure category,
 `request_id`. It does not contain client assertions, actor or subject tokens, issued access
 tokens, or signing keys. Use this audit record to investigate a rejected request.
 
-See [Configuration](/docs/configuration) and
+See [Configuration](../configuration.md) and
 `examples/config/impersonation.yaml` for operator setup and examples.
 
 
 ## Configuration
 
 Configure token exchange under `token_exchange`. The
-[Configuration reference](/docs/configuration) describes all settings. These two settings
+[Configuration reference](../configuration.md) describes all settings. These two settings
 matter most:
 
 - **Claim extraction** — CEL expressions get the principal and agent identifier from the
@@ -467,8 +467,8 @@ curl -H "Authorization: Bearer ghu_..." https://api.github.com/user
 
 ## Related
 
-- [Token exchange (concept)](/docs/concepts/token-exchange) — the model and request flow.
-- [Token-exchange gateway guide](/docs/guides/token-exchange-gateway) — transparent exchange
+- [Token exchange (concept)](../concepts/token-exchange.md) — the model and request flow.
+- [Token-exchange gateway guide](../guides/token-exchange-gateway.md) — transparent exchange
   at an Envoy-based gateway.
 - [End-user API reference](/api/enduser) — the generated `/oauth2/token` contract.
 - [RFC 8693 — OAuth 2.0 Token Exchange](https://www.rfc-editor.org/rfc/rfc8693).

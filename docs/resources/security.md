@@ -23,8 +23,8 @@ configured — there is no plaintext fallback.
 - **Fail-closed.** If encryption or decryption does not complete correctly, the operation
   fails. The broker does not fall back to plaintext storage.
 
-See [Encryption](/docs/concepts/encryption) for the full model and
-[Configure encryption](/docs/guides/configure-encryption) for setup.
+See [Encryption](../concepts/encryption.md) for the full model and
+[Configure encryption](../guides/configure-encryption.md) for setup.
 
 ## Secret handling
 
@@ -72,7 +72,7 @@ targets.
   TLS. Terminate TLS in front of the broker. A development-only flag can skip third-party
   HTTPS validation. Do not enable it in production.
 
-See [Configure authentication](/docs/guides/configure-authentication) for how to establish the
+See [Configure authentication](../guides/configure-authentication.md) for how to establish the
 proxy trust boundary.
 
 ## Reporting a vulnerability

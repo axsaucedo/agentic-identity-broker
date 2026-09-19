@@ -8,7 +8,7 @@ description: How the broker proxies an authorization server, issues its own ES25
 The broker provides a standard OAuth2 **authorization-server surface**. Agents use the same
 protocol as other clients. The broker can forward authorization to an existing server, issue
 its own tokens, or use both. This page explains these three modes. For setup steps, see
-[operate the OAuth2 server modes](/docs/guides/operate-oauth2-server-modes).
+[operate the OAuth2 server modes](../guides/operate-oauth2-server-modes.md).
 
 The broker uses one mode for its lifetime. Configure the mode with
 `oauth2_authorization_server.mode`.
@@ -21,7 +21,7 @@ differs by mode.
 | Endpoint | Purpose |
 |---|---|
 | `GET /oauth2/authorize` | RFC 6749 authorization endpoint — where an agent's authorization request begins. |
-| `POST /oauth2/token` | Token endpoint — authorization-code and client-credentials grants, plus [token exchange](/docs/concepts/token-exchange). |
+| `POST /oauth2/token` | Token endpoint — authorization-code and client-credentials grants, plus [token exchange](./token-exchange.md). |
 | `GET /oauth2/jwks.json` | The public JSON Web Key Set used to verify tokens the broker vouches for. |
 | `GET /.well-known/oauth-authorization-server` | RFC 8414 metadata describing the endpoints, grant types, and PKCE method above. |
 
@@ -75,7 +75,7 @@ mode supports these flows:
   actor, and subject credentials for an audience-selected registered target. The broker
   issues a locally signed token with subject and actor data. This flow is unavailable in
   proxy and hybrid modes. See
-  [user impersonation](/docs/reference/token-exchange#user-impersonation).
+  [user impersonation](../reference/token-exchange.md#user-impersonation).
 
 The broker can rotate signing keys. Before it signs with a new key, it publishes the key to
 the JWKS for an activation grace period. This lets token verifiers get the public key. Local
@@ -128,22 +128,22 @@ CIMD provides two functions:
   internal addresses. An agent URL does not become a request-forgery path.
 
 CIMD is available in `local` and `hybrid` mode. In these modes, the broker issues the token
-and manages consent. See [manage agents and services](/docs/guides/manage-agents-and-services)
+and manages consent. See [manage agents and services](../guides/manage-agents-and-services.md)
 for agent registration.
 
 ## Where token issuance meets delegation
 
 Server modes decide who signs an agent token. They do not grant access to a third-party
-service. The [delegation and consent model](/docs/concepts/delegation-and-consent) grants
+service. The [delegation and consent model](./delegation-and-consent.md) grants
 that access. The broker enforces the model before it completes an authorization request. A
-gateway uses [token exchange](/docs/concepts/token-exchange) to obtain a third-party
+gateway uses [token exchange](./token-exchange.md) to obtain a third-party
 credential. Delegation and exchange decide which services the token can access.
 
 ## Related
 
-- [Operate the OAuth2 server modes](/docs/guides/operate-oauth2-server-modes) — configure and
+- [Operate the OAuth2 server modes](../guides/operate-oauth2-server-modes.md) — configure and
   run each mode.
-- [Token exchange](/docs/concepts/token-exchange) — how an agent's token becomes a
+- [Token exchange](./token-exchange.md) — how an agent's token becomes a
   third-party token.
-- [Delegation and consent](/docs/concepts/delegation-and-consent) — the consent the broker
+- [Delegation and consent](./delegation-and-consent.md) — the consent the broker
   enforces before any authorization request proceeds.

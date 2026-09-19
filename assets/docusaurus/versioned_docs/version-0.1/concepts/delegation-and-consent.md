@@ -37,15 +37,15 @@ permission sets. Each requirement is **mandatory** or **optional**.
 An agent can identify itself with an HTTPS URL that points to a **Client ID Metadata
 Document (CIMD)**. The broker fetches and validates this document. The consent interface
 shows the resulting metadata. See
-[OAuth2 server modes](/docs/concepts/oauth2-server-modes#client-identity-and-cimd).
+[OAuth2 server modes](./oauth2-server-modes.md#client-identity-and-cimd).
 
 ### Third-party service
 
 A third-party service is an external OAuth2 provider, such as GitHub, Google, Databricks,
 or an internal API. Its definition contains the provider client ID and encrypted client
 secret. It contains the issuer, endpoints, and available scopes. It can also contain the
-resource URIs for [token exchange](/docs/concepts/token-exchange). Administrators register
-services through the [admin API](/docs/guides/manage-agents-and-services).
+resource URIs for [token exchange](./token-exchange.md). Administrators register
+services through the [admin API](../guides/manage-agents-and-services.md).
 
 ### Permission set
 
@@ -121,13 +121,13 @@ encrypted server-side token. The context identifies the agent and user. It also 
 original request. The consent interface cannot use attacker-provided parameters.
 
 If a mandatory service has no session, the broker starts the
-[third-party authorization flow](/docs/concepts/architecture#how-a-delegated-request-flows).
+[third-party authorization flow](./architecture.md#how-a-delegated-request-flows).
 The broker stores the resulting tokens in encrypted form before it completes the delegation.
 
 ## Using a delegation
 
 After a grant and its sessions exist, an agent can request a third-party resource. The
-broker uses [token exchange](/docs/concepts/token-exchange) to process the request. It makes
+broker uses [token exchange](./token-exchange.md) to process the request. It makes
 sure that the principal has an active grant for the agent and service. It then returns the
 appropriate third-party token. An agent does not hold the provider credential. Each exchange
 identifies a user, agent, and resource.
@@ -147,9 +147,9 @@ service.
 
 ## Related
 
-- [OAuth2 server modes](/docs/concepts/oauth2-server-modes) — how authorization requests are
+- [OAuth2 server modes](./oauth2-server-modes.md) — how authorization requests are
   handled.
-- [Token exchange](/docs/concepts/token-exchange) — how a grant becomes a usable token.
-- [Manage agents and services](/docs/guides/manage-agents-and-services) — the administrator
+- [Token exchange](./token-exchange.md) — how a grant becomes a usable token.
+- [Manage agents and services](../guides/manage-agents-and-services.md) — the administrator
   workflow.
-- [Glossary](/docs/concepts/glossary) — precise definitions of every term above.
+- [Glossary](./glossary.md) — precise definitions of every term above.

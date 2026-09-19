@@ -7,7 +7,7 @@ description: Deploy the ExtProc token-exchange sidecar with Agentgateway. Agentg
 
 The ExtProc token-exchange service (`extproc-token-exchange`) is a standalone gRPC sidecar.
 Agentgateway validates the inbound JWT and publishes trusted token-exchange inputs as Envoy dynamic metadata.
-The sidecar performs [RFC 8693 token exchange](/docs/concepts/token-exchange) with those inputs.
+The sidecar performs [RFC 8693 token exchange](../concepts/token-exchange.md) with those inputs.
 
 The sidecar accepts only `aib.tokenexchange.subject_token` and `aib.tokenexchange.resource_uri`.
 It does not read `Authorization`, request pseudo-headers, or other raw HTTP attributes as token-exchange inputs.
@@ -167,7 +167,7 @@ Two independent policy gates can guard a request. Both gates must allow the requ
 The broker CEL policy is configured on the broker. It decides whether exchange is allowed.
 The optional sidecar OPA policy can restrict the proxied request after exchange. It cannot
 give access that the broker denied. See
-[token exchange](/docs/concepts/token-exchange) for the broker CEL policy.
+[token exchange](../concepts/token-exchange.md) for the broker CEL policy.
 
 ### Optional OPA gate
 
@@ -231,11 +231,11 @@ Give the JWT to a local MCP client as its bearer token. Do not print the credent
   Configure the sidecar with a YAML file or `EXTPROC_` environment variables.
 - **Placement.** Start the sidecar with the gateway. Token exchange then occurs at the edge,
   before the request reaches the third-party service. See
-  [architecture](/docs/concepts/architecture) for the sidecar location.
+  [architecture](../concepts/architecture.md) for the sidecar location.
 
 ## Related
 
-- [Token exchange](/docs/concepts/token-exchange) — the concept and the broker-side flow.
-- [Token exchange reference](/docs/reference/token-exchange) — the RFC 8693 request and
+- [Token exchange](../concepts/token-exchange.md) — the concept and the broker-side flow.
+- [Token exchange reference](../reference/token-exchange.md) — the RFC 8693 request and
   response contract.
-- [Architecture](/docs/concepts/architecture) — the sidecar's place in the system.
+- [Architecture](../concepts/architecture.md) — the sidecar's place in the system.

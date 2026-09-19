@@ -142,9 +142,9 @@ You completed a full local delegation:
 
 ## Where to go next
 
-- **[Delegation and consent](/docs/concepts/delegation-and-consent)** — Learn about
+- **[Delegation and consent](../concepts/delegation-and-consent.md)** — Learn about
   principals, agents, permission sets, grants, and sessions.
-- **[Manage agents and services](/docs/guides/manage-agents-and-services)** — Register
+- **[Manage agents and services](../guides/manage-agents-and-services.md)** — Register
   services, permission sets, and agents through the admin API.
-- **[Deploy on Kubernetes](/docs/guides/deploy-on-kubernetes)** — Deploy the broker beyond
+- **[Deploy on Kubernetes](../guides/deploy-on-kubernetes.md)** — Deploy the broker beyond
   the local stack.

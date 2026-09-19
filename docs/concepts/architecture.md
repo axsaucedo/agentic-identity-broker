@@ -58,7 +58,7 @@ The ExtProc sidecar is a standalone gRPC service for the Envoy External Processo
 It runs beside an Envoy-based agent gateway. For each request, it exchanges the agent bearer
 token for the appropriate third-party token. It stores cached results in memory. It can use
 an [OPA](https://www.openpolicyagent.org/) policy to restrict the proxied request. See
-[token exchange at the gateway](/docs/guides/token-exchange-gateway).
+[token exchange at the gateway](../guides/token-exchange-gateway.md).
 
 ### State
 
@@ -66,7 +66,7 @@ an [OPA](https://www.openpolicyagent.org/) policy to restrict the proxied reques
   third-party sessions. An in-memory backend is available for evaluation and tests.
 - **Encryption keys** are in AWS KMS. A DynamoDB table caches intermediate keys. In
   development, the broker uses a single raw key instead. See
-  [encryption at rest](/docs/concepts/encryption).
+  [encryption at rest](./encryption.md).
 
 ## Dual-port topology
 
@@ -83,14 +83,14 @@ The end-user port hosts:
 - `/api/me`, `/api/consent/*` — the consent surface used by the UI.
 - `/api/third-party/*` — starting and managing third-party OAuth2 sessions.
 - `/oauth2/authorize`, `/oauth2/token`, `/oauth2/jwks.json`,
-  `/.well-known/oauth-authorization-server` — the [OAuth2 authorization-server](/docs/concepts/oauth2-server-modes)
+  `/.well-known/oauth-authorization-server` — the [OAuth2 authorization-server](./oauth2-server-modes.md)
   surface.
 
 The admin port provides CRUD operations for agents, third-party services, and permission
 sets. It also provides per-agent client credentials and signing keys. The proxy enforces
 administrator privilege before a request reaches this port.
 
-See the [API reference](/docs/reference/api) for the full contracts.
+See the [API reference](../reference/api.md) for the full contracts.
 
 ## Authentication is delegated
 
@@ -102,7 +102,7 @@ service mesh. It sends the user identity in a header. The default header is
 Keep your identity provider for human login. The broker manages delegation, consent, and
 least privilege. An optional JWT pre-authentication mode validates a signed JWT from a
 header and extracts a user profile. See
-[configure authentication](/docs/guides/configure-authentication).
+[configure authentication](../guides/configure-authentication.md).
 
 ## How a delegated request flows
 
@@ -126,7 +126,7 @@ sequenceDiagram
 
 If a user has not delegated required access, the broker routes the user to the consent
 interface. After the user grants access, the original flow resumes. See
-[delegation and consent](/docs/concepts/delegation-and-consent) for this path.
+[delegation and consent](./delegation-and-consent.md) for this path.
 
 ## Deployment shape
 
@@ -139,5 +139,5 @@ platform. A typical production deployment includes:
 - A KMS key and DynamoDB table for encryption. On AWS, pods authenticate through IRSA.
 - An optional ExtProc sidecar with the agent gateway.
 
-See [deploy on Kubernetes](/docs/guides/deploy-on-kubernetes) and the
-[deployment checklist](/docs/operations/deployment-checklist) for the operational detail.
+See [deploy on Kubernetes](../guides/deploy-on-kubernetes.md) and the
+[deployment checklist](../operations/deployment-checklist.md) for the operational detail.

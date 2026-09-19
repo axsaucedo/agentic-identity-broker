@@ -26,7 +26,7 @@ For production, you also need these components:
   Zalando PostgreSQL Operator to create it.
 - Encryption infrastructure. Encryption at rest is mandatory. On AWS, use a
   customer-managed KMS key and a DynamoDB branch-key table. See
-  [configure encryption at rest](/docs/guides/configure-encryption).
+  [configure encryption at rest](./configure-encryption.md).
 
 ## What the chart deploys
 
@@ -152,8 +152,8 @@ broker:
 ```
 
 The project AWS CDK stack can provision the KMS key, DynamoDB table, and IAM role together.
-See [configure encryption at rest](/docs/guides/configure-encryption#production-aws-kms-hierarchical-keyring)
-for the resource details. See [deployment checklist](/docs/operations/deployment-checklist)
+See [configure encryption at rest](./configure-encryption.md#production-aws-kms-hierarchical-keyring)
+for the resource details. See [deployment checklist](../operations/deployment-checklist.md)
 for commands and resource ARNs.
 
 ### Grant AWS access with IRSA
@@ -183,7 +183,7 @@ At the operator level:
 The chart adds the IRSA annotation to the service account. Every broker pod then has an
 identity that can use the KMS key and table. For OIDC provider setup, CDK deployment, and
 trust policy examination, see
-[Kubernetes IRSA deployment guide](/docs/deployment/kubernetes-irsa).
+[Kubernetes IRSA deployment guide](../deployment/kubernetes-irsa.md).
 
 ### Expose the two APIs separately
 
@@ -219,7 +219,7 @@ ingress:
 
 Put the authenticating reverse proxy in front of the end-user Ingress. The broker does not
 authenticate users. Keep the admin API off the public internet. See
-[configure authentication](/docs/guides/configure-authentication).
+[configure authentication](./configure-authentication.md).
 
 ### Install
 
@@ -315,16 +315,16 @@ helm test broker -n identity-broker
 At startup, the broker records the encryption backend that it initialized. A missing or
 incorrect backend stops the broker. Kubernetes then puts the pod in `CrashLoopBackOff`.
 Examine the logs for the encryption error. The
-[deployment checklist](/docs/operations/deployment-checklist) includes an encryption smoke
+[deployment checklist](../operations/deployment-checklist.md) includes an encryption smoke
 test and a post-deployment verification pass.
 
 ## Related
 
-- [Configure encryption at rest](/docs/guides/configure-encryption) — the KMS key,
+- [Configure encryption at rest](./configure-encryption.md) — the KMS key,
   DynamoDB table, and JWE signing key this guide references.
-- [Configure authentication](/docs/guides/configure-authentication) — the
+- [Configure authentication](./configure-authentication.md) — the
   reverse-proxy identity header in front of the end-user API.
-- [Deployment checklist](/docs/operations/deployment-checklist) — provisioning
+- [Deployment checklist](../operations/deployment-checklist.md) — provisioning
   and verification steps for a production rollout.
-- [Configuration](/docs/configuration) — the full configuration schema behind the
+- [Configuration](../configuration.md) — the full configuration schema behind the
   chart values.

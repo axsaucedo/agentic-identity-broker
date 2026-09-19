@@ -10,7 +10,7 @@ includes GitHub, Databricks, and Google. Many agents can act for many users. Eac
 needs limited access. A user must give consent and be able to revoke access.
 
 The following scenarios show common identity problems. Each scenario explains how the
-[delegation model](/docs/concepts/delegation-and-consent) addresses the problem.
+[delegation model](../concepts/delegation-and-consent.md) addresses the problem.
 
 ## A coding agent acting for many developers
 
@@ -35,7 +35,7 @@ the required GitHub scopes (`repo:status`, `read:org`). Each developer grants th
 the agent. This creates one grant for each developer and agent. The broker stores GitHub
 tokens in encrypted form, one session for each developer. At request time, a gateway
 exchanges the agent token for the correct developer GitHub token with
-[token exchange](/docs/concepts/token-exchange).
+[token exchange](../concepts/token-exchange.md).
 
 ```mermaid
 sequenceDiagram
@@ -53,7 +53,7 @@ sequenceDiagram
 ```
 
 Revoking one developer grant stops token exchange immediately. It does not affect other
-developers. See [Token exchange at the gateway](/docs/guides/token-exchange-gateway) for
+developers. See [Token exchange at the gateway](../guides/token-exchange-gateway.md) for
 deployment information.
 
 ## An internal copilot reading the warehouse per analyst
@@ -106,7 +106,7 @@ Users can review and revoke the delegation in the consent interface.
 An agent can mark some access as mandatory and some access as optional. The assistant can
 require calendar access and treat mail access as optional. A user who declines mail access
 can still use the assistant. See
-[mandatory vs optional requirements](/docs/concepts/delegation-and-consent#mandatory-vs-optional-requirements).
+[mandatory vs optional requirements](../concepts/delegation-and-consent.md#mandatory-vs-optional-requirements).
 :::
 
 ## An agent platform serving many agents and many users
@@ -144,5 +144,5 @@ broker shows these agents before it ends the session.
 - You need every delegation recorded and every agent revocable without redeploys.
 
 If you are weighing this against your existing identity stack, read
-[Why not a traditional IdP?](/docs/introduction/why-not-idp) — the broker complements your
+[Why not a traditional IdP?](./why-not-idp.md) — the broker complements your
 IdP rather than replacing it.

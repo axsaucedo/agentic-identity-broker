@@ -66,7 +66,7 @@ login. Human authentication stays in your existing stack.
 - A user must be able to review, time-limit, and revoke per-agent, per-service consent.
 - Third-party tokens must stay in one encrypted vault, not in agents.
 - A gateway must exchange an agent token for the appropriate third-party token at request
-  time. See [token exchange](/docs/concepts/token-exchange).
+  time. See [token exchange](../concepts/token-exchange.md).
 
 ### You still need your IdP for
 
@@ -81,8 +81,8 @@ offline-verification system.
 
 ## Related
 
-- [What is the Agentic Identity Broker?](/docs/introduction) — the one-paragraph picture.
-- [Use cases](/docs/introduction/use-cases) — where delegated agent access is the hard part.
-- [Delegation and consent](/docs/concepts/delegation-and-consent) — the model the broker
+- [What is the Agentic Identity Broker?](./index.md) — the one-paragraph picture.
+- [Use cases](./use-cases.md) — where delegated agent access is the hard part.
+- [Delegation and consent](../concepts/delegation-and-consent.md) — the model the broker
   governs.
-- [Architecture](/docs/concepts/architecture) — how the pieces fit at an operator level.
+- [Architecture](../concepts/architecture.md) — how the pieces fit at an operator level.

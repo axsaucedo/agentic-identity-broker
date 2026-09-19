@@ -13,7 +13,7 @@ from a source that you control.
 
 This page explains the proxy trust boundary for both server ports. It also describes an
 optional JWT mode that validates a signed token and extracts a user profile. See
-[architecture](/docs/concepts/architecture) for the system context.
+[architecture](../concepts/architecture.md) for the system context.
 
 ## What you need
 
@@ -22,7 +22,7 @@ optional JWT mode that validates a signed token and extracts a user profile. See
 - Network access to put the proxy in front of the broker end-user port 8000 and admin port
   14000.
 - Access to the broker YAML configuration. See the
-  [configuration reference](/docs/configuration).
+  [configuration reference](../configuration.md).
 - For JWT pre-authentication, a JWKS endpoint for proxy-signed tokens. A trusted mesh can
   instead inject unsigned claims.
 
@@ -82,7 +82,7 @@ administrators. The proxy enforces administrator privilege before requests reach
 port. Restrict the admin route with your proxy access controls. You can use group
 membership, an allowlist, a separate authentication policy, or a dedicated ingress. Keep
 the admin port internal. Do not expose it with the public end-user port. See the
-[API reference](/docs/reference/api) for the admin surface.
+[API reference](../reference/api.md) for the admin surface.
 
 ## JWT pre-authentication (optional)
 
@@ -182,6 +182,6 @@ Adjust each expression to match the claim names your identity provider emits.
 
 ## Related
 
-- [Architecture](/docs/concepts/architecture) — where the proxy sits and how a request flows.
-- [Configuration reference](/docs/configuration) — every configuration key in detail.
-- [API reference](/docs/reference/api) — the endpoints protected by this authentication.
+- [Architecture](../concepts/architecture.md) — where the proxy sits and how a request flows.
+- [Configuration reference](../configuration.md) — every configuration key in detail.
+- [API reference](../reference/api.md) — the endpoints protected by this authentication.

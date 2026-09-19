@@ -6,7 +6,7 @@ description: API contracts and token-exchange fields for the Agentic Identity Br
 # Reference
 
 This section documents API contracts for broker operation and integration. Use it after you
-understand the [concepts](/docs/concepts). It contains exact endpoints, fields, error codes,
+understand the [concepts](../concepts/index.md). It contains exact endpoints, fields, error codes,
 and configuration keys.
 
 ## What's here
@@ -15,12 +15,12 @@ and configuration keys.
 |---|---|
 | [End-user API](/api/enduser) | The full OpenAPI contract for the end-user server (port 8000): health, user info, consent, third-party sessions, and the OAuth2 server surface. |
 | [Admin API](/api/admin) | The full OpenAPI contract for the admin server (port 14000): agents, services, permission sets, client credentials, and signing keys. |
-| [API overview](/docs/reference/api) | A hand-authored companion to the two contracts — the auth model, response envelopes, error codes, and a compact endpoint map. |
-| [Token exchange](/docs/reference/token-exchange) | The field-level reference for the RFC 8693 grant on `POST /oauth2/token`. |
-| [Configuration](/docs/configuration) | Every configuration section and key, and how the configuration sources compose. |
+| [API overview](./api.md) | A hand-authored companion to the two contracts — the auth model, response envelopes, error codes, and a compact endpoint map. |
+| [Token exchange](./token-exchange.md) | The field-level reference for the RFC 8693 grant on `POST /oauth2/token`. |
+| [Configuration](../configuration.md) | Every configuration section and key, and how the configuration sources compose. |
 
 The source OpenAPI specifications generate the end-user and admin API pages. These pages are
-the authoritative contracts. The [API overview](/docs/reference/api) describes conventions
+the authoritative contracts. The [API overview](./api.md) describes conventions
 that both contracts share.
 
 ## How the API is organized
@@ -50,4 +50,4 @@ Some endpoints do not require pre-authentication:
 
 `GET /oauth2/authorize` and `POST /oauth2/token` use OAuth2 parameters for authentication.
 They do not use the principal header. See
-[Configure authentication](/docs/guides/configure-authentication) for the proxy boundary.
+[Configure authentication](../guides/configure-authentication.md) for the proxy boundary.

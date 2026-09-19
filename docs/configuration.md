@@ -1113,7 +1113,7 @@ oauth2_authorization_server:
 - Signing key decryption failure prevents token issuance (fail-closed).
 - In `proxy` mode, locally registered agents (no `ClientID`) are rejected. In `local` mode, proxy agents (with `ClientID`) are rejected. Mode boundaries are strict.
 
-See [OAuth2 server modes](/docs/concepts/oauth2-server-modes) for how the broker issues or proxies tokens.
+See [OAuth2 server modes](./concepts/oauth2-server-modes.md) for how the broker issues or proxies tokens.
 
 ### OAuth2 User Impersonation Configuration
 
