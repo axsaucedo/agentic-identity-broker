@@ -156,5 +156,5 @@ All error responses use the `ApprovalError` schema:
 
 ## OpenAPI Specification
 
-See [`/api/enduser/openapi.yaml`](../../api/enduser/openapi.yaml) for the full OpenAPI 3.0
+See [`/api/enduser/openapi.yaml`](/api/enduser) for the full OpenAPI 3.0
 specification.

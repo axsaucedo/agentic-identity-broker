@@ -805,7 +805,7 @@ request_context:
 ```
 
 
-See [`examples/config/request-context.yaml`](../examples/config/request-context.yaml) for a documented overlay example.
+See [`examples/config/request-context.yaml`](https://github.com/zalando-incubator/agentic-identity-broker/blob/main/examples/config/request-context.yaml) for a documented overlay example.
 
 ## Security Best Practices
 

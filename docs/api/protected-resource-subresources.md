@@ -1,7 +1,7 @@
 # Protected Resource Subresources API
 
 > **Implemented API — Feature 035.** The admin server implements this protected-resource
-API and full-service update behavior. [`api/admin/openapi.yaml`](../../api/admin/openapi.yaml)
+API and full-service update behavior. [`api/admin/openapi.yaml`](/api/admin)
 is the canonical API definition.
 
 Protected resources are absolute URIs for RFC 8693 token exchange. The API removes trailing
