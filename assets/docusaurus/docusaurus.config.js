@@ -12,7 +12,6 @@ const githubRepo = process.env.DOCS_GITHUB_REPO ?? 'agentic-identity-broker';
 const githubBranch = process.env.DOCS_GITHUB_BRANCH ?? 'main';
 const githubRepoUrl = `https://github.com/${githubOrg}/${githubRepo}`;
 const githubIssuesUrl = `${githubRepoUrl}/issues`;
-const editUrl = `${githubRepoUrl}/edit/${githubBranch}/`;
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
@@ -96,7 +95,16 @@ const config = {
           path: '../../docs',
           sidebarPath: './sidebars.js',
           routeBasePath: 'docs',
-          editUrl,
+          editUrl: ({version, versionDocsDirPath, docPath}) =>
+            version === 'current'
+              ? `${githubRepoUrl}/edit/${githubBranch}/docs/${docPath}`
+              : `${githubRepoUrl}/edit/${githubBranch}/assets/docusaurus/${versionDocsDirPath}/${docPath}`,
+          lastVersion: '0.1',
+          versions: {
+            current: {label: 'next 🚧', path: 'next', banner: 'unreleased'},
+          },
+          onlyIncludeVersions: process.env.DOCS_ONLY_INCLUDE_VERSIONS
+            ?.split(',').map((version) => version.trim()),
           // Repository-internal maintainer references live under docs/ but are
           // not part of the public site. Keep the classic defaults and add them.
           exclude: [
@@ -155,6 +163,7 @@ const config = {
               {label: 'Admin API', to: '/api/admin'},
             ],
           },
+          {type: 'docsVersionDropdown', position: 'right'},
           {
             href: githubRepoUrl,
             label: 'GitHub',
