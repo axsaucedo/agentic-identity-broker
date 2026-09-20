@@ -3,11 +3,15 @@
 ## New minor series
 
 1. Cut the documentation snapshot with `just docs-version X.Y` (for example, `just docs-version 0.2`).
-2. Delete the six maintainer documents listed in the docs preset's `exclude` array from the new snapshot.
+2. Keep and commit only the generated entry in `assets/docusaurus/versions.json` and the generated file in `assets/docusaurus/versioned_sidebars/`.
 3. Set `lastVersion` in `assets/docusaurus/docusaurus.config.js` to the new minor series.
 4. Merge the documentation changes to `main` before you create the release tag.
 5. Create a `vX.Y.Z` tag on the release commit with `git tag vX.Y.Z`.
 6. Push the tag to the repository with `git push <remote> vX.Y.Z`.
+
+`assets/docusaurus/versioned_docs/` is generated at build time and is gitignored. Each
+minor series uses the newest matching `vX.Y.*` tag. Before the first matching tag exists,
+the build warns and uses the current `docs/` tree for that version.
 
 Patch releases need no new snapshot. Use steps 5 and 6 for a patch release.
 

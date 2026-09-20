@@ -5,6 +5,8 @@
 
 import {themes as prismThemes} from 'prism-react-renderer';
 
+import {maintainerDocExcludes} from './docs-excludes.mjs';
+
 const siteUrl = process.env.DOCS_SITE_URL ?? 'https://agenticidentitybroker.dev';
 const baseUrl = process.env.DOCS_BASE_URL ?? '/';
 const githubOrg = process.env.DOCS_GITHUB_ORG ?? 'zalando-incubator';
@@ -54,6 +56,15 @@ const config = {
   themes: ['@docusaurus/theme-mermaid'],
 
   plugins: [
+    [
+      '@docusaurus/plugin-client-redirects',
+      {
+        redirects: [
+          {from: '/docs', to: '/docs/introduction'},
+          {from: '/docs/next', to: '/docs/next/introduction'},
+        ],
+      },
+    ],
     // Client-side full-text search (no external service required).
     [
       'docusaurus-lunr-search',
@@ -119,12 +130,7 @@ const config = {
             '**/_*/**',
             '**/*.test.{js,jsx,ts,tsx}',
             '**/__tests__/**',
-            'ENCRYPTION_INTEGRATION_GUIDE.md',
-            'STORAGE_EXTENSION_GUIDE.md',
-            'STORAGE_TROUBLESHOOTING.md',
-            'docker-compose-setup.md',
-            'deployment/kubernetes.md',
-            'configuration/consent-spa.md',
+            ...maintainerDocExcludes,
           ],
         },
         blog: false,
