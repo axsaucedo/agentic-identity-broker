@@ -159,7 +159,7 @@ The project follows **hexagonal architecture** (ports and adapters pattern) with
 4. **Domain Model**: Agent, OAuth2 service, grant, and consent management
 5. **React Consent Frontend**: Managed via design system with accessibility compliance
 
-For detailed documentation, see [ARCHITECTURE.md](ARCHITECTURE.md).
+For detailed documentation, see the [architecture page](https://agenticidentitybroker.dev/docs/concepts/architecture) or [ARCHITECTURE.md](ARCHITECTURE.md) for the internal code structure.
 
 ## Security
 
@@ -203,10 +203,14 @@ For security concerns, please refer to the project's security policy.
 
 ## Documentation
 
-- [Architecture Overview](ARCHITECTURE.md) - System architecture and design decisions
-- [User Documentation](docs/) - End-user guides and tutorials
-- [API Documentation](docs/api/) - REST API reference
-- [Documentation Site](assets/docusaurus/) - Full documentation website
+- [Documentation site](https://agenticidentitybroker.dev) - Everything below, plus search
+- [Get started](https://agenticidentitybroker.dev/docs/get-started) - Run the broker locally and walk a delegation end to end
+- [Concepts](https://agenticidentitybroker.dev/docs/concepts) - Architecture, delegation and consent, token exchange, encryption
+- [Guides](https://agenticidentitybroker.dev/docs/guides/manage-agents-and-services) - Operating the broker: agents, services, authentication, deployment
+- [End-user API reference](https://agenticidentitybroker.dev/api/enduser) - OpenAPI contract for port 8000
+- [Admin API reference](https://agenticidentitybroker.dev/api/admin) - OpenAPI contract for port 14000
+- [Configuration reference](https://agenticidentitybroker.dev/docs/configuration) - Every setting and its sources
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Internal code structure and design decisions (repository only)
 
 Run the documentation server locally:
 ```bash
