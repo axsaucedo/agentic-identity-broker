@@ -12,7 +12,7 @@ const githubRepo = process.env.DOCS_GITHUB_REPO ?? 'agentic-identity-broker';
 const githubBranch = process.env.DOCS_GITHUB_BRANCH ?? 'main';
 const githubRepoUrl = `https://github.com/${githubOrg}/${githubRepo}`;
 const githubIssuesUrl = `${githubRepoUrl}/issues`;
-const editUrl = `${githubRepoUrl}/edit/${githubBranch}/`;
+const editUrl = ({docPath}) => `${githubRepoUrl}/edit/${githubBranch}/docs/${docPath}`;
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
