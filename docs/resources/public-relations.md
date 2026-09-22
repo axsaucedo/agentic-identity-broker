@@ -11,7 +11,7 @@ the Agentic Identity Broker.
 
 ### 2026-09-18 AGNTCon+MCPCon Europe 2026
 
-[View the slides](/docs/presentations/2026-09-18_agntcon-mcpcon-agentic-identity-broker.pdf)
+[View the slides](https://agenticidentitybroker.dev/docs/presentations/2026-09-18_agntcon-mcpcon-agentic-identity-broker.pdf)
 
 #### Abstract
 
@@ -24,7 +24,7 @@ A closing outlook will illustrate how tool approvals and human-in-the-loop can b
 
 #### Speakers
 
-- [Magnus Jungsbluth](https://www.linkedin.com/in/magnusjungsbluth/)
+- [Magnus Jungsbluth](https://www.linkedin.com/in/magnus-jungsbluth/)
   — Senior Principal Engineer, Zalando SE
 - [Jan Brennenstuhl](https://janbrennenstuhl.eu)
   — Principal Software Engineer, Zalando SE

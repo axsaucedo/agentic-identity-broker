@@ -85,7 +85,7 @@ func NewPage(page playwright.Page, baseURL string) *Page {
 
 	// Prepare screenshot directory
 	screenshotDir := filepath.Join("coverage", "screenshots")
-	_ = os.MkdirAll(screenshotDir, 0o755) // Best effort; don't fail if it fails
+	_ = os.MkdirAll(screenshotDir, 0o700) // Best effort; don't fail if it fails
 
 	return &Page{
 		page:          page,
@@ -159,74 +159,42 @@ func (p *Page) GetBaseURL() string {
 	return p.baseURL
 }
 
-// WaitForURL waits for the page URL to match a pattern (regex or substring).
-// This is useful for verifying page navigation or redirects.
+// WaitForURL waits for the page URL to match a pattern (regex or substring)
+// and for the matching document to load.
 //
-// Parameters:
-//   - ctx: Context for cancellation and timeouts
-//   - pattern: String pattern to match in URL (can be regex or substring)
-//   - If pattern contains regex special chars and is a valid regex, it's treated as regex
-//   - Otherwise, it's treated as a substring match
-//   - Examples: "/success", "consent", "agent/[0-9]+"
-//
-// Returns:
-//   - error: If timeout expires before URL matches
-//
-// Error message format:
-// - "timeout waiting for URL to match '/success' (current: 'http://localhost:3000/error', waited 30s)"
-//
-// Example:
-//
-//	// Wait for redirect to success page
-//	err := p.WaitForURL(ctx, "/success")
-//	require.NoError(t, err)
-//
-//	// Wait with regex pattern
-//	err = p.WaitForURL(ctx, "agent/[0-9]+")
-//	require.NoError(t, err)
+// The URL predicate runs in the browser, so it observes both the current URL and
+// a redirect that completes immediately after a user action.
 func (p *Page) WaitForURL(ctx context.Context, pattern string) error {
-	deadline := time.Now().Add(p.timeout)
-
-	// Try to compile as regex; if it fails, treat as substring
-	var regex *regexp.Regexp
-	regex, _ = regexp.Compile(pattern)
-
-	for {
-		currentURL := p.page.URL()
-
-		// Check if URL matches pattern
-		if regex != nil {
-			// Try regex match
-			if regex.MatchString(currentURL) {
-				return nil
-			}
-		} else {
-			// Try substring match
-			if strings.Contains(currentURL, pattern) {
-				return nil
-			}
-		}
-
-		// Check timeout
-		if time.Now().After(deadline) {
-			return fmt.Errorf(
-				"timeout waiting for URL to match %q (current: %q, waited %v)",
-				pattern,
-				currentURL,
-				p.timeout,
-			)
-		}
-
-		// Check context cancellation
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("context cancelled while waiting for URL %q: %w", pattern, ctx.Err())
-		default:
-		}
-
-		// Wait a bit before checking again
-		time.Sleep(100 * time.Millisecond)
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("context cancelled while waiting for URL %q: %w", pattern, ctx.Err())
+	default:
 	}
+
+	urlPattern, err := regexp.Compile(pattern)
+	if err != nil {
+		urlPattern = regexp.MustCompile(regexp.QuoteMeta(pattern))
+	}
+
+	_, err = p.page.WaitForFunction(
+		"(pattern) => new RegExp(pattern).test(window.location.href)",
+		urlPattern.String(),
+		playwright.PageWaitForFunctionOptions{
+			Timeout: playwright.Float(float64(p.timeout.Milliseconds())),
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed waiting for URL to match %q (current: %q): %w", pattern, p.page.URL(), err)
+	}
+
+	if err := p.page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State:   playwright.LoadStateLoad,
+		Timeout: playwright.Float(float64(p.timeout.Milliseconds())),
+	}); err != nil {
+		return fmt.Errorf("failed waiting for URL %q to load: %w", pattern, err)
+	}
+
+	return nil
 }
 
 // WaitForNavigation waits for the page to navigate (URL change).
@@ -304,7 +272,7 @@ func captureScreenshot(page screenshotPage, screenshotDir, name string) error {
 		return fmt.Errorf("screenshot name cannot be empty")
 	}
 
-	if err := os.MkdirAll(screenshotDir, 0o755); err != nil {
+	if err := os.MkdirAll(screenshotDir, 0o700); err != nil {
 		return fmt.Errorf("failed to create screenshot directory %s: %w", screenshotDir, err)
 	}
 
@@ -333,7 +301,7 @@ func captureScreenshot(page screenshotPage, screenshotDir, name string) error {
 		return fmt.Errorf("failed to take screenshot %s: %w", filePath, err)
 	}
 
-	if err := os.WriteFile(filePath, data, 0o644); err != nil {
+	if err := os.WriteFile(filePath, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write screenshot to %s: %w", filePath, err)
 	}
 
@@ -352,7 +320,7 @@ func (p *Page) TakeLocatorScreenshot(ctx context.Context, name string, locator p
 		return fmt.Errorf("screenshot name cannot be empty")
 	}
 
-	if err := os.MkdirAll(p.screenshotDir, 0o755); err != nil {
+	if err := os.MkdirAll(p.screenshotDir, 0o700); err != nil {
 		return fmt.Errorf("failed to create screenshot directory %s: %w", p.screenshotDir, err)
 	}
 
@@ -369,7 +337,7 @@ func (p *Page) TakeLocatorScreenshot(ctx context.Context, name string, locator p
 		return fmt.Errorf("failed to take locator screenshot %s: %w", filePath, err)
 	}
 
-	if err := os.WriteFile(filePath, data, 0o644); err != nil {
+	if err := os.WriteFile(filePath, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write screenshot to %s: %w", filePath, err)
 	}
 

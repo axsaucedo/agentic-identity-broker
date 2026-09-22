@@ -1,7 +1,6 @@
 # Variable definitions
 NAME := "agentic-identity-broker"
 IMAGE_NAME := env_var_or_default("IMAGE_NAME", "agentic-identity-broker")
-BASE_IMAGE := env_var_or_default("BASE_IMAGE", "default")
 GINKGO_PROCS := env_var_or_default("GINKGO_PROCS", "4")
 GINKGO_BACKEND_PROCS := env_var_or_default("GINKGO_BACKEND_PROCS", GINKGO_PROCS)
 GINKGO_EXTPROC_PROCS := env_var_or_default("GINKGO_EXTPROC_PROCS", GINKGO_PROCS)
@@ -9,6 +8,10 @@ NUM_CPUS := num_cpus()
 VERSION := env_var_or_default("VERSION", `git describe --tags --always 2>/dev/null || echo "latest"`)
 REVISION := env_var_or_default("REVISION", `git rev-parse HEAD 2>/dev/null || echo "unknown"`)
 CREATED := env_var_or_default("CREATED", `git show -s --format=%cI HEAD 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%SZ"`)
+# Base image for release Docker builds. Defaults to the public pinned digest
+# each Dockerfile declares; internal release pipelines override this to an
+# internally-mirrored/allowed base image (see delivery.yaml).
+BASE_IMAGE := env_var_or_default("BASE_IMAGE", "alpine:3@sha256:5b02b42e375f7426f8d65c3af331ca05d9878f9989230354504e0b9dfd431f60")
 GO_FAST_TEST_PACKAGES := `go list -e ./... | grep -Ev '(/assets/docusaurus/build/|/specs/|/web/node_modules/|/tests/e2e$|/tests/e2e/frontend$|/tests/e2e/extproc$|/tests/integration($|/))' | tr '\n' ' '`
 INTEGRATION_INFRA_TEST_PACKAGES := "./tests/integration/infra/... ./tests/integration/migrations/... ./tests/integration/storage/infra/... ./internal/adapters/storage/postgres/..."
 INTEGRATION_INFRA_PACKAGE_PROCS := env_var_or_default("INTEGRATION_INFRA_PACKAGE_PROCS", "2")
@@ -562,13 +565,28 @@ verify-junit:
     echo "✓ Stage 3 passed"
 
 
-# Run the full local verification gate with E2E as the final guard layer
-verify: check test web-test cdk-test mock-sample-agent-test mock-upstream-oauth2-test test-integration-all test-e2e
+# Run the full local verification gate with security scanning and E2E as the final guard layer
+verify: check security test web-test cdk-test mock-sample-agent-test mock-upstream-oauth2-test test-integration-all test-e2e
     @echo "Verification suite completed"
 
-# Run static quality checks (format, vet, lint; no tests)
-check: fmt vet lint
+# Run non-mutating format, vet, and lint checks (no tests)
+fmt-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unformatted="$(gofmt -s -l .)"
+    if [ -n "$unformatted" ]; then
+        echo "Files need gofmt -s:"
+        printf '%s\n' "$unformatted"
+        echo "Run 'just fmt' to fix formatting."
+        exit 1
+    fi
+
+check: fmt-check vet lint
     @echo "Static quality checks passed!"
+
+# Run focused security scans across all dependency manifests
+security:
+    bash scripts/security-scan.sh .
 
 # =============================================================================
 # Web Development Targets

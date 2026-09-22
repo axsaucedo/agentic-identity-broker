@@ -8,24 +8,20 @@ name: "Copilot Setup Steps"
 
 on: workflow_dispatch
 
-# Allow network access to hosts needed for tool installation
-env:
-  COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS: "just.systems"
+# Clone access is required for repository setup.
+permissions:
+  contents: read
 
 jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
 
-    # Set the permissions to the lowest permissions possible needed for your steps.
-    # Copilot will be given its own token for its operations.
-    permissions:
-      # If you want to clone the repository as part of your setup steps, for example to install dependencies, you'll need the `contents: read` permission. If you don't clone the repository in your setup steps, Copilot will do this for you automatically after the steps complete.
-      contents: read
-
     steps:
       # Checkout repository
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Set up Go
       - name: Set up Go
@@ -36,7 +32,7 @@ jobs:
 
       # Set up Node.js (for web frontend)
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
           cache: 'npm'
@@ -44,7 +40,7 @@ jobs:
 
       # Cache Go tool binaries, golangci-lint results, and Playwright browsers
       - name: Cache dev tools
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/go/bin
@@ -53,10 +49,10 @@ jobs:
           key: tools-${{ runner.os }}-${{ hashFiles('justfile') }}
           restore-keys: tools-${{ runner.os }}-
 
-      # Install just command runner
       - name: Install just
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+        uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3
+        with:
+          tool: just
 
       # Install other tools
       - name: "Install Tools via `just install-tools`"
