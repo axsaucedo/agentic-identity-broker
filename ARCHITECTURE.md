@@ -40,13 +40,13 @@ This section provides a high-level overview of the project's directory and file 
 │   ├── tsconfig.build.json # Build TypeScript configuration
 │   └── tailwind.config.ts # Tailwind CSS v4.0 configuration
 ├── docs/                 # Project documentation (e.g., API docs, setup guides)
+├── ARCHITECTURE.md       # Internal system design and domain glossary
 ├── infra/                # Infrastructure as Code
 │   └── cdk/              # AWS CDK (Go) – encryption infrastructure (KMS, DynamoDB, IAM)
 ├── scripts/              # Automation scripts (e.g., deployment, data seeding)
 ├── .github/              # GitHub Actions or other CI/CD configurations
 ├── .gitignore            # Specifies intentionally untracked files to ignore
-├── README.md             # Project overview and quick start guide
-└── ARCHITECTURE.md       # This document
+└── README.md             # Project overview and quick start guide
 
 ## 2. High-Level System Diagram
 
@@ -990,7 +990,7 @@ All three gates fail closed. Broker CEL gates token exchange. ExtProc OPA can fu
 
 **Binary**: `extproc-token-exchange` (single Go binary, ~24MB)
 
-**Containerization**: `Dockerfile` for Docker Compose integration
+**Containerization**: `build/docker/Dockerfile.extproc` for Docker Compose integration
 
 **Lifecycle**:
 
