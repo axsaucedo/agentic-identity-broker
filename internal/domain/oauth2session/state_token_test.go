@@ -402,6 +402,7 @@ func setupTestService(t *testing.T) (*oauth2session.OAuth2SessionService, id.Ser
 	service := oauth2session.NewOAuth2SessionService(
 		providerService,
 		sessionRepo,
+		sessionRepo,
 		grantRepo,
 		agentRepo,
 		nil, // encryption not needed for state token tests (uses JWE)
