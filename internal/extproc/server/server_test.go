@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -2979,6 +2980,59 @@ func TestServer_ProcessRequestHeaders_SpanOutcomeOnSuccess(t *testing.T) {
 		}
 	}
 	assert.Equal(t, "success", outcomeAttr, "span outcome must be 'success' on successful exchange")
+}
+
+// Agentgateway injects a fresh "traceparent" entry directly into the gRPC
+// call metadata of the Process stream it opens (its own ExtProc CLIENT span,
+// the direct and immediate caller of this server). The proxied HTTP request's
+// headers may carry an unrelated traceparent from an earlier hop (e.g.
+// skipper-ingress). The gRPC metadata value must win so the resulting span
+// nests under agentgateway's ExtProc span rather than an unrelated ancestor.
+func TestServer_ProcessRequestHeaders_PrefersGRPCMetadataTraceparentOverHTTPHeader(t *testing.T) {
+	prevProp := otel.GetTextMapPropagator()
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+	t.Cleanup(func() { otel.SetTextMapPropagator(prevProp) })
+
+	const grpcTraceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+	const grpcTraceID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const httpTraceparent = "00-cccccccccccccccccccccccccccccccc-dddddddddddddddd-01"
+
+	var seenTraceID string
+	var seenBaggage string
+	exchanger := &mockExchanger{
+		exchangeFunc: func(ctx context.Context, _, _ string) (server.ExchangeResult, error) {
+			seenTraceID = trace.SpanContextFromContext(ctx).TraceID().String()
+			seenBaggage = baggage.FromContext(ctx).Member("tenant").Value()
+			return server.ExchangeResult{Token: "exchanged-token"}, nil
+		},
+	}
+	client, cleanup := startTestServerWithConfig(t, testConfigWithTelemetry(), exchanger)
+	defer cleanup()
+
+	outgoingCtx := metadata.AppendToOutgoingContext(context.Background(), "traceparent", grpcTraceparent)
+	stream, err := client.Process(outgoingCtx)
+	require.NoError(t, err)
+
+	req := &extprocv3.ProcessingRequest{
+		MetadataContext: validTokenExchangeMetadata(""),
+		Request: &extprocv3.ProcessingRequest_RequestHeaders{
+			RequestHeaders: &extprocv3.HttpHeaders{
+				Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
+					{Key: "traceparent", RawValue: []byte(httpTraceparent)},
+					{Key: "baggage", RawValue: []byte("tenant=acme")},
+				}},
+			},
+		},
+	}
+	require.NoError(t, stream.Send(req))
+	require.NoError(t, stream.CloseSend())
+	_, err = stream.Recv()
+	require.NoError(t, err)
+
+	assert.Equal(t, grpcTraceID, seenTraceID,
+		"trace context must come from agentgateway's own gRPC call metadata, not the proxied HTTP request header")
+	assert.Equal(t, "acme", seenBaggage,
+		"HTTP baggage must survive when the preferred gRPC trace context has no baggage")
 }
 
 // Spec: US1 S2 — Span outcome attribute must be set on exchange_failure
