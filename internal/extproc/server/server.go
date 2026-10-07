@@ -26,13 +26,16 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/approval"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/authorization"
 	extprocconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/config"
 )
@@ -40,6 +43,7 @@ import (
 const (
 	agentgatewayProtocolMetadataKey = "agentgateway"
 	agentgatewayProtocolFieldKey    = "protocol"
+	agentgatewayMCPServerFieldKey   = "mcp_server"
 	tokenExchangeMetadataNamespace  = "aib.tokenexchange"
 	subjectTokenFieldKey            = "subject_token"
 	resourceURIFieldKey             = "resource_uri"
@@ -49,6 +53,8 @@ const (
 type ExchangeResult struct {
 	Token                 string
 	GrantedPermissionSets map[string][]string
+	Principal             string
+	AgentID               string
 }
 
 // Exchanger performs RFC 8693 token exchange with in-memory caching.
@@ -62,6 +68,11 @@ type Exchanger interface {
 	Shutdown()
 }
 
+// ApprovalGate evaluates whether an approval-required MCP tool invocation may proceed.
+type ApprovalGate interface {
+	Evaluate(context.Context, approval.Invocation) approval.Outcome
+}
+
 // Server implements the Envoy ExternalProcessorServer gRPC interface.
 // It intercepts request headers, performs token exchange, and replaces
 // the Authorization header before the request reaches the upstream.
@@ -71,7 +82,8 @@ type Server struct {
 	extprocv3.UnimplementedExternalProcessorServer
 	cfg             *extprocconfig.Config
 	exchanger       Exchanger
-	authorizer      authorization.Authorizer // nil when OPA authorization is disabled
+	authorizer      authorization.Authorizer
+	approvalGate    ApprovalGate
 	logger          *slog.Logger
 	requestCounter  metric.Int64Counter
 	requestDuration metric.Float64Histogram
@@ -84,7 +96,11 @@ type requestState struct {
 	resourceURI           string
 	headers               map[string]string
 	protocol              string
+	targetServerName      string
 	grantedPermissionSets map[string][]string
+	principal             string
+	agentID               string
+	agentSessionID        string
 	requestContext        context.Context
 	finishObservation     func(outcome, resourceURI, errorType string)
 }
@@ -141,12 +157,45 @@ func NewServerWithAuthorizer(cfg *extprocconfig.Config, exchanger Exchanger, aut
 	return srv
 }
 
+// NewServerWithApprovalGate creates a new ExtProc Server with OPA authorization and approval handling enabled.
+func NewServerWithApprovalGate(cfg *extprocconfig.Config, exchanger Exchanger, authorizer authorization.Authorizer, gate ApprovalGate, logger *slog.Logger) *Server {
+	srv := NewServerWithAuthorizer(cfg, exchanger, authorizer, logger)
+	srv.approvalGate = gate
+	return srv
+}
+
 func (s *Server) extractTraceContext(ctx context.Context, headers *extprocv3.HttpHeaders) context.Context {
 	if !s.cfg.Telemetry.Enabled {
 		return ctx
 	}
 	normalizeTraceparentHeaders(headers)
-	return otel.GetTextMapPropagator().Extract(ctx, (*headerCarrier)(headers))
+	ctx = otel.GetTextMapPropagator().Extract(ctx, (*headerCarrier)(headers))
+	if grpcCtx, ok := extractGRPCTraceContext(ctx); ok {
+		return grpcCtx
+	}
+	return ctx
+}
+
+// extractGRPCTraceContext extracts trace context from the ExtProc gRPC stream's
+// own incoming metadata. Agentgateway injects a "traceparent" entry directly
+// into this metadata when it opens the Process stream, representing
+// agentgateway's own ExtProc CLIENT span: the direct, immediate caller of this
+// server. That context takes precedence over any trace headers carried in the
+// proxied HTTP request, which may originate from an unrelated upstream hop
+// (e.g. skipper-ingress) and would otherwise orphan this span from
+// agentgateway's span tree.
+func extractGRPCTraceContext(ctx context.Context) (context.Context, bool) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok || len(md) == 0 {
+		return ctx, false
+	}
+	// An inherited span must not count as a successful metadata extraction.
+	extractionCtx := trace.ContextWithSpanContext(ctx, trace.SpanContext{})
+	extracted := otel.GetTextMapPropagator().Extract(extractionCtx, mdCarrier(md))
+	if !trace.SpanContextFromContext(extracted).IsValid() {
+		return ctx, false
+	}
+	return extracted, true
 }
 
 func normalizeTraceparentHeaders(headers *extprocv3.HttpHeaders) {
@@ -242,8 +291,6 @@ func (s *Server) beginTokenExchangeObservation(ctx context.Context) (context.Con
 	var span trace.Span
 	if tracesEnabled {
 		ctx, span = otel.Tracer("extproc").Start(ctx, "extproc.token_exchange")
-	} else {
-		span = trace.SpanFromContext(ctx)
 	}
 
 	finished := false
@@ -253,14 +300,19 @@ func (s *Server) beginTokenExchangeObservation(ctx context.Context) (context.Con
 		}
 		finished = true
 
-		if resourceURI != "" {
-			span.SetAttributes(attribute.String("resource.uri", sanitizeURIForTelemetry(resourceURI)))
+		if tracesEnabled {
+			if resourceURI != "" {
+				span.SetAttributes(attribute.String("resource.uri", sanitizeURIForTelemetry(resourceURI)))
+			}
+			if errorType != "" {
+				span.SetAttributes(attribute.String("error.type", errorType))
+			}
+			span.SetAttributes(attribute.String("outcome", outcome))
+			if outcome != "success" {
+				span.SetStatus(otelcodes.Error, outcome)
+			}
+			span.End()
 		}
-		if errorType != "" {
-			span.SetAttributes(attribute.String("error.type", errorType))
-		}
-		span.SetAttributes(attribute.String("outcome", outcome))
-		span.End()
 
 		if metricsEnabled {
 			outcomeAttr := metric.WithAttributes(attribute.String("outcome", outcome))
@@ -398,13 +450,16 @@ func (s *Server) processRequestHeaders(ctx context.Context, req *extprocv3.Proce
 	var span trace.Span
 	if tracesEnabled {
 		ctx, span = otel.Tracer("extproc").Start(ctx, "extproc.token_exchange")
-	} else {
-		span = trace.SpanFromContext(ctx)
 	}
 	ctx, logger := s.withRequestLogger(ctx, "", "")
 	defer func() {
-		span.SetAttributes(attribute.String("outcome", outcome))
-		span.End()
+		if tracesEnabled {
+			span.SetAttributes(attribute.String("outcome", outcome))
+			if outcome != "success" {
+				span.SetStatus(otelcodes.Error, outcome)
+			}
+			span.End()
+		}
 		if metricsEnabled {
 			outcomeAttr := metric.WithAttributes(attribute.String("outcome", outcome))
 			metricCtx := context.WithoutCancel(ctx)
@@ -421,12 +476,16 @@ func (s *Server) processRequestHeaders(ctx context.Context, req *extprocv3.Proce
 	if rejection != nil {
 		outcome = rejection.code
 		logger.WarnContext(ctx, "extproc: token-exchange metadata rejected", "reason", rejection.reason)
-		span.SetAttributes(attribute.String("error.type", rejection.code))
+		if tracesEnabled {
+			span.SetAttributes(attribute.String("error.type", rejection.code))
+		}
 		return inputRejectionResponse(rejection)
 	}
 
 	sanitizedURI := sanitizeURIForTelemetry(input.resourceURI)
-	span.SetAttributes(attribute.String("resource.uri", sanitizedURI))
+	if tracesEnabled {
+		span.SetAttributes(attribute.String("resource.uri", sanitizedURI))
+	}
 
 	protocol, _ := extractProtocolFromMetadata(req)
 	if protocol == "" {
@@ -437,7 +496,9 @@ func (s *Server) processRequestHeaders(ctx context.Context, req *extprocv3.Proce
 	if err != nil {
 		resp, mappedOutcome, mappedErrorType := s.exchangeErrorResponse(ctx, "", protocol, input.resourceURI, err)
 		outcome = mappedOutcome
-		span.SetAttributes(attribute.String("error.type", mappedErrorType))
+		if tracesEnabled {
+			span.SetAttributes(attribute.String("error.type", mappedErrorType))
+		}
 		return resp
 	}
 	logger.DebugContext(ctx, "token exchanged successfully", "resource", sanitizedURI)
@@ -487,11 +548,26 @@ func (s *Server) processRequestHeadersOPA(ctx context.Context, endOfStream bool,
 			map[string]string{"allow": "GET, POST"}), nil
 	}
 
+	// mcp_server metadata is mandatory for MCP requests (FR-004), mirroring the
+	// protocol metadata check above. It is not required for non-MCP protocols,
+	// since it is never populated for those requests either way (FR-005).
+	targetServerName, mcpServerOK := extractMCPServerFromMetadata(req)
+	if protocol == "mcp" && !mcpServerOK {
+		outcome = "authorization_denied"
+		errorType = "missing_target_server_metadata"
+		logger.WarnContext(ctx, "OPA: mcp_server metadata absent — rejecting with 403 (misconfiguration)",
+			"resource", sanitizeURIForTelemetry(resourceURI))
+		return immediateResponse(httpv3.StatusCode_Forbidden,
+			`{"error":"access_denied","error_description":"mcp_server metadata is required when authorization is enabled for MCP requests"}`), nil
+	}
+
 	state := &requestState{
 		subjectToken:      input.subjectToken,
 		resourceURI:       resourceURI,
 		headers:           headerMap,
 		protocol:          protocol,
+		targetServerName:  targetServerName,
+		agentSessionID:    configuredHeader(headerMap, s.cfg.Sessions.Extraction.HTTPHeader),
 		requestContext:    ctx,
 		finishObservation: finishObservation,
 	}
@@ -509,6 +585,8 @@ func (s *Server) processRequestHeadersOPA(ctx context.Context, endOfStream bool,
 		return resp, nil
 	}
 	state.grantedPermissionSets = exchangeResult.GrantedPermissionSets
+	state.principal = exchangeResult.Principal
+	state.agentID = exchangeResult.AgentID
 	logger.DebugContext(ctx, "OPA: token exchanged in headers phase, buffering body for OPA evaluation",
 		"resource", sanitizeURIForTelemetry(resourceURI))
 	return requestBodyBufferingResponseWithAuth("Bearer " + exchangeResult.Token), state
@@ -547,7 +625,13 @@ func (s *Server) processRequestBody(ctx context.Context, state *requestState, bo
 		}
 	}
 
-	opaInput, buildErr := authorization.BuildOPAInput(state.protocol, bodyBytes, state.headers, state.grantedPermissionSets)
+	builder, buildErr := authorization.NewInputBuilder(state.protocol, state.headers, state.targetServerName, authorization.ContextInput{GrantedPermissionSetsAvailable: state.grantedPermissionSets != nil, GrantedPermissionSets: state.grantedPermissionSets, AgentSessionID: state.agentSessionID})
+	if buildErr != nil {
+		logger.WarnContext(ctx, "OPA: failed to build request input — denying", "resource", sanitizedURI, "error", buildErr)
+		return immediateResponse(httpv3.StatusCode_Forbidden,
+			`{"error":"access_denied","error_description":"failed to parse request protocol"}`)
+	}
+	opaInput, buildErr := builder.Build(bodyBytes, decodeJSONBody(bodyBytes, state.protocol == "mcp"))
 	if buildErr != nil {
 		logger.WarnContext(ctx, "OPA: failed to parse request body — denying", "resource", sanitizedURI, "error", buildErr)
 		return immediateResponse(httpv3.StatusCode_Forbidden,
@@ -561,11 +645,32 @@ func (s *Server) processRequestBody(ctx context.Context, state *requestState, bo
 			`{"error":"access_denied","error_description":"authorization evaluation failed"}`)
 	}
 
-	if decision.Action != "allow" {
+	if decision.Action == authorization.ActionApprovalRequired && s.approvalGate != nil {
+		if state.protocol != "mcp" {
+			logger.WarnContext(ctx, "OPA approval-required action is not an MCP tool call", "protocol", state.protocol, "resource", sanitizedURI)
+			return accessDeniedResponse([]string{"approval required requests must be standalone MCP tool calls"})
+		}
+		invocation, rawID, invocationErr := approvalInvocation(opaInput["parsed_body"].(map[string]any), state, decision)
+		if invocationErr != nil {
+			logger.WarnContext(ctx, "OPA approval-required request is not a standalone tool call", "error", invocationErr)
+			return accessDeniedResponse([]string{"approval required requests must be standalone MCP tool calls"})
+		}
+		outcome := s.approvalGate.Evaluate(ctx, invocation)
+		if outcome.Proceed {
+			return echoRequestBody(body)
+		}
+		if outcome.URL != "" {
+			return urlElicitationResponse(outcome.URL, "approval required", rawID)
+		}
+		return accessDeniedResponse([]string{outcome.Reason})
+	}
+	if decision.Action == authorization.ActionApprovalRequired {
+		return accessDeniedResponse([]string{"approval_required is not yet supported"})
+	}
+	if decision.Action != authorization.ActionAllow {
 		logger.InfoContext(ctx, "OPA denied request", "reasons", decision.Reasons, "resource", sanitizedURI)
 		return accessDeniedResponse(decision.Reasons)
 	}
-
 	logger.DebugContext(ctx, "OPA allowed request, echoing body", "resource", sanitizedURI)
 	return echoRequestBody(body)
 }
@@ -585,13 +690,17 @@ func (s *Server) processHeadersOnlyOPA(ctx context.Context, state *requestState)
 	}
 	sanitizedURI := sanitizeURIForTelemetry(state.resourceURI)
 
-	opaInput, buildErr := authorization.BuildOPAInputHeadersOnly(state.protocol, state.headers)
+	opaInput, buildErr := authorization.BuildOPAInputHeadersOnly(state.protocol, state.headers, state.targetServerName)
 	if buildErr != nil {
 		outcome = "authorization_denied"
 		errorType = "invalid_request"
 		logger.WarnContext(ctx, "OPA: failed to build input for header-only request — denying", "resource", sanitizedURI, "error", buildErr)
 		return immediateResponse(httpv3.StatusCode_Forbidden,
 			`{"error":"access_denied","error_description":"failed to parse request protocol"}`)
+	}
+	if contextInput, ok := opaInput["context"].(authorization.ContextInput); ok {
+		contextInput.AgentSessionID = state.agentSessionID
+		opaInput["context"] = contextInput
 	}
 
 	decision, err := s.authorizer.Evaluate(ctx, opaInput)
@@ -621,37 +730,41 @@ func (s *Server) processHeadersOnlyOPA(ctx context.Context, state *requestState)
 	return replaceAuthorizationHeader("Bearer " + exchangeResult.Token)
 }
 
-// processRequestBodyBatch evaluates a JSON-RPC batch body (FR-023).
-// Each element is evaluated independently; if any is denied the entire batch is denied
-// with a 403 response that aggregates reasons from all denying messages.
-// Original raw JSON bytes are passed to BuildOPAInput to preserve any extra top-level fields.
+// processRequestBodyBatch evaluates each JSON-RPC batch element independently.
+// A malformed envelope denies the whole batch before any policy evaluation.
 func (s *Server) processRequestBodyBatch(ctx context.Context, state *requestState, bodyBytes []byte, body *extprocv3.HttpBody) *extprocv3.ProcessingResponse {
 	ctx, logger := s.withRequestLogger(ctx, "", "")
-	var rawMessages []json.RawMessage
 	sanitizedURI := sanitizeURIForTelemetry(state.resourceURI)
-	if err := json.Unmarshal(bodyBytes, &rawMessages); err != nil {
+	messages, err := decodeJSONBatch(bodyBytes)
+	if err != nil {
 		logger.WarnContext(ctx, "OPA: failed to parse batch body — denying", "resource", sanitizedURI, "error", err)
 		return immediateResponse(httpv3.StatusCode_Forbidden,
 			`{"error":"access_denied","error_description":"failed to parse batch request"}`)
 	}
-	if len(rawMessages) == 0 {
+	if len(messages) == 0 {
 		logger.WarnContext(ctx, "OPA: empty batch body — rejecting as malformed", "resource", sanitizedURI)
 		return immediateResponse(httpv3.StatusCode_Forbidden,
 			`{"error":"access_denied","error_description":"empty batch is not valid JSON-RPC 2.0"}`)
+	}
+	builder, err := authorization.NewInputBuilder(state.protocol, state.headers, state.targetServerName, authorization.ContextInput{GrantedPermissionSetsAvailable: state.grantedPermissionSets != nil, GrantedPermissionSets: state.grantedPermissionSets, AgentSessionID: state.agentSessionID})
+	if err != nil {
+		logger.WarnContext(ctx, "OPA: failed to build input for batch — denying", "resource", sanitizedURI, "error", err)
+		return immediateResponse(httpv3.StatusCode_Forbidden,
+			`{"error":"access_denied","error_description":"failed to parse batch request"}`)
 	}
 
 	var (
 		denied      bool
 		denyReasons []string
 	)
-	for i, raw := range rawMessages {
-		if _, err := authorization.ParseMCPMessage(raw); err != nil {
+	for i, message := range messages {
+		if _, err := authorization.ParseMCPMessage(message.parsed); err != nil {
 			logger.WarnContext(ctx, "OPA: invalid batch element — denying", "resource", sanitizedURI, "index", i, "error", err)
 			denied = true
 			denyReasons = append(denyReasons, "batch element could not be evaluated")
 			continue
 		}
-		opaInput, buildErr := authorization.BuildOPAInput(state.protocol, raw, state.headers, state.grantedPermissionSets)
+		opaInput, buildErr := builder.Build(message.raw, message.parsed)
 		if buildErr != nil {
 			logger.WarnContext(ctx, "OPA: failed to build input for batch element — denying", "resource", sanitizedURI, "index", i, "error", buildErr)
 			denied = true
@@ -665,8 +778,12 @@ func (s *Server) processRequestBodyBatch(ctx context.Context, state *requestStat
 			denyReasons = append(denyReasons, "authorization evaluation failed")
 			continue
 		}
-		if decision.Action != "allow" {
+		if decision.Action != authorization.ActionAllow {
 			denied = true
+			if decision.Action == authorization.ActionApprovalRequired {
+				denyReasons = append(denyReasons, "approval required tool calls must be re-issued as standalone requests")
+				continue
+			}
 			if len(decision.Reasons) > 0 {
 				denyReasons = append(denyReasons, decision.Reasons...)
 			} else {
@@ -682,6 +799,125 @@ func (s *Server) processRequestBodyBatch(ctx context.Context, state *requestStat
 
 	logger.DebugContext(ctx, "OPA allowed batch, echoing body", "resource", sanitizedURI)
 	return echoRequestBody(body)
+}
+
+func decodeJSONBody(body []byte, isMCP bool) any {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	var parsed any
+	var err error
+	if isMCP {
+		parsed, err = decodeMCPMessage(decoder)
+	} else {
+		err = decoder.Decode(&parsed)
+	}
+	if err != nil || len(bytes.TrimSpace(body[decoder.InputOffset():])) != 0 {
+		return nil
+	}
+	return parsed
+}
+
+func decodeMCPMessage(decoder *json.Decoder) (map[string]any, error) {
+	opening, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	if opening != json.Delim('{') {
+		return nil, errors.New("MCP message must be a JSON object")
+	}
+	return decodeMCPObject(decoder, false)
+}
+
+func decodeMCPObject(decoder *json.Decoder, params bool) (map[string]any, error) {
+	object := make(map[string]any)
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return nil, err
+		}
+		key := token.(string)
+		if params {
+			switch {
+			case strings.EqualFold(key, "name"):
+				key = "name"
+			case strings.EqualFold(key, "arguments"):
+				key = "arguments"
+			}
+		} else {
+			for _, field := range [...]string{"jsonrpc", "id", "method", "params"} {
+				if strings.EqualFold(key, field) {
+					key = field
+					break
+				}
+			}
+		}
+		if _, exists := object[key]; exists {
+			return nil, errors.New("duplicate MCP object member")
+		}
+		var value any
+		if !params && key == "params" {
+			var opening json.Token
+			opening, err = decoder.Token()
+			if err != nil {
+				return nil, err
+			}
+			if opening != nil {
+				if opening != json.Delim('{') {
+					return nil, errors.New("MCP params must be an object")
+				}
+				value, err = decodeMCPObject(decoder, true)
+			}
+		} else {
+			err = decoder.Decode(&value)
+		}
+		if err != nil {
+			return nil, err
+		}
+		object[key] = value
+	}
+	closing, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	if closing != json.Delim('}') {
+		return nil, errors.New("invalid MCP object")
+	}
+	return object, nil
+}
+
+type decodedBatchMessage struct {
+	raw    []byte
+	parsed any
+}
+
+func decodeJSONBatch(body []byte) ([]decodedBatchMessage, error) {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	opening, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	if opening != json.Delim('[') {
+		return nil, errors.New("batch must be a JSON array")
+	}
+	var messages []decodedBatchMessage
+	for decoder.More() {
+		start := decoder.InputOffset()
+		parsed, err := decodeMCPMessage(decoder)
+		if err != nil {
+			return nil, err
+		}
+		raw := bytes.TrimLeft(body[start:decoder.InputOffset()], " \t\r\n,")
+		messages = append(messages, decodedBatchMessage{raw: raw, parsed: parsed})
+	}
+	closing, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	if closing != json.Delim(']') || len(bytes.TrimSpace(body[decoder.InputOffset():])) != 0 {
+		return nil, errors.New("invalid batch JSON")
+	}
+	return messages, nil
 }
 
 // tokenExchangeErrorResponse maps a token exchange error to the appropriate ImmediateResponse.
@@ -716,10 +952,23 @@ func accessDeniedResponse(reasons []string) *extprocv3.ProcessingResponse {
 }
 
 func (s *Server) exchangeErrorResponse(ctx context.Context, phase, protocol, resourceURI string, err error) (*extprocv3.ProcessingResponse, string, string) {
+	var brokerErr *BrokerExchangeError
+	hasBrokerError := errors.As(err, &brokerErr)
+	if hasBrokerError && s.cfg.Telemetry.Enabled && s.cfg.Telemetry.Traces.Enabled {
+		code := brokerErr.Code
+		switch code {
+		case "invalid_request", "invalid_client", "invalid_grant", "unauthorized_client", "unsupported_grant_type", "invalid_scope", "invalid_target", "access_denied", "server_error":
+		default:
+			code = "unknown"
+		}
+		trace.SpanFromContext(ctx).SetAttributes(
+			attribute.Int("token_exchange.broker_status_code", brokerErr.StatusCode),
+			attribute.String("token_exchange.broker_error_code", code),
+		)
+	}
 	logger := loggerFromContext(ctx, s.logger)
 	sanitizedURI := sanitizeURIForTelemetry(resourceURI)
-	var brokerErr *BrokerExchangeError
-	if errors.As(err, &brokerErr) && brokerErr.ErrorURI != "" && !isTransientBrokerError(err) {
+	if hasBrokerError && brokerErr.ErrorURI != "" && !isTransientBrokerError(err) {
 		if protocol == "mcp" {
 			msg := "token exchange requires re-authentication — returning URLElicitationRequiredError"
 			if phase != "" {
@@ -729,7 +978,7 @@ func (s *Server) exchangeErrorResponse(ctx context.Context, phase, protocol, res
 				"resource", sanitizedURI,
 				"code", brokerErr.Code,
 				"error_uri", brokerErr.ErrorURI)
-			return urlElicitationResponse(brokerErr, nil), "exchange_failure", brokerErr.Code
+			return urlElicitationResponse(brokerErr.ErrorURI, brokerErr.Description, nil), "exchange_failure", brokerErr.Code
 		}
 
 		msg := "token exchange requires re-authentication but protocol is non-MCP — returning 503"
@@ -830,6 +1079,43 @@ func extractProtocolFromMetadata(req *extprocv3.ProcessingRequest) (string, bool
 	}
 	// GetStringValue returns "" for non-string protobuf Values.
 	v := protoVal.GetStringValue()
+	if v == "" {
+		return "", false
+	}
+	return v, true
+}
+
+// extractMCPServerFromMetadata extracts the agentgateway mcp_server value from the
+// MetadataContext FilterMetadata. This is agentgateway routing metadata identifying
+// which downstream MCP server the request targets — not an MCP protocol field.
+//
+// Like extractProtocolFromMetadata, callers in OPA mode MUST reject the request with
+// 403 on a false return when protocol == "mcp" (FR-004) — mcp_server is mandatory for
+// MCP requests. It is not required for non-MCP protocols, since it is never populated
+// for those requests either way (FR-005).
+//
+// Returns (server, true) when the agentgateway metadata key is present and contains a
+// non-empty mcp_server string. Returns ("", false) when MetadataContext is entirely
+// nil, the "agentgateway" key is missing, or the mcp_server field is absent or empty.
+//
+// The metadata structure is: FilterMetadata["agentgateway"]["mcp_server"] = "<name>".
+func extractMCPServerFromMetadata(req *extprocv3.ProcessingRequest) (string, bool) {
+	if req.MetadataContext == nil {
+		return "", false
+	}
+	agwMeta, ok := req.MetadataContext.FilterMetadata[agentgatewayProtocolMetadataKey]
+	if !ok || agwMeta == nil {
+		return "", false
+	}
+	fields := agwMeta.GetFields()
+	if fields == nil {
+		return "", false
+	}
+	serverVal, ok := fields[agentgatewayMCPServerFieldKey]
+	if !ok || serverVal == nil {
+		return "", false
+	}
+	v := serverVal.GetStringValue()
 	if v == "" {
 		return "", false
 	}
@@ -977,6 +1263,32 @@ func (c *headerCarrier) Keys() []string {
 	return keys
 }
 
+// mdCarrier adapts gRPC metadata.MD to the OTel TextMapCarrier interface, so
+// trace context injected directly into an ExtProc gRPC call's own metadata
+// (as opposed to the proxied HTTP request's headers) can be extracted with
+// the same configured propagator.
+type mdCarrier metadata.MD
+
+func (c mdCarrier) Get(key string) string {
+	values := metadata.MD(c).Get(key)
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+func (c mdCarrier) Set(key string, value string) {
+	metadata.MD(c).Set(key, value)
+}
+
+func (c mdCarrier) Keys() []string {
+	keys := make([]string, 0, len(c))
+	for k := range c {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // sanitizeURIForTelemetry removes caller-controlled credentials, query strings, and
 // fragments before recording a URI in telemetry or logs.
 func sanitizeURIForTelemetry(resourceURI string) string {
@@ -1088,40 +1400,65 @@ func immediateResponseWithHeaders(code httpv3.StatusCode, body string, extra map
 	}
 }
 
-// urlElicitationResponse builds a ProcessingResponse_ImmediateResponse with HTTP 200 and
-// a JSON-RPC 2.0 URLElicitationRequiredError body (error code -32042).
-// Per MCP spec 2025-11-05: returned when a request cannot proceed until the user visits
-// a URL for OAuth re-authentication.
-// HTTP 200 is used because JSON-RPC errors always travel over HTTP 200.
-// rawID is the raw JSON bytes of the request ID (e.g. `42`, `"req-1"`, `null`).
-// Pass nil to emit null — correct when the request ID is unknown.
-func urlElicitationResponse(brokerErr *BrokerExchangeError, rawID json.RawMessage) *extprocv3.ProcessingResponse {
-	elicitErr := mcp.URLElicitationRequiredError{
-		Elicitations: []mcp.ElicitationParams{
-			{
-				Mode:          mcp.ElicitationModeURL,
-				ElicitationID: uuid.New().String(),
-				URL:           brokerErr.ErrorURI,
-				Message:       brokerErr.Description,
-			},
-		},
-	}
+// urlElicitationResponse builds an MCP URL elicitation JSON-RPC response.
+func urlElicitationResponse(approvalURL, message string, rawID json.RawMessage) *extprocv3.ProcessingResponse {
+	elicitErr := mcp.URLElicitationRequiredError{Elicitations: []mcp.ElicitationParams{{Mode: mcp.ElicitationModeURL, ElicitationID: uuid.New().String(), URL: approvalURL, Message: message}}}
 	jsonRPCErr := elicitErr.JSONRPCError()
-	// Set the request ID using the raw JSON token so any valid JSON-RPC ID type
-	// (string, integer, null) is preserved exactly without numeric precision loss.
-	// json.RawMessage.MarshalJSON returns its bytes verbatim, so mcp.NewRequestId
-	// will serialise the ID token unchanged.
 	if rawID != nil {
 		jsonRPCErr.ID = mcp.NewRequestId(rawID)
 	}
-	// Override the generated message with the broker-supplied description so that
-	// the client receives context about why re-authentication is required.
-	jsonRPCErr.Error.Message = brokerErr.Description
-
-	// Marshal the response. json.Marshal cannot fail for this struct: all fields are strings,
-	// ints, or slices thereof — no encoding/json.Marshaler implementations that could error.
+	jsonRPCErr.Error.Message = message
 	body, _ := json.Marshal(jsonRPCErr)
 	return immediateResponse(httpv3.StatusCode_OK, string(body))
+}
+
+func configuredHeader(headers map[string]string, name string) string {
+	for key, value := range headers {
+		if strings.EqualFold(key, name) {
+			return value
+		}
+	}
+	return ""
+}
+
+func approvalInvocation(message map[string]any, state *requestState, decision *authorization.OPADecision) (approval.Invocation, json.RawMessage, error) {
+	params, _ := message["params"].(map[string]any)
+	name, _ := params["name"].(string)
+	if message["method"] != "tools/call" || name == "" {
+		return approval.Invocation{}, nil, errors.New("request is not an MCP tools/call")
+	}
+	arguments, ok := params["arguments"].(map[string]any)
+	if params["arguments"] != nil && !ok {
+		return approval.Invocation{}, nil, errors.New("MCP tool arguments must be an object")
+	}
+	if arguments == nil {
+		arguments = map[string]any{}
+	}
+	var rawID json.RawMessage
+	id := message["id"]
+	if id != nil {
+		var err error
+		rawID, err = json.Marshal(id)
+		if err != nil {
+			return approval.Invocation{}, nil, err
+		}
+	}
+	invocation := approval.Invocation{Identity: approval.Identity{Principal: state.principal, AgentID: state.agentID}, ToolName: name, Arguments: arguments, AgentSessionID: state.agentSessionID, MCPSessionID: configuredHeader(state.headers, "Mcp-Session-Id"), RequestID: semanticRequestID(id, rawID), SubjectToken: state.subjectToken}
+	if decision.ApprovalContext != nil {
+		invocation.Description = decision.ApprovalContext.Description
+		invocation.RiskLevel = decision.ApprovalContext.RiskLevel
+	}
+	return invocation, rawID, nil
+}
+
+func semanticRequestID(id any, rawID json.RawMessage) string {
+	if id == nil {
+		return ""
+	}
+	if stringID, ok := id.(string); ok {
+		return stringID
+	}
+	return string(rawID)
 }
 
 // passThrough builds a ProcessingResponse_RequestHeaders with no mutations,

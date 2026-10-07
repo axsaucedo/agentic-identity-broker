@@ -240,7 +240,18 @@ func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *por
 	}
 
 	// Step 3: Determine action based on grant status
-	if grant == nil || !grant.IsActive() {
+	needsConsent := grant == nil || !grant.IsActive()
+	if !needsConsent {
+		for _, entry := range grant.GrantedPermissionSets {
+			if !slices.ContainsFunc(agent.PermissionSets, func(declared storage.AgentPermissionSetEntry) bool {
+				return declared.PermissionSetID == entry.PermissionSetID
+			}) {
+				needsConsent = true
+				break
+			}
+		}
+	}
+	if needsConsent {
 		consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
 		if buildErr != nil {
 			if s.logger != nil {
@@ -477,7 +488,7 @@ func (s *AuthorizationService) GenerateMetadata(ctx context.Context) (*ports.Met
 		issuer = s.config.PublicURL
 	}
 
-	const tokenExchangeGrant = "urn:ietf:params:oauth:grant-type:token-exchange"
+	const tokenExchangeGrant = "urn:ietf:params:oauth:grant-type:token-exchange" // #nosec G101 -- RFC-defined grant type URI, not a credential.
 	var grantTypes []string
 	if s.config.TokenExchangeEnabled {
 		if !slices.Contains(s.config.SupportedGrantTypes, tokenExchangeGrant) {

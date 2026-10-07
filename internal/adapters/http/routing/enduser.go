@@ -48,6 +48,7 @@ type EnduserRouteConfig struct {
 //	OAuth2 Session Routes (authenticated, optional):
 //	GET    /api/third-party/sessions                  - List sessions
 //	GET    /api/third-party/{serviceId}/oauth2/authorize - Initiate auth
+//	POST   /api/third-party/{serviceId}/oauth2/authorize - Initiate auth with consent selection
 //	GET    /api/third-party/{serviceId}/oauth2/callback  - Handle callback
 //	GET    /api/third-party/{serviceId}/session       - Get session details
 //	DELETE /api/third-party/{serviceId}/session       - Terminate session
@@ -62,6 +63,7 @@ type EnduserRouteConfig struct {
 //	GET    /api/approvals/pending                     - List pending approvals
 //	GET    /api/approvals/{id}                        - Get approval detail
 //	POST   /api/approvals/{id}/approve                - Approve
+//	POST   /api/approvals/{id}/scope-preview          - Validate and render scope
 //	POST   /api/approvals/{id}/deny                   - Deny
 //	POST   /api/approvals/{id}/revoke                 - Revoke permanent approval
 //
@@ -97,6 +99,7 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 				approvalRouter.Route("/{id}", func(r chi.Router) {
 					r.With(requirePrincipal).Get("/", h.ApprovalGet.ServeHTTP)
 					r.With(requirePrincipal, browserMutationProtection.Handler).Post("/approve", h.ApprovalApprove.ServeHTTP)
+					r.With(requirePrincipal, browserMutationProtection.Handler).Post("/scope-preview", h.ApprovalScopePreview.ServeHTTP)
 					r.With(requirePrincipal, browserMutationProtection.Handler).Post("/deny", h.ApprovalDeny.ServeHTTP)
 					r.With(requirePrincipal, browserMutationProtection.Handler).Post("/revoke", h.ApprovalRevoke.ServeHTTP)
 					r.With(middleware.RequireApprovalSubjectToken(cfg.ApprovalRequestAuthenticator)).Post("/consume", h.ApprovalConsume.ServeHTTP)
@@ -163,6 +166,13 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 			oauth2Router.Get("/jwks.json", h.JWKS.ServeJWKS)
 		}
 	})
+
+	if h.CIMDMetadata != nil {
+		r.Route("/.well-known/oauth-client", func(cimdRouter chi.Router) {
+			cimdRouter.Get("/{service-id}/jwks.json", h.CIMDMetadata.JWKS)
+			cimdRouter.Get("/{service-id}", h.CIMDMetadata.Metadata)
+		})
+	}
 
 	// RFC 8414 discovery endpoint — single handler serves both modes.
 	// The OAuth2Service.GenerateMetadata() includes JWKS URI in local mode.

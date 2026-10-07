@@ -31,6 +31,9 @@ type AdminHandlers struct {
 
 	// SigningKeys handler for admin API - manages signing key lifecycle
 	SigningKeys *admin.SigningKeysHandler
+
+	// CIMDClientKeys manages the dedicated outbound CIMD key lifecycle.
+	CIMDClientKeys *admin.CIMDClientKeysHandler
 }
 
 // EnduserHandlers groups all handler instances needed by the enduser server.
@@ -53,18 +56,22 @@ type EnduserHandlers struct {
 	OAuth2Metadata  *enduser.OAuth2MetadataHandler
 
 	// Approval handlers for /api/approvals routes
-	ApprovalCreate    *approval.CreateHandler
-	ApprovalGet       *approval.GetHandler
-	ApprovalApprove   *approval.ApproveHandler
-	ApprovalDeny      *approval.DenyHandler
-	ApprovalConsume   *approval.ConsumeHandler
-	ApprovalRevoke    *approval.RevokeHandler
-	ApprovalSync      *approval.SyncHandler
-	ApprovalPermanent *approval.PermanentHandler
-	ApprovalPending   *approval.PendingHandler
+	ApprovalCreate       *approval.CreateHandler
+	ApprovalGet          *approval.GetHandler
+	ApprovalApprove      *approval.ApproveHandler
+	ApprovalScopePreview *approval.ScopePreviewHandler
+	ApprovalDeny         *approval.DenyHandler
+	ApprovalConsume      *approval.ConsumeHandler
+	ApprovalRevoke       *approval.RevokeHandler
+	ApprovalSync         *approval.SyncHandler
+	ApprovalPermanent    *approval.PermanentHandler
+	ApprovalPending      *approval.PendingHandler
 
 	// JWKS handler (all OAuth2 modes — serves aggregated signing key public material)
 	JWKS *enduserHandlers.JWKSHandler
+
+	// CIMDMetadata serves the public broker-hosted metadata and JWK documents.
+	CIMDMetadata *enduserHandlers.CIMDMetadataHandler
 
 	// SPA handler for serving static files (must be last)
 	SPA *handlers.SPAHandler

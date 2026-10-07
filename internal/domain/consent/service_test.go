@@ -509,12 +509,15 @@ func (m *mockGrantRepo) ListByPrincipal(ctx context.Context, principal id.Princi
 	return result, nil
 }
 
-func (m *mockGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
+func (m *mockGrantRepo) CountAgentsByPrincipalAndServiceID(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (int, error) {
 	if m.err != nil {
 		return 0, m.err
 	}
 	uniqueAgents := make(map[id.AgentID]bool)
 	for _, grant := range m.grants {
+		if grant.Principal != principal {
+			continue
+		}
 		for _, entry := range grant.GrantedPermissionSets {
 			for _, svcID := range entry.IncludedServiceIDs {
 				if svcID == serviceID {
@@ -526,12 +529,15 @@ func (m *mockGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceID id
 	return len(uniqueAgents), nil
 }
 
-func (m *mockGrantRepo) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
+func (m *mockGrantRepo) ListByPrincipalAndServiceID(ctx context.Context, principal id.Principal, serviceID id.ServiceID) ([]id.AgentID, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	uniqueAgents := make(map[id.AgentID]bool)
 	for _, grant := range m.grants {
+		if grant.Principal != principal {
+			continue
+		}
 		for _, entry := range grant.GrantedPermissionSets {
 			for _, svcID := range entry.IncludedServiceIDs {
 				if svcID == serviceID {
@@ -853,13 +859,12 @@ func TestService_GrantConsent(t *testing.T) {
 		t.Parallel()
 
 		future := time.Now().Add(24 * time.Hour)
-		psID := id.NewPermissionSetID()
 		includedServiceID := id.NewServiceID()
 		sessionID := id.NewSessionID()
 		psRepo := &mockPermissionSetService{
 			permissionSets: map[id.PermissionSetID]*storage.PermissionSet{
-				psID: {
-					ID:          psID,
+				permissionSetID: {
+					ID:          permissionSetID,
 					Name:        "Test PS",
 					Description: "A test permission set",
 					ServiceScopes: []storage.ServiceScope{
@@ -889,7 +894,7 @@ func TestService_GrantConsent(t *testing.T) {
 			Principal:             id.Principal("user@example.com"),
 			AgentID:               agentID,
 			ValidUntil:            &future,
-			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{includedServiceID}}},
+			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: permissionSetID, IncludedServiceIDs: []id.ServiceID{includedServiceID}}},
 		}
 
 		grant, err := svc.GrantConsent(ctx, req)
@@ -1023,43 +1028,16 @@ func TestService_GrantConsent(t *testing.T) {
 		assert.ErrorIs(t, err, ErrAgentNotFound)
 	})
 
-	t.Run("empty scopes returns ErrGrantValidation", func(t *testing.T) {
+	t.Run("empty included services returns ErrGrantValidation", func(t *testing.T) {
 		t.Parallel()
 		psID := id.NewPermissionSetID()
+		agentWithLocalSet := agent.Copy()
+		agentWithLocalSet.PermissionSets = []storage.AgentPermissionSetEntry{{
+			PermissionSetID: psID,
+			RequirementType: storage.RequirementTypeOptional,
+		}}
 		svc := NewService(
-			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
-			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
-			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
-			&mockUserSessionRepo{sessions: map[id.SessionID]*storage.UserSession{}},
-			&mockPermissionSetService{permissionSets: map[id.PermissionSetID]*storage.PermissionSet{
-				psID: {
-					ID:            psID,
-					Name:          "Test PS",
-					Description:   "A test permission set",
-					ServiceScopes: []storage.ServiceScope{{ServiceID: serviceID1, Scopes: []string{"repo"}, RequirementType: storage.RequirementTypeOptional}},
-				},
-			}},
-			slog.Default(),
-		)
-
-		req := &GrantRequest{
-			Principal: id.Principal("user@example.com"),
-			AgentID:   agentID,
-			GrantedPermissionSets: []storage.GrantedPermissionSetEntry{
-				{PermissionSetID: psID, IncludedServiceIDs: []id.ServiceID{}},
-			},
-		}
-
-		_, err := svc.GrantConsent(ctx, req)
-		require.Error(t, err)
-		assert.ErrorIs(t, err, ErrGrantValidation)
-	})
-
-	t.Run("duplicate scopes returns ErrGrantValidation", func(t *testing.T) {
-		t.Parallel()
-		psID := id.NewPermissionSetID()
-		svc := NewService(
-			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agentWithLocalSet}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
 			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
 			&mockUserSessionRepo{sessions: map[id.SessionID]*storage.UserSession{}},

@@ -7,8 +7,10 @@ import (
 
 	. "github.com/onsi/gomega" //nolint:staticcheck
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/approval"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/authorization"
 	extprocconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/config"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/httpclient"
 	extprocserver "github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/server"
 )
 
@@ -34,12 +36,31 @@ func StartWithOPAConfig(cfg *extprocconfig.Config, logger *slog.Logger) error {
 // StartWithAuthorizer starts the test environment using a pre-built authorizer.
 // The mock OAuth2 and token exchange servers are started as in Start(), but the
 // authorizer is provided directly instead of being created from config.
+// The caller retains ownership of the supplied authorizer and must stop it.
 func (e *TestEnvironment) StartWithAuthorizer(auth authorization.Authorizer) {
 	e.startMockServers()
 
 	exchanger, err := extprocserver.NewTokenExchanger(e.Config, e.logger)
 	Expect(err).NotTo(HaveOccurred(), "failed to create token exchanger")
+	e.exchanger = exchanger
 
-	svc := extprocserver.NewServerWithAuthorizer(e.Config, exchanger, auth, e.logger)
+	var approvalGate extprocserver.ApprovalGate
+	if e.Config.ToolApprovals.Enabled {
+		approvalHTTPClient, err := httpclient.New(e.Config, 0)
+		Expect(err).NotTo(HaveOccurred(), "failed to create approval HTTP client")
+		client, err := approval.NewClient(e.Config.ToolApprovals.URL, e.Config.ToolApprovals.RequestTimeout, exchanger, approvalHTTPClient)
+		Expect(err).NotTo(HaveOccurred(), "failed to create approval client")
+		e.approvalClient = client
+		e.approvalCache = approval.NewCache(e.Config.ToolApprovals.ApprovalCacheIdleTTL, e.Config.ToolApprovals.MaxStaleness)
+		approvalGate = approval.NewGate(e.approvalCache, client)
+	}
+
+	var svc *extprocserver.Server
+	if approvalGate != nil {
+		svc = extprocserver.NewServerWithApprovalGate(e.Config, exchanger, auth, approvalGate, e.logger)
+	} else {
+		svc = extprocserver.NewServerWithAuthorizer(e.Config, exchanger, auth, e.logger)
+	}
 	e.startGRPCServer(svc)
+	e.startApprovalSync()
 }

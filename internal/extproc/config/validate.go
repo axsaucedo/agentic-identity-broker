@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Validate checks the Config for required fields and constraint violations.
@@ -39,10 +40,16 @@ import (
 //  19. telemetry.exporter.timeout must be a positive duration
 func Validate(cfg *Config) error {
 	var errs []string
+	const maxUint32 = ^uint32(0)
 
 	// Rule 1: grpc.port must be 1-65535
 	if cfg.GRPC.Port < 1 || cfg.GRPC.Port > 65535 {
 		errs = append(errs, fmt.Sprintf("grpc.port must be between 1 and 65535, got %d", cfg.GRPC.Port))
+	}
+
+	// Rule 1a: grpc.max_concurrent_streams must fit grpc.MaxConcurrentStreams.
+	if cfg.GRPC.MaxConcurrentStreams < 1 || uint64(cfg.GRPC.MaxConcurrentStreams) > uint64(maxUint32) {
+		errs = append(errs, fmt.Sprintf("grpc.max_concurrent_streams must be between 1 and %d, got %d", maxUint32, cfg.GRPC.MaxConcurrentStreams))
 	}
 
 	// Rule 2: grpc.bind must not be empty
@@ -119,9 +126,9 @@ func Validate(cfg *Config) error {
 		errs = append(errs, fmt.Sprintf("oauth2.client_assertion_type must be one of id_token, access_token; got %q", cfg.OAuth2.ClientAssertionType))
 	}
 
-	// Rule 14: circuit_breaker.max_failures must be positive (only when enabled)
-	if cfg.CircuitBreaker.Enabled && cfg.CircuitBreaker.MaxFailures < 1 {
-		errs = append(errs, fmt.Sprintf("circuit_breaker.max_failures must be >= 1, got %d", cfg.CircuitBreaker.MaxFailures))
+	// Rule 14: circuit_breaker.max_failures must fit gobreaker.Settings (only when enabled).
+	if cfg.CircuitBreaker.Enabled && (cfg.CircuitBreaker.MaxFailures < 1 || uint64(cfg.CircuitBreaker.MaxFailures) > uint64(maxUint32)) {
+		errs = append(errs, fmt.Sprintf("circuit_breaker.max_failures must be between 1 and %d, got %d", maxUint32, cfg.CircuitBreaker.MaxFailures))
 	}
 
 	// Rule 15: circuit_breaker.reset_timeout must be positive (only when enabled)
@@ -188,6 +195,37 @@ func Validate(cfg *Config) error {
 		}
 	}
 
+	if cfg.ToolApprovals.Enabled {
+		if !cfg.Authorization.Enabled {
+			errs = append(errs, "tool_approvals.enabled requires authorization.enabled")
+		}
+		approvalURL, err := url.ParseRequestURI(cfg.ToolApprovals.URL)
+		if err != nil || approvalURL.Scheme == "" || approvalURL.Host == "" || (approvalURL.Scheme != "http" && approvalURL.Scheme != "https") || approvalURL.RawQuery != "" || approvalURL.Fragment != "" {
+			errs = append(errs, "tool_approvals.url must be an absolute HTTP(S) URL with a host and no query or fragment")
+		} else {
+			if approvalURL.Scheme == "http" && !cfg.OAuth2.TLS.AllowHTTP {
+				errs = append(errs, "tool_approvals.url must use https:// scheme (set oauth2.tls.allow_http: true to disable — DEV ONLY)")
+			}
+			cfg.ToolApprovals.URL = strings.TrimRight(cfg.ToolApprovals.URL, "/")
+		}
+		if cfg.ToolApprovals.LongPollTimeoutSeconds < 1 || cfg.ToolApprovals.LongPollTimeoutSeconds > 120 {
+			errs = append(errs, "tool_approvals.long_poll_timeout_seconds must be between 1 and 120")
+		}
+		if cfg.ToolApprovals.ApprovalCacheIdleTTL <= 0 {
+			errs = append(errs, "tool_approvals.approval_cache_idle_ttl must be a positive duration")
+		}
+		if cfg.ToolApprovals.RequestTimeout <= 0 {
+			errs = append(errs, "tool_approvals.request_timeout must be a positive duration")
+		}
+		if cfg.ToolApprovals.MaxStaleness <= 0 {
+			errs = append(errs, "tool_approvals.max_staleness must be a positive duration")
+		} else if cfg.ToolApprovals.MaxStaleness < time.Duration(cfg.ToolApprovals.LongPollTimeoutSeconds)*time.Second+cfg.ToolApprovals.RequestTimeout {
+			errs = append(errs, "tool_approvals.max_staleness must be at least tool_approvals.long_poll_timeout_seconds plus tool_approvals.request_timeout")
+		}
+	}
+	if !isHTTPFieldName(cfg.Sessions.Extraction.HTTPHeader) {
+		errs = append(errs, "sessions.extraction.http_header must be a non-empty valid HTTP field name")
+	}
 	// Telemetry validation only runs when telemetry.enabled is true
 	if cfg.Telemetry.Enabled {
 		// Rule 16: endpoint must not be empty
@@ -253,6 +291,19 @@ func validateURL(field, s string, requireHTTPScheme bool) error {
 		return fmt.Errorf("%s must be a valid URL with a host", field)
 	}
 	return nil
+}
+
+func isHTTPFieldName(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, char := range value {
+		if ('a' <= char && char <= 'z') || ('A' <= char && char <= 'Z') || ('0' <= char && char <= '9') || strings.ContainsRune("!#$%&'*+-.^_`|~", char) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // validatePolicyPath checks that a policy path does not contain path traversal

@@ -31,7 +31,7 @@ Thank you for contributing! This document provides guidelines for maintaining ou
 
 All contributions must comply with our specification-driven development approach:
 
-- **API-First**: Document all public APIs in OpenAPI before implementation
+- **API-First**: Document all public APIs in OpenAPI and get user confirmation before implementation
 - **Security-First**: Security controls enabled by default, never optional
 - **Architecture**: Follow hexagonal architecture patterns and ADRs
 - **Domain-Driven Design**: Clear ubiquitous language and domain isolation
@@ -44,13 +44,21 @@ See [Constitution v1.4.0](.specify/memory/constitution.md) for details.
 
 Run static checks and the full verification gate:
 ```bash
-just check    # Format, vet, lint
-just verify   # Full verification gate with E2E last
+just check    # Non-mutating format, vet, and lint checks
+just verify   # Security scanning plus test, integration, and E2E checks
 ```
 
-Both must pass before opening a PR.
+`just check` does not change source files. Use `just fmt` to apply Go formatting fixes.
+`just security` runs the focused gosec, govulncheck, and OSV-Scanner scans.
+`just verify` runs security scanning before the existing test, integration, and E2E gate.
+
+Both commands must pass before you open a pull request.
 
 ## Making Changes
+
+### Repository Root
+
+Root contains only files that a tool requires there or that GitHub/Zalando OSS renders. Variants go in a subdirectory.
 
 ### Specification-Driven Development
 
@@ -88,13 +96,28 @@ export function MyComponent() {
 ### Tests
 
 - Tests live next to source files (`*_test.go` or `*.test.tsx`)
-- New features need >80% test coverage
 - Fast Go/package tests: `just test`
+- ExtProc unit tests with race detection: `just extproc-test`. These include checks that
+  disabled local tracing neither creates child spans nor modifies inherited spans.
 - Integration suites: `just test-integration`
 - All E2E suites: `just test-e2e`
 - Dedicated E2E performance measurement: `just test-e2e-performance` (manual; normal E2E commands exclude performance-labelled specs)
-- Full verification gate: `just verify`
+- Full verification gate, including security scanning: `just verify`
 - Coverage for the fast Go/package suite: `just test-coverage`
+- Coverage summary for fast Go/package tests: `just test-coverage-summary`
+- Frontend coverage report: `just web-test-coverage`
+
+The [Coverage workflow](https://github.com/zalando-incubator/agentic-identity-broker/actions/workflows/scheduled-coverage.yml) runs manually from the GitHub Actions UI and weekly on `main`. It sends coverage from the Go unit, integration, and functional backend, ExtProc, and frontend E2E suites, plus Vitest and instrumented Playwright browser runs, to [Coveralls](https://coveralls.io/github/zalando-incubator/agentic-identity-broker?branch=main). Go coverage measures `cmd/` and `internal/`; browser coverage measures `web/src/`. The separate performance measurement is excluded. The README badge shows the latest main-branch result.
+
+To reproduce the frontend report locally after installing the test tools, run:
+
+```bash
+npm run test:coverage --prefix web
+VITE_COVERAGE=1 E2E_WEB_COVERAGE_DIR="$PWD/web/coverage/browser" just test-e2e-frontend-coverage
+E2E_WEB_COVERAGE_DIR="$PWD/web/coverage/browser" npm run coverage:merge --prefix web
+```
+
+The last command writes the combined browser and Vitest report to `web/coverage/lcov.info`. The Go E2E coverage recipes produce separate profiles; Coveralls merges them with the Go unit/integration profile across flagged uploads.
 
 ## Pull Request Process
 

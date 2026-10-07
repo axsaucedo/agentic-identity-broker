@@ -17,7 +17,7 @@ func DefaultConfig() *extprocconfig.Config {
 			Port:                 50051,
 			MaxConcurrentStreams: 100,
 		},
-		OAuth2: extprocconfig.OAuth2Config{
+		OAuth2: extprocconfig.OAuth2Config{ // #nosec G101 -- test-only placeholders and fake OAuth client credentials.
 			TokenEndpoint:             "http://placeholder/oauth2/token",
 			Issuer:                    "http://placeholder",
 			ClientID:                  "test-extproc-client",
@@ -43,6 +43,9 @@ func DefaultConfig() *extprocconfig.Config {
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
+		Sessions: extprocconfig.SessionsConfig{
+			Extraction: extprocconfig.SessionExtractionConfig{HTTPHeader: "Mcp-Session-Id"},
+		},
 		Telemetry: extprocconfig.TelemetryConfig{
 			Exporter: extprocconfig.OTLPExporterConfig{
 				Timeout: 10 * time.Second,
@@ -52,11 +55,10 @@ func DefaultConfig() *extprocconfig.Config {
 }
 
 // ShortCacheTTLConfig returns a config with very short cache TTL for expiry testing.
-// The DefaultTTL is set to 150ms to allow tests to observe cache expiry within test timeouts.
+// The DefaultTTL is set to 100ms to allow tests to observe cache expiry within test timeouts.
 func ShortCacheTTLConfig() *extprocconfig.Config {
 	cfg := DefaultConfig()
 	cfg.Cache.DefaultTTL = ShortTTL
-	cfg.Cache.MaxTTL = 5 * ShortTTL
 	return cfg
 }
 

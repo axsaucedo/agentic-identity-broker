@@ -5,6 +5,7 @@
 package e2e_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,14 +27,17 @@ import (
 )
 
 // SuiteContext holds resources shared across all tests in the suite.
-// These are initialized once in BeforeSuite and shared by all tests.
-// SuiteContext should be treated as immutable after BeforeSuite completes.
+// These are initialized on each worker after the shared build completes.
+// SuiteContext remains immutable after setup.
 type SuiteContext struct {
 	// Logger is the structured logger for the entire test suite
 	Logger *slog.Logger
 
 	// Browser is the Playwright browser instance (Chromium)
 	Browser playwright.Browser
+
+	// Playwright owns the driver process backing Browser.
+	Playwright *playwright.Playwright
 
 	// FrontendMode is either "built" (production build) or "dev" (Vite dev server)
 	FrontendMode string
@@ -43,6 +48,9 @@ type SuiteContext struct {
 	// DevFrontendURL is the Vite dev server URL (only set in dev mode)
 	// This is "http://localhost:3000" when FrontendMode is "dev"
 	DevFrontendURL string
+
+	// BrowserCoverageDir is empty unless built-mode browser coverage is enabled.
+	BrowserCoverageDir string
 }
 
 // TestContext holds resources fresh for each individual test.
@@ -77,6 +85,8 @@ type TestContext struct {
 	// In dev mode: http://localhost:3000
 	// In built mode: http://127.0.0.1:RANDOM_PORT
 	FrontendURL string
+
+	BrowserCoverage *browserCoverage
 }
 
 // suiteCtx holds suite-level resources initialized in BeforeSuite
@@ -87,6 +97,57 @@ var suiteCtx *SuiteContext
 // This is fresh for each test to ensure complete isolation
 var testCtx *TestContext
 
+// Each document keeps its latest cumulative Istanbul counters, including pages
+// that navigated away before AfterEach can inspect the current page.
+type browserCoverage struct {
+	sync.Mutex
+	documents map[string]json.RawMessage
+	err       error
+}
+
+func (c *browserCoverage) capture(args ...any) any {
+	if len(args) != 1 {
+		c.Lock()
+		c.err = fmt.Errorf("browser coverage binding received %d arguments", len(args))
+		c.Unlock()
+		return nil
+	}
+	snapshot, ok := args[0].(map[string]any)
+	if !ok {
+		c.Lock()
+		c.err = fmt.Errorf("browser coverage binding received %T", args[0])
+		c.Unlock()
+		return nil
+	}
+	id, idOK := snapshot["id"].(string)
+	coverage, coverageOK := snapshot["coverage"].(map[string]any)
+	if !idOK || id == "" || !coverageOK {
+		c.Lock()
+		c.err = fmt.Errorf("browser coverage binding received an invalid snapshot")
+		c.Unlock()
+		return nil
+	}
+	data, err := json.Marshal(coverage)
+	c.Lock()
+	defer c.Unlock()
+	if err != nil {
+		c.err = fmt.Errorf("encode browser coverage: %w", err)
+	} else {
+		c.documents[id] = data
+	}
+	return nil
+}
+
+const browserCoverageInitScript = `(() => {
+  const id = crypto.randomUUID();
+  window.__e2eFlushCoverage = () => {
+    if (globalThis.__coverage__) {
+      return window.__e2eRecordCoverage({ id, coverage: globalThis.__coverage__ });
+    }
+  };
+  window.addEventListener('pagehide', () => { void window.__e2eFlushCoverage(); });
+})()`
+
 // TestFrontendE2E is the entry point for the frontend E2E test suite.
 // Ginkgo calls this to register and run all tests in this package.
 func TestFrontendE2E(t *testing.T) {
@@ -94,17 +155,24 @@ func TestFrontendE2E(t *testing.T) {
 	RunSpecs(t, "Frontend E2E Tests")
 }
 
-// BeforeSuite initializes suite-wide resources that are created once and reused.
-// This runs once before any tests execute.
-//
-// Setup steps:
-// 1. Ensure working directory is project root (for relative paths to work)
-// 2. Initialize logger
-// 3. Parse environment variables (E2E_FRONTEND_MODE, HEADLESS)
-// 4. Initialize Playwright and launch browser
-// 5. Auto-build frontend if in "built" mode
-// 6. Verify frontend is accessible
-var _ = BeforeSuite(func() {
+// SynchronizedBeforeSuite builds the shared bundle once, then starts a browser on every worker.
+var _ = SynchronizedBeforeSuite(func() []byte {
+	mode := os.Getenv("E2E_FRONTEND_MODE")
+	if mode == "" {
+		mode = "built"
+	}
+	if mode != "built" && mode != "dev" {
+		Fail(fmt.Sprintf("Invalid E2E_FRONTEND_MODE=%q. Must be 'built' or 'dev'", mode))
+	}
+	if os.Getenv("E2E_WEB_COVERAGE_DIR") != "" && mode != "built" {
+		Fail("E2E_WEB_COVERAGE_DIR requires E2E_FRONTEND_MODE=built")
+	}
+	if mode == "built" {
+		Expect(ensureFrontendBuilt(bootstrap.TestLogger(slog.LevelInfo))).To(Succeed(), "Failed to build frontend")
+	}
+	return []byte(mode)
+}, func(mode []byte) {
+	SetDefaultEventuallyTimeout(30 * time.Second)
 	// Step 1: Initialize structured logger
 	logger := bootstrap.TestLogger(slog.LevelInfo)
 
@@ -116,13 +184,14 @@ var _ = BeforeSuite(func() {
 
 	logger.Info("Starting frontend E2E test suite initialization")
 
-	// Step 2: Parse environment variables
-	frontendMode := os.Getenv("E2E_FRONTEND_MODE")
-	if frontendMode == "" {
-		frontendMode = "built" // Default to production build mode
-	}
-	if frontendMode != "built" && frontendMode != "dev" {
-		Fail(fmt.Sprintf("Invalid E2E_FRONTEND_MODE=%q. Must be 'built' or 'dev'", frontendMode))
+	// Step 2: Use the mode validated on process 1.
+	frontendMode := string(mode)
+	coverageDir := os.Getenv("E2E_WEB_COVERAGE_DIR")
+	if coverageDir != "" {
+		if !filepath.IsAbs(coverageDir) {
+			coverageDir = filepath.Join(getProjectRoot(), coverageDir)
+		}
+		Expect(os.MkdirAll(coverageDir, 0o755)).To(Succeed(), "Failed to create browser coverage directory")
 	}
 
 	headlessStr := os.Getenv("HEADLESS")
@@ -141,25 +210,21 @@ var _ = BeforeSuite(func() {
 	browserInstance, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(headless),
 	})
+	if err != nil {
+		_ = pw.Stop()
+	}
 	Expect(err).NotTo(HaveOccurred(), "Failed to launch Chromium browser")
 
 	logger.Info("Playwright browser launched", "headless", headless)
 
-	// Step 5: Ensure frontend is built (if not in dev mode)
-	if frontendMode == "built" {
-		logger.Info("Building frontend for production-like testing")
-		err := ensureFrontendBuilt(logger)
-		Expect(err).NotTo(HaveOccurred(), "Failed to build frontend")
-	}
-
-	// Step 6: Handle frontend URL based on mode
+	// Handle frontend URL based on mode.
 	var devFrontendURL string
 	if frontendMode == "dev" {
 		// Dev mode: Vite dev server on port 3000 with automatic X-Remote-User injection
 		devFrontendURL = "http://localhost:3000"
 		logger.Info("Frontend URL (dev mode - requires 'just web-dev')", "url", devFrontendURL)
 
-		// Step 7: Verify Vite dev server is accessible with retries
+		// Verify the Vite dev server is accessible before running specs.
 		// Check the root path where the consent app is served.
 		verifyURL := devFrontendURL + "/"
 		logger.Info("Verifying Vite dev server accessibility", "url", verifyURL)
@@ -172,11 +237,13 @@ var _ = BeforeSuite(func() {
 
 	// Store suite context
 	suiteCtx = &SuiteContext{
-		Logger:         logger,
-		Browser:        browserInstance,
-		FrontendMode:   frontendMode,
-		Headless:       headless,
-		DevFrontendURL: devFrontendURL,
+		Logger:             logger,
+		Playwright:         pw,
+		Browser:            browserInstance,
+		FrontendMode:       frontendMode,
+		Headless:           headless,
+		DevFrontendURL:     devFrontendURL,
+		BrowserCoverageDir: coverageDir,
 	}
 
 	logger.Info("Frontend E2E suite initialization complete")
@@ -224,23 +291,30 @@ var _ = BeforeEach(func() {
 		frontendURL = server.BaseURL()
 	}
 
-	// Step 6: Create fresh Playwright context with X-Remote-User header for built mode
-	// Fresh context ensures no cookies/storage leakage between tests
-	var browserContext playwright.BrowserContext
-	if suiteCtx.FrontendMode == "built" {
-		// In built mode: inject X-Remote-User header for all requests
-		// (Vite dev proxy injects this automatically in dev mode)
-		contextOpts := playwright.BrowserNewContextOptions{
-			ExtraHttpHeaders: map[string]string{
-				"X-Remote-User": fixtures.DefaultPrincipal().String(),
-			},
-		}
-		browserContext, err = suiteCtx.Browser.NewContext(contextOpts)
-	} else {
-		// Dev mode: no extra headers needed
-		browserContext, err = suiteCtx.Browser.NewContext()
+	// Step 6: Create an isolated context with the same rendering settings in both modes.
+	contextOpts := playwright.BrowserNewContextOptions{
+		Viewport:          &playwright.Size{Width: 1280, Height: 720},
+		Screen:            &playwright.Size{Width: 1280, Height: 720},
+		DeviceScaleFactor: playwright.Float(1),
+		Locale:            playwright.String("en-US"),
+		TimezoneId:        playwright.String("UTC"),
+		ColorScheme:       playwright.ColorSchemeLight,
+		ReducedMotion:     playwright.ReducedMotionNoPreference,
+		ForcedColors:      playwright.ForcedColorsNone,
 	}
+	if suiteCtx.FrontendMode == "built" {
+		contextOpts.ExtraHttpHeaders = map[string]string{
+			"X-Remote-User": fixtures.DefaultPrincipal().String(),
+		}
+	}
+	browserContext, err := suiteCtx.Browser.NewContext(contextOpts)
 	Expect(err).NotTo(HaveOccurred(), "Failed to create Playwright context")
+	var coverage *browserCoverage
+	if suiteCtx.BrowserCoverageDir != "" {
+		coverage = &browserCoverage{documents: make(map[string]json.RawMessage)}
+		Expect(browserContext.ExposeFunction("__e2eRecordCoverage", coverage.capture)).To(Succeed(), "Failed to expose browser coverage binding")
+		Expect(browserContext.AddInitScript(playwright.Script{Content: playwright.String(browserCoverageInitScript)})).To(Succeed(), "Failed to register browser coverage script")
+	}
 
 	page, err := browserContext.NewPage()
 	Expect(err).NotTo(HaveOccurred(), "Failed to create Playwright page")
@@ -250,15 +324,16 @@ var _ = BeforeEach(func() {
 
 	// Store in test context
 	testCtx = &TestContext{
-		Suite:          suiteCtx,
-		Storage:        storage,
-		StorageFactory: storageFactory,
-		MockUpstream:   mockUpstream,
-		Server:         server,
-		ServerFactory:  serverFactory,
-		BrowserContext: browserContext,
-		Page:           page,
-		FrontendURL:    frontendURL,
+		Suite:           suiteCtx,
+		Storage:         storage,
+		StorageFactory:  storageFactory,
+		MockUpstream:    mockUpstream,
+		Server:          server,
+		ServerFactory:   serverFactory,
+		BrowserContext:  browserContext,
+		Page:            page,
+		FrontendURL:     frontendURL,
+		BrowserCoverage: coverage,
 	}
 
 	suiteCtx.Logger.Info("Test setup complete",
@@ -268,78 +343,88 @@ var _ = BeforeEach(func() {
 	)
 })
 
-// AfterEach cleans up per-test resources after each test.
-// This runs after each test to release resources and prepare for the next test.
-//
-// Cleanup steps:
-// 1. Close Playwright page and context (in order)
-// 2. Close test server
-// 3. Close test storage
-// 4. Close mock upstream server
+// AfterEach releases the per-test browser context, server, storage, and upstream.
 var _ = AfterEach(func() {
 	if testCtx == nil {
 		return
 	}
-
-	// Step 1: Close Playwright page and context (in correct order)
-	if testCtx.Page != nil {
-		err := testCtx.Page.Close()
-		if err != nil {
-			suiteCtx.Logger.Error("Failed to close Playwright page", "error", err)
+	var coverageErr error
+	if testCtx.BrowserCoverage != nil {
+		for _, page := range testCtx.BrowserContext.Pages() {
+			if page.IsClosed() {
+				continue
+			}
+			for _, frame := range page.Frames() {
+				_, err := frame.Evaluate(`() => window.__e2eFlushCoverage?.()`)
+				if err != nil && coverageErr == nil {
+					coverageErr = fmt.Errorf("flush browser coverage: %w", err)
+				}
+			}
+		}
+		coverage := testCtx.BrowserCoverage
+		coverage.Lock()
+		data, err := json.Marshal(coverage.documents)
+		if coverage.err != nil {
+			err = coverage.err
+		}
+		coverage.Unlock()
+		if coverageErr == nil {
+			coverageErr = err
+		}
+		if coverageErr == nil {
+			file, err := os.CreateTemp(suiteCtx.BrowserCoverageDir, fmt.Sprintf("worker-%d-spec-*.json", GinkgoParallelProcess()))
+			if err == nil {
+				_, err = file.Write(data)
+				if closeErr := file.Close(); err == nil {
+					err = closeErr
+				}
+			}
+			coverageErr = err
 		}
 	}
-
 	if testCtx.BrowserContext != nil {
-		err := testCtx.BrowserContext.Close()
-		if err != nil {
+		if err := testCtx.BrowserContext.Close(); err != nil {
 			suiteCtx.Logger.Error("Failed to close Playwright context", "error", err)
 		}
 	}
-
-	// Step 2: Close test server
 	if testCtx.Server != nil {
 		testCtx.Server.Close()
 	}
-
-	// Step 3: Close test storage
 	if testCtx.Storage != nil && testCtx.StorageFactory != nil {
-		err := testCtx.StorageFactory.CloseStorage(testCtx.Storage)
-		if err != nil {
+		if err := testCtx.StorageFactory.CloseStorage(testCtx.Storage); err != nil {
 			suiteCtx.Logger.Error("Failed to close storage", "error", err)
 		}
 	}
-
-	// Step 4: Close mock upstream server
 	if testCtx.MockUpstream != nil {
 		testCtx.MockUpstream.Close()
 	}
-
 	suiteCtx.Logger.Info("Test cleanup complete")
+	testCtx = nil
+	Expect(coverageErr).NotTo(HaveOccurred(), "Failed to collect browser coverage")
 })
 
-// AfterSuite cleans up suite-wide resources after all tests complete.
-// This runs once after all tests have finished.
-//
-// Cleanup steps:
-// 1. Close Playwright browser
-// 2. Log suite completion
+// AfterSuite closes each worker's browser and Playwright process.
 var _ = AfterSuite(func() {
-	if suiteCtx != nil && suiteCtx.Browser != nil {
-		err := suiteCtx.Browser.Close()
-		if err != nil {
+	if suiteCtx == nil {
+		return
+	}
+	if suiteCtx.Browser != nil {
+		if err := suiteCtx.Browser.Close(); err != nil {
 			suiteCtx.Logger.Error("Failed to close Playwright browser", "error", err)
 		}
 	}
-
-	if suiteCtx != nil {
-		suiteCtx.Logger.Info("Frontend E2E suite completed")
+	if suiteCtx.Playwright != nil {
+		if err := suiteCtx.Playwright.Stop(); err != nil {
+			suiteCtx.Logger.Error("Failed to stop Playwright", "error", err)
+		}
 	}
+	suiteCtx.Logger.Info("Frontend E2E suite completed")
 })
 
 // Helper Functions
 
-// ensureFrontendBuilt checks if the frontend is built and builds it if needed.
-// This provides good developer experience - tests auto-build if the dist/ doesn't exist.
+// ensureFrontendBuilt checks for dist/index.html and builds it locally if absent.
+// CI must provide the artifact before the suite starts.
 //
 // Parameters:
 //   - logger: Structured logger for informational output
@@ -350,40 +435,36 @@ var _ = AfterSuite(func() {
 // - Build output is not found after build completes
 func ensureFrontendBuilt(logger *slog.Logger) error {
 	webDir := filepath.Join(getProjectRoot(), "web")
-	distDir := filepath.Join(webDir, "dist")
+	indexPath := filepath.Join(webDir, "dist", "index.html")
 
-	// Check if already built
-	if _, err := os.Stat(distDir); err == nil {
-		logger.Info("Frontend already built", "dir", distDir)
+	if _, err := os.Stat(indexPath); err == nil {
+		logger.Info("Frontend already built", "file", indexPath)
 		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to check frontend build at %s: %w", indexPath, err)
+	}
+	if os.Getenv("CI") != "" {
+		return fmt.Errorf("frontend build missing %s; run just web-build before CI tests", indexPath)
 	}
 
 	logger.Info("Frontend not built, building now", "dir", webDir)
-
-	// Run: npm install
-	cmd := exec.Command("npm", "install")
-	cmd.Dir = webDir
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to run npm install: %w", err)
+	for _, args := range [][]string{{"install"}, {"run", "build"}} {
+		cmd := exec.Command("npm", args...)
+		cmd.Dir = webDir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("npm %v failed: %w", args, err)
+		}
 	}
-
-	// Run: npm run build
-	cmd = exec.Command("npm", "run", "build")
-	cmd.Dir = webDir
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to run npm build: %w", err)
+	if _, err := os.Stat(indexPath); err != nil {
+		return fmt.Errorf("frontend build completed but %s is missing: %w", indexPath, err)
 	}
-
-	// Verify build succeeded
-	if _, err := os.Stat(distDir); err != nil {
-		return fmt.Errorf("frontend build completed but dist/ directory not found at %s", distDir)
-	}
-
-	logger.Info("Frontend built successfully", "dir", distDir)
+	logger.Info("Frontend built successfully", "file", indexPath)
 	return nil
 }
 
-// verifyFrontendAccessible polls the frontend URL until it responds with 200 OK.
+// verifyFrontendAccessible polls the dev server URL until it responds with 200 OK.
 // This ensures the frontend is ready before starting tests.
 //
 // Parameters:
@@ -397,7 +478,7 @@ func verifyFrontendAccessible(logger *slog.Logger, url string, timeout time.Dura
 
 	for {
 		// Try HTTP GET request
-		resp, err := http.Get(url)
+		resp, err := helpers.HTTPClient().Get(url)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			_ = resp.Body.Close()
 			logger.Info("Frontend verified accessible", "url", url)

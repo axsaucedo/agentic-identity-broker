@@ -43,6 +43,9 @@ func validConfig() *config.Config {
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
+		Sessions: config.SessionsConfig{
+			Extraction: config.SessionExtractionConfig{HTTPHeader: "Mcp-Session-Id"},
+		},
 		Telemetry: config.TelemetryConfig{
 			Exporter: config.OTLPExporterConfig{
 				Timeout: 10 * time.Second,
@@ -170,6 +173,21 @@ func TestValidate(t *testing.T) {
 			name:    "rule1: port 65535 is valid",
 			mutate:  func(c *config.Config) { c.GRPC.Port = 65535 },
 			wantErr: false,
+		},
+		// Rule 1a: grpc.max_concurrent_streams
+		{
+			name:        "rule1a: negative max_concurrent_streams is invalid",
+			mutate:      func(c *config.Config) { c.GRPC.MaxConcurrentStreams = -1 },
+			wantErr:     true,
+			errContains: "grpc.max_concurrent_streams",
+		},
+		{
+			name: "rule1a: max_concurrent_streams above uint32 is invalid",
+			mutate: func(c *config.Config) {
+				c.GRPC.MaxConcurrentStreams = int(uint64(^uint32(0)) + 1)
+			},
+			wantErr:     true,
+			errContains: "grpc.max_concurrent_streams",
 		},
 		// Rule 2: grpc.bind
 		{

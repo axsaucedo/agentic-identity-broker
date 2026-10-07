@@ -88,7 +88,7 @@ export function GrantValidityControl({
   return (
     <Stack gap="md" className={className}>
       {/* Current date info */}
-      <p className="text-sm text-neutral-600">
+      <p className="text-sm text-neutral-600" data-screenshot-dynamic>
         Today:{' '}
         <span className="font-medium">{format(today, 'MMMM d, yyyy')}</span>
       </p>
@@ -98,7 +98,7 @@ export function GrantValidityControl({
         id="grant-expires"
         checked={hasExpiration}
         onChange={handleCheckboxChange}
-        label="Grant expires on a specific date"
+        label="Specific end date"
       />
 
       {/* Date picker (only shown when checkbox is checked) */}
@@ -108,10 +108,10 @@ export function GrantValidityControl({
             value={value.expiresAt || null}
             onChange={handleDateChange}
             minDate={tomorrow}
-            label="Expiration date"
+            label="End date"
             errorMessage={
               value.expiresAt && value.expiresAt <= today
-                ? 'Expiration date must be in the future'
+                ? 'End date must be in the future'
                 : undefined
             }
           />
@@ -130,7 +130,7 @@ export function GrantValidityControl({
                   className="bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
                 >
                   {suggestion.label}
-                  <span className="ml-1.5 text-neutral-500">
+                  <span className="ml-1.5 text-neutral-500" data-screenshot-dynamic>
                     ({format(suggestion.date, 'MMM d, yyyy')})
                   </span>
                 </Button>
@@ -143,7 +143,7 @@ export function GrantValidityControl({
       {/* No expiration message */}
       {!hasExpiration && (
         <p className="pl-7 text-sm text-neutral-600">
-          This grant will remain active indefinitely until manually revoked.
+          After saving, the agent can use your permissions until revoked
         </p>
       )}
     </Stack>

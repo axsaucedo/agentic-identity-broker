@@ -70,3 +70,14 @@ func TestHelmTemplate_LocalModeLeavesTokenExchangeUnconfigured(t *testing.T) {
 	require.NotContains(t, output, `principal_expression: "subject_token.sub"`)
 	require.NotContains(t, output, `agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"`)
 }
+
+func TestHelmTemplate_ManagedKeysUseBase64StringData(t *testing.T) {
+	key := "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+	output := renderHelmTemplate(t,
+		"--set-string", "broker.thirdPartyOauth2.jweSigningKeyBase64="+key,
+		"--set-string", "broker.encryption.memory.rawKey="+key,
+	)
+
+	require.Contains(t, output, "stringData:\n  signing-key: \""+key+"\"")
+	require.Contains(t, output, "stringData:\n  memory-raw-key: \""+key+"\"")
+}

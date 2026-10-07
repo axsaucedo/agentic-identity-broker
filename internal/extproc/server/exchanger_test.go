@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -76,6 +77,8 @@ func newMockServers() *mockServers {
 	m.clientCredsServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		m.clientCredsCalls++
 		w.Header().Set("Content-Type", "application/json")
+		// Prevent idle TCP reads from blocking synctest's virtual clock.
+		w.Header().Set("Connection", "close")
 		if m.clientCredsStatus != http.StatusOK {
 			w.WriteHeader(m.clientCredsStatus)
 			_, _ = fmt.Fprintf(w, `{"error":"server_error"}`)
@@ -96,6 +99,7 @@ func newMockServers() *mockServers {
 		m.lastExchangeForm = r.Form
 
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Connection", "close")
 		if m.exchangeStatus != http.StatusOK {
 			w.WriteHeader(m.exchangeStatus)
 			if m.exchangeErrorURI != "" {
@@ -149,6 +153,29 @@ func configForMocks(m *mockServers) *extprocconfig.Config {
 			ResetTimeout: 30 * time.Second,
 		},
 	}
+}
+
+func TestTokenExchanger_ExchangeRejectsRedirects(t *testing.T) {
+	var redirectRequests atomic.Int32
+	redirect := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		redirectRequests.Add(1)
+	}))
+	defer redirect.Close()
+
+	mocks := newMockServers()
+	defer mocks.Close()
+	mocks.tokenExchServer.Close()
+	mocks.tokenExchServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, redirect.URL, http.StatusFound)
+	}))
+
+	exchanger, err := server.NewTokenExchanger(configForMocks(mocks), testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	_, err = exchanger.Exchange(context.Background(), "subject-token", "https://api.example.com")
+	require.Error(t, err)
+	assert.Zero(t, redirectRequests.Load())
 }
 
 // ---------------------------------------------------------------------------

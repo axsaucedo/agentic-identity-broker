@@ -22,7 +22,7 @@ services:
   identity-broker:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: build/docker/Dockerfile.dev
     container_name: aib-broker
     ports:
       - "8000:8000"
@@ -31,20 +31,20 @@ services:
       # Mount source code for Air hot reload
       - ./cmd:/app/cmd
       - ./internal:/app/internal
-      - ./config.docker.yaml:/app/config.docker.yaml:ro
+      - ./configs/config.docker.yaml:/app/configs/config.docker.yaml:ro
       - ./migrations:/app/migrations
       - ./scripts:/app/scripts:ro
       - ./tests:/app/tests:ro
       - ./mocks:/app/mocks:ro
       - broker-tmp:/app/tmp
-      # Mount .air.docker.toml for Docker-optimized hot reload configuration
-      - ./.air.docker.toml:/app/.air.docker.toml:ro
+      # Mount the Docker-specific Air configuration for hot reload
+      - ./build/air/.air.docker.toml:/app/build/air/.air.docker.toml:ro
       # Mount go.mod and go.sum to keep them in sync with the host.
       # This avoids the "updates to go.mod needed" error in the container.
       - ./go.mod:/app/go.mod
       - ./go.sum:/app/go.sum
     environment:
-      - IDENTITY_BROKER_CONFIG_PATH=config.docker.yaml
+      - IDENTITY_BROKER_CONFIG_PATH=configs/config.docker.yaml
       - IDENTITY_BROKER_LOG_LEVEL=debug
       - IDENTITY_BROKER_JWE_SIGNING_KEY=${IDENTITY_BROKER_JWE_SIGNING_KEY}
       - IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
@@ -73,7 +73,7 @@ services:
   cimd-mock:
     build:
       context: .
-      dockerfile: Dockerfile.cimd
+      dockerfile: build/docker/Dockerfile.cimd
     container_name: aib-cimd-mock
     ports:
       - "9004:443"
@@ -98,7 +98,7 @@ services:
   upstream-oauth2:
     build:
       context: .
-      dockerfile: Dockerfile.mock
+      dockerfile: build/docker/Dockerfile.mock
       args:
         SERVICE_PATH: >-
           mocks/upstream-oauth2-server/cmd/mock-upstream-oauth2-server
@@ -119,7 +119,7 @@ services:
   third-party-oauth2:
     build:
       context: .
-      dockerfile: Dockerfile.mock
+      dockerfile: build/docker/Dockerfile.mock
       args:
         SERVICE_PATH: mocks/third-party-service/cmd/mock-oauth2-server
     container_name: aib-third-party-oauth2
@@ -139,15 +139,15 @@ services:
   sample-agent:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: build/docker/Dockerfile.dev
     container_name: aib-sample-agent
-    command: ["air", "-c", ".air.sample-agent.toml"]
+    command: ["air", "-c", "build/air/.air.sample-agent.toml"]
     ports:
       - "9002:9002"
     volumes:
       - ./mocks/sample-agent:/app/mocks/sample-agent
       - ./scripts:/app/scripts:ro
-      - ./.air.sample-agent.toml:/app/.air.sample-agent.toml:ro
+      - ./build/air/.air.sample-agent.toml:/app/build/air/.air.sample-agent.toml:ro
       - sample-agent-tmp:/app/tmp
     networks:
       - aib-network
@@ -161,7 +161,7 @@ services:
         condition: service_healthy
 
   opa-bundle-volume-init:
-    image: alpine:latest
+    image: alpine:latest@sha256:5b02b42e375f7426f8d65c3af331ca05d9878f9989230354504e0b9dfd431f60
     user: "0:0" # Required to give the non-root builder ownership of /output.
     network_mode: none
     volumes: [opa-bundles:/output]
@@ -170,7 +170,7 @@ services:
   # Compiles mocks/opa/bundle/ into the opa-bundles volume at startup.
   # For local policy development and testing, use `just opa-check` instead.
   opa-bundle-build:
-    image: openpolicyagent/opa:latest
+    image: openpolicyagent/opa:latest@sha256:1b9ca9be95e6867ac658bfd3aa36804064c06017c7977759de68e9dd00de37fb
     container_name: aib-opa-bundle-build
     working_dir: /bundle
     volumes:
@@ -184,7 +184,7 @@ services:
 
   # Serves the compiled bundle as a static file for OPA to poll.
   opa-bundle-server:
-    image: nginx:alpine
+    image: nginx:alpine@sha256:62ff2089abf5a9ed33bd232895bef5e22f7bb4b200675cec49a5ebc48e3d4ac8
     container_name: aib-opa-bundle-server
     ports:
       - "8080:80"  # exposed for local testing only; extproc uses container-internal port 80
@@ -200,18 +200,16 @@ services:
   extproc-token-exchange:
     build:
       context: .
-      dockerfile: Dockerfile.extproc
+      dockerfile: build/docker/Dockerfile.extproc
       target: development
     container_name: aib-extproc
     volumes:
-      - ./config.extproc.docker.yaml:/app/config.yaml:ro
+      - ./configs/config.extproc.docker.yaml:/app/config.yaml:ro
       - ./mocks/opa/opa-config.yaml:/etc/extproc/opa-config.yaml:ro
     environment:
       - EXTPROC_CONFIG_PATH=/app/config.yaml
       - EXTPROC_CLIENT_SECRET=${EXTPROC_CLIENT_SECRET:-extproc-dev-secret}
       - EXTPROC_LOG_LEVEL=${EXTPROC_LOG_LEVEL:-debug}
-      - EXTPROC_AUTHORIZATION_ENABLED=${EXTPROC_AUTHORIZATION_ENABLED:-false}
-      - EXTPROC_AUTHORIZATION_POLICY_CONFIG_FILE=${EXTPROC_AUTHORIZATION_POLICY_CONFIG_FILE:-}
     networks:
       - aib-network
     depends_on:
@@ -219,12 +217,14 @@ services:
         condition: service_healthy
       upstream-oauth2:
         condition: service_healthy
+      opa-bundle-server:
+        condition: service_started
 
   # MCP server mock (Streamable HTTP transport, port 9003)
   mcp-server-mock:
     build:
       context: .
-      dockerfile: Dockerfile.mock
+      dockerfile: build/docker/Dockerfile.mock
       args:
         SERVICE_PATH: mocks/mcp-server/cmd/mcp-server
     container_name: aib-mcp-server
@@ -242,7 +242,7 @@ services:
 
   # Agentgateway routes MCP calls through ExtProc for token exchange.
   agentgateway:
-    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.5.0}
+    image: cr.agentgateway.dev/agentgateway:v1.5.0@sha256:bf2f339ef326d32def2aaeb44b1b4549801293c19b89e764a4228667d97d9896
     container_name: aib-agentgateway
     ports:
       - "4000:4000"
@@ -262,7 +262,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile.web
+      dockerfile: build/docker/Dockerfile.web
     container_name: aib-frontend
     ports:
       - "3000:3000"

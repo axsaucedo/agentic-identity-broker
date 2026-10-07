@@ -4,7 +4,15 @@ package tokenexchange
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
+
+// ServiceRef identifies the third-party OAuth2 service a token exchange resolved to.
+type ServiceRef struct {
+	ID   id.ServiceID
+	Name string
+}
 
 // TokenExchangeResponse represents an RFC 8693 token exchange response.
 // It is an immutable value object that holds the result of a successful token exchange.
@@ -61,6 +69,10 @@ type TokenExchangeResponse struct {
 	// Optional - included in the response per FR-012 for grant provenance.
 	// Keys are permission set UUID strings, values are arrays of service UUID strings.
 	GrantedPermissionSets map[string][]string `json:"granted_permission_sets,omitempty"`
+
+	Principal string     `json:"principal,omitempty"`
+	AgentID   string     `json:"agent_id,omitempty"`
+	Service   ServiceRef `json:"-"`
 }
 
 // NewTokenExchangeResponse creates a new token exchange response.
@@ -135,7 +147,7 @@ func (resp *TokenExchangeResponse) Validate() error {
 // Per SR-005, token values are present in JSON (required for client use)
 // but not in logging/String representations.
 func (resp *TokenExchangeResponse) ToJSON() ([]byte, error) {
-	return json.Marshal(resp)
+	return json.Marshal(resp) // #nosec G117 -- RFC 8693 token response is serialized for its direct HTTP response, not logging.
 }
 
 // String returns a string representation suitable for logging.

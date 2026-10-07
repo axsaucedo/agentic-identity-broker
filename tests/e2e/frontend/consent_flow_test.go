@@ -5,6 +5,8 @@ package e2e_test
 import (
 	"context"
 
+	"time"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -76,13 +78,6 @@ var _ = Describe("Consent Flow", func() {
 		consentPage = pages.NewConsentPage(GetTestPage(), GetFrontendURL())
 	})
 
-	// Cleanup after each test
-	AfterEach(func() {
-		if consentPage != nil {
-			_ = consentPage.Close()
-		}
-	})
-
 	Context("when agent has only optional service requirements", func() {
 		BeforeEach(func() {
 			// Create two optional services using fixtures; customize only the IDs to avoid
@@ -139,7 +134,10 @@ var _ = Describe("Consent Flow", func() {
 
 			err = consentPage.SubmitConsent(ctx)
 			Expect(err).NotTo(HaveOccurred(), "SubmitConsent should succeed after selecting optional services")
-			Expect(consentPage.WaitForNoValidationError(ctx, 2000)).To(Succeed(), "Expected no validation error after approving optional services")
+			Expect(consentPage.WaitForGrantSuccess(ctx)).To(Succeed(), "Expected successful grant after approving optional services")
+			hasError, err := consentPage.HasError(ctx)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasError).To(BeFalse(), "No validation error should remain after a successful grant")
 		})
 	})
 
@@ -164,6 +162,23 @@ var _ = Describe("Consent Flow", func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to take screenshot")
 
 		GetLogger().Info("Test passed: Consent page renders correctly with UI elements visible")
+	})
+
+	// Scenario 10 from specs/007-consent-frontend/spec.md
+	It("allows a user to set and read a future end date", func() {
+		err := consentPage.NavigateToAgent(ctx, testAgentID)
+		Expect(err).NotTo(HaveOccurred(), "Failed to navigate to consent page")
+
+		err = consentPage.EnableSpecificEndDate(ctx)
+		Expect(err).NotTo(HaveOccurred(), "Failed to enable a specific end date")
+
+		endDate := time.Now().AddDate(0, 1, 0)
+		err = consentPage.SetExpirationDate(ctx, endDate)
+		Expect(err).NotTo(HaveOccurred(), "Failed to set end date")
+
+		actualEndDate, err := consentPage.GetExpirationDate(ctx)
+		Expect(err).NotTo(HaveOccurred(), "Failed to get end date")
+		Expect(actualEndDate).To(Equal(endDate.Format("2006-01-02")))
 	})
 
 	// Test: Verify scopes are displayed correctly

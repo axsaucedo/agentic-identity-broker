@@ -1,7 +1,7 @@
 # Storage Integration Tests
 
-This directory contains the storage-focused integration tests for the persistence layer adapters.
-Self-contained tests stay in `tests/integration/storage/`, while infra-backed PostgreSQL tests live in `tests/integration/storage/infra/`.
+This directory contains storage integration tests. Self-contained tests are in `tests/integration/storage/`.
+PostgreSQL adapter tests are in `tests/integration/storage/infra/` and `internal/adapters/storage/postgres/`.
 
 ## Running Integration Tests
 
@@ -53,6 +53,13 @@ go test -tags=integration -v ./tests/integration/storage/infra/...
 # or just test-integration-infra
 ```
 
+The repository tests cover approval, permission-set, and grant transactions, expiry, conflicts, and failed writes.
+Run them against PostgreSQL with:
+
+```bash
+go test -tags=integration -count=1 ./internal/adapters/storage/postgres
+```
+
 Tests:
 - `TestPostgresAdapter_Initialize_ConnectionFailed` - Invalid connection handling
 - `TestPostgresAdapter_HealthCheck_NotInitialized` - Health check validation
@@ -62,7 +69,7 @@ Tests:
 
 ## Container Runtime
 
-The integration tests use Docker through testcontainers. If Docker is unavailable, the tests skip.
+Locally, tests that require containers skip when Docker or Podman is unavailable. In CI, missing or failed containers fail the infra suites instead of passing without coverage.
 
 ## Test Configuration
 
@@ -107,10 +114,11 @@ TESTCONTAINERS_LOGS=true go test -tags=integration -v ./tests/integration/storag
 
 ## CI/CD Integration
 
-Provide a Docker daemon to jobs that run infra-backed integration tests:
+Provide a container runtime to jobs that run infra-backed integration tests.
+Use `-count=1` so a cached success cannot bypass the live runtime check:
 
 ```bash
-go test -tags=integration -v ./tests/integration/storage/infra/...
+go test -count=1 -tags=integration -v ./tests/integration/storage/infra/...
 ```
 
 ## Performance Notes

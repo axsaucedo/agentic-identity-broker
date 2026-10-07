@@ -203,11 +203,13 @@ func TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream(t *testing.T) {
 
 	// Register agent
 	agentID := id.NewAgentID()
+	permissionSetID := id.NewPermissionSetID()
 	agent := &storage.Agent{
-		ID:           agentID,
-		ClientID:     ptr.To(id.NewClientID("client-1")),
-		DisplayName:  "Test Client",
-		RedirectURIs: []string{"https://client.example.com/callback"},
+		ID:             agentID,
+		ClientID:       ptr.To(id.NewClientID("client-1")),
+		DisplayName:    "Test Client",
+		RedirectURIs:   []string{"https://client.example.com/callback"},
+		PermissionSets: []storage.AgentPermissionSetEntry{{PermissionSetID: permissionSetID, RequirementType: storage.RequirementTypeOptional}},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
@@ -217,7 +219,7 @@ func TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream(t *testing.T) {
 		Principal:             id.Principal("user@example.com"),
 		AgentID:               agentID,
 		ValidUntil:            nil, // Indefinite grant
-		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: permissionSetID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
@@ -321,11 +323,13 @@ func TestOAuth2AuthorizeEndpoint_WithMiddleware(t *testing.T) {
 	grantRepo := newInMemoryGrantRepo()
 
 	agentID := id.NewAgentID()
+	permissionSetID := id.NewPermissionSetID()
 	agent := &storage.Agent{
-		ID:           agentID,
-		ClientID:     ptr.To(id.NewClientID("client-1")),
-		DisplayName:  "Test Client",
-		RedirectURIs: []string{"https://client.example.com/callback"},
+		ID:             agentID,
+		ClientID:       ptr.To(id.NewClientID("client-1")),
+		DisplayName:    "Test Client",
+		RedirectURIs:   []string{"https://client.example.com/callback"},
+		PermissionSets: []storage.AgentPermissionSetEntry{{PermissionSetID: permissionSetID, RequirementType: storage.RequirementTypeOptional}},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
@@ -334,7 +338,7 @@ func TestOAuth2AuthorizeEndpoint_WithMiddleware(t *testing.T) {
 		Principal:             id.Principal("user@example.com"),
 		AgentID:               agentID,
 		ValidUntil:            nil,
-		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: permissionSetID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
@@ -378,11 +382,13 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 	grantRepo := newInMemoryGrantRepo()
 
 	agentID := id.NewAgentID()
+	permissionSetID := id.NewPermissionSetID()
 	agent := &storage.Agent{
-		ID:           agentID,
-		ClientID:     ptr.To(id.NewClientID("client-1")),
-		DisplayName:  "Test Client",
-		RedirectURIs: []string{"https://client.example.com/callback"},
+		ID:             agentID,
+		ClientID:       ptr.To(id.NewClientID("client-1")),
+		DisplayName:    "Test Client",
+		RedirectURIs:   []string{"https://client.example.com/callback"},
+		PermissionSets: []storage.AgentPermissionSetEntry{{PermissionSetID: permissionSetID, RequirementType: storage.RequirementTypeOptional}},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
@@ -391,7 +397,7 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 		Principal:             id.Principal("user@example.com"),
 		AgentID:               agentID,
 		ValidUntil:            nil,
-		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: permissionSetID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
@@ -574,9 +580,12 @@ func (r *inMemoryGrantRepo) ListByPrincipal(ctx context.Context, principal id.Pr
 	return grants, nil
 }
 
-func (r *inMemoryGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
+func (r *inMemoryGrantRepo) CountAgentsByPrincipalAndServiceID(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (int, error) {
 	agents := make(map[id.AgentID]bool)
 	for _, grant := range r.grants {
+		if grant.Principal != principal {
+			continue
+		}
 		for _, entry := range grant.GrantedPermissionSets {
 			for _, svcID := range entry.IncludedServiceIDs {
 				if svcID == serviceID {
@@ -589,9 +598,12 @@ func (r *inMemoryGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceI
 	return len(agents), nil
 }
 
-func (r *inMemoryGrantRepo) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
+func (r *inMemoryGrantRepo) ListByPrincipalAndServiceID(ctx context.Context, principal id.Principal, serviceID id.ServiceID) ([]id.AgentID, error) {
 	agents := make(map[id.AgentID]bool)
 	for _, grant := range r.grants {
+		if grant.Principal != principal {
+			continue
+		}
 		for _, entry := range grant.GrantedPermissionSets {
 			for _, svcID := range entry.IncludedServiceIDs {
 				if svcID == serviceID {

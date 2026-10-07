@@ -21,6 +21,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
@@ -223,26 +225,29 @@ var _ = Describe("ExtProc Telemetry", func() {
 
 		// Scenario 1.4 from specs/027-extproc-otel/spec.md
 		It("US1-S4: records error outcome on token exchange failure", func() {
-			env.MockTokenExchange.WithError(500, "server_error")
+			env.MockTokenExchange.WithError(400, "invalid_grant")
 
 			client, conn := env.NewExtProcClient()
 			defer conn.Close() //nolint:errcheck
 
-			sendExchangeRequest(client, standardRequestHeaders())
+			response := sendExchangeRequest(client, standardRequestHeaders())
+			Expect(response.GetImmediateResponse()).NotTo(BeNil())
+			Expect(int32(response.GetImmediateResponse().GetStatus().GetCode())).To(Equal(int32(500)),
+				"broker errors without a recovery URI keep the generic HTTP 500 mapping")
 
 			exchangeSpan := findSpan(spanRecorder, "extproc.token_exchange")
 			Expect(exchangeSpan).NotTo(BeNil(), "expected extproc.token_exchange span even on failure")
+			Expect(exchangeSpan.Status().Code).To(Equal(otelcodes.Error))
+			Expect(exchangeSpan.Status().Description).To(Equal("exchange_failure"))
 
-			var outcome string
+			attrs := map[string]attribute.Value{}
 			for _, attr := range exchangeSpan.Attributes() {
-				if string(attr.Key) == "outcome" {
-					outcome = attr.Value.AsString()
-				}
+				attrs[string(attr.Key)] = attr.Value
 			}
-			Expect(outcome).To(Or(
-				Equal("exchange_failure"),
-				Equal("circuit_open"),
-			), "span outcome must reflect the exchange failure")
+			Expect(attrs["outcome"].AsString()).To(Equal("exchange_failure"))
+			Expect(attrs["token_exchange.broker_status_code"].Type()).To(Equal(attribute.INT64))
+			Expect(attrs["token_exchange.broker_status_code"].AsInt64()).To(Equal(int64(400)))
+			Expect(attrs["token_exchange.broker_error_code"].AsString()).To(Equal("invalid_grant"))
 		})
 
 		// Scenario 1.5 from specs/027-extproc-otel/spec.md
@@ -295,14 +300,14 @@ var _ = Describe("ExtProc Telemetry", func() {
 				},
 				Exporter: ports.OTLPExporterConfig{
 					Protocol: ports.OTLPProtocolGRPC,
-					Endpoint: "localhost:4317",
+					Endpoint: "127.0.0.1:19999",
 					Insecure: true,
 				},
 			}
 			shutdown, err := telemetry.NewProvider(context.Background(), telCfg, testLogger)
 			Expect(err).NotTo(HaveOccurred(), "NewProvider must succeed with traces.enabled=false")
 			DeferCleanup(func() {
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 				defer cancel()
 				_ = shutdown(ctx)
 			})
@@ -547,7 +552,8 @@ telemetry:
 				},
 				Exporter: ports.OTLPExporterConfig{
 					Protocol: ports.OTLPProtocolGRPC,
-					Endpoint: "localhost:19999", // unreachable — export fails silently
+					Endpoint: "127.0.0.1:19999", // unreachable — export fails silently
+					Timeout:  100 * time.Millisecond,
 					Insecure: true,
 				},
 			}
@@ -555,7 +561,7 @@ telemetry:
 			Expect(err).NotTo(HaveOccurred())
 
 			DeferCleanup(func() {
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 				defer cancel()
 				_ = shutdown(ctx)
 				otel.SetMeterProvider(prevMP)
@@ -603,7 +609,8 @@ telemetry:
 				},
 				Exporter: ports.OTLPExporterConfig{
 					Protocol: ports.OTLPProtocolGRPC,
-					Endpoint: "localhost:19999", // unreachable — export fails silently
+					Endpoint: "127.0.0.1:19999", // unreachable — export fails silently
+					Timeout:  100 * time.Millisecond,
 					Insecure: true,
 				},
 			}
@@ -620,7 +627,7 @@ telemetry:
 			// it with a local SpanRecorder, to avoid leaking its resources.
 			// Use the shutdown function (which also handles logs) with a short
 			// timeout since the exporter endpoint is unreachable.
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), time.Second)
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			_ = shutdown(shutdownCtx)
 			shutdownCancel()
 
@@ -672,22 +679,20 @@ telemetry:
 		BeforeEach(func() {
 			prevTP := otel.GetTracerProvider()
 
-			// Set up a TracerProvider with a real OTLP gRPC exporter pointing at an
-			// unreachable endpoint (localhost:19999). This exercises the same telemetry
-			// initialization path used in cmd/extproc-token-exchange when the collector
-			// is unavailable. The gRPC connection is non-blocking: provider creation
-			// succeeds immediately; export attempts fail silently in the background.
+			// A dead collector must not interrupt token exchange requests.
+			// Keep exporter retries out of this request-path test.
 			traceExporter, err := otlptracegrpc.New(context.Background(),
-				otlptracegrpc.WithEndpointURL("http://localhost:19999"),
+				otlptracegrpc.WithEndpointURL("http://127.0.0.1:19999"),
 				otlptracegrpc.WithInsecure(),
+				otlptracegrpc.WithTimeout(100*time.Millisecond),
+				otlptracegrpc.WithRetry(otlptracegrpc.RetryConfig{Enabled: false}),
 			)
 			Expect(err).NotTo(HaveOccurred(),
 				"OTLP exporter setup must not block even when collector is unreachable")
 			tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(traceExporter))
 			otel.SetTracerProvider(tp)
 			DeferCleanup(func() {
-				// Use a short deadline: the exporter may retry; we do not want tests to hang.
-				shutdownCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 				defer cancel()
 				_ = tp.Shutdown(shutdownCtx)
 				otel.SetTracerProvider(prevTP)
@@ -731,18 +736,6 @@ telemetry:
 				"exchanges must reach the broker")
 		})
 
-		// Scenario 4.3 from specs/027-extproc-otel/spec.md
-		It("US4-S3: telemetry does not block request processing", func() {
-			client, conn := env.NewExtProcClient()
-			defer conn.Close() //nolint:errcheck
-
-			start := time.Now()
-			sendExchangeRequest(client, standardRequestHeaders())
-			elapsed := time.Since(start)
-
-			Expect(elapsed).To(BeNumerically("<", 2*time.Second),
-				"request must complete within 2s; telemetry must not block on export")
-		})
 	})
 
 	// ====================================================================

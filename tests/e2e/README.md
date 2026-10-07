@@ -174,12 +174,8 @@ ginkgo -v --label-filter="!performance" ./tests/e2e/
 # Run the dedicated performance-labelled SC-001 measurement
 ginkgo -v --procs=1 --label-filter="performance" ./tests/e2e/
 
-# Run functional backend tests with coverage
-ginkgo -v --label-filter="!performance" --cover ./tests/e2e/
-
-# Generate functional backend HTML coverage report
-ginkgo -v --label-filter="!performance" --coverprofile=coverage/e2e-backend.out ./tests/e2e/
-go tool cover -html=coverage/e2e-backend.out -o coverage/e2e-backend.html
+# Run functional backend tests with production-code coverage and generate HTML
+just test-e2e-backend-coverage
 
 # Watch functional backend tests
 ginkgo watch -v --label-filter="!performance" ./tests/e2e/
@@ -2351,6 +2347,8 @@ func (cp *ConsentPage) DelegateService(ctx context.Context, serviceName string) 
    func (cp *ConsentPage) GetAgentHeading(ctx context.Context) (playwright.Locator, error)
    ```
 
+5. **Disambiguate repeated controls** - When cards share a button or radio label, scope the locator to a card or use `.First()` for an explicit first-card contract. Exercise the page object with multiple matching cards.
+
 ### Ginkgo By() for Longer Test Sequences
 
 For complex tests with multiple steps, use Ginkgo's `By()` function to organize and report progress:
@@ -2661,8 +2659,12 @@ HEADLESS=false ginkgo -v --focus="test-name" ./tests/e2e/frontend/
 By("taking screenshot at this point")
 err := consentPage.TakeScreenshot(ctx, "debug-point-name")
 Expect(err).NotTo(HaveOccurred())
-// Screenshot saved to tests/e2e/frontend/screenshots/
+// Screenshot saved to tests/e2e/frontend/coverage/screenshots/
 ```
+
+Run `E2E_CAPTURE_SCREENSHOTS=true GINKGO_FRONTEND_PROCS=1 just test-e2e-frontend` for maintained screenshots.
+Capture fails if one of the three bundled fonts does not load.
+The capture hides elements marked `data-screenshot-dynamic`. The normal page still shows these elements.
 
 #### Add Detailed Logging
 
@@ -2683,5 +2685,5 @@ GetLogger().Info("Service check complete",
 - [/tests/e2e/bootstrap/test_server.go](bootstrap/test_server.go) - Server implementation details
 - [/tests/e2e/pages/](pages/) - Page Object implementations
 - [/specs/009-oauth2-auth-server/spec.md](../../specs/009-oauth2-auth-server/spec.md) - Feature specification
-- `/ARCHITECTURE.md` - System architecture overview
+- `ARCHITECTURE.md` - System architecture overview
 - `/justfile` - Available test commands

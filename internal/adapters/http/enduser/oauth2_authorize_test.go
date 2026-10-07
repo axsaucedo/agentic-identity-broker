@@ -285,11 +285,13 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *testing.T) {
 	agentRepo := newMockAgentRepo()
 	agentID := id.NewAgentID()
+	permissionSetID := id.NewPermissionSetID()
 	agent := &storage.Agent{
-		ID:           agentID,
-		ClientID:     ptr.To(id.ClientID("client-1")),
-		DisplayName:  "Test Client",
-		RedirectURIs: []string{"https://client.example.com/callback"},
+		ID:             agentID,
+		ClientID:       ptr.To(id.ClientID("client-1")),
+		DisplayName:    "Test Client",
+		RedirectURIs:   []string{"https://client.example.com/callback"},
+		PermissionSets: []storage.AgentPermissionSetEntry{{PermissionSetID: permissionSetID, RequirementType: storage.RequirementTypeOptional}},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
@@ -299,7 +301,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 		Principal:             id.Principal("user@example.com"),
 		AgentID:               agentID,
 		ValidUntil:            nil,
-		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: permissionSetID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
@@ -347,11 +349,13 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T) {
 	agentRepo := newMockAgentRepo()
 	agentID := id.NewAgentID()
+	permissionSetID := id.NewPermissionSetID()
 	agent := &storage.Agent{
-		ID:           agentID,
-		ClientID:     ptr.To(id.ClientID("client-1")),
-		DisplayName:  "Test Client",
-		RedirectURIs: []string{"https://client.example.com/callback"},
+		ID:             agentID,
+		ClientID:       ptr.To(id.ClientID("client-1")),
+		DisplayName:    "Test Client",
+		RedirectURIs:   []string{"https://client.example.com/callback"},
+		PermissionSets: []storage.AgentPermissionSetEntry{{PermissionSetID: permissionSetID, RequirementType: storage.RequirementTypeOptional}},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
@@ -361,7 +365,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 		Principal:             id.Principal("user@example.com"),
 		AgentID:               agentID,
 		ValidUntil:            nil,
-		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: permissionSetID, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
@@ -687,9 +691,12 @@ func (m *mockGrantRepository) ListByPrincipal(ctx context.Context, principal id.
 	return grants, nil
 }
 
-func (m *mockGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
+func (m *mockGrantRepository) CountAgentsByPrincipalAndServiceID(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (int, error) {
 	agents := make(map[id.AgentID]bool)
 	for _, grant := range m.grants {
+		if grant.Principal != principal {
+			continue
+		}
 		for _, entry := range grant.GrantedPermissionSets {
 			for _, svcID := range entry.IncludedServiceIDs {
 				if svcID == serviceID {
@@ -724,9 +731,12 @@ func (n *noopSessionRepository) CountByService(_ context.Context, _ id.ServiceID
 	return 0, nil
 }
 
-func (m *mockGrantRepository) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
+func (m *mockGrantRepository) ListByPrincipalAndServiceID(ctx context.Context, principal id.Principal, serviceID id.ServiceID) ([]id.AgentID, error) {
 	agents := make(map[id.AgentID]bool)
 	for _, grant := range m.grants {
+		if grant.Principal != principal {
+			continue
+		}
 		for _, entry := range grant.GrantedPermissionSets {
 			for _, svcID := range entry.IncludedServiceIDs {
 				if svcID == serviceID {

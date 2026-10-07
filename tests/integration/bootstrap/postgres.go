@@ -49,6 +49,9 @@ func RequireSharedPostgres(t *testing.T) *SharedPostgres {
 	}
 
 	if err := CanAccessContainerRuntime(); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("PostgreSQL integration requires a container runtime in CI: %v", err)
+		}
 		t.Skipf("Skipping PostgreSQL integration test: %v", err)
 	}
 
@@ -57,6 +60,9 @@ func RequireSharedPostgres(t *testing.T) *SharedPostgres {
 	})
 
 	if sharedPostgresErr != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("Starting PostgreSQL integration container in CI: %v", sharedPostgresErr)
+		}
 		t.Skipf("Skipping PostgreSQL integration test: %v", sharedPostgresErr)
 	}
 
@@ -193,7 +199,7 @@ func (pg *SharedPostgres) ApplyMigration(t *testing.T, dbName, filename string) 
 	require.NoError(t, err, "Failed to find project root")
 
 	migrationPath := filepath.Join(projectRoot, "migrations", filename)
-	data, err := os.ReadFile(migrationPath)
+	data, err := os.ReadFile(migrationPath) // #nosec G304 -- test helper reads repository-owned migration filenames.
 	require.NoErrorf(t, err, "Failed to read migration file %s", filename)
 
 	pg.ExecuteSQL(t, dbName, string(data))

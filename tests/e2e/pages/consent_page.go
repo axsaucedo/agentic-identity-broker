@@ -5,8 +5,6 @@ package pages
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -34,7 +32,6 @@ const (
 // Usage pattern:
 //
 //	consentPage := NewConsentPage(page, baseURL)
-//	defer consentPage.Close()
 //	consentPage.NavigateToAgent(ctx, "agent-id")
 //	consentPage.SelectScope(ctx, "user:read")
 //	consentPage.SubmitConsent(ctx)
@@ -152,13 +149,29 @@ func (cp *ConsentPage) page() playwright.Page {
 	return cp.GetPlaywrightPage()
 }
 
-// getApproveButton returns the "Approve & Delegate" button locator.
-// This private helper prevents duplication across SubmitConsent and IsConsentButtonEnabled.
-func (cp *ConsentPage) getApproveButton(ctx context.Context) playwright.Locator {
+func (cp *ConsentPage) getConsentActionButton(label string) playwright.Locator {
 	return cp.page().GetByRole(
 		"button",
-		playwright.PageGetByRoleOptions{Name: "Approve & Delegate"},
+		playwright.PageGetByRoleOptions{Name: label},
 	)
+}
+
+func (cp *ConsentPage) isConsentActionEnabled(label string) (bool, error) {
+	button := cp.getConsentActionButton(label)
+	count, err := button.Count()
+	if err != nil {
+		return false, fmt.Errorf("failed to locate consent action button: %w", err)
+	}
+	if count == 0 {
+		return false, fmt.Errorf("consent action button not found")
+	}
+
+	enabled, err := button.IsEnabled()
+	if err != nil {
+		return false, fmt.Errorf("failed to check consent action button enabled state: %w", err)
+	}
+
+	return enabled, nil
 }
 
 // waitForAgentNameHeading waits for the main h1 heading (agent name) to appear.
@@ -219,47 +232,36 @@ func (cp *ConsentPage) ClearScope(ctx context.Context, scopeName string) error {
 	return fmt.Errorf("scope clearing is not available in current UI; scopes are determined by service requirements. Use RevokeService() to revoke all scopes for a service")
 }
 
-// SubmitConsent finds the "Approve & Delegate" button and clicks it.
+// SubmitConsent clicks the "Approve & Delegate" action for a new grant.
 //
 // Parameters:
 //   - ctx: Context for cancellation
 //
 // Returns:
-//   - error: If button not found or not clickable
+//   - error: If the button is not found or not clickable
 //
 // The button may be disabled if mandatory requirements are not met.
-//
-// Example:
-//
-//	err := consentPage.SubmitConsent(ctx)
-//	Expect(err).NotTo(HaveOccurred())
 func (cp *ConsentPage) SubmitConsent(ctx context.Context) error {
-	button := cp.getApproveButton(ctx)
+	button := cp.getConsentActionButton("Approve & Delegate")
+	if err := button.Click(); err != nil {
+		return fmt.Errorf("failed to click approve and delegate button: %w", err)
+	}
+	return nil
+}
 
-	// Check if button exists
-	count, err := button.Count()
+func (cp *ConsentPage) endDateInput() (playwright.Locator, error) {
+	input := cp.page().GetByLabel("End date", playwright.PageGetByLabelOptions{
+		Exact: playwright.Bool(true),
+	})
+	count, err := input.Count()
 	if err != nil {
-		return fmt.Errorf("failed to count submit button: %w", err)
+		return nil, fmt.Errorf("failed to count expiration input: %w", err)
 	}
 	if count == 0 {
-		return fmt.Errorf("approve & delegate button not found")
+		return nil, fmt.Errorf("expiration input not found")
 	}
 
-	// Check if button is enabled
-	enabled, err := button.IsEnabled()
-	if err != nil {
-		return fmt.Errorf("failed to check button enabled state: %w", err)
-	}
-	if !enabled {
-		return fmt.Errorf("approve & delegate button not enabled (may require mandatory services to be connected)")
-	}
-
-	// Click the button
-	if err := button.Click(); err != nil {
-		return fmt.Errorf("failed to click Approve & Delegate button: %w", err)
-	}
-
-	return nil
+	return input, nil
 }
 
 // SetExpiration sets the grant expiration days using the expiration input.
@@ -283,16 +285,9 @@ func (cp *ConsentPage) SetExpiration(ctx context.Context, expirationDays int) er
 		return fmt.Errorf("expirationDays must be positive")
 	}
 
-	// Find expiration input by label
-	input := cp.page().GetByLabel("Expiration")
-
-	// Check if element exists
-	count, err := input.Count()
+	input, err := cp.endDateInput()
 	if err != nil {
-		return fmt.Errorf("failed to count expiration input: %w", err)
-	}
-	if count == 0 {
-		return fmt.Errorf("expiration input not found")
+		return err
 	}
 
 	// Calculate expiration date
@@ -304,6 +299,13 @@ func (cp *ConsentPage) SetExpiration(ctx context.Context, expirationDays int) er
 	}
 
 	return nil
+}
+
+// EnableSpecificEndDate selects the specific end date option.
+func (cp *ConsentPage) EnableSpecificEndDate(_ context.Context) error {
+	return cp.page().GetByRole("checkbox", playwright.PageGetByRoleOptions{
+		Name: "Specific end date",
+	}).Check()
 }
 
 // SetExpirationDate sets the grant expiration to a specific date.
@@ -323,16 +325,9 @@ func (cp *ConsentPage) SetExpiration(ctx context.Context, expirationDays int) er
 //	err := consentPage.SetExpirationDate(ctx, tomorrow)
 //	Expect(err).NotTo(HaveOccurred())
 func (cp *ConsentPage) SetExpirationDate(ctx context.Context, date time.Time) error {
-	// Find expiration input by label
-	input := cp.page().GetByLabel("Expiration")
-
-	// Check if element exists
-	count, err := input.Count()
+	input, err := cp.endDateInput()
 	if err != nil {
-		return fmt.Errorf("failed to count expiration input: %w", err)
-	}
-	if count == 0 {
-		return fmt.Errorf("expiration input not found")
+		return err
 	}
 
 	// Format date as ISO 8601
@@ -516,39 +511,14 @@ func (cp *ConsentPage) GetSelectedScopes(ctx context.Context) ([]string, error) 
 	return selected, nil
 }
 
-// IsConsentButtonEnabled checks if the "Approve & Delegate" button is enabled.
-//
-// Parameters:
-//   - ctx: Context for cancellation
-//
-// Returns:
-//   - bool: True if button is enabled, false otherwise
-//   - error: If button not found
-//
-// Example:
-//
-//	enabled, err := consentPage.IsConsentButtonEnabled(ctx)
-//	Expect(err).NotTo(HaveOccurred())
-//	Expect(enabled).To(BeFalse()) // Still loading mandatory requirements
+// IsConsentButtonEnabled checks if the new-grant consent action is enabled.
 func (cp *ConsentPage) IsConsentButtonEnabled(ctx context.Context) (bool, error) {
-	button := cp.getApproveButton(ctx)
+	return cp.isConsentActionEnabled("Approve & Delegate")
+}
 
-	// Check if button exists
-	count, err := button.Count()
-	if err != nil {
-		return false, fmt.Errorf("failed to count submit button: %w", err)
-	}
-	if count == 0 {
-		return false, fmt.Errorf("approve & delegate button not found")
-	}
-
-	// Check if enabled
-	enabled, err := button.IsEnabled()
-	if err != nil {
-		return false, fmt.Errorf("failed to check button enabled state: %w", err)
-	}
-
-	return enabled, nil
+// IsSaveButtonEnabled checks if the existing-grant Save action is enabled.
+func (cp *ConsentPage) IsSaveButtonEnabled(ctx context.Context) (bool, error) {
+	return cp.isConsentActionEnabled("Save")
 }
 
 // GetSuccessMessage retrieves the success message after form submission.
@@ -653,40 +623,6 @@ func (cp *ConsentPage) HasError(ctx context.Context) (bool, error) {
 	return count > 0, nil
 }
 
-// WaitForNoValidationError asserts that no validation alert appears on the page within
-// the given timeout window. It works by waiting for an alert role element to become
-// visible; a timeout (meaning no alert appeared) is treated as success.
-//
-// This avoids the false-negative that the previous "wait for hidden" approach had: if
-// the alert is not yet in the DOM when WaitFor is called, Playwright considers the
-// locator already "hidden" and returns immediately — so a late-appearing alert would
-// not be caught. By waiting for the alert to become *visible* and treating a timeout as
-// the expected "no error" outcome, we cover the full React state-update window.
-//
-// Parameters:
-//   - ctx: Context for cancellation
-//   - timeoutMs: Maximum wait in milliseconds (default 2000 if ≤ 0)
-//
-// Returns:
-//   - error: If an alert becomes visible within the timeout window
-func (cp *ConsentPage) WaitForNoValidationError(ctx context.Context, timeoutMs int) error {
-	if timeoutMs <= 0 {
-		timeoutMs = 2000
-	}
-	alert := cp.page().GetByRole("alert")
-	err := alert.WaitFor(playwright.LocatorWaitForOptions{
-		State:   playwright.WaitForSelectorStateVisible,
-		Timeout: playwright.Float(float64(timeoutMs)),
-	})
-	if err != nil {
-		// Timeout means no alert appeared within the window — that is the expected outcome.
-		return nil
-	}
-	// An alert became visible unexpectedly — report it as a validation error.
-	text, _ := alert.TextContent()
-	return fmt.Errorf("unexpected validation error appeared: %s", text)
-}
-
 // GetExpirationDate retrieves the current expiration date value from the input.
 //
 // Parameters:
@@ -702,16 +638,9 @@ func (cp *ConsentPage) WaitForNoValidationError(ctx context.Context, timeoutMs i
 //	Expect(err).NotTo(HaveOccurred())
 //	Expect(date).To(Equal("2026-02-15"))
 func (cp *ConsentPage) GetExpirationDate(ctx context.Context) (string, error) {
-	// Find expiration input by label
-	input := cp.page().GetByLabel("Expiration")
-
-	// Check if element exists
-	count, err := input.Count()
+	input, err := cp.endDateInput()
 	if err != nil {
-		return "", fmt.Errorf("failed to count expiration input: %w", err)
-	}
-	if count == 0 {
-		return "", fmt.Errorf("expiration input not found")
+		return "", err
 	}
 
 	// Get the value attribute
@@ -800,6 +729,48 @@ func (cp *ConsentPage) TogglePermissionSet(_ context.Context, permissionSetName 
 	return cp.page().GetByRole("switch", playwright.PageGetByRoleOptions{
 		Name: "Toggle " + permissionSetName,
 	}).Click()
+}
+
+// IsPermissionSetSelected reports whether an optional permission set is selected.
+func (cp *ConsentPage) IsPermissionSetSelected(_ context.Context, permissionSetName string) (bool, error) {
+	if permissionSetName == "" {
+		return false, fmt.Errorf("permissionSetName cannot be empty")
+	}
+
+	selected, err := cp.page().GetByRole("switch", playwright.PageGetByRoleOptions{
+		Name: "Toggle " + permissionSetName,
+	}).GetAttribute("aria-checked")
+	if err != nil {
+		return false, fmt.Errorf("failed to read permission set %q selection: %w", permissionSetName, err)
+	}
+	return selected == "true", nil
+}
+
+func (cp *ConsentPage) permissionSetCard(name string) playwright.Locator {
+	heading := cp.page().GetByRole("heading", playwright.PageGetByRoleOptions{
+		Name: name, Level: playwright.Int(3), Exact: playwright.Bool(true),
+	})
+	return cp.page().Locator("[data-testid^='permission-set-']").Filter(playwright.LocatorFilterOptions{
+		Has: heading,
+	})
+}
+
+// ExcludePermissionSetService turns off an optional service within a permission set.
+func (cp *ConsentPage) ExcludePermissionSetService(_ context.Context, permissionSetName, serviceName string) error {
+	return cp.permissionSetCard(permissionSetName).GetByRole("switch", playwright.LocatorGetByRoleOptions{
+		Name: "Exclude " + serviceName,
+	}).Click()
+}
+
+// IsPermissionSetServiceExcluded checks the per-service switch after a selection change.
+func (cp *ConsentPage) IsPermissionSetServiceExcluded(_ context.Context, permissionSetName, serviceName string) (bool, error) {
+	checked, err := cp.permissionSetCard(permissionSetName).GetByRole("switch", playwright.LocatorGetByRoleOptions{
+		Name: "Include " + serviceName,
+	}).GetAttribute("aria-checked")
+	if err != nil {
+		return false, err
+	}
+	return checked == "false", nil
 }
 
 // RevokeService clicks the Revoke button for a service.
@@ -1327,22 +1298,16 @@ func (cp *ConsentPage) ServiceScopeRequiredIndicatorCount(ctx context.Context, p
 // Parameters:
 //   - ctx: Context for cancellation
 //   - serviceDisplayName: Display name of the service to wait for
-//   - timeout: Maximum time to wait (in milliseconds)
 //
-// Returns:
-//   - error: If service doesn't appear within timeout
+// Returns an error if the service does not appear within the page timeout.
 //
 // Example:
 //
-//	err := consentPage.WaitForServiceToAppear(ctx, "GitHub", 5000)
+//	err := consentPage.WaitForServiceToAppear(ctx, "GitHub")
 //	Expect(err).NotTo(HaveOccurred())
-func (cp *ConsentPage) WaitForServiceToAppear(ctx context.Context, serviceDisplayName string, timeout int) error {
+func (cp *ConsentPage) WaitForServiceToAppear(ctx context.Context, serviceDisplayName string) error {
 	if serviceDisplayName == "" {
 		return fmt.Errorf("serviceDisplayName cannot be empty")
-	}
-
-	if timeout <= 0 {
-		timeout = 5000 // Default to 5 seconds
 	}
 
 	// Wait for service heading using Playwright's built-in wait mechanism
@@ -1354,10 +1319,10 @@ func (cp *ConsentPage) WaitForServiceToAppear(ctx context.Context, serviceDispla
 		},
 	)
 	err := heading.WaitFor(playwright.LocatorWaitForOptions{
-		Timeout: playwright.Float(float64(timeout)),
+		Timeout: playwright.Float(float64(cp.timeout.Milliseconds())),
 	})
 	if err != nil {
-		return fmt.Errorf("service %q did not appear within %dms: %w", serviceDisplayName, timeout, err)
+		return fmt.Errorf("service %q did not appear: %w", serviceDisplayName, err)
 	}
 	return nil
 }
@@ -1398,11 +1363,13 @@ func (cp *ConsentPage) IsCIMDSummaryVisible(ctx context.Context) (bool, error) {
 	loc := cp.page().GetByText("wants to access", playwright.PageGetByTextOptions{
 		Exact: playwright.Bool(false),
 	})
-	visible, err := loc.IsVisible()
-	if err != nil {
-		return false, fmt.Errorf("failed to check CIMD summary visibility: %w", err)
+	if err := loc.WaitFor(playwright.LocatorWaitForOptions{
+		State:   playwright.WaitForSelectorStateVisible,
+		Timeout: playwright.Float(float64(cp.timeout.Milliseconds())),
+	}); err != nil {
+		return false, fmt.Errorf("CIMD summary did not become visible: %w", err)
 	}
-	return visible, nil
+	return true, nil
 }
 
 // HasCIMDDomainBadge reports whether the CIMDDomainBadge component ("Verified domain: …")
@@ -1411,22 +1378,28 @@ func (cp *ConsentPage) HasCIMDDomainBadge(ctx context.Context) (bool, error) {
 	loc := cp.page().GetByText("Verified domain:", playwright.PageGetByTextOptions{
 		Exact: playwright.Bool(false),
 	})
-	visible, err := loc.IsVisible()
-	if err != nil {
-		return false, fmt.Errorf("failed to check CIMD domain badge visibility: %w", err)
+	if err := loc.WaitFor(playwright.LocatorWaitForOptions{
+		State:   playwright.WaitForSelectorStateVisible,
+		Timeout: playwright.Float(float64(cp.timeout.Milliseconds())),
+	}); err != nil {
+		return false, fmt.Errorf("CIMD domain badge did not become visible: %w", err)
 	}
-	return visible, nil
+	return true, nil
 }
 
 // HasCIMDLocalhostWarning reports whether the CIMDLocalhostWarning alert is visible.
 // The warning uses role="alert" and appears only when the redirect_uri points to localhost.
 func (cp *ConsentPage) HasCIMDLocalhostWarning(ctx context.Context) (bool, error) {
-	loc := cp.page().GetByRole("alert")
-	visible, err := loc.IsVisible()
-	if err != nil {
-		return false, fmt.Errorf("failed to check localhost warning visibility: %w", err)
+	loc := cp.page().GetByRole("alert").Filter(playwright.LocatorFilterOptions{
+		HasText: "This app is requesting a redirect to your local machine",
+	}).First()
+	if err := loc.WaitFor(playwright.LocatorWaitForOptions{
+		State:   playwright.WaitForSelectorStateVisible,
+		Timeout: playwright.Float(float64(cp.timeout.Milliseconds())),
+	}); err != nil {
+		return false, fmt.Errorf("CIMD localhost warning did not become visible: %w", err)
 	}
-	return visible, nil
+	return true, nil
 }
 
 // ClickCIMDAdvancedDetails clicks the "Advanced Details" disclosure button in the
@@ -1541,11 +1514,8 @@ func (cp *ConsentPage) HasCIMDClientIDInDetails(ctx context.Context, clientID st
 }
 
 // WaitForGrantSuccess waits for the "Grant updated successfully!" toast to appear.
-// Returns an error if the toast does not appear within the timeout or if an error toast appears instead.
-func (cp *ConsentPage) WaitForGrantSuccess(ctx context.Context, timeoutMs int) error {
-	if timeoutMs <= 0 {
-		timeoutMs = 5000
-	}
+// Returns an error if the toast does not appear within the page timeout or an error toast appears instead.
+func (cp *ConsentPage) WaitForGrantSuccess(ctx context.Context) error {
 
 	successToast := cp.page().GetByRole("status").Filter(playwright.LocatorFilterOptions{
 		HasText: "Grant updated successfully",
@@ -1553,7 +1523,7 @@ func (cp *ConsentPage) WaitForGrantSuccess(ctx context.Context, timeoutMs int) e
 
 	err := successToast.WaitFor(playwright.LocatorWaitForOptions{
 		State:   playwright.WaitForSelectorStateVisible,
-		Timeout: playwright.Float(float64(timeoutMs)),
+		Timeout: playwright.Float(float64(cp.timeout.Milliseconds())),
 	})
 	if err != nil {
 		// Check if an error toast appeared instead
@@ -1562,26 +1532,23 @@ func (cp *ConsentPage) WaitForGrantSuccess(ctx context.Context, timeoutMs int) e
 			text, _ := errorToast.First().TextContent()
 			return fmt.Errorf("expected success toast but got: %s", text)
 		}
-		return fmt.Errorf("grant success toast did not appear within %dms", timeoutMs)
+		return fmt.Errorf("grant success toast did not appear: %w", err)
 	}
 
 	return nil
 }
 
 // WaitForGrantError waits for an error toast (role="alert") to appear after grant submission.
-// Returns the error message text, or an error if no error toast appears within the timeout.
-func (cp *ConsentPage) WaitForGrantError(ctx context.Context, timeoutMs int) (string, error) {
-	if timeoutMs <= 0 {
-		timeoutMs = 5000
-	}
+// Returns the error message text, or an error if no error toast appears within the page timeout.
+func (cp *ConsentPage) WaitForGrantError(ctx context.Context) (string, error) {
 
 	alert := cp.page().GetByRole("alert")
 	err := alert.WaitFor(playwright.LocatorWaitForOptions{
 		State:   playwright.WaitForSelectorStateVisible,
-		Timeout: playwright.Float(float64(timeoutMs)),
+		Timeout: playwright.Float(float64(cp.timeout.Milliseconds())),
 	})
 	if err != nil {
-		return "", fmt.Errorf("no error toast appeared within %dms", timeoutMs)
+		return "", fmt.Errorf("no error toast appeared: %w", err)
 	}
 
 	text, err := alert.First().TextContent()
@@ -1592,34 +1559,6 @@ func (cp *ConsentPage) WaitForGrantError(ctx context.Context, timeoutMs int) (st
 	return strings.TrimSpace(text), nil
 }
 
-// NavigateToAgentWithSelections navigates to the consent page with pre-selected
-// permission set selections encoded in the consent_state query parameter.
-// This simulates the state preserved across third-party OAuth2 login redirects.
-func (cp *ConsentPage) NavigateToAgentWithSelections(ctx context.Context, agentID string, selections map[string][]string) error {
-	if agentID == "" {
-		return fmt.Errorf("agentID cannot be empty")
-	}
-
-	path := fmt.Sprintf(agentDetailPath, agentID)
-	if len(selections) > 0 {
-		encoded, err := encodeSelections(selections)
-		if err != nil {
-			return fmt.Errorf("failed to encode selections: %w", err)
-		}
-		path += "?consent_state=" + url.QueryEscape(encoded)
-	}
-
-	if err := cp.Navigate(ctx, path); err != nil {
-		return fmt.Errorf("failed to navigate to agent consent page with selections: %w", err)
-	}
-
-	if err := cp.waitForAgentNameHeading(ctx); err != nil {
-		return fmt.Errorf("agent name heading not found after navigation with selections: %w", err)
-	}
-
-	return nil
-}
-
 // GetURLQueryParam returns the value of a query parameter from the current page URL.
 func (cp *ConsentPage) GetURLQueryParam(param string) (string, error) {
 	currentURL := cp.page().URL()
@@ -1628,14 +1567,4 @@ func (cp *ConsentPage) GetURLQueryParam(param string) (string, error) {
 		return "", fmt.Errorf("failed to parse current URL %q: %w", currentURL, err)
 	}
 	return parsed.Query().Get(param), nil
-}
-
-// encodeSelections encodes permission set selections to base64url JSON.
-func encodeSelections(selections map[string][]string) (string, error) {
-	jsonBytes, err := json.Marshal(selections)
-	if err != nil {
-		return "", err
-	}
-	encoded := base64.RawURLEncoding.EncodeToString(jsonBytes)
-	return encoded, nil
 }

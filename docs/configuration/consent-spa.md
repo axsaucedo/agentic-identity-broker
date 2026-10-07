@@ -116,7 +116,7 @@ export default defineConfig({
 
 **Backend:**
 ```yaml
-# config.dev.yaml
+# configs/config.dev.yaml
 
 servers:
   enduser:
@@ -371,7 +371,7 @@ RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM golang:1.23-alpine AS backend-builder
+FROM golang:1.27.1-alpine AS backend-builder
 WORKDIR /app
 COPY go.* ./
 RUN go mod download
@@ -542,7 +542,7 @@ aws s3 sync web/dist/ s3://my-cdn-bucket/
 
 ## Related Documentation
 
-- Architecture documentation: see `ARCHITECTURE.md` in the repository root
+- Architecture documentation: see `ARCHITECTURE.md`
 - Consent frontend development guide: see `README.md` in the repository root
 - [API Documentation](../api/consent-endpoints.md) - API reference
 - [Configuration Guide](../configuration.md) - General configuration

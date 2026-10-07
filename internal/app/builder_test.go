@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,6 +23,8 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	agentsservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/agents"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
@@ -193,6 +196,7 @@ func TestBuilderMinimalConfiguration(t *testing.T) {
 	if app == nil {
 		t.Fatal("expected non-nil application")
 	}
+	t.Cleanup(func() { assert.NoError(t, app.Shutdown(context.Background())) })
 
 	// Verify required fields are set
 	if app.Config == nil {
@@ -219,6 +223,108 @@ func TestBuilderMinimalConfiguration(t *testing.T) {
 	if app.EnduserHandlers.UserInfo == nil {
 		t.Error("expected UserInfo handler to be created")
 	}
+}
+
+func TestBuilderUpstreamClientReusesConcurrentConnections(t *testing.T) {
+	const parallel = 8
+	var connections atomic.Int32
+	var closed atomic.Int32
+	var arrived [2]atomic.Int32
+	released := [2]chan struct{}{make(chan struct{}), make(chan struct{})}
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "invalid form", http.StatusBadRequest)
+			return
+		}
+		burst := 0
+		if r.Form.Get("refresh_token") == "second" {
+			burst = 1
+		}
+		if arrived[burst].Add(1) == parallel {
+			close(released[burst])
+		}
+		select {
+		case <-released[burst]:
+		case <-r.Context().Done():
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"access_token":"token","token_type":"Bearer"}`)
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		switch state {
+		case http.StateNew:
+			connections.Add(1)
+		case http.StateClosed:
+			closed.Add(1)
+		}
+	}
+	server.Start()
+	defer server.Close()
+
+	cfg := &ports.Config{
+		Server: ports.ServerConfig{
+			EndUser: ports.ServerInstanceConfig{
+				Port: 8000, Bind: "::1", PublicURL: "http://localhost:8000",
+				Authentication: ports.AuthenticationConfig{Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"}},
+			},
+			Admin: ports.ServerInstanceConfig{
+				Port: 14000, Bind: "::1", PublicURL: "http://localhost:14000",
+				Authentication: ports.AuthenticationConfig{Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"}},
+			},
+			Shutdown: ports.ShutdownConfig{Timeout: 5 * time.Second},
+		},
+		Storage: ports.StorageConfig{
+			Backend: "memory", Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+		},
+		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
+			JWESigningKey: base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
+		},
+		Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
+		OAuth2AuthServer: ports.OAuth2AuthServerConfig{Mode: "local", Local: ports.LocalModeConfig{TokenTTL: time.Hour}},
+	}
+	store, err := storage.NewAdapter(&cfg.Storage)
+	require.NoError(t, err)
+	app, err := NewBuilder().WithConfig(cfg).WithStorage(store).
+		WithLogger(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))).Build()
+	require.NoError(t, err)
+	shutdown := false
+	t.Cleanup(func() {
+		if !shutdown {
+			require.NoError(t, app.Shutdown(context.Background()))
+		}
+	})
+
+	provider := &model.ThirdpartyOAuth2ProviderEntity{
+		ID: id.NewServiceID(), ClientID: id.ClientID("client"),
+		Secret: model.NewAbsentSecret(), TokenEndpointAuthMethod: model.TokenEndpointAuthMethodNone,
+		Endpoints: model.OAuth2Endpoints{TokenEndpoint: server.URL},
+	}
+	runBurst := func(refreshToken string) {
+		results := make(chan error, parallel)
+		for range parallel {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				_, err := app.OAuth2SessionService.RefreshAccessToken(ctx, provider, refreshToken)
+				results <- err
+			}()
+		}
+		for range parallel {
+			require.NoError(t, <-results)
+		}
+	}
+
+	runBurst("first")
+	firstConnections := connections.Load()
+	require.Equal(t, int32(parallel), firstConnections)
+	runBurst("second")
+	require.Equal(t, firstConnections, connections.Load(), "idle connections must serve the next burst")
+	require.Zero(t, closed.Load(), "connections should remain idle before shutdown")
+	require.NoError(t, app.Shutdown(context.Background()))
+	shutdown = true
+	require.Eventually(t, func() bool { return closed.Load() == int32(parallel) }, time.Second, 10*time.Millisecond,
+		"app shutdown must close idle upstream connections")
 }
 
 // TestBuilderMissingRequiredDependency validates that the builder rejects invalid configurations.
@@ -416,11 +522,15 @@ func TestBuilderTokenExchangeExpectedAudience(t *testing.T) {
 
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-		return NewBuilder().
+		app, err := NewBuilder().
 			WithConfig(cfg).
 			WithStorage(storageAdapter).
 			WithLogger(logger).
 			Build()
+		if err == nil {
+			t.Cleanup(func() { assert.NoError(t, app.Shutdown(context.Background())) })
+		}
+		return app, err
 	}
 
 	t.Run("empty ExpectedAudience falls back to default and builds successfully", func(t *testing.T) {
@@ -565,6 +675,7 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Build() in proxy mode failed: %v", err)
 		}
+		t.Cleanup(func() { assert.NoError(t, app.Shutdown(context.Background())) })
 		if app.EnduserHandlers.JWKS == nil {
 			t.Error("proxy mode must wire a JWKS handler")
 		}
@@ -585,6 +696,7 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Build() in proxy mode failed: %v", err)
 		}
+		t.Cleanup(func() { assert.NoError(t, app.Shutdown(context.Background())) })
 		if got := app.EnduserHealthComponents(); got["upstream_jwks"] != "degraded" {
 			t.Fatalf("EnduserHealthComponents()[\"upstream_jwks\"] = %q, want %q", got["upstream_jwks"], "degraded")
 		}
@@ -603,6 +715,7 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Build() in local mode failed: %v", err)
 		}
+		t.Cleanup(func() { assert.NoError(t, app.Shutdown(context.Background())) })
 		if app.EnduserHandlers.JWKS == nil {
 			t.Error("local mode must wire a JWKS handler")
 		}
@@ -649,6 +762,7 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Build() in hybrid mode failed: %v", err)
 		}
+		t.Cleanup(func() { assert.NoError(t, app.Shutdown(context.Background())) })
 		if app.EnduserHandlers.JWKS == nil {
 			t.Error("hybrid mode must wire a JWKS handler")
 		}
@@ -1131,8 +1245,9 @@ func TestBuilder_LocalModeSigningKeyReadiness(t *testing.T) {
 		if app == nil {
 			t.Fatal("expected non-nil app")
 		}
+		t.Cleanup(func() { assert.NoError(t, app.Shutdown(context.Background())) })
 
-		count, err := adapter.SigningKeys().CountActive(context.Background())
+		count, err := adapter.SigningKeys().CountActiveInDomain(context.Background(), domstorage.KeyDomainTokenSigning)
 		if err != nil {
 			t.Fatalf("CountActive() failed: %v", err)
 		}
@@ -1140,7 +1255,7 @@ func TestBuilder_LocalModeSigningKeyReadiness(t *testing.T) {
 			t.Fatalf("expected one auto-generated signing key, got %d", count)
 		}
 
-		current, err := adapter.SigningKeys().GetCurrent(context.Background())
+		current, err := adapter.SigningKeys().GetCurrentInDomain(context.Background(), domstorage.KeyDomainTokenSigning)
 		if err != nil {
 			t.Fatalf("GetCurrent() failed: %v", err)
 		}
@@ -1177,6 +1292,7 @@ func TestBuilder_LocalModeSigningKeyReadiness(t *testing.T) {
 		app, err := NewBuilder().WithConfig(cfg).WithStorage(adapter).WithLogger(logger).Build()
 		require.NoError(t, err)
 		require.NotNil(t, app)
+		t.Cleanup(func() { assert.NoError(t, app.Shutdown(context.Background())) })
 		assert.Equal(t, 2, calls)
 		require.Len(t, requestedTimeouts, 2)
 		assert.Equal(t, cfg.OAuth2AuthServer.Local.SigningKeys.BootstrapTimeout, requestedTimeouts[0])
@@ -1208,6 +1324,7 @@ func TestBuilder_LocalModeSigningKeyReadiness(t *testing.T) {
 		err := adapter.SigningKeys().Create(context.Background(), &domstorage.SigningKey{
 			ID:                  id.NewSigningKeyID(),
 			KID:                 id.NewKeyID("550e8400-e29b-41d4-a716-446655440000"),
+			KeyDomain:           domstorage.KeyDomainTokenSigning,
 			Algorithm:           "ES256",
 			PrivateKeyEncrypted: []byte("ciphertext"),
 			IsCurrent:           true,
@@ -1228,6 +1345,7 @@ func TestBuilder_LocalModeSigningKeyReadiness(t *testing.T) {
 		if app == nil {
 			t.Fatal("expected non-nil app")
 		}
+		t.Cleanup(func() { assert.NoError(t, app.Shutdown(context.Background())) })
 		assert.Contains(t, logBuf.String(), `"level":"WARN"`)
 		assert.Contains(t, logBuf.String(), "no currently-active signing key available")
 		assert.Contains(t, logBuf.String(), "local token issuance is unavailable")
@@ -1323,7 +1441,7 @@ func TestBuilder_HybridModeSigningKeyReadiness(t *testing.T) {
 			_ = app.Shutdown(shutdownCtx)
 		}()
 
-		count, err := adapter.SigningKeys().CountActive(context.Background())
+		count, err := adapter.SigningKeys().CountActiveInDomain(context.Background(), domstorage.KeyDomainTokenSigning)
 		if err != nil {
 			t.Fatalf("CountActive() failed: %v", err)
 		}
@@ -1331,7 +1449,7 @@ func TestBuilder_HybridModeSigningKeyReadiness(t *testing.T) {
 			t.Fatalf("expected one auto-generated signing key, got %d", count)
 		}
 
-		current, err := adapter.SigningKeys().GetCurrent(context.Background())
+		current, err := adapter.SigningKeys().GetCurrentInDomain(context.Background(), domstorage.KeyDomainTokenSigning)
 		if err != nil {
 			t.Fatalf("GetCurrent() failed: %v", err)
 		}
@@ -1556,5 +1674,222 @@ func TestProxyOAuth2ConfigUpstreamTimeout(t *testing.T) {
 		if p.UpstreamTimeout != tt.want {
 			t.Errorf("UpstreamTimeout with configured=%v = %v, want %v", tt.configured, p.UpstreamTimeout, tt.want)
 		}
+	}
+}
+
+// TestBuilder_CIMDKeyStartupReadiness specifies the mode-independent outbound-CIMD
+// key startup contract. It deliberately uses the production Builder and memory adapter:
+// the only test data written directly is the persisted service state that a later
+// service-registration implementation will create.
+func TestBuilder_CIMDKeyStartupReadiness(t *testing.T) {
+	const cimdAuthMethod = model.TokenEndpointAuthMethod("private_key_jwt")
+
+	type modeCase struct {
+		name string
+		mode string
+	}
+	modes := []modeCase{
+		{name: "proxy", mode: "proxy"},
+		{name: "local", mode: "local"},
+		{name: "hybrid", mode: "hybrid"},
+	}
+
+	newConfig := func(mode string) *ports.Config {
+		cfg := &ports.Config{
+			Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+			Server: ports.ServerConfig{
+				EndUser: ports.ServerInstanceConfig{
+					Port: 8000, Bind: "::1", PublicURL: "https://broker.example.com",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Admin: ports.ServerInstanceConfig{
+					Port: 14000, Bind: "::1", PublicURL: "https://broker.example.com",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Shutdown: ports.ShutdownConfig{Timeout: 5 * time.Second},
+			},
+			Storage: ports.StorageConfig{
+				Backend:  "memory",
+				Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+			},
+			ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
+				JWESigningKey: base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
+			},
+			Encryption: ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
+			OAuth2AuthServer: ports.OAuth2AuthServerConfig{
+				Mode: servermode.Mode(mode),
+			},
+		}
+
+		switch mode {
+		case "proxy":
+			cfg.OAuth2AuthServer.Proxy = ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "https://issuer.example.com",
+				UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://issuer.example.com/token",
+			}
+		case "local":
+			cfg.OAuth2AuthServer.Local = ports.LocalModeConfig{TokenTTL: time.Hour}
+		case "hybrid":
+			cfg.OAuth2AuthServer.Proxy = ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "https://issuer.example.com",
+				UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://issuer.example.com/token",
+			}
+			cfg.OAuth2AuthServer.Local = ports.LocalModeConfig{TokenTTL: time.Hour}
+		default:
+			t.Fatalf("unsupported test mode %q", mode)
+		}
+
+		return cfg
+	}
+
+	newStorage := func(t *testing.T) *storage.Adapter {
+		t.Helper()
+		adapter, err := storage.NewAdapter(&ports.StorageConfig{
+			Backend:  "memory",
+			Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+		})
+		require.NoError(t, err)
+		return adapter
+	}
+
+	build := func(t *testing.T, mode string, adapter *storage.Adapter, publicURL string) (*App, error) {
+		t.Helper()
+		cfg := newConfig(mode)
+		cfg.Server.EndUser.PublicURL = publicURL
+		builder := NewBuilder().
+			WithConfig(cfg).
+			WithStorage(adapter).
+			WithLogger(slog.New(slog.NewTextHandler(&bytes.Buffer{}, &slog.HandlerOptions{Level: slog.LevelError})))
+		if mode != "local" {
+			builder.WithJWKSPublisher(&mockJWKSPublisher{})
+		}
+		app, err := builder.Build()
+		if app != nil && app.Shutdown != nil {
+			t.Cleanup(func() {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = app.Shutdown(shutdownCtx)
+			})
+		}
+		return app, err
+	}
+
+	countCIMDKeys := func(t *testing.T, adapter *storage.Adapter) int {
+		t.Helper()
+		count, err := adapter.SigningKeys().CountActiveInDomain(context.Background(), domstorage.KeyDomainCIMDClientAuthentication)
+		require.NoError(t, err)
+		return count
+	}
+
+	persistCIMDService := func(t *testing.T, adapter *storage.Adapter) id.ServiceID {
+		t.Helper()
+		serviceID := id.NewServiceID()
+		service := &model.ThirdpartyOAuth2ProviderEntity{
+			ID:                      serviceID,
+			DisplayName:             "CIMD upstream",
+			ClientID:                id.ClientID("https://broker.example.com/.well-known/oauth-client/" + serviceID.String()),
+			Secret:                  model.NewAbsentSecret(),
+			TokenEndpointAuthMethod: cimdAuthMethod,
+			IssuerURI:               "https://issuer.example.com",
+		}
+		require.NoError(t, adapter.Services().Create(context.Background(), service))
+		return serviceID
+	}
+
+	for _, mode := range modes {
+		t.Run(mode.name+" starts without a CIMD key when no CIMD service is persisted", func(t *testing.T) {
+			adapter := newStorage(t)
+
+			app, err := build(t, mode.mode, adapter, "https://broker.example.com")
+			require.NoError(t, err)
+			require.NotNil(t, app)
+			assert.Zero(t, countCIMDKeys(t, adapter))
+			assert.NotNil(t, app.CIMDKeyService)
+			assert.NotNil(t, app.CIMDKeyReadiness)
+			if app.CIMDKeyReadiness != nil {
+				assert.ErrorIs(t, app.CIMDKeyReadiness.RequireUsablePublishedKey(context.Background()), ports.ErrCIMDPublicKeyUnavailable)
+			}
+		})
+
+		t.Run(mode.name+" bootstraps a persisted CIMD service with an immediately usable published key", func(t *testing.T) {
+			adapter := newStorage(t)
+			persistCIMDService(t, adapter)
+
+			app, err := build(t, mode.mode, adapter, "https://broker.example.com")
+			require.NoError(t, err)
+			require.NotNil(t, app)
+			require.NotNil(t, app.CIMDKeyService)
+			require.NotNil(t, app.CIMDKeyReadiness)
+			assert.Equal(t, 1, countCIMDKeys(t, adapter))
+
+			key, err := adapter.SigningKeys().GetCurrentInDomain(context.Background(), domstorage.KeyDomainCIMDClientAuthentication)
+			require.NoError(t, err)
+			assert.False(t, key.ActivatesAt.After(time.Now()), "the first CIMD key must be usable immediately")
+			require.NoError(t, app.CIMDKeyReadiness.RequireUsablePublishedKey(context.Background()))
+
+			publicKeys, err := app.CIMDKeyService.PublicJWKSet(context.Background())
+			require.NoError(t, err)
+			assert.Equal(t, 1, publicKeys.Len())
+		})
+
+		t.Run(mode.name+" fails closed when persisted CIMD key publication is unavailable", func(t *testing.T) {
+			adapter := newStorage(t)
+			persistCIMDService(t, adapter)
+			require.NoError(t, adapter.SigningKeys().Create(context.Background(), &domstorage.SigningKey{
+				ID:                  id.NewSigningKeyID(),
+				KID:                 id.NewKeyID("cimd-unpublishable-" + mode.mode),
+				KeyDomain:           domstorage.KeyDomainCIMDClientAuthentication,
+				Algorithm:           "ES256",
+				PrivateKeyEncrypted: []byte("not-an-encrypted-private-key"),
+				IsCurrent:           true,
+				ActivatesAt:         time.Now().Add(-time.Minute),
+				CreatedAt:           time.Now().UTC(),
+			}))
+
+			_, err := build(t, mode.mode, adapter, "https://broker.example.com")
+			require.Error(t, err)
+			assert.ErrorIs(t, err, ports.ErrCIMDPublicKeyUnavailable)
+		})
+
+		t.Run(mode.name+" persists a later CIMD service without implicitly provisioning a key", func(t *testing.T) {
+			adapter := newStorage(t)
+			app, err := build(t, mode.mode, adapter, "https://broker.example.com")
+			require.NoError(t, err)
+			require.NotNil(t, app)
+			assert.NotNil(t, app.CIMDKeyReadiness)
+
+			persistCIMDService(t, adapter)
+			assert.Zero(t, countCIMDKeys(t, adapter), "service registration must not provision a CIMD key")
+		})
+
+		t.Run(mode.name+" rejects changed public origin without rewriting the CIMD identity", func(t *testing.T) {
+			adapter := newStorage(t)
+			serviceID := persistCIMDService(t, adapter)
+			app, err := build(t, mode.mode, adapter, "https://broker.example.com")
+			require.NoError(t, err)
+			metadata, err := app.CIMDMetadataProvider.Metadata(context.Background(), serviceID)
+			require.NoError(t, err)
+			persisted, err := adapter.Services().Get(context.Background(), serviceID)
+			require.NoError(t, err)
+			keyCount := countCIMDKeys(t, adapter)
+
+			_, err = build(t, mode.mode, adapter, "https://broker.changed.example")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "server.enduser.public_url")
+			assert.Equal(t, metadata.ClientID, persisted.ClientID.String())
+			assert.Equal(t, keyCount, countCIMDKeys(t, adapter))
+
+			restored, err := build(t, mode.mode, adapter, "https://broker.example.com")
+			require.NoError(t, err)
+			restoredMetadata, err := restored.CIMDMetadataProvider.Metadata(context.Background(), serviceID)
+			require.NoError(t, err)
+			assert.Equal(t, metadata.ClientID, restoredMetadata.ClientID)
+		})
 	}
 }
