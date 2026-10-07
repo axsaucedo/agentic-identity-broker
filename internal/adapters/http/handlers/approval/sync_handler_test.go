@@ -50,8 +50,9 @@ func (m *testQueryRepo) ListPermanentByPrincipal(_ context.Context, _ id.Princip
 }
 
 type testSyncStateRepo struct {
-	version atomic.Int64
-	onGet   func()
+	version  atomic.Int64
+	onGet    func()
+	afterGet func()
 }
 
 func newTestSyncStateRepo(v int64) *testSyncStateRepo {
@@ -65,7 +66,13 @@ func (m *testSyncStateRepo) GetVersion(_ context.Context) (int64, error) {
 		m.onGet()
 		m.onGet = nil
 	}
-	return m.version.Load(), nil
+	version := m.version.Load()
+	if m.afterGet != nil {
+		afterGet := m.afterGet
+		m.afterGet = nil
+		afterGet()
+	}
+	return version, nil
 }
 
 func (m *testSyncStateRepo) IncrementVersion(_ context.Context) (int64, error) {
@@ -82,7 +89,7 @@ func (m *testApprovalRepo) Get(_ context.Context, _ id.ApprovalID) (*storage.Too
 	return nil, nil
 }
 
-func (m *testApprovalRepo) Approve(_ context.Context, _ id.ApprovalID, _ storage.ApprovalPersistence, _ time.Time) (*storage.ToolApproval, error) {
+func (m *testApprovalRepo) Approve(_ context.Context, _ id.ApprovalID, _ storage.ApprovalDecision, _ time.Time) (*storage.ToolApproval, error) {
 	return nil, nil
 }
 
@@ -283,18 +290,32 @@ func TestSyncHandler_WakeOnChange(t *testing.T) {
 		svc := newTestSyncService(queries, syncState, broadcaster)
 		handler := NewSyncHandler(svc)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/approvals", nil)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		req := httptest.NewRequest(http.MethodGet, "/api/approvals", nil).WithContext(ctx)
 		req.Header.Set("If-None-Match", `"v5"`)
-		req.Header.Set("X-Long-Poll-Timeout", "30")
+		req.Header.Set("X-Long-Poll-Timeout", "5")
 		rec := httptest.NewRecorder()
 
+		versionChecked := make(chan struct{})
+		syncState.afterGet = func() { close(versionChecked) }
+		done := make(chan struct{})
 		go func() {
-			time.Sleep(100 * time.Millisecond)
-			syncState.version.Store(6)
-			broadcaster.Broadcast()
+			handler.ServeHTTP(rec, req)
+			close(done)
 		}()
-
-		handler.ServeHTTP(rec, req)
+		select {
+		case <-versionChecked:
+		case <-ctx.Done():
+			t.Fatal("long poll did not check the current version")
+		}
+		syncState.version.Store(6)
+		broadcaster.Broadcast()
+		select {
+		case <-done:
+		case <-ctx.Done():
+			t.Fatal("long poll did not wake after the version changed")
+		}
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d", rec.Code)
@@ -331,4 +352,72 @@ func TestSyncHandler_ClientDisconnect(t *testing.T) {
 
 		handler.ServeHTTP(rec, req)
 	})
+}
+
+func TestToSummaryIncludesApprovalPatterns(t *testing.T) {
+	approval := &storage.ToolApproval{ToolName: "create_pull_request", ToolPattern: "issues.*", ParamsPattern: map[string]string{"repo": "acme/*"}}
+	summary := toSummary(approval)
+	if summary.ToolPattern != "issues.*" || summary.ParamsPattern["repo"] != "acme/*" {
+		t.Fatalf("summary omitted pattern: %#v", summary)
+	}
+
+	summary = toSummary(&storage.ToolApproval{ToolName: "create_pull_request", ToolPattern: "create_pull_request"})
+	if summary.ParamsPattern == nil || len(summary.ParamsPattern) != 0 {
+		t.Fatalf("nil pattern must serialize as empty object: %#v", summary.ParamsPattern)
+	}
+}
+
+func TestToSummaryProjectsApprovedAt(t *testing.T) {
+	approvedAt := time.Date(2026, time.September, 4, 10, 11, 12, 345678900, time.UTC)
+	tests := []struct {
+		name       string
+		status     storage.ApprovalStatus
+		approvalAt *time.Time
+		want       bool
+	}{
+		{name: "approved timestamp", status: storage.ApprovalStatusApproved, approvalAt: &approvedAt, want: true},
+		{name: "approved record without timestamp", status: storage.ApprovalStatusApproved, want: false},
+		{name: "pending omits timestamp", status: storage.ApprovalStatusPending, approvalAt: &approvedAt, want: false},
+		{name: "denied omits timestamp", status: storage.ApprovalStatusDenied, approvalAt: &approvedAt, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			summary := toSummary(&storage.ToolApproval{Status: tt.status, ApprovedAt: tt.approvalAt})
+			body, err := json.Marshal(summary)
+			if err != nil {
+				t.Fatalf("marshal summary: %v", err)
+			}
+
+			var decoded map[string]json.RawMessage
+			if err := json.Unmarshal(body, &decoded); err != nil {
+				t.Fatalf("unmarshal summary: %v", err)
+			}
+			encodedApprovedAt, present := decoded["approved_at"]
+
+			if !tt.want {
+				if summary.ApprovedAt != nil {
+					t.Fatalf("unexpected approved_at: %v", summary.ApprovedAt)
+				}
+				if present {
+					t.Fatalf("approved_at must be omitted, got %s", encodedApprovedAt)
+				}
+				return
+			}
+
+			if summary.ApprovedAt == nil || !summary.ApprovedAt.Equal(*tt.approvalAt) {
+				t.Fatalf("approved_at = %v, want %v", summary.ApprovedAt, tt.approvalAt)
+			}
+			if !present {
+				t.Fatal("approved_at must be serialized")
+			}
+			var decodedApprovedAt time.Time
+			if err := json.Unmarshal(encodedApprovedAt, &decodedApprovedAt); err != nil {
+				t.Fatalf("decode approved_at: %v", err)
+			}
+			if !decodedApprovedAt.Equal(*tt.approvalAt) {
+				t.Fatalf("serialized approved_at = %v, want %v", decodedApprovedAt, tt.approvalAt)
+			}
+		})
+	}
 }

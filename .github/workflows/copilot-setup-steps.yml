@@ -19,7 +19,9 @@ jobs:
     steps:
       # Checkout repository
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Set up Go
       - name: Set up Go
@@ -30,7 +32,7 @@ jobs:
 
       # Set up Node.js (for web frontend)
       - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
           cache: 'npm'
@@ -38,7 +40,7 @@ jobs:
 
       # Cache Go tool binaries, golangci-lint results, and Playwright browsers
       - name: Cache dev tools
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/go/bin
@@ -48,7 +50,7 @@ jobs:
           restore-keys: tools-${{ runner.os }}-
 
       - name: Install just
-        uses: taiki-e/install-action@288e746965032cfcc232e09af2daf5f23c14d780
+        uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172
         with:
           tool: just
 

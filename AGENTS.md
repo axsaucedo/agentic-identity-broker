@@ -98,7 +98,7 @@ Treat `.specify/memory/constitution.md` as **BINDING**. Apply these principles:
 
 | Section | Technology | AGENTS.md |
 |---|---|---|
-| `internal/` | Go 1.26.8 — hexagonal (domain→ports→adapters→app) | `internal/AGENTS.md` |
+| `internal/` | Go 1.27.1 — hexagonal (domain→ports→adapters→app) | `internal/AGENTS.md` |
 | `web/` | React 19 + TypeScript + Vite 7 + Tailwind 4 | `web/AGENTS.md` |
 | `infra/cdk/` | AWS CDK (Go) — KMS, DynamoDB, IAM | `infra/AGENTS.md` |
 | `tests/` | Ginkgo/Gomega (e2e), Go testing (integration) | `tests/AGENTS.md` |
@@ -145,6 +145,7 @@ Read relevant ADRs before implementation. Treat accepted ADRs as authoritative. 
 | 030 | `adrs/030-vendor-neutral-oidc-trust.md` | Vendor-neutral CDK OIDC trust configuration |
 | 035 | `adrs/035-root-mounted-spa.md` | Root-mounted SPA (first-class routes; /consent unmounted) |
 | 032 | `adrs/032-impersonation-requires-user-delegation.md` | User delegation required for OAuth2 impersonation |
+| 035 | `adrs/035-shared-tool-pattern-matching.md` | Approval-domain pattern grammar shared with ExtProc |
 
 ## Domain Glossary
 
@@ -202,4 +203,4 @@ Use `NNN_description.{up,down}.sql` for migrations in `migrations/`. For large t
 
 ## Active Technologies
 
-Go 1.26.8 | React 19 + TypeScript + Vite 7 + Tailwind 4 | chi v5 | sqlx + pgx v5 | Ginkgo/Gomega | Viper/Cobra | CVA | OpenTelemetry (`otelhttp`, `otelslog`) | `envoyproxy/go-control-plane` | PostgreSQL (prod) + in-memory (dev/test)
+Go 1.27.1 | React 19 + TypeScript + Vite 7 + Tailwind 4 | chi v5 | sqlx + pgx v5 | Ginkgo/Gomega | Viper/Cobra | CVA | OpenTelemetry (`otelhttp`, `otelslog`) | `envoyproxy/go-control-plane` | PostgreSQL (prod) + in-memory (dev/test)

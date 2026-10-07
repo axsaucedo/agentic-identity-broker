@@ -4,9 +4,30 @@
 package migrations_test
 
 import (
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
+	"encoding/pem"
+	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/noop"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/postgres"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/approval/toolpattern"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -227,11 +248,84 @@ func TestMigration029CanonicalIDs(t *testing.T) {
 	}
 }
 
+func TestMigration032ApprovalPatterns(t *testing.T) {
+	f := NewMigrationTestFramework(t)
+	defer f.Cleanup(t)
+	require.NoError(t, f.Up(t, 31))
+	exists, err := f.ColumnExists(t, "tool_approvals", "tool_pattern")
+	require.NoError(t, err)
+	assert.False(t, exists)
+	require.NoError(t, f.ExecuteSQL(t, `
+		INSERT INTO agents (id, display_name, description) VALUES ('30000000-0000-0000-0000-000000000001', 'pattern agent', 'test');
+		INSERT INTO tool_approvals (id, principal, agent_id, gateway_client_id, tool_name, arguments, arguments_hash, approval_url, expires_at) VALUES
+		('40000000-0000-0000-0000-000000000001', 'pattern@example.com', '30000000-0000-0000-0000-000000000001', 'gateway', 'scalar_tool', '{"repo":"acme/app","count":2,"ratio":1.5,"draft":false,"note":null,"pattern":"a*b","path":"c\\d"}', 'hash-1', 'https://broker.example/approval', NOW() + interval '1 hour'),
+		('40000000-0000-0000-0000-000000000002', 'pattern@example.com', '30000000-0000-0000-0000-000000000001', 'gateway', 'composite_tool', '{"reviewers":["b","a"],"meta":{"b":1,"a":"x"},"empty":{},"list":[]}', 'hash-2', 'https://broker.example/approval', NOW() + interval '1 hour'),
+		('40000000-0000-0000-0000-000000000003', 'pattern@example.com', '30000000-0000-0000-0000-000000000001', 'gateway', 'escape_tool', '{"html":"a<b&c>d","ctl":"a\tb","quote":"say \"hi\""}', 'hash-3', 'https://broker.example/approval', NOW() + interval '1 hour'),
+		('40000000-0000-0000-0000-000000000004', 'pattern@example.com', '30000000-0000-0000-0000-000000000001', 'gateway', 'literal\*tool', '{"value":"value\\*suffix"}', 'hash-4', 'https://broker.example/approval', NOW() + interval '1 hour');
+	`))
+	require.NoError(t, f.Up(t, 32))
+	version, dirty, err := f.Version(t)
+	require.NoError(t, err)
+	assert.Equal(t, uint(32), version)
+	assert.False(t, dirty)
+	for _, column := range []string{"tool_pattern", "params_pattern"} {
+		exists, err := f.ColumnExists(t, "tool_approvals", column)
+		require.NoError(t, err)
+		assert.True(t, exists)
+	}
+	toolType, err := f.GetColumnType(t, "tool_approvals", "tool_pattern")
+	require.NoError(t, err)
+	assert.Equal(t, "character varying", toolType)
+	paramsType, err := f.GetColumnType(t, "tool_approvals", "params_pattern")
+	require.NoError(t, err)
+	assert.Equal(t, "jsonb", paramsType)
+	nullability, err := f.QuerySQL(t, `SELECT string_agg(column_name || ':' || is_nullable, ',' ORDER BY column_name) FROM information_schema.columns WHERE table_name = 'tool_approvals' AND column_name IN ('tool_pattern', 'params_pattern')`)
+	require.NoError(t, err)
+	assert.Equal(t, "params_pattern:NO,tool_pattern:NO", strings.TrimSpace(nullability))
+
+	rowsJSON, err := f.QuerySQL(t, `SELECT json_agg(json_build_object('id', id, 'tool_pattern', tool_pattern, 'params_pattern', params_pattern) ORDER BY id)::text FROM tool_approvals`)
+	require.NoError(t, err)
+	var rows []struct {
+		ID            string            `json:"id"`
+		ToolPattern   string            `json:"tool_pattern"`
+		ParamsPattern map[string]string `json:"params_pattern"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(rowsJSON), &rows))
+	type expectedApproval struct {
+		ToolName  string
+		Arguments map[string]any
+	}
+	expected := map[string]expectedApproval{
+		"40000000-0000-0000-0000-000000000001": {ToolName: "scalar_tool", Arguments: map[string]any{"repo": "acme/app", "count": 2, "ratio": 1.5, "draft": false, "note": nil, "pattern": "a*b", "path": `c\d`}},
+		"40000000-0000-0000-0000-000000000002": {ToolName: "composite_tool", Arguments: map[string]any{"reviewers": []any{"b", "a"}, "meta": map[string]any{"b": 1, "a": "x"}, "empty": map[string]any{}, "list": []any{}}},
+		"40000000-0000-0000-0000-000000000003": {ToolName: "escape_tool", Arguments: map[string]any{"html": "a<b&c>d", "ctl": "a\tb", "quote": `say "hi"`}},
+		"40000000-0000-0000-0000-000000000004": {ToolName: `literal\*tool`, Arguments: map[string]any{"value": `value\*suffix`}},
+	}
+	require.Len(t, rows, len(expected))
+	for _, row := range rows {
+		expectedRow, ok := expected[row.ID]
+		require.True(t, ok)
+		assert.Equal(t, toolpattern.EscapeLiteral(expectedRow.ToolName), row.ToolPattern)
+		assert.Equal(t, toolpattern.ExactParams(expectedRow.Arguments), row.ParamsPattern)
+		assert.True(t, toolpattern.Matches(row.ToolPattern, row.ParamsPattern, expectedRow.ToolName, expectedRow.Arguments))
+	}
+	require.NoError(t, f.Down(t, 31))
+	for _, column := range []string{"tool_pattern", "params_pattern"} {
+		exists, err := f.ColumnExists(t, "tool_approvals", column)
+		require.NoError(t, err)
+		assert.False(t, exists)
+	}
+	count, err := f.CountRows(t, "tool_approvals")
+	require.NoError(t, err)
+	assert.Equal(t, int64(len(expected)), count)
+	require.NoError(t, f.Up(t, 32))
+}
+
 func TestMigration031(t *testing.T) {
 	f := NewMigrationTestFramework(t)
 	defer f.Cleanup(t)
 
-	// Step 1: Apply migration 030 and add a confidential service predating migration 031.
+	// Step 1: Apply migrations through 030 and add a confidential service predating migration 031.
 	require.NoError(t, f.Up(t, 30))
 	require.NoError(t, f.ExecuteSQL(t, `
 		INSERT INTO thirdparty_oauth2_services
@@ -358,4 +452,324 @@ func TestMigration031(t *testing.T) {
 			 NULL, 'https://oauth.example.com', false, '[]');
 	`)
 	require.Error(t, err, "rollback must restore the confidential client-secret constraint")
+}
+
+func TestMigration033SigningKeyPublicJWK(t *testing.T) {
+	f := NewMigrationTestFramework(t)
+	defer f.Cleanup(t)
+
+	require.NoError(t, f.Up(t, 32))
+	require.NoError(t, f.ExecuteSQL(t, `
+		INSERT INTO signing_keys (id, kid, private_key_encrypted)
+		VALUES ('30000000-0000-0000-0000-000000000033', 'legacy-kid', '\x0102');
+	`))
+	require.NoError(t, f.Up(t, 33))
+	columnType, err := f.GetColumnType(t, "signing_keys", "public_jwk")
+	require.NoError(t, err)
+	assert.Equal(t, "bytea", columnType)
+	missing, err := f.QuerySQL(t, `SELECT (public_jwk IS NULL)::text FROM signing_keys WHERE kid = 'legacy-kid'`)
+	require.NoError(t, err)
+	assert.Equal(t, "true", strings.TrimSpace(missing))
+
+	require.NoError(t, f.ExecuteSQL(t, `UPDATE signing_keys SET public_jwk = convert_to('{"kty":"EC"}', 'UTF8') WHERE kid = 'legacy-kid'`))
+	require.NoError(t, f.Down(t, 32))
+	exists, err := f.ColumnExists(t, "signing_keys", "public_jwk")
+	require.NoError(t, err)
+	assert.False(t, exists)
+	ciphertext, err := f.QuerySQL(t, `SELECT encode(private_key_encrypted, 'hex') FROM signing_keys WHERE kid = 'legacy-kid'`)
+	require.NoError(t, err)
+	assert.Equal(t, "0102", strings.TrimSpace(ciphertext))
+
+	require.NoError(t, f.Up(t, 33))
+	missing, err = f.QuerySQL(t, `SELECT (public_jwk IS NULL)::text FROM signing_keys WHERE kid = 'legacy-kid'`)
+	require.NoError(t, err)
+	assert.Equal(t, "true", strings.TrimSpace(missing))
+}
+
+func TestMigration033VerifiesLegacySignature(t *testing.T) {
+	f := NewMigrationTestFramework(t)
+	defer f.Cleanup(t)
+	ctx := context.Background()
+	const kid = "legacy-kid"
+
+	require.NoError(t, f.Up(t, 32))
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	privateDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	require.NoError(t, err)
+	privatePEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateDER})
+	encryptor, _, err := awsencryption.NewAWSEncryption(base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")), "", 0)
+	require.NoError(t, err)
+	ciphertext, err := encryptor.Encrypt(ctx, privatePEM, map[string]string{"kid": kid})
+	require.NoError(t, err)
+	_, err = f.db.ExecContext(ctx, `INSERT INTO signing_keys (id, kid, private_key_encrypted, is_current, activates_at)
+		VALUES ('30000000-0000-0000-0000-000000000033', $1, $2, true, NOW() - INTERVAL '1 minute')`, kid, ciphertext)
+	require.NoError(t, err)
+
+	signingJWK, err := jwk.Import[jwk.Key](privateKey)
+	require.NoError(t, err)
+	require.NoError(t, signingJWK.Set(jwk.KeyIDKey, kid))
+	now := time.Now()
+	token, err := jwt.NewBuilder().Subject("legacy-user").IssuedAt(now).Expiration(now.Add(time.Hour)).Build()
+	require.NoError(t, err)
+	signedBeforeMigration, err := jwt.Sign(token, jwt.WithKey(jwa.ES256(), signingJWK))
+	require.NoError(t, err)
+
+	require.NoError(t, f.Up(t, 34))
+	adapter, err := postgres.NewAdapter(&ports.StorageConfig{Backend: "postgres", Postgres: ports.PostgresConfig{ConnectionURL: f.connStr}})
+	require.NoError(t, err)
+	require.NoError(t, adapter.Initialize(ctx))
+	defer func() { require.NoError(t, adapter.Close(ctx)) }()
+	repo := postgres.NewSigningKeyRepo(adapter)
+	svc := oauth2server.NewSigningKeyService(repo, repo, encryptor, &noop.BranchKeyManager{}, slog.Default())
+	_, err = svc.BuildJWKS(ctx)
+	require.NoError(t, err)
+	stored, err := repo.GetByKIDInDomain(ctx, storage.KeyDomainTokenSigning, id.NewKeyID(kid))
+	require.NoError(t, err)
+	require.NotEmpty(t, stored.PublicJWK)
+
+	freshEncryptor, _, err := awsencryption.NewAWSEncryption(base64.StdEncoding.EncodeToString([]byte("fedcba9876543210fedcba9876543210")), "", 0)
+	require.NoError(t, err)
+	freshService := oauth2server.NewSigningKeyService(repo, repo, freshEncryptor, &noop.BranchKeyManager{}, slog.Default())
+	set, err := freshService.BuildJWKS(ctx)
+	require.NoError(t, err)
+	verified, err := jwt.Parse(signedBeforeMigration, jwt.WithKeySet(set))
+	require.NoError(t, err, "pre-migration signature must verify against persisted public JWK")
+	subject, ok := verified.Subject()
+	require.True(t, ok)
+	assert.Equal(t, "legacy-user", subject)
+}
+
+func TestMigration034KeyDomain(t *testing.T) {
+	f := NewMigrationTestFramework(t)
+	defer f.Cleanup(t)
+
+	// Step 1: Create legacy signing keys before migration 034 adds their domain.
+	require.NoError(t, f.Up(t, 33))
+	exists, err := f.ColumnExists(t, "signing_keys", "key_domain")
+	require.NoError(t, err)
+	assert.False(t, exists, "key_domain must not exist before migration 034")
+	require.NoError(t, f.ExecuteSQL(t, `
+		INSERT INTO signing_keys
+			(id, kid, algorithm, private_key_encrypted, is_current, activates_at, created_at)
+		VALUES
+			('32000000-0000-0000-0000-000000000001', 'legacy-current-signing-key', 'ES256', '\x01', true, NOW(), NOW()),
+			('32000000-0000-0000-0000-000000000002', 'legacy-previous-signing-key', 'ES256', '\x02', false, NOW(), NOW());
+	`))
+
+	// Step 2: Migration 034 backfills every legacy key into the token-signing domain.
+	require.NoError(t, f.Up(t, 34))
+	version, dirty, err := f.Version(t)
+	require.NoError(t, err)
+	assert.Equal(t, uint(34), version)
+	assert.False(t, dirty)
+
+	exists, err = f.ColumnExists(t, "signing_keys", "key_domain")
+	require.NoError(t, err)
+	assert.True(t, exists)
+	legacyDomains, err := f.QuerySQL(t, `
+		SELECT bool_and(key_domain = 'token_signing')
+		FROM signing_keys
+		WHERE kid IN ('legacy-current-signing-key', 'legacy-previous-signing-key');
+	`)
+	require.NoError(t, err)
+	assert.Equal(t, "true", strings.TrimSpace(legacyDomains), "legacy signing keys must become token-signing keys")
+
+	// Step 3: Migration 034 permits only the defined signing-key domains.
+	err = f.ExecuteSQL(t, `
+		INSERT INTO signing_keys
+			(id, kid, key_domain, algorithm, private_key_encrypted, is_current, activates_at, created_at)
+		VALUES
+			('32000000-0000-0000-0000-000000000004', 'unsupported-signing-key-domain', 'unsupported_domain', 'ES256', '\x04', false, NOW(), NOW());
+	`)
+	assert.Error(t, err, "migration 034 must reject unsupported signing-key domains")
+
+	// Step 4: Replaying the applied migration is a no-op.
+	require.NoError(t, f.Up(t, 34))
+	version, dirty, err = f.Version(t)
+	require.NoError(t, err)
+	assert.Equal(t, uint(34), version)
+	assert.False(t, dirty)
+
+	// Step 5: A current CIMD key can coexist with a current token-signing key.
+	require.NoError(t, f.ExecuteSQL(t, `
+		INSERT INTO signing_keys
+			(id, kid, key_domain, algorithm, private_key_encrypted, is_current, activates_at, created_at)
+		VALUES
+			('32000000-0000-0000-0000-000000000003', 'cimd-client-authentication-key', 'cimd_client_authentication', 'ES256', '\x03', true, NOW(), NOW());
+	`))
+
+	// Step 6: Migration 034 must not discard CIMD key material during rollback.
+	err = f.Down(t, 33)
+	require.Error(t, err, "migration 034 rollback must refuse while CIMD keys exist")
+	version, dirty, err = f.Version(t)
+	require.NoError(t, err)
+	assert.Equal(t, uint(33), version)
+	assert.True(t, dirty)
+
+	cimdKeyIsIntact, err := f.QuerySQL(t, `
+		SELECT id = '32000000-0000-0000-0000-000000000003'
+			AND kid = 'cimd-client-authentication-key'
+			AND key_domain = 'cimd_client_authentication'
+			AND encode(private_key_encrypted, 'hex') = '03'
+		FROM signing_keys
+		WHERE id = '32000000-0000-0000-0000-000000000003';
+	`)
+	require.NoError(t, err)
+	assert.Equal(t, "true", strings.TrimSpace(cimdKeyIsIntact), "failed rollback must preserve the blocking CIMD key identity and ciphertext")
+
+	// Step 7: Once the CIMD key is gone, rollback and a subsequent replay both succeed.
+	require.NoError(t, f.Force(t, 34))
+	require.NoError(t, f.ExecuteSQL(t, `
+		DELETE FROM signing_keys WHERE kid = 'cimd-client-authentication-key';
+	`))
+	require.NoError(t, f.Down(t, 33))
+	version, dirty, err = f.Version(t)
+	require.NoError(t, err)
+	assert.Equal(t, uint(33), version)
+	assert.False(t, dirty)
+	exists, err = f.ColumnExists(t, "signing_keys", "key_domain")
+	require.NoError(t, err)
+	assert.False(t, exists)
+
+	require.NoError(t, f.Up(t, 34))
+	version, dirty, err = f.Version(t)
+	require.NoError(t, err)
+	assert.Equal(t, uint(34), version)
+	assert.False(t, dirty)
+	legacyDomains, err = f.QuerySQL(t, `
+		SELECT bool_and(key_domain = 'token_signing')
+		FROM signing_keys
+		WHERE kid IN ('legacy-current-signing-key', 'legacy-previous-signing-key');
+	`)
+	require.NoError(t, err)
+	assert.Equal(t, "true", strings.TrimSpace(legacyDomains), "migration replay must backfill legacy signing keys again")
+}
+
+func TestMigration035PrivateKeyJWTAuthentication(t *testing.T) {
+	f := NewMigrationTestFramework(t)
+	defer f.Cleanup(t)
+
+	// Step 1: Preserve legacy static and public service rows before migration 035.
+	require.NoError(t, f.Up(t, 34))
+	require.NoError(t, f.ExecuteSQL(t, `
+		INSERT INTO thirdparty_oauth2_services
+			(id, display_name, client_id, client_secret_encrypted, token_endpoint_auth_method, issuer_uri, enable_discovery, scopes)
+		VALUES
+			('33000000-0000-0000-0000-000000000001', 'legacy static confidential service', 'legacy-static-client',
+			 '\x01', NULL, 'https://oauth.example.com', false, '[]'),
+			('33000000-0000-0000-0000-000000000002', 'legacy public service', 'legacy-public-client',
+			 NULL, 'none', 'https://oauth.example.com', false, '[]');
+	`))
+
+	// Step 2: Migration 035 preserves existing authentication states.
+	require.NoError(t, f.Up(t, 35))
+	version, dirty, err := f.Version(t)
+	require.NoError(t, err)
+	assert.Equal(t, uint(35), version)
+	assert.False(t, dirty)
+
+	legacyRowsPreserved, err := f.QuerySQL(t, `
+		SELECT bool_and(
+			(id = '33000000-0000-0000-0000-000000000001'
+				AND token_endpoint_auth_method IS NULL
+				AND client_secret_encrypted IS NOT NULL)
+			OR (id = '33000000-0000-0000-0000-000000000002'
+				AND token_endpoint_auth_method = 'none'
+				AND client_secret_encrypted IS NULL)
+		)
+		FROM thirdparty_oauth2_services
+		WHERE id IN (
+			'33000000-0000-0000-0000-000000000001',
+			'33000000-0000-0000-0000-000000000002'
+		);
+	`)
+	require.NoError(t, err)
+	assert.Equal(t, "true", strings.TrimSpace(legacyRowsPreserved), "migration 035 must preserve legacy static and public services")
+
+	// Step 3: private_key_jwt services must not retain shared-secret ciphertext.
+	err = f.ExecuteSQL(t, `
+		INSERT INTO thirdparty_oauth2_services
+			(id, display_name, client_id, client_secret_encrypted, token_endpoint_auth_method, issuer_uri, enable_discovery, scopes)
+		VALUES
+			('33000000-0000-0000-0000-000000000004', 'CIMD service with prohibited shared secret',
+			 'https://broker.example.com/.well-known/oauth-client/33000000-0000-0000-0000-000000000004',
+			 '\x04', 'private_key_jwt', 'https://oauth.example.com', false, '[]');
+	`)
+	assert.Error(t, err, "migration 035 must reject private_key_jwt services with shared-secret ciphertext")
+
+	// Step 4: A CIMD service may use private_key_jwt only without a shared secret.
+	require.NoError(t, f.ExecuteSQL(t, `
+		INSERT INTO thirdparty_oauth2_services
+			(id, display_name, client_id, client_secret_encrypted, token_endpoint_auth_method, issuer_uri, enable_discovery, scopes)
+		VALUES
+			('33000000-0000-0000-0000-000000000003', 'CIMD confidential service',
+			 'https://broker.example.com/.well-known/oauth-client/33000000-0000-0000-0000-000000000003',
+			 NULL, 'private_key_jwt', 'https://oauth.example.com', false, '[]');
+	`))
+
+	// Step 5: Replaying an applied migration is a no-op.
+	require.NoError(t, f.Up(t, 35))
+	version, dirty, err = f.Version(t)
+	require.NoError(t, err)
+	assert.Equal(t, uint(35), version)
+	assert.False(t, dirty)
+
+	// Step 6: Rollback must not discard CIMD authentication state.
+	err = f.Down(t, 34)
+	require.Error(t, err, "migration 035 rollback must refuse while CIMD services exist")
+	version, dirty, err = f.Version(t)
+	require.NoError(t, err)
+	assert.Equal(t, uint(34), version)
+	assert.True(t, dirty)
+
+	cimdServiceIsIntact, err := f.QuerySQL(t, `
+		SELECT token_endpoint_auth_method = 'private_key_jwt' AND client_secret_encrypted IS NULL
+		FROM thirdparty_oauth2_services
+		WHERE id = '33000000-0000-0000-0000-000000000003';
+	`)
+	require.NoError(t, err)
+	assert.Equal(t, "true", strings.TrimSpace(cimdServiceIsIntact))
+
+	// Step 7: Once CIMD state is removed, rollback restores the preceding authentication constraint.
+	require.NoError(t, f.Force(t, 35))
+	require.NoError(t, f.ExecuteSQL(t, `
+		DELETE FROM thirdparty_oauth2_services
+		WHERE id = '33000000-0000-0000-0000-000000000003';
+	`))
+	require.NoError(t, f.Down(t, 34))
+	version, dirty, err = f.Version(t)
+	require.NoError(t, err)
+	assert.Equal(t, uint(34), version)
+	assert.False(t, dirty)
+
+	err = f.ExecuteSQL(t, `
+		INSERT INTO thirdparty_oauth2_services
+			(id, display_name, client_id, client_secret_encrypted, token_endpoint_auth_method, issuer_uri, enable_discovery, scopes)
+		VALUES
+			('33000000-0000-0000-0000-000000000005', 'CIMD service after rollback',
+			 'https://broker.example.com/.well-known/oauth-client/33000000-0000-0000-0000-000000000005',
+			 NULL, 'private_key_jwt', 'https://oauth.example.com', false, '[]');
+	`)
+	assert.Error(t, err, "migration 035 rollback must reject private_key_jwt services")
+
+	// Step 8: Reapplying migration 035 preserves the legacy authentication states.
+	require.NoError(t, f.Up(t, 35))
+	legacyRowsPreserved, err = f.QuerySQL(t, `
+		SELECT bool_and(
+			(id = '33000000-0000-0000-0000-000000000001'
+				AND token_endpoint_auth_method IS NULL
+				AND client_secret_encrypted IS NOT NULL)
+			OR (id = '33000000-0000-0000-0000-000000000002'
+				AND token_endpoint_auth_method = 'none'
+				AND client_secret_encrypted IS NULL)
+		)
+		FROM thirdparty_oauth2_services
+		WHERE id IN (
+			'33000000-0000-0000-0000-000000000001',
+			'33000000-0000-0000-0000-000000000002'
+		);
+	`)
+	require.NoError(t, err)
+	assert.Equal(t, "true", strings.TrimSpace(legacyRowsPreserved), "migration replay must preserve legacy static and public services")
 }

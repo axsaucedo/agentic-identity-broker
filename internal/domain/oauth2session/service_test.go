@@ -18,6 +18,7 @@ import (
 	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	domainencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
@@ -43,6 +44,22 @@ func (m *noopBranchKeyManager) Create(_ context.Context, _ domainencryption.Bran
 // =============================================================================
 // Tests for InitiateOAuth2Flow
 // =============================================================================
+
+func TestCIMDInitiateOAuth2Flow_UsesAdvertisedCallbackWithTrailingPublicURLSlash(t *testing.T) {
+	service, _, _, _, _, providerService := setupServiceWithConfig(t, func(config *oauth2session.Config) {
+		*config = oauth2session.NewConfigFromPorts(ports.ThirdPartyOAuth2Config{}, "https://broker.example.com/")
+	})
+	providerService.WithCIMDPublicURL("https://broker.example.com/")
+	serviceID := id.NewServiceID()
+	provider := createCIMDTestProvider(serviceID, "https://issuer.example.com/token")
+	require.NoError(t, providerService.Create(context.Background(), provider))
+
+	flow, err := service.InitiateOAuth2Flow(context.Background(), "user@example.com", serviceID, "https://example.com/sessions")
+	require.NoError(t, err)
+	parsed, err := url.Parse(flow.AuthorizationURL)
+	require.NoError(t, err)
+	assert.Equal(t, "https://broker.example.com/api/third-party/"+serviceID.String()+"/oauth2/callback", parsed.Query().Get("redirect_uri"))
+}
 
 func TestInitiateOAuth2Flow_Success(t *testing.T) {
 	ctx := context.Background()
@@ -235,6 +252,8 @@ func TestRefreshAccessToken_OmitsAuthorizationParamsForUnconfiguredService(t *te
 
 func TestRefreshAccessToken_PublicClientOmitsClientSecret(t *testing.T) {
 	service, _, _ := setupService(t)
+	signer := &cimdAssertionSignerSpy{}
+	service = service.WithCIMDAssertionSigner(signer)
 	provider := createTestService(id.NewServiceID())
 	provider.TokenEndpointAuthMethod = model.TokenEndpointAuthMethodNone
 	provider.Secret = model.NewAbsentSecret()
@@ -262,10 +281,13 @@ func TestRefreshAccessToken_PublicClientOmitsClientSecret(t *testing.T) {
 	expectedBody.Set("business_partner_id", "12345")
 	assert.Equal(t, expectedBody.Encode(), receivedBody)
 	assert.NotContains(t, receivedBody, "client_secret")
+	assert.Zero(t, assertionSignerCallCount(signer), "public refresh behavior must not invoke the CIMD signer")
 }
 
 func TestRefreshAccessToken_ConfidentialClientPreservesRequestBody(t *testing.T) {
 	service, _, _ := setupService(t)
+	signer := &cimdAssertionSignerSpy{}
+	service = service.WithCIMDAssertionSigner(signer)
 	provider := createTestService(id.NewServiceID())
 	provider.AuthorizationParams = map[string]string{"business_partner_id": "12345"}
 
@@ -291,6 +313,126 @@ func TestRefreshAccessToken_ConfidentialClientPreservesRequestBody(t *testing.T)
 	expectedBody.Set("client_secret", "test-client-secret")
 	expectedBody.Set("business_partner_id", "12345")
 	assert.Equal(t, expectedBody.Encode(), receivedBody)
+	assert.Zero(t, assertionSignerCallCount(signer), "static confidential refresh behavior must not invoke the CIMD signer")
+}
+
+// T057: CIMD refreshes authenticate every request with one newly signed JWT-bearer assertion.
+func TestRefreshAccessToken_CIMDClientUsesFreshAssertionForEachRequest(t *testing.T) {
+	service, _, _ := setupService(t)
+	signer := &cimdAssertionSignerSpy{}
+	service = service.WithCIMDAssertionSigner(signer)
+	serviceID := id.NewServiceID()
+
+	var requests []capturedTokenExchangeRequest
+	tokenEndpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, readErr := io.ReadAll(r.Body)
+		form, parseErr := url.ParseQuery(string(body))
+		requests = append(requests, capturedTokenExchangeRequest{
+			method: r.Method,
+			body:   form,
+			header: r.Header.Clone(),
+			query:  r.URL.Query(),
+			err:    errorsJoin(readErr, parseErr),
+		})
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"access_token":"token","token_type":"Bearer","expires_in":3600}`)
+	}))
+	defer tokenEndpoint.Close()
+
+	provider := createCIMDTestProvider(serviceID, tokenEndpoint.URL)
+	provider.ClientID = id.ClientID(cimdClientIDForService(serviceID))
+	for range 2 {
+		_, err := service.RefreshAccessToken(context.Background(), provider, "refresh-token")
+		require.NoError(t, err)
+	}
+
+	require.Len(t, requests, 2)
+	for _, request := range requests {
+		require.NoError(t, request.err)
+		assert.Equal(t, http.MethodPost, request.method)
+		assert.Equal(t, "refresh_token", request.body.Get("grant_type"))
+		assert.Equal(t, cimdClientIDForService(serviceID), request.body.Get("client_id"))
+		assert.Equal(t, []string{"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"}, request.body["client_assertion_type"])
+		require.Len(t, request.body["client_assertion"], 1)
+		assert.NotEmpty(t, request.body.Get("client_assertion"))
+		assert.NotContains(t, request.body, "client_secret")
+		assert.Empty(t, request.header.Values("Authorization"))
+		assert.Empty(t, request.query)
+	}
+
+	assert.Len(t, map[string]struct{}{
+		requests[0].body.Get("client_assertion"): {},
+		requests[1].body.Get("client_assertion"): {},
+	}, 2, "each refresh request must carry a freshly signed assertion")
+
+	signedRequests := signer.Requests()
+	require.Len(t, signedRequests, 2)
+	for _, signedRequest := range signedRequests {
+		assert.Equal(t, id.ClientID(cimdClientIDForService(serviceID)), signedRequest.clientID)
+		assert.Equal(t, tokenEndpoint.URL, signedRequest.tokenEndpoint)
+	}
+}
+
+// T057: A missing or rejected CIMD signer must prevent refresh token-endpoint traffic.
+func TestRefreshAccessToken_CIMDClientFailsClosedBeforeTokenRequestWhenSigningUnavailable(t *testing.T) {
+	tests := []struct {
+		name      string
+		signer    *cimdAssertionSignerSpy
+		wantCalls int
+	}{
+		{
+			name:      "missing signer",
+			wantCalls: 0,
+		},
+		{
+			name: "signer rejects assertion",
+			signer: &cimdAssertionSignerSpy{
+				err: fmt.Errorf("assertion signing unavailable"),
+			},
+			wantCalls: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service, _, _ := setupService(t)
+			if tt.signer != nil {
+				service = service.WithCIMDAssertionSigner(tt.signer)
+			}
+
+			serviceID := id.NewServiceID()
+			var tokenRequests atomic.Int64
+			tokenEndpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				tokenRequests.Add(1)
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+			defer tokenEndpoint.Close()
+
+			provider := createCIMDTestProvider(serviceID, tokenEndpoint.URL)
+			provider.ClientID = id.ClientID(cimdClientIDForService(serviceID))
+			token, err := service.RefreshAccessToken(context.Background(), provider, "refresh-token")
+			require.Error(t, err)
+			assert.Nil(t, token)
+			assert.Equal(t, tt.wantCalls, assertionSignerCallCount(tt.signer))
+			assert.Zero(t, tokenRequests.Load(), "signing must fail before a refresh token request can leave the broker")
+		})
+	}
+}
+
+func TestRefreshAccessToken_RejectsOversizedResponse(t *testing.T) {
+	service, _, _ := setupService(t)
+	provider := createTestService(id.NewServiceID())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"token","token_type":"Bearer"}`)
+		_, _ = io.WriteString(w, strings.Repeat(" ", 1<<20))
+	}))
+	defer server.Close()
+	provider.Endpoints.TokenEndpoint = server.URL
+
+	token, err := service.RefreshAccessToken(context.Background(), provider, "refresh-token")
+	require.Nil(t, token)
+	require.ErrorContains(t, err, "exceeds")
 }
 
 func TestInitiateOAuth2Flow_ServiceNotFound(t *testing.T) {
@@ -504,6 +646,8 @@ func TestHandleCallback_BuildOAuth2Config_PublicClientUsesBodyAuthentication(t *
 func TestHandleCallback_BuildOAuth2Config_ConfidentialClientUsesAutoDetectedAuthentication(t *testing.T) {
 	ctx := context.Background()
 	service, _, providerService := setupService(t)
+	signer := &cimdAssertionSignerSpy{}
+	service = service.WithCIMDAssertionSigner(signer)
 	principal := id.Principal("user@example.com")
 	serviceID := id.NewServiceID()
 
@@ -560,6 +704,7 @@ func TestHandleCallback_BuildOAuth2Config_ConfidentialClientUsesAutoDetectedAuth
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, int64(2), requestCount.Load(), "default oauth2 authentication must fall back from basic to body credentials")
+	assert.Zero(t, assertionSignerCallCount(signer), "static confidential code exchange behavior must not invoke the CIMD signer")
 }
 
 // =============================================================================
@@ -594,7 +739,7 @@ func TestHandleCallback_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initiate flow to get state token with PKCE verifier
-	flowResult, err := service.InitiateOAuth2Flow(ctx, principal, serviceID, redirectURI)
+	flowResult, err := service.InitiateOAuth2FlowWithConsentState(ctx, principal, serviceID, redirectURI, "d0000000-0000-4000-8000-000000000001")
 	require.NoError(t, err)
 	require.NotNil(t, flowResult)
 
@@ -614,6 +759,7 @@ func TestHandleCallback_Success(t *testing.T) {
 	require.NotNil(t, result)
 	require.NotNil(t, result.Session)
 
+	assert.Equal(t, "d0000000-0000-4000-8000-000000000001", result.ConsentStateID)
 	// Verify session properties
 	session := result.Session
 	assert.Equal(t, principal, session.Principal)
@@ -1355,6 +1501,10 @@ func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.In
 	return service, serviceRepo, providerService
 }
 
+type readyCIMDKeyReadiness struct{}
+
+func (readyCIMDKeyReadiness) RequireUsablePublishedKey(context.Context) error { return nil }
+
 func setupServiceWithConfig(
 	t *testing.T,
 	configure func(*oauth2session.Config),
@@ -1393,10 +1543,11 @@ func setupServiceWithConfig(
 		nil,
 		false,
 		slog.Default(),
-	)
+	).WithCIMDKeyReadiness(readyCIMDKeyReadiness{})
 
 	svc := oauth2session.NewOAuth2SessionService(
 		providerService,
+		sessionRepo,
 		sessionRepo,
 		grantRepo,
 		agentRepo,
@@ -1818,7 +1969,9 @@ func TestForceRefreshSession(t *testing.T) {
 
 	t.Run("upstream rejects", func(t *testing.T) {
 		ctx := context.Background()
-		service, _, providerService := setupService(t)
+		service, _, sessions, _, _, providerService := setupServiceWithConfig(t, func(config *oauth2session.Config) {
+			config.RetryBaseDelay = 10 * time.Millisecond
+		})
 		serviceID := id.NewServiceID()
 		provider := createTestService(serviceID)
 
@@ -1842,6 +1995,9 @@ func TestForceRefreshSession(t *testing.T) {
 			State:     flow.StateToken,
 		})
 		require.NoError(t, err)
+		stored, err := sessions.FindByPrincipalAndService(ctx, principal, serviceID)
+		require.NoError(t, err)
+		before := *stored
 
 		rejectServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			require.NoError(t, r.ParseForm())
@@ -1858,8 +2014,73 @@ func TestForceRefreshSession(t *testing.T) {
 		_, err = service.ForceRefreshSession(ctx, principal, serviceID)
 		require.Error(t, err)
 		assert.True(t, errors.Is(err, oauth2session.ErrRefreshFailed))
-		assert.ErrorContains(t, err, "upstream token endpoint returned error status 400")
+		var retrieveErr *oauth2.RetrieveError
+		require.ErrorAs(t, err, &retrieveErr)
+		require.NotNil(t, retrieveErr.Response)
+		assert.Equal(t, http.StatusBadRequest, retrieveErr.Response.StatusCode)
+		assert.Equal(t, "invalid_grant", retrieveErr.ErrorCode)
+		assert.NotContains(t, err.Error(), "refresh rejected")
+
+		after, err := sessions.FindByPrincipalAndService(ctx, principal, serviceID)
+		require.NoError(t, err)
+		assert.Equal(t, before.EncryptedAccessToken, after.EncryptedAccessToken)
+		assert.Equal(t, before.EncryptedRefreshToken, after.EncryptedRefreshToken)
+		assert.Equal(t, before.AccessTokenExpiresAt, after.AccessTokenExpiresAt)
+		assert.Equal(t, before.RefreshTokenExpiresAt, after.RefreshTokenExpiresAt)
 	})
+}
+
+func TestRefreshAccessToken_SanitizesThirdpartyRejection(t *testing.T) {
+	const sentinel = "sentinel-thirdparty-secret"
+	const invalidGrant = `{"error":"invalid_grant"}`
+	tests := []struct {
+		name       string
+		status     int
+		body       string
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "invalid_grant", status: http.StatusBadRequest, body: `{"error":"invalid_grant","error_description":"` + sentinel + `","error_uri":"https://` + sentinel + `"}`, wantStatus: http.StatusBadRequest, wantCode: "invalid_grant"},
+		{name: "invalid_client", status: http.StatusUnauthorized, body: `{"error":"invalid_client","error_description":"` + sentinel + `"}`, wantStatus: http.StatusUnauthorized, wantCode: "invalid_client"},
+		{name: "unknown code carrying sentinel", status: http.StatusBadRequest, body: `{"error":"` + sentinel + `"}`, wantStatus: http.StatusBadRequest},
+		{name: "non-JSON body", status: http.StatusBadRequest, body: "<html>" + sentinel + "</html>", wantStatus: http.StatusBadRequest},
+		{name: "wrong-typed error field", status: http.StatusBadRequest, body: `{"error":["invalid_grant"],"error_description":"` + sentinel + `"}`, wantStatus: http.StatusBadRequest},
+		{name: "oversized body", status: http.StatusBadRequest, body: `{"error":"invalid_grant","error_description":"` + strings.Repeat("x", 64<<10) + sentinel + `"}`, wantStatus: http.StatusBadRequest},
+		{name: "valid JSON over size cap", status: http.StatusBadRequest, body: invalidGrant + strings.Repeat(" ", 64<<10), wantStatus: http.StatusBadRequest},
+		{name: "valid JSON at size cap", status: http.StatusBadRequest, body: invalidGrant + strings.Repeat(" ", 64<<10-len(invalidGrant)), wantStatus: http.StatusBadRequest, wantCode: "invalid_grant"},
+		{name: "empty body", status: http.StatusBadRequest, wantStatus: http.StatusBadRequest},
+		{name: "server error carrying invalid_grant", status: http.StatusInternalServerError, body: `{"error":"invalid_grant","error_description":"` + sentinel + `"}`, wantStatus: http.StatusInternalServerError, wantCode: "invalid_grant"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service, _, _ := setupService(t)
+			provider := createTestService(id.NewServiceID())
+			mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer mockServer.Close()
+			provider.Endpoints.TokenEndpoint = mockServer.URL
+
+			token, err := service.RefreshAccessToken(context.Background(), provider, "refresh-token")
+			require.Error(t, err)
+			assert.Nil(t, token)
+			var retrieveErr *oauth2.RetrieveError
+			require.ErrorAs(t, err, &retrieveErr)
+			require.NotNil(t, retrieveErr.Response)
+			assert.Equal(t, tt.wantStatus, retrieveErr.Response.StatusCode)
+			assert.Equal(t, tt.wantCode, retrieveErr.ErrorCode)
+			assert.Empty(t, retrieveErr.ErrorDescription)
+			assert.Empty(t, retrieveErr.ErrorURI)
+			assert.Empty(t, retrieveErr.Body)
+			assert.Nil(t, retrieveErr.Response.Body)
+			assert.Nil(t, retrieveErr.Response.Header)
+			assert.Nil(t, retrieveErr.Response.Request)
+			assert.NotContains(t, err.Error(), sentinel)
+			assert.NotContains(t, fmt.Sprintf("%+v", retrieveErr), sentinel)
+		})
+	}
 }
 
 // =============================================================================
@@ -1920,6 +2141,7 @@ func TestHandleCallback_PKCEValidationFailure_EmitsAuditLog(t *testing.T) {
 
 	service := oauth2session.NewOAuth2SessionService(
 		providerService,
+		sessionRepo,
 		sessionRepo,
 		grantRepo,
 		agentRepo,

@@ -489,13 +489,17 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 		server:                  server,
 		logger:                  logger,
 		requestSecurityObserver: options.requestSecurityObserver,
-		client: &http.Client{
-			Timeout: 5 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		},
+		client:                  newTestHTTPClient(),
 	}, nil
+}
+
+func newTestHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 }
 
 // serverTypeName returns a human-readable name for the server type.
@@ -547,11 +551,18 @@ func NewAdminTestServer(app *app.App, logger *slog.Logger) (*TestServer, error) 
 	return NewTestServerV2(app, logger, WithServerType(ServerTypeAdmin))
 }
 
-// Close gracefully shuts down the server.
-// Safe to call multiple times (httptest.Server.Close is idempotent).
+// Close stops the server and the application's background workers.
+// All servers sharing this application must finish their requests before Close.
 func (ts *TestServer) Close() {
 	if ts.server != nil {
 		ts.server.Close()
+	}
+	if ts.app != nil && ts.app.Shutdown != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := ts.app.Shutdown(ctx); err != nil {
+			ts.logger.Error("test application shutdown failed", "error", err)
+		}
 	}
 }
 
@@ -921,11 +932,6 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 		server:                  testServer,
 		logger:                  appInstance.Logger,
 		requestSecurityObserver: nil,
-		client: &http.Client{
-			Timeout: 5 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		},
+		client:                  newTestHTTPClient(),
 	}, nil
 }

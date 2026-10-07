@@ -128,7 +128,7 @@ const undefinedPolicy = `package aib.extproc.authz
 import rego.v1
 `
 
-// approvalRequiredPolicy returns a future action that must be denied for now but still logged.
+// approvalRequiredPolicy emits the active Tier 2 action.
 const approvalRequiredPolicy = `package aib.extproc.authz
 import rego.v1
 
@@ -140,6 +140,18 @@ result := {"action": "approval_required", "reasons": _approval_reasons} if {
 	count(approval_required) > 0
 	_approval_reasons := [r | some entry in approval_required; r := entry.reason]
 } else := {"action": "deny", "reasons": ["no policy rule matched"]}
+`
+
+const unknownActionPolicy = `package aib.extproc.authz
+import rego.v1
+
+result := {"action": "future_action"}
+`
+
+const cibaRequiredPolicy = `package aib.extproc.authz
+import rego.v1
+
+result := {"action": "ciba_required"}
 `
 
 const permissionSetPolicy = `package aib.extproc.authz
@@ -268,7 +280,7 @@ func TestOPAAuthorizer_Evaluate_CreatesTraceSpanWithDecisionAttributes(t *testin
 
 	input := authorization.OPAInput{
 		"type": "mcp_tool_call",
-		"mcp":  &authorization.MCPInput{ToolName: "list_files"},
+		"mcp":  map[string]any{"tool_name": "list_files"},
 	}
 	decision, err := auth.Evaluate(ctx, input)
 	require.NoError(t, err)
@@ -315,7 +327,7 @@ func TestOPAAuthorizer_Evaluate_TraceSpanIncludesTargetServerName(t *testing.T) 
 
 	input := authorization.OPAInput{
 		"type": "mcp_tool_call",
-		"mcp":  &authorization.MCPInput{ToolName: "list_files", TargetServerName: "github-mcp"},
+		"mcp":  map[string]any{"tool_name": "list_files", "target_server_name": "github-mcp"},
 	}
 	decision, err := auth.Evaluate(context.Background(), input)
 	require.NoError(t, err)
@@ -357,7 +369,7 @@ func TestOPAAuthorizer_Evaluate_TraceSpanOmitsTargetServerNameWhenAbsent(t *test
 
 	input := authorization.OPAInput{
 		"type": "mcp_tool_call",
-		"mcp":  &authorization.MCPInput{ToolName: "list_files"},
+		"mcp":  map[string]any{"tool_name": "list_files"},
 	}
 	decision, err := auth.Evaluate(context.Background(), input)
 	require.NoError(t, err)
@@ -393,6 +405,24 @@ func TestOPAAuthorizer_Allow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "allow", decision.Action)
 	assert.Empty(t, decision.Reasons)
+}
+
+func TestOPAAuthorizer_LargeJSONRPCIDRemainsExact(t *testing.T) {
+	path := writePolicy(t, `package aib.extproc.authz
+import rego.v1
+result := {"action": "allow"} if {
+	input.parsed_body.id == 9007199254740993
+} else := {"action": "deny"}`)
+	auth, err := authorization.NewOPAAuthorizer(authzConfig(path), nil)
+	require.NoError(t, err)
+	defer auth.Stop(context.Background())
+
+	body := []byte(`{"jsonrpc":"2.0","method":"tools/call","id":9007199254740993,"params":{"name":"read"}}`)
+	input, err := buildOPAInput(t, "mcp", body, nil, testTargetServerName, authorization.ContextInput{})
+	require.NoError(t, err)
+	decision, err := auth.Evaluate(context.Background(), input)
+	require.NoError(t, err)
+	assert.Equal(t, authorization.ActionAllow, decision.Action)
 }
 
 func TestOPAAuthorizer_Deny(t *testing.T) {
@@ -455,7 +485,7 @@ func TestOPAAuthorizer_PermissionSetContextAvailability(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			decision, err := auth.Evaluate(context.Background(), authorization.OPAInput{
 				"type":    "mcp_tool_call",
-				"mcp":     &authorization.MCPInput{ToolName: "permissioned_read"},
+				"mcp":     map[string]any{"tool_name": "permissioned_read"},
 				"context": tt.context,
 			})
 			require.NoError(t, err)
@@ -502,7 +532,7 @@ func TestOPAAuthorizer_EvaluationTimeout_Deny(t *testing.T) {
 	// Scenario: context cancelled before evaluation → deny
 	path := writePolicy(t, allowAllPolicy)
 	cfg := authzConfig(path)
-	cfg.EvaluationTimeout = 1 * time.Millisecond
+	cfg.EvaluationTimeout = 100 * time.Millisecond
 
 	auth, err := authorization.NewOPAAuthorizer(cfg, nil)
 	require.NoError(t, err)
@@ -513,12 +543,10 @@ func TestOPAAuthorizer_EvaluationTimeout_Deny(t *testing.T) {
 	cancel()
 
 	decision, err := auth.Evaluate(ctx, testInput("unknown"))
-	// Either returns error or returns deny — both acceptable outcomes
-	if err != nil {
-		// error path: caller should treat as deny
-		return
-	}
+	require.NoError(t, err)
+	require.NotNil(t, decision)
 	assert.Equal(t, "deny", decision.Action)
+	assert.Equal(t, []string{"evaluation timeout"}, decision.Reasons)
 }
 
 func TestOPAAuthorizer_Stop_GracefulShutdown(t *testing.T) {
@@ -537,23 +565,48 @@ func TestOPAAuthorizer_Stop_GracefulShutdown(t *testing.T) {
 	})
 }
 
-func TestOPAAuthorizer_ApprovalRequired_LogsRawActionAndReturnsDeny(t *testing.T) {
+func TestOPAAuthorizer_ApprovalRequired_IsPreserved(t *testing.T) {
 	path := writePolicy(t, approvalRequiredPolicy)
 	cfg := authzConfig(path)
-
 	var logBuf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
-
 	auth, err := authorization.NewOPAAuthorizer(cfg, logger)
+	require.NoError(t, err)
+	defer auth.Stop(context.Background())
+	decision, err := auth.Evaluate(context.Background(), testInput("unknown"))
+	require.NoError(t, err)
+	assert.Equal(t, authorization.ActionApprovalRequired, decision.Action)
+	assert.Contains(t, logBuf.String(), `"action":"approval_required"`)
+}
+
+func TestOPAAuthorizer_CIBARequiredIsDeniedAndWarned(t *testing.T) {
+	path := writePolicy(t, cibaRequiredPolicy)
+	var logBuf bytes.Buffer
+	auth, err := authorization.NewOPAAuthorizer(authzConfig(path), slog.New(slog.NewJSONHandler(&logBuf, nil)))
 	require.NoError(t, err)
 	defer auth.Stop(context.Background())
 
 	decision, err := auth.Evaluate(context.Background(), testInput("unknown"))
 	require.NoError(t, err)
-	assert.Equal(t, "deny", decision.Action)
-	assert.Equal(t, []string{"approval_required is not yet supported"}, decision.Reasons)
-	assert.Contains(t, logBuf.String(), `"action":"approval_required"`)
-	assert.Contains(t, logBuf.String(), `"result_code":"unsupported_action"`)
+	assert.Equal(t, authorization.ActionDeny, decision.Action)
+	assert.Equal(t, []string{"ciba_required is not yet supported"}, decision.Reasons)
+	assert.Contains(t, logBuf.String(), "unsupported OPA action")
+	assert.Contains(t, logBuf.String(), authorization.ActionCIBARequired)
+}
+
+func TestOPAAuthorizer_UndefinedActionWarnsAndDenies(t *testing.T) {
+	path := writePolicy(t, unknownActionPolicy)
+	var logBuf bytes.Buffer
+	auth, err := authorization.NewOPAAuthorizer(authzConfig(path), slog.New(slog.NewJSONHandler(&logBuf, nil)))
+	require.NoError(t, err)
+	defer auth.Stop(context.Background())
+
+	decision, err := auth.Evaluate(context.Background(), testInput("unknown"))
+	require.NoError(t, err)
+	assert.Equal(t, authorization.ActionDeny, decision.Action)
+	assert.Equal(t, []string{"unknown action: future_action"}, decision.Reasons)
+	assert.Contains(t, logBuf.String(), "undefined OPA action")
+	assert.Contains(t, logBuf.String(), "future_action")
 }
 
 func TestOPAAuthorizer_AuditLog_UsesRequestContext(t *testing.T) {
@@ -578,7 +631,7 @@ func TestOPAAuthorizer_AuditLog_UsesRequestContext(t *testing.T) {
 
 	decision, err := auth.Evaluate(ctx, authorization.OPAInput{
 		"type": "mcp_tool_call",
-		"mcp":  &authorization.MCPInput{ToolName: "list_files"},
+		"mcp":  map[string]any{"tool_name": "list_files"},
 	})
 	parentSpan.End()
 	require.NoError(t, err)
@@ -591,36 +644,26 @@ func TestOPAAuthorizer_AuditLog_UsesRequestContext(t *testing.T) {
 	assert.NotEqual(t, trace.SpanID{}.String(), record.spanID)
 }
 
-func TestOPAAuthorizer_UnsupportedActionLog_UsesRequestContext(t *testing.T) {
+func TestOPAAuthorizer_ApprovalRequiredLog_UsesRequestContext(t *testing.T) {
 	handler := &contextCaptureHandler{}
 	logger := slog.New(handler)
-
 	path := writePolicy(t, approvalRequiredPolicy)
 	auth, err := authorization.NewOPAAuthorizer(authzConfig(path), logger)
 	require.NoError(t, err)
 	defer auth.Stop(context.Background())
-
 	tp := sdktrace.NewTracerProvider()
 	prevTP := otel.GetTracerProvider()
 	otel.SetTracerProvider(tp)
-	t.Cleanup(func() {
-		otel.SetTracerProvider(prevTP)
-		_ = tp.Shutdown(context.Background())
-	})
-
+	t.Cleanup(func() { otel.SetTracerProvider(prevTP); _ = tp.Shutdown(context.Background()) })
 	ctx, parentSpan := tp.Tracer("test").Start(context.Background(), "headers-phase")
 	expectedTraceID := parentSpan.SpanContext().TraceID().String()
-
 	decision, err := auth.Evaluate(ctx, testInput("unknown"))
 	parentSpan.End()
 	require.NoError(t, err)
-	assert.Equal(t, "deny", decision.Action)
-
-	record, ok := handler.find("unsupported OPA action — treating as deny")
-	require.True(t, ok, "unsupported-action warning must be emitted")
+	assert.Equal(t, authorization.ActionApprovalRequired, decision.Action)
+	record, ok := handler.find("opa authorization decision")
+	require.True(t, ok)
 	assert.Equal(t, expectedTraceID, record.traceID)
-	assert.NotEqual(t, trace.TraceID{}.String(), record.traceID)
-	assert.NotEqual(t, trace.SpanID{}.String(), record.spanID)
 }
 
 func TestOPAAuthorizer_SDKUndefined_DeniesEvenWhenDefaultDecisionAllow(t *testing.T) {

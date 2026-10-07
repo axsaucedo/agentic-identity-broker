@@ -37,6 +37,8 @@ import (
 
 const screenshotWaitTimeoutMs = 10_000
 
+const screenshotDynamicStyle = "[data-screenshot-dynamic] { display: none !important; }"
+
 type screenshotPage interface {
 	WaitForLoadState(options ...playwright.PageWaitForLoadStateOptions) error
 	Evaluate(expression string, arg ...any) (any, error)
@@ -77,7 +79,6 @@ type Page struct {
 //	page, err := context.NewPage()
 //	require.NoError(t, err)
 //	p := pages.NewPage(page, "http://localhost:3000")
-//	defer p.Close()
 func NewPage(page playwright.Page, baseURL string) *Page {
 	if page == nil {
 		panic("page is required and cannot be nil")
@@ -159,74 +160,42 @@ func (p *Page) GetBaseURL() string {
 	return p.baseURL
 }
 
-// WaitForURL waits for the page URL to match a pattern (regex or substring).
-// This is useful for verifying page navigation or redirects.
+// WaitForURL waits for the page URL to match a pattern (regex or substring)
+// and for the matching document to load.
 //
-// Parameters:
-//   - ctx: Context for cancellation and timeouts
-//   - pattern: String pattern to match in URL (can be regex or substring)
-//   - If pattern contains regex special chars and is a valid regex, it's treated as regex
-//   - Otherwise, it's treated as a substring match
-//   - Examples: "/success", "consent", "agent/[0-9]+"
-//
-// Returns:
-//   - error: If timeout expires before URL matches
-//
-// Error message format:
-// - "timeout waiting for URL to match '/success' (current: 'http://localhost:3000/error', waited 30s)"
-//
-// Example:
-//
-//	// Wait for redirect to success page
-//	err := p.WaitForURL(ctx, "/success")
-//	require.NoError(t, err)
-//
-//	// Wait with regex pattern
-//	err = p.WaitForURL(ctx, "agent/[0-9]+")
-//	require.NoError(t, err)
+// The URL predicate runs in the browser, so it observes both the current URL and
+// a redirect that completes immediately after a user action.
 func (p *Page) WaitForURL(ctx context.Context, pattern string) error {
-	deadline := time.Now().Add(p.timeout)
-
-	// Try to compile as regex; if it fails, treat as substring
-	var regex *regexp.Regexp
-	regex, _ = regexp.Compile(pattern)
-
-	for {
-		currentURL := p.page.URL()
-
-		// Check if URL matches pattern
-		if regex != nil {
-			// Try regex match
-			if regex.MatchString(currentURL) {
-				return nil
-			}
-		} else {
-			// Try substring match
-			if strings.Contains(currentURL, pattern) {
-				return nil
-			}
-		}
-
-		// Check timeout
-		if time.Now().After(deadline) {
-			return fmt.Errorf(
-				"timeout waiting for URL to match %q (current: %q, waited %v)",
-				pattern,
-				currentURL,
-				p.timeout,
-			)
-		}
-
-		// Check context cancellation
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("context cancelled while waiting for URL %q: %w", pattern, ctx.Err())
-		default:
-		}
-
-		// Wait a bit before checking again
-		time.Sleep(100 * time.Millisecond)
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("context cancelled while waiting for URL %q: %w", pattern, ctx.Err())
+	default:
 	}
+
+	urlPattern, err := regexp.Compile(pattern)
+	if err != nil {
+		urlPattern = regexp.MustCompile(regexp.QuoteMeta(pattern))
+	}
+
+	_, err = p.page.WaitForFunction(
+		"(pattern) => new RegExp(pattern).test(window.location.href)",
+		urlPattern.String(),
+		playwright.PageWaitForFunctionOptions{
+			Timeout: playwright.Float(float64(p.timeout.Milliseconds())),
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed waiting for URL to match %q (current: %q): %w", pattern, p.page.URL(), err)
+	}
+
+	if err := p.page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State:   playwright.LoadStateLoad,
+		Timeout: playwright.Float(float64(p.timeout.Milliseconds())),
+	}); err != nil {
+		return fmt.Errorf("failed waiting for URL %q to load: %w", pattern, err)
+	}
+
+	return nil
 }
 
 // WaitForNavigation waits for the page to navigate (URL change).
@@ -328,6 +297,7 @@ func captureScreenshot(page screenshotPage, screenshotDir, name string) error {
 	data, err := page.Screenshot(playwright.PageScreenshotOptions{
 		Animations: playwright.ScreenshotAnimationsDisabled,
 		FullPage:   playwright.Bool(true),
+		Style:      playwright.String(screenshotDynamicStyle),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to take screenshot %s: %w", filePath, err)
@@ -364,6 +334,7 @@ func (p *Page) TakeLocatorScreenshot(ctx context.Context, name string, locator p
 
 	data, err := locator.Screenshot(playwright.LocatorScreenshotOptions{
 		Animations: playwright.ScreenshotAnimationsDisabled,
+		Style:      playwright.String(screenshotDynamicStyle),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to take locator screenshot %s: %w", filePath, err)
@@ -397,15 +368,30 @@ func waitForScreenshotStability(page screenshotPage, name string) error {
 }
 
 func waitForScreenshotRenderStability(page screenshotPage, name string) error {
-	if _, err := page.Evaluate(`async () => {
-		if (document.fonts && document.fonts.ready) {
+	result, err := page.Evaluate(`async () => {
+		await document.fonts.ready
+		for (const [family, specification, sample] of [
+			['Crimson Pro', '700 24px "Crimson Pro"', 'Consent Management'],
+			['Manrope', '400 16px "Manrope"', 'Approve & Delegate'],
+			['JetBrains Mono', '400 14px "JetBrains Mono"', 'tool_name'],
+		]) {
 			try {
-				await document.fonts.ready
-			} catch (_) {}
+				const faces = await document.fonts.load(specification, sample)
+				if (faces.length === 0 || !document.fonts.check(specification, sample)) return family
+			} catch (_) {
+				return family
+			}
 		}
 		await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-	}`); err != nil {
+		return ''
+	}`)
+	if err != nil {
 		return fmt.Errorf("failed waiting for font/render stability before screenshot %s: %w", name, err)
+	}
+	if family, ok := result.(string); !ok {
+		return fmt.Errorf("invalid font stability result before screenshot %s: %T", name, result)
+	} else if family != "" {
+		return fmt.Errorf("font %s unavailable before screenshot %s", family, name)
 	}
 
 	return nil
@@ -450,28 +436,6 @@ func (p *Page) GetCurrentURL(ctx context.Context) (string, error) {
 //	page.GetByRole("button").Click()
 func (p *Page) GetPlaywrightPage() playwright.Page {
 	return p.page
-}
-
-// Close closes the page and releases resources.
-// Safe to call multiple times (idempotent).
-// Should be called in test cleanup (defer p.Close()).
-//
-// Parameters: None
-//
-// Returns:
-//   - error: If page close fails (rare)
-//
-// Example:
-//
-//	p := pages.NewPage(page, "http://localhost:3000")
-//	defer p.Close()
-//
-//	// Test code here
-func (p *Page) Close() error {
-	if p.page == nil {
-		return nil
-	}
-	return p.page.Close()
 }
 
 func captureScreenshotsEnabled() bool {

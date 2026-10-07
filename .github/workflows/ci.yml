@@ -1,60 +1,518 @@
+# CI — the single merge gate.
+#
+# Principle: a PR is checked for "does this change make the repository worse?"
+# Scheduled coverage lives in its own workflow and never blocks a PR.
+# Vulnerability, fuzzing, and Scorecard checks also run separately.
+#
+# Exactly one status check is required by the branch ruleset: "CI / gate".
+# Every other job is either path-scoped (skipped when unrelated) or optional,
+# and the gate collapses their results into one verdict, so a docs-only PR
+# never gets stuck on an "expected" check that will never run.
+
 name: CI
 
 on:
-  workflow_dispatch:
   pull_request:
-    branches: [main, dev]
+    branches: [main]
+  merge_group:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# Supersede an in-flight run when a PR is updated; never cancel main.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: "24"
+
 jobs:
-  verify:
+  # ---------------------------------------------------------------------------
+  # Classify what the change touches. On push/merge_group everything runs.
+  # Deliberately implemented with git instead of a third-party action: one
+  # fewer dependency to pin, and the negative match ("everything that is not
+  # documentation") is easy to reason about.
+  # ---------------------------------------------------------------------------
+  changes:
+    name: Classify changes
     runs-on: ubuntu-latest
-
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+      docs: ${{ steps.classify.outputs.docs }}
+      helm: ${{ steps.classify.outputs.helm }}
+      workflows: ${{ steps.classify.outputs.workflows }}
+      deps: ${{ steps.classify.outputs.deps }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The PR merge commit plus its first parent (the base branch tip).
+          fetch-depth: 2
 
+      - name: Classify changed paths
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Non-PR event: running everything."
+            for k in code docs helm workflows deps; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
+            exit 0
+          fi
+
+          # Files changed by the PR relative to the base branch tip.
+          git diff --name-only HEAD^1 HEAD > changed.txt
+          echo "Changed files:"; sed 's/^/  /' changed.txt
+
+          match() { grep -Eq "$1" changed.txt && echo true || echo false; }
+
+          DOCS_ONLY='^(docs/|assets/docusaurus/|adrs/|specs/|plans/|\.github/(agents|instructions|prompts)/|\.github/CODEOWNERS$|\.claude/|\.agents/|\.specify/|LICENSE$|MAINTAINERS$)|\.md$'
+
+          {
+            echo "docs=$(match '^(docs/|api/|assets/docusaurus/)')"
+            echo "helm=$(match '^charts/')"
+            echo "workflows=$(match '^\.github/(workflows/|dependabot\.yml)')"
+            echo "deps=$(match '(^|/)(go\.mod|go\.sum|package(-lock)?\.json)$')"
+            # "code" = anything that is not purely documentation.
+            if grep -Evq "$DOCS_ONLY" changed.txt; then echo "code=true"; else echo "code=false"; fi
+          } | tee -a "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Five independent verification jobs run after path classification.
+  # Each runner owns its reports; the required gate combines their results.
+  # ---------------------------------------------------------------------------
+  unit:
+    name: Unit tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
-
       - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: web/package-lock.json
-
+      - name: Cache development tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/bin
+            ~/.cache/golangci-lint
+            ~/.cache/ms-playwright
+            ~/.cache/ms-playwright-go
+          key: tools-${{ runner.os }}-${{ hashFiles('justfile') }}
+          restore-keys: tools-${{ runner.os }}-
       - name: Install just
-        uses: taiki-e/install-action@288e746965032cfcc232e09af2daf5f23c14d780
+        uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
         with:
           tool: just
-
       - name: Install development tools
         run: just install-tools
-
       - name: Install web dependencies
         run: just web-ci
-
-      - name: Run static checks
+      - name: Static checks (fmt, vet, lint)
         run: just check
-
-      - name: Run verification suite
-        run: just verify-junit
-
+      - name: Unit suites with JUnit
+        run: just verify-unit-junit
       - name: Build artifacts
         run: |
           just build-all
           test -f web/dist/index.html
-
-      - name: Upload test results
+      - name: Verify broker and ExtProc build flags
+        run: |
+          set -euo pipefail
+          scripts/verify-go-binary.sh bin/agentic-identity-broker stripped "$GITHUB_WORKSPACE"
+          just extproc-build
+          scripts/verify-go-binary.sh bin/extproc-token-exchange stripped "$GITHUB_WORKSPACE"
+          LDFLAGS="" just build extproc-build
+          for binary in agentic-identity-broker extproc-token-exchange; do
+            scripts/verify-go-binary.sh "bin/$binary" debug "$GITHUB_WORKSPACE"
+          done
+      - name: Upload unit test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: test-results
+          name: unit-test-results
           path: test-results/
           if-no-files-found: warn
+
+  docker-build-flags:
+    name: Development image build flags
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go for artifact inspection
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify development image build flags
+        run: |
+          set -euo pipefail
+          artifacts=$(mktemp -d)
+          trap 'rm -rf "$artifacts"' EXIT
+
+          build_and_check() {
+            local name=$1 target=$2 binary=$3
+            shift 3
+            for mode in stripped debug; do
+              local flags=() target_flag=()
+              if [[ $mode == debug ]]; then flags=(--build-arg 'LDFLAGS='); fi
+              if [[ -n $target ]]; then target_flag=(--target "$target"); fi
+              local image="aib-${name}-${mode}:ci"
+              docker build --platform linux/amd64 --file "build/docker/Dockerfile.${name}" \
+                "${target_flag[@]}" --tag "$image" "${flags[@]}" "$@" .
+              local container
+              container=$(docker create "$image")
+              docker cp "$container:$binary" "$artifacts/${name}-${mode}"
+              docker rm "$container"
+              scripts/verify-go-binary.sh "$artifacts/${name}-${mode}" "$mode" /app
+            done
+          }
+
+          build_and_check cimd '' /app/cimd-server
+          build_and_check mock '' /app/mock-service \
+            --build-arg SERVICE_PATH=mocks/upstream-oauth2-server/cmd/mock-upstream-oauth2-server
+          build_and_check extproc development /app/extproc-token-exchange
+
+  integration:
+    name: Integration tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Cache development tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/bin
+            ~/.cache/golangci-lint
+            ~/.cache/ms-playwright
+            ~/.cache/ms-playwright-go
+          key: tools-${{ runner.os }}-${{ hashFiles('justfile') }}
+          restore-keys: tools-${{ runner.os }}-
+      - name: Install just
+        uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
+        with:
+          tool: just
+      - name: Install development tools
+        run: just install-tools
+      - name: Integration suites with JUnit
+        run: just verify-integration-junit
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-test-results
+          path: test-results/
+          if-no-files-found: warn
+
+  e2e-backend:
+    name: Backend E2E tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Cache development tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/bin
+            ~/.cache/golangci-lint
+            ~/.cache/ms-playwright
+            ~/.cache/ms-playwright-go
+          key: tools-${{ runner.os }}-${{ hashFiles('justfile') }}
+          restore-keys: tools-${{ runner.os }}-
+      - name: Install just
+        uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
+        with:
+          tool: just
+      - name: Install development tools
+        run: just install-tools
+      - name: Install web dependencies
+        run: just web-ci
+      - name: Pre-pull PostgreSQL E2E image
+        run: timeout 3m docker pull postgres:15-alpine@sha256:09e4f20b14ddb3dfe3a0c825b206032aaf8f28300ba2070c0b60fc1c10c6abc7
+      - name: Backend E2E suite with JUnit
+        run: just verify-e2e-backend-junit
+      - name: Upload backend E2E test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-backend-test-results
+          path: test-results/
+          if-no-files-found: warn
+
+  e2e-extproc:
+    name: ExtProc E2E tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Cache development tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/bin
+            ~/.cache/golangci-lint
+            ~/.cache/ms-playwright
+            ~/.cache/ms-playwright-go
+          key: tools-${{ runner.os }}-${{ hashFiles('justfile') }}
+          restore-keys: tools-${{ runner.os }}-
+      - name: Install just
+        uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
+        with:
+          tool: just
+      - name: Install development tools
+        run: just install-tools
+      - name: Pre-pull agentgateway E2E images
+        run: |
+          docker pull cr.agentgateway.dev/agentgateway:v1.5.0
+          docker pull testcontainers/sshd:1.4.0
+          docker pull testcontainers/ryuk:0.14.0
+      - name: ExtProc E2E suite with JUnit
+        run: just verify-e2e-extproc-junit
+      - name: Upload ExtProc E2E test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-extproc-test-results
+          path: test-results/
+          if-no-files-found: warn
+
+  e2e-frontend:
+    name: Frontend E2E tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Cache development tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/bin
+            ~/.cache/golangci-lint
+            ~/.cache/ms-playwright
+            ~/.cache/ms-playwright-go
+          key: tools-${{ runner.os }}-${{ hashFiles('justfile') }}
+          restore-keys: tools-${{ runner.os }}-
+      - name: Install just
+        uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
+        with:
+          tool: just
+      - name: Install development tools
+        run: just install-tools
+      - name: Install web dependencies
+        run: just web-ci
+      - name: Frontend E2E suite with JUnit
+        run: just verify-e2e-frontend-junit
+      - name: Upload frontend E2E test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-frontend-test-results
+          path: test-results/
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Documentation site builds (was docs-check.yml).
+  # ---------------------------------------------------------------------------
+  docs:
+    name: Docs build
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: assets/docusaurus
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: assets/docusaurus/package-lock.json
+      - run: npm ci
+      - name: Build documentation
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # Helm chart lints (the chart is only otherwise validated at release time).
+  # ---------------------------------------------------------------------------
+  helm:
+    name: Helm lint
+    needs: changes
+    if: needs.changes.outputs.helm == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - name: Lint chart
+        run: helm lint charts/agentic-identity-broker
+
+  # ---------------------------------------------------------------------------
+  # The pipeline lints itself: syntax (actionlint) and security posture
+  # (zizmor: unpinned actions, template injection, credential leaks, ...).
+  # ---------------------------------------------------------------------------
+  workflows:
+    name: Workflow lint
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: actionlint
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint" -color
+      - name: zizmor
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          advanced-security: false
+          min-severity: medium
+
+  # ---------------------------------------------------------------------------
+  # Diff-aware dependency check: fails only if THIS PR introduces a dependency
+  # with a known vulnerability or a disallowed license. Baseline problems on
+  # main are reported by the Security workflow instead, so this never
+  # complains about things the PR author did not touch.
+  # ---------------------------------------------------------------------------
+  dependency-review:
+    name: Dependency review
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.deps == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: never
+
+  # ---------------------------------------------------------------------------
+  # The one required status check. Succeeds when every job above either
+  # succeeded or was skipped as not applicable.
+  # ---------------------------------------------------------------------------
+  gate:
+    name: CI gate
+    if: always()
+    needs: [changes, unit, docker-build-flags, integration, e2e-backend, e2e-extproc, e2e-frontend, docs, helm, workflows, dependency-review]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Evaluate results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if echo "$RESULTS" | jq -e '[.[] | .result] | any(. == "failure" or . == "cancelled")' > /dev/null; then
+            echo "::error::At least one CI job failed or was cancelled."
+            exit 1
+          fi
+          echo "All applicable CI jobs passed."

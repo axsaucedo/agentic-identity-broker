@@ -1,33 +1,30 @@
 <!--
 Sync Impact Report
 ==================
-Version Change: 1.9.0 → 1.9.1
-Rationale:
-  1.9.0 → 1.9.1 (PATCH): Principle I now names the accepted, bounded exception
-    established by ADR 031 for unsigned unverified-subject JWTs in local-mode OAuth2
-    impersonation. The exception is limited to the unverified subject role
-    (`verification: none`) and retains all six compensating controls from ADR 031.
+Version Change: 2.0.0 → 2.1.0
+Rationale: MINOR — Principle XI adds centralized semantic tokens, light/dark accessibility
+  checks, brand-asset self-hosting, and ADR review of visual-direction changes while removing
+  the prescribed aesthetic. The principle and its design-system process remain in place.
 
 Modified Principles:
-  - Principle I: added ADR 031 bounded exception
+  - XI. Design System Compliance & Consistency → XI. Design System Compliance & Consistency:
+    replaced aesthetic mandates with process requirements.
 
 Added Sections: None
-
 Removed Sections: None
 
-Templates Status:
-- ✅ No template changes required
-
-Follow-up TODOs: None
-
-Previous Version History:
+Version History:
+- 2.0.0 → 2.1.0: Replaced Principle XI aesthetic mandates with token, theme, asset, accessibility, and ADR requirements (MINOR)
+- 1.9.1 → 2.0.0: Scoped Helm changes to workloads deployed by the broker chart (MAJOR)
+- 1.9.0 → 1.9.1: Clarified the bounded ADR 031 exception in Principle I (PATCH)
 - 1.8.0 → 1.8.1: Clarified red phase rules in Principles VIII and XIII (PATCH)
-- 1.7.1 → 1.8.0: Added Helm chart requirement (Principle VII) + frontend Playwright E2E (Principle XIII) (MINOR)
+- 1.7.1 → 1.8.0: Added Helm chart requirement (Principle VII) + frontend Playwright E2E (MINOR)
 - 1.7.0 → 1.7.1: Clarified red phase requirements in Principle VIII (PATCH)
 - 1.6.0 → 1.7.0: Added Principle XIII (E2E Acceptance Testing) + expanded Principle VIII (MINOR)
 - 1.5.1 → 1.6.0: Added Principle XII (Dependency Injection & Component Wiring) (MINOR)
 - 1.5.0 → 1.5.1: Clarified testing requirements in tasks-template.md (PATCH)
-- 1.4.0 → 1.5.0: Added Governance > Task List Requirements section (MINOR)
+
+Follow-up TODOs: Review dependent references in `specs/047-redesign-consent-console/plan.md`.
 -->
 
 # Agentic Identity Broker Constitution
@@ -60,9 +57,9 @@ Security is NON-NEGOTIABLE and MUST NOT be bypassed or made optional in this cod
 Architecture and major decisions MUST be documented, and Architecture Decision Records are BINDING.
 
 **Rules**:
-- [ARCHITECTURE.md](ARCHITECTURE.md) is the single source of truth for system architecture
-- When features change or touch architecture, [ARCHITECTURE.md](ARCHITECTURE.md) MUST be updated in the same PR
-- Non-functional requirements (performance, security, scalability) MUST be documented in [ARCHITECTURE.md](ARCHITECTURE.md)
+- [ARCHITECTURE.md](../../ARCHITECTURE.md) is the single source of truth for system architecture
+- When features change or touch architecture, [ARCHITECTURE.md](../../ARCHITECTURE.md) MUST be updated in the same PR
+- Non-functional requirements (performance, security, scalability) MUST be documented in [ARCHITECTURE.md](../../ARCHITECTURE.md)
 - Major architectural decisions MUST be recorded in [adrs/](adrs/) directory as Architecture Decision Records
 - ADR files MUST follow the format `NNN-decision-title.md` (e.g., `001-hexagonal-architecture.md`)
 - ADRs MUST include: Context, Decision, Consequences, Status (Proposed/Accepted/Deprecated/Superseded)
@@ -108,11 +105,11 @@ and API contracts are binding commitments to consumers.
 - Once an API is deployed/released, NEVER change its behavior without a major version bump or creating a new endpoint
 - Deprecation warnings MUST be added to OpenAPI docs before removing endpoints
 - When user requests API change during implementation, create ADR documenting the change with confirmation reference
-- API versioning strategy MUST be documented in [ARCHITECTURE.md](ARCHITECTURE.md)
+- API versioning strategy MUST be documented in [ARCHITECTURE.md](../../ARCHITECTURE.md)
 - All APIs MUST follow Zalando RESTful API and Event Guidelines
   (https://opensource.zalando.com/restful-api-guidelines/)
 - API design decisions (e.g., naming conventions, error response format, pagination strategy) MUST be
-  documented in [ARCHITECTURE.md](ARCHITECTURE.md) or via ADR
+  documented in [ARCHITECTURE.md](../../ARCHITECTURE.md) or via ADR
 - Breaking API changes MUST be documented in [docs/changelog.md](docs/changelog.md)
 
 **Rationale**: APIs are contracts with consumers. Explicit OpenAPI documentation in designated locations
@@ -127,8 +124,8 @@ Domain concepts MUST be explicitly modeled, documented, and maintained in the gl
 
 **Rules**:
 - This project follows Domain-Driven Design (DDD) principles
-- When the domain model is updated or new domain concepts are introduced, they MUST be added to [ARCHITECTURE.md](ARCHITECTURE.md)
-- All domain terms MUST be added to the Glossary section in [ARCHITECTURE.md](ARCHITECTURE.md)
+- When the domain model is updated or new domain concepts are introduced, they MUST be added to [ARCHITECTURE.md](../../ARCHITECTURE.md)
+- All domain terms MUST be added to the Glossary section in [ARCHITECTURE.md](../../ARCHITECTURE.md)
 - Glossary entries MUST include: term name, definition, relationships to other domain concepts
 - Ubiquitous language from the domain model MUST be used consistently in code, docs, and discussions
 
@@ -143,38 +140,29 @@ Backend architecture MUST use hexagonal architecture with clear port/adapter sep
 - Domain logic MUST depend on ports (interfaces), NOT concrete implementations
 - Adapters MUST implement ports: driving adapters (inbound, e.g., HTTP handlers) and driven adapters (outbound, e.g., database clients)
 - This is NOT dogmatic: pragmatic deviations are allowed, but domain logic MUST remain insulated via interfaces
-- The directory structure MUST be explained in [ARCHITECTURE.md](ARCHITECTURE.md)
-- If directory structure is unclear or misleading, it MUST be clarified with the user and updated in [ARCHITECTURE.md](ARCHITECTURE.md)
+- The directory structure MUST be explained in [ARCHITECTURE.md](../../ARCHITECTURE.md)
+- If directory structure is unclear or misleading, it MUST be clarified with the user and updated in [ARCHITECTURE.md](../../ARCHITECTURE.md)
 
 **Rationale**: Hexagonal architecture enables testability, flexibility, and maintainability by decoupling domain logic from infrastructure concerns.
 
 ### VII. Configuration-Driven Design
 
-All runtime configuration MUST use the unified configuration system; ad-hoc configuration is forbidden.
+All runtime configuration MUST use the configuration system owned by the deployable application; ad-hoc configuration is forbidden.
 
 **Rules**:
-- Features MUST NOT implement custom configuration loading; they MUST use the system-wide configuration port defined in [internal/ports/config.go](internal/ports/config.go)
-- All configuration settings MUST support multiple sources (files, environment variables, CLI flags) with clear precedence
-- Configuration structure MUST be defined in [internal/config/schema.go](internal/config/schema.go) with validation rules enforced at startup
-- End-user documentation for feature-specific configuration MUST be added to [docs/configuration.md](docs/configuration.md)
-- Feature-specific configuration examples MUST be added to [examples/config/](examples/config/) directory
-- Configuration guide [examples/config/README.md](examples/config/README.md) MUST be referenced and updated as new features add configuration options
-- See [Flexible Configuration Feature Documentation](docs/configuration.md) for complete usage guidance
-- Implementation reference: [Feature 002 - Flexible Configuration](specs/002-flexible-configuration/)
-- **When configuration parameters are added, changed, or removed, the Helm chart in
-  `charts/agentic-identity-broker/` MUST be updated**:
-  - `values.yaml`: add new parameters with default values and `--` doc comments matching the existing style
-  - ConfigMap/Secret templates under `charts/agentic-identity-broker/templates/` MUST be updated to
-    pass the new config values to pods (environment variables or mounted config files)
-  - `charts/agentic-identity-broker/README.md` (if present): update configuration reference table
-    with new parameters, their types, defaults, and descriptions
+- The identity broker MUST use the system-wide configuration port in [internal/ports/config.go](internal/ports/config.go).
+- A standalone binary MAY use a separate configuration schema and environment prefix only when an accepted ADR documents the boundary and its rationale.
+- All configuration settings MUST support files, environment variables, and CLI flags with clear precedence.
+- Configuration structures MUST have startup validation in the configuration system that owns the deployable application.
+- End-user documentation for feature-specific configuration MUST be added to [docs/configuration.md](docs/configuration.md).
+- Feature-specific configuration examples MUST be added to [examples/config/](examples/config/) and referenced from [examples/config/README.md](examples/config/README.md).
+- **When configuration parameters of a workload deployed by `charts/agentic-identity-broker/` are added, changed, or removed, the Helm chart MUST be updated**:
+  - `values.yaml` MUST add parameters with defaults and `--` documentation comments matching the existing style.
+  - ConfigMap/Secret templates under `charts/agentic-identity-broker/templates/` MUST pass the values to the workload.
+  - `charts/agentic-identity-broker/README.md` (if present) MUST document parameter types, defaults, and descriptions.
+- Parameters owned exclusively by a standalone binary that this chart does not deploy MUST NOT be inserted into the broker ConfigMap or Deployment. Their owning deployment artifact MUST provide them through that binary's documented configuration path.
 
-**Rationale**: Unified configuration prevents duplication, ensures consistent precedence rules across
-the system, reduces operational confusion, and simplifies deployment across development/staging/production
-environments. The 002-flexible-configuration feature established this system; all features MUST integrate
-with it rather than bypassing it. Keeping the Helm chart in sync with configuration changes is essential
-for Kubernetes deployments: untracked config parameters cause silent runtime failures or require manual
-operator intervention to discover. The Helm chart is the deployment contract for production operators.
+**Rationale**: A deployable application needs one clear configuration contract. The broker chart is authoritative only for broker workloads it deploys; placing standalone-binary settings in it configures the wrong process and risks invalid startup configuration. Accepted ADRs document the independent configuration and deployment boundaries required for standalone binaries.
 
 ### VIII. Test-Driven Development & Automated Testing
 
@@ -304,7 +292,7 @@ changed without confirmation, even to fix bugs.
 - Once an API is deployed/released, NEVER change its behavior without a major version bump or creating a new endpoint
 - Deprecation warnings MUST be added to OpenAPI docs before removing endpoints
 - When user requests API change during implementation, create ADR documenting the change with confirmation reference
-- API versioning strategy MUST be documented in [ARCHITECTURE.md](ARCHITECTURE.md)
+- API versioning strategy MUST be documented in [ARCHITECTURE.md](../../ARCHITECTURE.md)
 
 **Rationale**: Designing APIs before implementation ensures that system contracts are stable,
 well-thought-out, and user-centric. Requiring user/stakeholder confirmation makes API changes explicit
@@ -315,8 +303,8 @@ without confirmation breaks that trust.
 
 ### XI. Design System Compliance & Consistency
 
-All frontend components MUST use the design system; universal patterns MUST be contributed back to
-ensure consistency, accessibility, and brand identity.
+All frontend components MUST use the design system; universal patterns MUST be contributed back
+to ensure consistency and accessibility without prescribing a specific aesthetic.
 
 **Rules**:
 - All frontend components MUST be built using the design system located at `web/src/design-system/`
@@ -325,12 +313,18 @@ ensure consistency, accessibility, and brand identity.
   - Review [DECISION_TREES.md](../web/src/design-system/docs/DECISION_TREES.md) for variant selection guidance
   - Reference [COMPONENT_PAIRING_GUIDE.md](../web/src/design-system/docs/COMPONENT_PAIRING_GUIDE.md) for composition patterns
   - Study [COMMON_MISTAKES.md](../web/src/design-system/docs/COMMON_MISTAKES.md) to avoid anti-patterns
-  - Use semantic color tokens (`trust-deep`, `success-primary`, `neutral-*`) NOT extended palettes (`navy-*`, `emerald-*`, `gray-*`)
-  - Follow [DESIGN_PRINCIPLES.md](../web/src/design-system/docs/DESIGN_PRINCIPLES.md) for Refined Trust Architecture aesthetic
 - New application-specific components MUST use design system primitives (Button, Card, Badge, etc.) not custom implementations
 - If a component is universally applicable (not app-specific), it MUST be added to the design system in `web/src/design-system/components/`
+- All visual decisions (color, type, spacing, radius, motion, theme) MUST be expressed as semantic
+  design tokens defined in one place under `web/src/design-system/tokens/`; components MUST NOT
+  reference raw palette utilities
+- The design system MUST support light and dark themes; every component story MUST render and pass
+  the accessibility addon in both
+- Brand assets (wordmark, mark, favicon, brand typeface) MUST be self-hosted from the repository;
+  the frontend MUST NOT load fonts, scripts or images from third-party origins
+- The current visual direction is documented in
+  `web/src/design-system/docs/DESIGN_PRINCIPLES.md`; changing it requires an ADR
 - All design system components MUST follow:
-  - Refined Trust Architecture aesthetic (navy brand colors #0A2540, warm neutrals, Crimson Pro serif headings)
   - WCAG 2.1 AA accessibility standards (4.5:1 text contrast minimum, 3:1 UI component contrast minimum)
   - Semantic HTML with proper ARIA attributes for screen reader support
   - Tailwind CSS v4 with @theme directive for design tokens
@@ -338,16 +332,12 @@ ensure consistency, accessibility, and brand identity.
 - Component-specific styling MUST NOT bypass design tokens or introduce custom CSS that breaks visual consistency
 - Storybook stories MUST be included for all new design system components with visual regression testing
 - Color usage MUST follow semantic tokens defined in [TOKEN_GUIDE.md](../web/src/design-system/docs/TOKEN_GUIDE.md)
-- Typography MUST use font families: Crimson Pro (headings), Manrope (body), JetBrains Mono (code/technical values)
 
-**Rationale**: Design system compliance ensures visual consistency across the application, maintains brand
-identity (Refined Trust Architecture), reduces development time through component reuse, and guarantees
-accessibility standards (WCAG 2.1 AA). The design system documentation provides comprehensive guidance
-enabling 92-95% autonomous decision-making for AI agents building components (verified via independent
-ui-designer assessment). Requiring universal components to be contributed back prevents fragmentation
-and ensures patterns are shared across the application. Semantic tokens prevent color inconsistencies and
-make theming possible. This principle establishes frontend quality standards and prevents ad-hoc styling
-that undermines user experience and accessibility.
+**Rationale**: Shared semantic tokens and reusable components keep the frontend consistent without
+mandating a particular aesthetic. WCAG 2.1 AA checks and accessible Storybook stories protect
+usability in both themes. Self-hosted brand assets avoid third-party dependencies for visual
+identity. ADR review makes changes to the documented visual direction explicit, while design-system
+reuse prevents fragmented component behavior.
 
 ### XII. Dependency Injection & Component Wiring
 
@@ -484,11 +474,10 @@ documentation of UI states, making regressions immediately visible during review
 **PRECONDITIONS (must complete BEFORE implementation begins)**:
 
 - [ ] Domain model designed: all entities, aggregates, and value objects identified and documented
-- [ ] Domain concepts added to [ARCHITECTURE.md](ARCHITECTURE.md) Glossary section
+- [ ] Domain concepts added to [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary section
 - [ ] Configuration requirements designed: example YAML snippets showing all new config options
 - [ ] Configuration examples committed to [examples/config/](examples/config/) for reference
-- [ ] **Helm chart updated if config parameters changed: `charts/agentic-identity-broker/values.yaml`,
-      templates, and README updated (Principle VII)**
+- [ ] **Helm deployment contract updated when configuration parameters of a chart-managed workload change; otherwise the standalone deployment owner and its accepted ADR boundary are documented (Principle VII)**
 - [ ] APIs designed and documented in OpenAPI format (confirm with user/stakeholder per Principle X)
 - [ ] Database schema designed (migration files and SQL documented, or confirm no DB changes)
 - [ ] Frontend components designed: review [web/src/design-system/docs/INDEX.md](../web/src/design-system/docs/INDEX.md) and ensure design system can be used
@@ -502,13 +491,13 @@ documentation of UI states, making regressions immediately visible during review
 **Implementation Phase**:
 
 - [ ] Security controls are enabled by default and fail closed
-- [ ] [ARCHITECTURE.md](ARCHITECTURE.md) reflects architectural changes (if any)
+- [ ] [ARCHITECTURE.md](../../ARCHITECTURE.md) reflects architectural changes (if any)
 - [ ] Major decisions recorded in [adrs/](adrs/) with correct numbering
 - [ ] Code follows patterns established in accepted ADRs (especially ADR 004 for persistence)
 - [ ] APIs implemented exactly as documented in OpenAPI specification
 - [ ] End-user API documentation in [docs/api/](docs/api/) with examples (if applicable)
-- [ ] Configuration implementation uses unified system port, not custom loading
-- [ ] **Helm chart updated to reflect any new or changed configuration parameters (Principle VII)**
+- [ ] Configuration implementation uses the configuration system owned by its deployable application; a standalone configuration path requires an accepted ADR
+- [ ] **Helm chart updated for configuration changes to chart-managed workloads, or the standalone deployment boundary verified and documented (Principle VII)**
 - [ ] Domain logic uses ports (interfaces) and adapters are separated
 - [ ] No custom cryptography; security features use vetted libraries
 - [ ] Structured logging present for security-critical operations
@@ -644,7 +633,7 @@ If Principle XIII (End-to-End Acceptance Testing & Spec Traceability) cannot be 
 - Reviewers MUST verify E2E tests exist for all spec scenarios and changed minimally during implementation (Principle XIII)
 - Reviewers MUST verify E2E tests failed semantically in red phase: detailed expectations present and
   failing, not trivial always-fail placeholders (Principle XIII)
-- Reviewers MUST verify Helm chart updated when configuration parameters changed (Principle VII)
+- Reviewers MUST verify Helm updates for chart-managed workload configuration, or the accepted ADR and documented standalone deployment boundary for separately deployed binaries (Principle VII)
 - Reviewers MUST verify frontend UI changes have Playwright E2E tests in `tests/e2e/frontend/` and
   screenshots in `tests/e2e/screenshots/` (Principle XIII)
 - Template files in [.specify/templates/](.specify/templates/) provide execution workflows that enforce these principles
@@ -656,7 +645,7 @@ Every feature's `tasks.md` file MUST include these mandatory sections from [task
 **MANDATORY SECTIONS** (cannot be omitted):
 1. **Phase 2: Design Preconditions** - Constitution PRECONDITIONS implementation
    - Phase 2a: Domain Model & Glossary (Principles II, V)
-   - Phase 2b: Configuration Design (Principle VII) — includes Helm chart update task
+   - Phase 2b: Configuration Design (Principle VII) — includes a Helm task for chart-managed workloads or standalone deployment-boundary verification
    - Phase 2c: API Design (Principles IV, X)
    - Phase 2d: Database Design (Principle IX)
    - Phase 2e: Frontend/Design System Review (Principle XI, if applicable)
@@ -687,4 +676,4 @@ Every feature's `tasks.md` file MUST include these mandatory sections from [task
 - The tasks-template.md uses 🔒 emoji and [MANDATORY] markers to clearly distinguish mandatory from customizable sections
 - Omitting mandatory sections violates this constitution and blocks feature completion
 
-**Version**: 1.9.1 | **Ratified**: 2025-12-14 | **Last Amended**: 2026-08-27
+**Version**: 2.1.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2026-09-25

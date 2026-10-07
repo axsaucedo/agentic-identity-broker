@@ -6,7 +6,7 @@ tags:
   application: agentic-identity-broker
 
 pipeline:
-  - id: test
+  - id: test-unit
     type: script
     when:
       - event: pull_request
@@ -17,12 +17,15 @@ pipeline:
     vm_config:
       type: linux
       size: large
-      image: cdp-runtime/go-1.26
+      image: cdp-runtime/go-1.27
     cache:
       paths:
         - /go/pkg/mod
+        - /go/bin
         - ~/.npm
         - ~/.cache/ms-playwright
+        - ~/.cache/ms-playwright-go
+        - ~/.cache/golangci-lint
       size_limit_megabytes: 4096
     commands:
       - desc: "Install pre-requisites"
@@ -31,25 +34,171 @@ pipeline:
           apt-get --yes install just curl ca-certificates
           curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
           apt-get --yes install nodejs
+          export GOBIN=/go/bin PATH="/go/bin:$PATH"
           just install-tools
           just web-ci
       - desc: "Run quality checks"
         cmd: |
+          export PATH="/go/bin:$PATH"
           just check
-      - desc: "Run verification suite"
+      - desc: "Run unit suites"
         cmd: |
-          GINKGO_BACKEND_PROCS=4 GINKGO_EXTPROC_PROCS=4 \
-            GINKGO_FRONTEND_PROCS=2 E2E_CAPTURE_SCREENSHOTS=false \
-            cdp-wrap-cmd "just verify-junit" \
-              "cdp-tool upload-test-results -t junit \
-                $(pwd)/test-results/all-tests-junit.xml"
+          export PATH="/go/bin:$PATH"
+          cdp-wrap-cmd "just verify-unit-junit" \
+            "cdp-tool upload-test-results -t junit \
+              $(pwd)/test-results/unit-junit.xml"
       - desc: "Run artifacts build test"
         cmd: |
           just build-all
           test -f web/dist/index.html
 
+  - id: test-integration
+    type: script
+    when:
+      - event: pull_request
+      - branch:
+          - main
+          - dev
+        event: push
+    vm_config:
+      type: linux
+      size: large
+      image: cdp-runtime/go-1.27
+    cache:
+      paths:
+        - /go/pkg/mod
+        - /go/bin
+        - ~/.npm
+        - ~/.cache/ms-playwright
+        - ~/.cache/ms-playwright-go
+      size_limit_megabytes: 4096
+    commands:
+      - desc: "Install pre-requisites"
+        cmd: |
+          apt-get update
+          apt-get --yes install just curl ca-certificates
+          curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+          apt-get --yes install nodejs
+          export GOBIN=/go/bin PATH="/go/bin:$PATH"
+          just install-tools
+      - desc: "Run integration suites"
+        cmd: |
+          export PATH="/go/bin:$PATH"
+          cdp-wrap-cmd "just verify-integration-junit" \
+            "cdp-tool upload-test-results -t junit \
+              $(pwd)/test-results/integration-junit.xml"
+
+  - id: test-e2e-backend
+    type: script
+    when:
+      - event: pull_request
+      - branch:
+          - main
+          - dev
+        event: push
+    vm_config:
+      type: linux
+      size: large
+      image: cdp-runtime/go-1.27
+    cache:
+      paths:
+        - /go/pkg/mod
+        - /go/bin
+        - ~/.npm
+        - ~/.cache/ms-playwright
+        - ~/.cache/ms-playwright-go
+      size_limit_megabytes: 4096
+    commands:
+      - desc: "Install pre-requisites"
+        cmd: |
+          apt-get update
+          apt-get --yes install just curl ca-certificates
+          curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+          apt-get --yes install nodejs
+          export GOBIN=/go/bin PATH="/go/bin:$PATH"
+          just install-tools
+          just web-ci
+      - desc: "Run backend E2E suite"
+        cmd: |
+          export PATH="/go/bin:$PATH"
+          GINKGO_BACKEND_PROCS=4 cdp-wrap-cmd "just verify-e2e-backend-junit" \
+            "cdp-tool upload-test-results -t junit \
+              $(pwd)/test-results/e2e-backend-junit.xml"
+
+  - id: test-e2e-extproc
+    type: script
+    when:
+      - event: pull_request
+      - branch:
+          - main
+          - dev
+        event: push
+    vm_config:
+      type: linux
+      size: large
+      image: cdp-runtime/go-1.27
+    cache:
+      paths:
+        - /go/pkg/mod
+        - /go/bin
+        - ~/.cache/ms-playwright
+        - ~/.cache/ms-playwright-go
+      size_limit_megabytes: 4096
+    commands:
+      - desc: "Install pre-requisites"
+        cmd: |
+          apt-get update
+          apt-get --yes install just curl ca-certificates
+          export GOBIN=/go/bin PATH="/go/bin:$PATH"
+          just install-tools
+      - desc: "Run ExtProc E2E suite"
+        cmd: |
+          export PATH="/go/bin:$PATH"
+          GINKGO_EXTPROC_PROCS=4 cdp-wrap-cmd "just verify-e2e-extproc-junit" \
+            "cdp-tool upload-test-results -t junit \
+              $(pwd)/test-results/e2e-extproc-junit.xml"
+
+  - id: test-e2e-frontend
+    type: script
+    when:
+      - event: pull_request
+      - branch:
+          - main
+          - dev
+        event: push
+    vm_config:
+      type: linux
+      size: large
+      image: cdp-runtime/go-1.27
+    cache:
+      paths:
+        - /go/pkg/mod
+        - /go/bin
+        - ~/.npm
+        - ~/.cache/ms-playwright
+        - ~/.cache/ms-playwright-go
+      size_limit_megabytes: 4096
+    commands:
+      - desc: "Install pre-requisites"
+        cmd: |
+          apt-get update
+          apt-get --yes install just curl ca-certificates
+          curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+          apt-get --yes install nodejs
+          export GOBIN=/go/bin PATH="/go/bin:$PATH"
+          just install-tools
+          go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install-deps chromium
+          just web-ci
+      - desc: "Run frontend E2E suite"
+        cmd: |
+          export PATH="/go/bin:$PATH"
+          GINKGO_FRONTEND_PROCS=2 E2E_CAPTURE_SCREENSHOTS=false \
+            cdp-wrap-cmd "just verify-e2e-frontend-junit" \
+              "cdp-tool upload-test-results -t junit \
+                $(pwd)/test-results/e2e-frontend-junit.xml"
+
   - id: release
-    depends_on: [test]
+    depends_on: [test-unit, test-integration, test-e2e-backend, test-e2e-extproc, test-e2e-frontend]
     type: script
     when:
       branch:
@@ -58,7 +207,7 @@ pipeline:
       event: push
     vm_config:
       type: linux
-      image: cdp-runtime/go-1.26
+      image: cdp-runtime/go-1.27
     cache:
       paths:
         - /go/pkg/mod
@@ -68,17 +217,37 @@ pipeline:
       - desc: "Publish internal release images and tag"
         cmd: |
           set -eu
+          LATEST_VERSION="$(git tag --merged HEAD --list 'v*.*.*' --sort=-version:refname | sed -n '1p')"
+          if [ -n "${LATEST_VERSION}" ] && git diff --quiet \
+              "${LATEST_VERSION}" HEAD -- \
+              . \
+              ':(exclude,glob)docs/**' \
+              ':(exclude,glob)assets/docusaurus/**' \
+              ':(exclude,glob)adrs/**' \
+              ':(exclude,glob)specs/**' \
+              ':(exclude,glob)plans/**' \
+              ':(exclude,glob).github/**' \
+              ':(exclude,glob).claude/**' \
+              ':(exclude,glob).agents/**' \
+              ':(exclude,glob).specify/**' \
+              ':(exclude,glob)LICENSE' \
+              ':(exclude,glob)MAINTAINERS' \
+              ':(exclude,glob)*.md' \
+              ':(exclude,glob)**/*.md'; then
+            echo "Skipping release: only documentation-only changes since ${LATEST_VERSION}."
+            exit 0
+          fi
+
           apt-get update
           apt-get --yes install just curl ca-certificates
           curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
           apt-get --yes install nodejs
+          export GOBIN=/go/bin PATH="/go/bin:$PATH"
           just install-tools
           just web-ci
           docker buildx create --config /etc/cdp-buildkitd.toml \
             --driver-opt network=host --bootstrap --use
 
-          LATEST_VERSION="$(git describe --tags --always | \
-            awk -F- '{print $1}')"
           CURRENT_MINOR="$(printf '%s' "${LATEST_VERSION}" | cut -d. -f1,2)"
           VERSION_PART="$(tr -d '[:space:]' < VERSION)"
           PATCH="$(printf '%s' "${LATEST_VERSION}" | cut -d. -f3)"

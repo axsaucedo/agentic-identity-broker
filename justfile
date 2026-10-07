@@ -8,13 +8,16 @@ NUM_CPUS := num_cpus()
 VERSION := env_var_or_default("VERSION", `git describe --tags --always 2>/dev/null || echo "latest"`)
 REVISION := env_var_or_default("REVISION", `git rev-parse HEAD 2>/dev/null || echo "unknown"`)
 CREATED := env_var_or_default("CREATED", `git show -s --format=%cI HEAD 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%SZ"`)
+LDFLAGS := env_var_or_default("LDFLAGS", "-s -w")
+# Base image for release Docker builds. Defaults to the public pinned digest
+# each Dockerfile declares; internal release pipelines override this to an
+# internally-mirrored/allowed base image (see delivery.yaml).
+BASE_IMAGE := env_var_or_default("BASE_IMAGE", "alpine:3@sha256:5b02b42e375f7426f8d65c3af331ca05d9878f9989230354504e0b9dfd431f60")
 GO_FAST_TEST_PACKAGES := `go list -e ./... | grep -Ev '(/assets/docusaurus/build/|/specs/|/web/node_modules/|/tests/e2e$|/tests/e2e/frontend$|/tests/e2e/extproc$|/tests/integration($|/))' | tr '\n' ' '`
 INTEGRATION_INFRA_TEST_PACKAGES := "./tests/integration/infra/... ./tests/integration/migrations/... ./tests/integration/storage/infra/... ./internal/adapters/storage/postgres/..."
 INTEGRATION_INFRA_PACKAGE_PROCS := env_var_or_default("INTEGRATION_INFRA_PACKAGE_PROCS", "2")
 GINKGO_FRONTEND_PROCS := env_var_or_default("GINKGO_FRONTEND_PROCS", "2")
 E2E_CAPTURE_SCREENSHOTS := env_var_or_default("E2E_CAPTURE_SCREENSHOTS", "false")
-# JWX v4 requires jsonv2 only on Go 1.26; Go 1.27 includes it by default.
-export GOEXPERIMENT := `case "$(go env GOVERSION)" in go1.26.*) printf 'jsonv2' ;; esac`
 
 # Use Docker Compose v1 when installed, otherwise Docker Compose v2.
 COMPOSE_CMD := `if command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"; else echo "docker compose"; fi`
@@ -33,35 +36,35 @@ default:
 build:
     @echo "Building {{NAME}}..."
     @mkdir -p bin
-    go build -ldflags="-s -w" -o bin/{{NAME}} ./cmd/{{NAME}}
+    go build -trimpath -ldflags="{{LDFLAGS}}" -o bin/{{NAME}} ./cmd/{{NAME}}
     @echo "✓ Built: bin/{{NAME}}"
 
 # Build Linux binary for arm64
 build-linux-arm64:
     @echo "Building Linux binary for arm64..."
     @mkdir -p bin/linux/arm64
-    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/arm64/{{NAME}} ./cmd/{{NAME}}
+    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="{{LDFLAGS}}" -o bin/linux/arm64/{{NAME}} ./cmd/{{NAME}}
     @echo "✓ Built: bin/linux/arm64/{{NAME}}"
 
 # Build Linux binary for amd64
 build-linux-amd64:
     @echo "Building Linux binary for amd64..."
     @mkdir -p bin/linux/amd64
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/amd64/{{NAME}} ./cmd/{{NAME}}
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="{{LDFLAGS}}" -o bin/linux/amd64/{{NAME}} ./cmd/{{NAME}}
     @echo "✓ Built: bin/linux/amd64/{{NAME}}"
 
 # Build macOS binary for arm64 (Apple Silicon)
 build-darwin-arm64:
     @echo "Building macOS binary for arm64..."
     @mkdir -p bin/darwin/arm64
-    GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/darwin/arm64/{{NAME}} ./cmd/{{NAME}}
+    GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="{{LDFLAGS}}" -o bin/darwin/arm64/{{NAME}} ./cmd/{{NAME}}
     @echo "✓ Built: bin/darwin/arm64/{{NAME}}"
 
 # Build Windows binary for amd64
 build-windows-amd64:
     @echo "Building Windows binary for amd64..."
     @mkdir -p bin/windows/amd64
-    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/windows/amd64/{{NAME}}.exe ./cmd/{{NAME}}
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="{{LDFLAGS}}" -o bin/windows/amd64/{{NAME}}.exe ./cmd/{{NAME}}
     @echo "✓ Built: bin/windows/amd64/{{NAME}}.exe"
 
 # Run the fast local Go/package test loop (no E2E or integration suites)
@@ -104,7 +107,7 @@ test-e2e-performance:
 test-e2e-backend-coverage: web-build
     @echo "Running backend E2E suite with coverage..."
     @mkdir -p coverage
-    @if command -v ginkgo > /dev/null; then ginkgo -v --procs={{GINKGO_BACKEND_PROCS}} --label-filter="!performance" --cover --coverprofile=e2e-backend.out --output-dir=coverage ./tests/e2e/; go tool cover -html=coverage/e2e-backend.out -o coverage/e2e-backend.html; echo "Backend E2E coverage report generated at coverage/e2e-backend.html"; else echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; fi
+    @if command -v ginkgo > /dev/null; then ginkgo -v --procs={{GINKGO_BACKEND_PROCS}} --label-filter="!performance" --cover --covermode=atomic --coverpkg=./internal/... --coverprofile=e2e-backend.out --output-dir=coverage ./tests/e2e/ && go tool cover -html=coverage/e2e-backend.out -o coverage/e2e-backend.html && echo "Backend E2E coverage report generated at coverage/e2e-backend.html"; else echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; fi
 
 # Watch the backend E2E acceptance suite during development
 test-e2e-backend-watch: web-build
@@ -126,8 +129,8 @@ test-e2e-extproc-coverage:
     @echo "Running ExtProc E2E suite with coverage..."
     @mkdir -p coverage
     @if command -v ginkgo > /dev/null; then \
-        ginkgo -v --procs={{GINKGO_EXTPROC_PROCS}} --cover --coverprofile=e2e-extproc.out --output-dir=coverage ./tests/e2e/extproc/; \
-        go tool cover -html=coverage/e2e-extproc.out -o coverage/e2e-extproc.html; \
+        ginkgo -v --procs={{GINKGO_EXTPROC_PROCS}} --cover --covermode=atomic --coverpkg=./internal/... --coverprofile=e2e-extproc.out --output-dir=coverage ./tests/e2e/extproc/ && \
+        go tool cover -html=coverage/e2e-extproc.out -o coverage/e2e-extproc.html && \
         echo "ExtProc E2E coverage report generated at coverage/e2e-extproc.html"; \
     else \
         echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
@@ -152,7 +155,7 @@ test-e2e-frontend-coverage: web-build
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p coverage
-    E2E_FRONTEND_MODE=built E2E_CAPTURE_SCREENSHOTS={{E2E_CAPTURE_SCREENSHOTS}} ginkgo -v --procs={{GINKGO_FRONTEND_PROCS}} --output-interceptor-mode=none --cover --coverprofile=e2e-frontend.out --output-dir=coverage ./tests/e2e/frontend/
+    E2E_FRONTEND_MODE=built E2E_CAPTURE_SCREENSHOTS={{E2E_CAPTURE_SCREENSHOTS}} ginkgo -v --procs={{GINKGO_FRONTEND_PROCS}} --output-interceptor-mode=none --cover --covermode=atomic --coverpkg=./internal/... --coverprofile=e2e-frontend.out --output-dir=coverage ./tests/e2e/frontend/
     go tool cover -html=coverage/e2e-frontend.out -o coverage/e2e-frontend.html
     echo "Frontend E2E coverage report generated at coverage/e2e-frontend.html"
 
@@ -231,10 +234,9 @@ vet:
 install-tools:
     @echo "Installing development tools..."
     @command -v air          > /dev/null || go install github.com/air-verse/air@v1.63.6
-    @command -v golangci-lint > /dev/null || bash scripts/golangci-lint-install.sh -b /usr/local/bin v2.11.4
-    @golangci-lint --version 2>/dev/null | grep -q "version 2.11" || bash scripts/golangci-lint-install.sh -b /usr/local/bin v2.11.4
-    @command -v go-junit-report > /dev/null || go install github.com/jstemmer/go-junit-report/v2@v2.1.0
-    @go install github.com/onsi/ginkgo/v2/ginkgo@v2.32.1
+    @golangci-lint --version 2>/dev/null | grep -q "version 2.13.2" || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+    @go install github.com/jstemmer/go-junit-report/v2@v2.1.0
+    @go install github.com/onsi/ginkgo/v2/ginkgo@v2.33.0
     @if [ -d "$HOME/.cache/ms-playwright" ] && [ -n "$(ls -A "$HOME/.cache/ms-playwright" 2>/dev/null)" ] && [ -f "$HOME/.cache/ms-playwright-go/1.62.1/package/cli.js" ]; then \
         echo "Playwright driver and browsers already installed, skipping download"; \
     else \
@@ -257,69 +259,230 @@ test-integration:
 # Run infra-backed integration tests that require build tags and external infrastructure
 test-integration-infra:
     @echo "Running infra-backed integration suites..."
-    go test -tags=integration -p {{INTEGRATION_INFRA_PACKAGE_PROCS}} -v {{INTEGRATION_INFRA_TEST_PACKAGES}}
+    go test -count=1 -tags=integration -p {{INTEGRATION_INFRA_PACKAGE_PROCS}} -v {{INTEGRATION_INFRA_TEST_PACKAGES}}
 
 # Run both self-contained and infra-backed integration suites
 test-integration-all: test-integration test-integration-infra
     @echo "All integration suites completed"
 
-# Run all integration tests and generate JUnit XML reports
-test-integration-junit:
+# Run the fast Go, web, CDK, and mock suites with independent JUnit reports
+verify-unit-junit:
     #!/usr/bin/env bash
-    set +e
+    set -u
+
+    mkdir -p test-results
+    rm -f test-results/{unit-junit.xml,fast-junit.xml,web-unit-junit.xml,cdk-junit.xml,mock-agent-junit.xml,mock-oauth2-junit.xml,fast-tests-output.json,cdk-tests-output.json,mock-sample-agent-output.json,mock-oauth2-output.json,fast-tests-stderr.log,cdk-tests-stderr.log,mock-sample-agent-stderr.log,mock-oauth2-stderr.log,web-unit.log,web-unit-install.log}
+
+    WEB_INSTALL_EXIT=0
+    if [ ! -d web/node_modules ]; then
+        (cd web && npm ci --silent) > test-results/web-unit-install.log 2>&1 || WEB_INSTALL_EXIT=$?
+    fi
+
+    go test -json -race -p {{NUM_CPUS}} {{GO_FAST_TEST_PACKAGES}} \
+        > test-results/fast-tests-output.json 2> test-results/fast-tests-stderr.log &
+    FAST_PID=$!
+    (cd infra/cdk && go test -json -race ./...) \
+        > test-results/cdk-tests-output.json 2> test-results/cdk-tests-stderr.log &
+    CDK_PID=$!
+    (cd mocks/sample-agent && go test -json ./...) \
+        > test-results/mock-sample-agent-output.json 2> test-results/mock-sample-agent-stderr.log &
+    MOCK_AGENT_PID=$!
+    (cd mocks/upstream-oauth2-server && go test -json ./internal/handlers/...) \
+        > test-results/mock-oauth2-output.json 2> test-results/mock-oauth2-stderr.log &
+    MOCK_OAUTH2_PID=$!
+    if [ "$WEB_INSTALL_EXIT" -eq 0 ]; then
+        (cd web && npm test --silent -- --run --reporter=junit) \
+            > test-results/web-unit-junit.xml 2> test-results/web-unit.log &
+        WEB_UNIT_PID=$!
+    fi
+
+    TEST_FAILED=0
+    go_pids=("$FAST_PID" "$CDK_PID" "$MOCK_AGENT_PID" "$MOCK_OAUTH2_PID")
+    go_outputs=(fast-tests-output.json cdk-tests-output.json mock-sample-agent-output.json mock-oauth2-output.json)
+    go_stderr=(fast-tests-stderr.log cdk-tests-stderr.log mock-sample-agent-stderr.log mock-oauth2-stderr.log)
+    go_reports=(fast-junit.xml cdk-junit.xml mock-agent-junit.xml mock-oauth2-junit.xml)
+    for index in "${!go_pids[@]}"; do
+        if ! wait "${go_pids[$index]}"; then
+            TEST_FAILED=1
+            echo "--- ${go_outputs[$index]} (FAILED) ---"
+            cat "test-results/${go_outputs[$index]}" "test-results/${go_stderr[$index]}"
+        fi
+    done
+    if [ "$WEB_INSTALL_EXIT" -ne 0 ]; then
+        TEST_FAILED=1
+        echo "--- Web dependency installation (FAILED) ---"
+        cat test-results/web-unit-install.log
+    elif ! wait "$WEB_UNIT_PID"; then
+        TEST_FAILED=1
+        echo "--- Web unit tests (FAILED) ---"
+        cat test-results/web-unit.log test-results/web-unit-junit.xml
+    fi
+
+    REPORT_FAILED=0
+    for index in "${!go_outputs[@]}"; do
+        input="test-results/${go_outputs[$index]}"
+        report="test-results/${go_reports[$index]}"
+        if [ -s "$input" ]; then
+            go-junit-report -parser gojson < "$input" > "$report" || REPORT_FAILED=1
+        else
+            echo "Missing Go test output: $input" >&2
+            REPORT_FAILED=1
+        fi
+    done
+
+    reports=()
+    for report in test-results/fast-junit.xml test-results/web-unit-junit.xml \
+        test-results/cdk-junit.xml test-results/mock-agent-junit.xml test-results/mock-oauth2-junit.xml; do
+        if [ -s "$report" ]; then
+            reports+=("$report")
+        else
+            echo "Missing JUnit report: $report" >&2
+            REPORT_FAILED=1
+        fi
+    done
+    if [ "${#reports[@]}" -gt 0 ]; then
+        if command -v npx > /dev/null; then
+            npx -y junit-report-merger@9.0.3 test-results/unit-junit.xml "${reports[@]}" || REPORT_FAILED=1
+        else
+            echo "npx not found; cannot merge unit reports" >&2
+            REPORT_FAILED=1
+        fi
+    fi
+    if [ ! -s test-results/unit-junit.xml ]; then
+        echo "Missing JUnit report: test-results/unit-junit.xml" >&2
+        REPORT_FAILED=1
+    fi
+    if [ "$TEST_FAILED" -ne 0 ] || [ "$REPORT_FAILED" -ne 0 ]; then
+        exit 1
+    fi
+    echo "Unit JUnit report generated at test-results/unit-junit.xml"
+
+# Run all integration tests and generate JUnit XML reports
+verify-integration-junit:
+    #!/usr/bin/env bash
+    set -u
 
     echo "Running integration suites with JUnit output..."
     mkdir -p test-results
+    rm -f test-results/{integration-junit.xml,integration-self-contained-junit.xml,integration-infra-junit.xml,integration-self-contained-output.json,integration-infra-output.json,integration-self-contained-stderr.log,integration-infra-stderr.log}
 
     go test -json ./tests/integration/... \
-        > test-results/integration-self-contained-output.json 2>&1
+        > test-results/integration-self-contained-output.json 2> test-results/integration-self-contained-stderr.log
     SELF_CONTAINED_EXIT=$?
 
-    go test -json -tags=integration -p {{INTEGRATION_INFRA_PACKAGE_PROCS}} \
+    go test -json -count=1 -tags=integration -p {{INTEGRATION_INFRA_PACKAGE_PROCS}} \
         {{INTEGRATION_INFRA_TEST_PACKAGES}} \
-        > test-results/integration-infra-output.json 2>&1
+        > test-results/integration-infra-output.json 2> test-results/integration-infra-stderr.log
     INFRA_EXIT=$?
 
-    go-junit-report -parser gojson \
-        < test-results/integration-self-contained-output.json > test-results/integration-self-contained-junit.xml || true
-    go-junit-report -parser gojson \
-        < test-results/integration-infra-output.json > test-results/integration-infra-junit.xml || true
-
-    MERGER_EXIT=0
-    if command -v npx > /dev/null; then
-        npx -y junit-report-merger@9.0.3 \
-            test-results/integration-junit.xml \
-            test-results/integration-self-contained-junit.xml \
-            test-results/integration-infra-junit.xml || MERGER_EXIT=$?
-    else
-        echo "⚠ npx not found, integration-junit.xml was not merged"
-        MERGER_EXIT=1
-    fi
-
-    if [ $SELF_CONTAINED_EXIT -ne 0 ]; then
-        echo ""
+    if [ "$SELF_CONTAINED_EXIT" -ne 0 ]; then
         echo "--- Self-contained integration output (FAILED) ---"
-        cat test-results/integration-self-contained-output.json
+        cat test-results/integration-self-contained-output.json test-results/integration-self-contained-stderr.log
     fi
-    if [ $INFRA_EXIT -ne 0 ]; then
-        echo ""
+    if [ "$INFRA_EXIT" -ne 0 ]; then
         echo "--- Infra-backed integration output (FAILED) ---"
-        cat test-results/integration-infra-output.json
+        cat test-results/integration-infra-output.json test-results/integration-infra-stderr.log
     fi
 
-    if [ $SELF_CONTAINED_EXIT -ne 0 ] || [ $INFRA_EXIT -ne 0 ] || [ $MERGER_EXIT -ne 0 ]; then
-        echo "✗ Integration suites failed"
+    REPORT_FAILED=0
+    inputs=(integration-self-contained-output.json integration-infra-output.json)
+    leaves=(integration-self-contained-junit.xml integration-infra-junit.xml)
+    reports=()
+    for index in "${!inputs[@]}"; do
+        input="test-results/${inputs[$index]}"
+        report="test-results/${leaves[$index]}"
+        if [ -s "$input" ]; then
+            go-junit-report -parser gojson < "$input" > "$report" || REPORT_FAILED=1
+        else
+            echo "Missing Go test output: $input" >&2
+            REPORT_FAILED=1
+        fi
+        if [ -s "$report" ]; then
+            reports+=("$report")
+        else
+            echo "Missing JUnit report: $report" >&2
+            REPORT_FAILED=1
+        fi
+    done
+    if [ "${#reports[@]}" -gt 0 ]; then
+        if command -v npx > /dev/null; then
+            npx -y junit-report-merger@9.0.3 test-results/integration-junit.xml "${reports[@]}" || REPORT_FAILED=1
+        else
+            echo "npx not found; cannot merge integration reports" >&2
+            REPORT_FAILED=1
+        fi
+    fi
+    if [ ! -s test-results/integration-junit.xml ]; then
+        echo "Missing JUnit report: test-results/integration-junit.xml" >&2
+        REPORT_FAILED=1
+    fi
+    if [ "$SELF_CONTAINED_EXIT" -ne 0 ] || [ "$INFRA_EXIT" -ne 0 ] || [ "$REPORT_FAILED" -ne 0 ]; then
         exit 1
     fi
+    echo "Integration JUnit report generated at test-results/integration-junit.xml"
 
-    echo "✓ Integration JUnit report generated at test-results/integration-junit.xml"
-
-# Run the full verification gate with JUnit reports for CI/CD
-verify-junit:
+# Run the backend E2E acceptance suite and publish its reports
+verify-e2e-backend-junit:
     #!/usr/bin/env bash
-    set +e
+    set -euo pipefail
+    mkdir -p test-results
+    rm -f test-results/{e2e-backend-junit.xml,e2e-backend.json,e2e-backend.log,e2e-backend-web-build.log}
+    just web-build 2>&1 | tee test-results/e2e-backend-web-build.log
+    ginkgo run --procs={{GINKGO_BACKEND_PROCS}} --label-filter="!performance" \
+        --timeout=20m --poll-progress-after=30s --show-node-events \
+        --junit-report=test-results/e2e-backend-junit.xml --json-report=test-results/e2e-backend.json \
+        ./tests/e2e/ 2>&1 | tee test-results/e2e-backend.log
+    for report in test-results/e2e-backend-junit.xml test-results/e2e-backend.json; do
+        if [ ! -s "$report" ]; then
+            echo "Missing E2E report: $report" >&2
+            exit 1
+        fi
+    done
 
-    JUNIT_REPORTS=(
+# Run the ExtProc E2E acceptance suite and publish its reports
+verify-e2e-extproc-junit:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p test-results
+    rm -f test-results/{e2e-extproc-junit.xml,e2e-extproc.json,e2e-extproc.log}
+    ginkgo run --procs={{GINKGO_EXTPROC_PROCS}} \
+        --timeout=20m --poll-progress-after=30s --show-node-events \
+        --junit-report=test-results/e2e-extproc-junit.xml --json-report=test-results/e2e-extproc.json \
+        ./tests/e2e/extproc/ 2>&1 | tee test-results/e2e-extproc.log
+    for report in test-results/e2e-extproc-junit.xml test-results/e2e-extproc.json; do
+        if [ ! -s "$report" ]; then
+            echo "Missing E2E report: $report" >&2
+            exit 1
+        fi
+    done
+
+# Run the frontend E2E acceptance suite and publish its reports
+verify-e2e-frontend-junit:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p test-results
+    rm -f test-results/{e2e-frontend-junit.xml,e2e-frontend.json,e2e-frontend.log,e2e-frontend-web-build.log}
+    just web-build 2>&1 | tee test-results/e2e-frontend-web-build.log
+    test -f web/dist/index.html
+    E2E_FRONTEND_MODE=built E2E_CAPTURE_SCREENSHOTS={{E2E_CAPTURE_SCREENSHOTS}} \
+        ginkgo run --procs={{GINKGO_FRONTEND_PROCS}} --output-interceptor-mode=none \
+        --timeout=20m --poll-progress-after=30s --show-node-events \
+        --junit-report=test-results/e2e-frontend-junit.xml --json-report=test-results/e2e-frontend.json \
+        ./tests/e2e/frontend/ 2>&1 | tee test-results/e2e-frontend.log
+    for report in test-results/e2e-frontend-junit.xml test-results/e2e-frontend.json; do
+        if [ ! -s "$report" ]; then
+            echo "Missing E2E report: $report" >&2
+            exit 1
+        fi
+    done
+
+# Merge all leaf JUnit reports without counting tier aggregates twice
+verify-merge-junit:
+    #!/usr/bin/env bash
+    set -u
+    mkdir -p test-results
+    rm -f test-results/all-tests-junit.xml
+    expected=(
         test-results/fast-junit.xml
         test-results/integration-self-contained-junit.xml
         test-results/integration-infra-junit.xml
@@ -331,235 +494,54 @@ verify-junit:
         test-results/mock-agent-junit.xml
         test-results/mock-oauth2-junit.xml
     )
-
-    merge_junit_reports() {
-        echo ""
-        echo "==> Merging JUnit reports..."
-        if command -v npx > /dev/null; then
-            npx -y junit-report-merger@9.0.3 \
-                test-results/all-tests-junit.xml \
-                "${JUNIT_REPORTS[@]}"
+    reports=()
+    FAILED=0
+    for report in "${expected[@]}"; do
+        if [ -s "$report" ]; then
+            reports+=("$report")
         else
-            echo "⚠ npx not found, junit-report-merger not available"
-            return 1
+            echo "Missing JUnit report: $report" >&2
+            FAILED=1
         fi
-    }
-
-    finalize_verification() {
-        VERIFICATION_EXIT=$?
-        trap - EXIT
-        merge_junit_reports
-        MERGER_EXIT=$?
-
-        if [ "$VERIFICATION_EXIT" -ne 0 ]; then
-            if [ "$MERGER_EXIT" -eq 0 ]; then
-                echo "✓ Merged JUnit report"
-            else
-                echo "✗ Merged JUnit report ($MERGER_EXIT)"
-            fi
-            exit "$VERIFICATION_EXIT"
+    done
+    if [ "${#reports[@]}" -gt 0 ]; then
+        if command -v npx > /dev/null; then
+            npx -y junit-report-merger@9.0.3 test-results/all-tests-junit.xml "${reports[@]}" || FAILED=1
+        else
+            echo "npx not found; cannot merge JUnit reports" >&2
+            FAILED=1
         fi
+    fi
+    if [ ! -s test-results/all-tests-junit.xml ]; then
+        echo "Missing JUnit report: test-results/all-tests-junit.xml" >&2
+        FAILED=1
+    fi
+    if [ "$FAILED" -ne 0 ]; then
+        exit 1
+    fi
+    echo "Merged JUnit report generated at test-results/all-tests-junit.xml"
 
-        echo ""
-        echo "=== Verification Summary ==="
-        echo "✓ Fast/package suites"
-        echo "✓ Integration suites"
-        echo "✓ E2E suites"
-
-        if [ "$MERGER_EXIT" -ne 0 ]; then
-            echo "✗ Merged JUnit report ($MERGER_EXIT)"
-            echo ""
-            echo "✗ Verification completed but JUnit merge failed"
-            exit "$MERGER_EXIT"
+# Run all five JUnit tiers sequentially, then merge available leaf reports
+verify-junit:
+    #!/usr/bin/env bash
+    set -u
+    TIER_EXIT=0
+    for tier in verify-unit-junit verify-integration-junit verify-e2e-backend-junit \
+        verify-e2e-extproc-junit verify-e2e-frontend-junit; do
+        echo "==> $tier"
+        tier_exit=0
+        just "$tier" || tier_exit=$?
+        echo "$tier: exit $tier_exit"
+        if [ "$tier_exit" -ne 0 ] && [ "$TIER_EXIT" -eq 0 ]; then
+            TIER_EXIT=$tier_exit
         fi
-
-        echo "✓ Merged JUnit report"
-        echo ""
-        echo "✓ Verification JUnit report generated at test-results/all-tests-junit.xml"
-        exit 0
-    }
-
-    echo "Running verification suite with JUnit output..."
-    mkdir -p test-results coverage
-    rm -f test-results/all-tests-junit.xml "${JUNIT_REPORTS[@]}"
-    trap finalize_verification EXIT
-    # ===== STAGE 1: FAST/PACKAGE SUITES =====
-    echo ""
-    echo "==> Stage 1: fast/package suites"
-
-    go test -json -race -p {{NUM_CPUS}} {{GO_FAST_TEST_PACKAGES}} \
-        > test-results/fast-tests-output.json 2>&1 &
-    FAST_PID=$!
-    echo "  [fast]       PID $FAST_PID"
-
-    (cd web && if [ ! -d node_modules ]; then npm ci --silent; fi && npm test --silent -- --run --reporter=junit) \
-        > test-results/web-unit-junit.xml 2>test-results/web-unit.log &
-    WEB_UNIT_PID=$!
-    echo "  [web-unit]   PID $WEB_UNIT_PID"
-
-    (cd infra/cdk && go test -json -race ./...) \
-        > test-results/cdk-tests-output.json 2>&1 &
-    CDK_PID=$!
-    echo "  [cdk]        PID $CDK_PID"
-
-    (cd mocks/sample-agent && go test -json ./...) \
-        > test-results/mock-sample-agent-output.json 2>&1 &
-    MOCK_AGENT_PID=$!
-    echo "  [mock-agent] PID $MOCK_AGENT_PID"
-
-    (cd mocks/upstream-oauth2-server && go test -json ./internal/handlers/...) \
-        > test-results/mock-oauth2-output.json 2>&1 &
-    MOCK_OAUTH2_PID=$!
-    echo "  [mock-oauth] PID $MOCK_OAUTH2_PID"
-
-    wait $FAST_PID;        FAST_EXIT=$?
-    wait $WEB_UNIT_PID;    WEB_UNIT_EXIT=$?
-    wait $CDK_PID;         CDK_EXIT=$?
-    wait $MOCK_AGENT_PID;  MOCK_AGENT_EXIT=$?
-    wait $MOCK_OAUTH2_PID; MOCK_OAUTH2_EXIT=$?
-
-    go-junit-report -parser gojson \
-        < test-results/fast-tests-output.json > test-results/fast-junit.xml || true
-    go-junit-report -parser gojson \
-        < test-results/cdk-tests-output.json > test-results/cdk-junit.xml || true
-    go-junit-report -parser gojson \
-        < test-results/mock-sample-agent-output.json > test-results/mock-agent-junit.xml || true
-    go-junit-report -parser gojson \
-        < test-results/mock-oauth2-output.json > test-results/mock-oauth2-junit.xml || true
-
-    if [ $FAST_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- Fast Go/package test output (FAILED) ---"
-        cat test-results/fast-tests-output.json
+    done
+    MERGE_EXIT=0
+    just verify-merge-junit || MERGE_EXIT=$?
+    if [ "$TIER_EXIT" -ne 0 ]; then
+        exit "$TIER_EXIT"
     fi
-    if [ $WEB_UNIT_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- Web unit test output (FAILED) ---"
-        cat test-results/web-unit.log
-        echo "--- Web unit JUnit report (FAILED) ---"
-        cat test-results/web-unit-junit.xml
-    fi
-    if [ $CDK_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- CDK test output (FAILED) ---"
-        cat test-results/cdk-tests-output.json
-    fi
-    if [ $MOCK_AGENT_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- Mock sample-agent test output (FAILED) ---"
-        cat test-results/mock-sample-agent-output.json
-    fi
-    if [ $MOCK_OAUTH2_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- Mock upstream OAuth2 test output (FAILED) ---"
-        cat test-results/mock-oauth2-output.json
-    fi
-
-    if [ $FAST_EXIT -ne 0 ] || [ $WEB_UNIT_EXIT -ne 0 ] || [ $CDK_EXIT -ne 0 ] || \
-       [ $MOCK_AGENT_EXIT -ne 0 ] || [ $MOCK_OAUTH2_EXIT -ne 0 ]; then
-        echo "✗ Stage 1 failed"
-        exit 1
-    fi
-
-    echo "✓ Stage 1 passed"
-
-    # ===== STAGE 2: INTEGRATION SUITES =====
-    echo ""
-    echo "==> Stage 2: integration suites"
-
-    echo "  [integration-self]   running"
-    go test -json ./tests/integration/... \
-        > test-results/integration-self-contained-output.json 2>&1
-    INTEGRATION_SELF_CONTAINED_EXIT=$?
-
-    echo "  [integration-infra]  running"
-    go test -json -tags=integration -p {{INTEGRATION_INFRA_PACKAGE_PROCS}} \
-        {{INTEGRATION_INFRA_TEST_PACKAGES}} \
-        > test-results/integration-infra-output.json 2>&1
-    INTEGRATION_INFRA_EXIT=$?
-
-    go-junit-report -parser gojson \
-        < test-results/integration-self-contained-output.json > test-results/integration-self-contained-junit.xml || true
-    go-junit-report -parser gojson \
-        < test-results/integration-infra-output.json > test-results/integration-infra-junit.xml || true
-
-    if [ $INTEGRATION_SELF_CONTAINED_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- Self-contained integration output (FAILED) ---"
-        cat test-results/integration-self-contained-output.json
-    fi
-    if [ $INTEGRATION_INFRA_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- Infra-backed integration output (FAILED) ---"
-        cat test-results/integration-infra-output.json
-    fi
-
-    if [ $INTEGRATION_SELF_CONTAINED_EXIT -ne 0 ] || [ $INTEGRATION_INFRA_EXIT -ne 0 ]; then
-        echo "✗ Stage 2 failed"
-        exit 1
-    fi
-
-    echo "✓ Stage 2 passed"
-
-    # ===== STAGE 3: E2E SUITES =====
-    echo ""
-    echo "==> Stage 3: E2E suites"
-
-    (cd web && npm run build --silent) > test-results/web-build.log 2>&1
-    WEB_BUILD_EXIT=$?
-    if [ $WEB_BUILD_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- Frontend build output (FAILED) ---"
-        cat test-results/web-build.log
-        echo "✗ Stage 3 failed"
-        exit 1
-    fi
-
-    ginkgo run -v --procs={{GINKGO_BACKEND_PROCS}} --label-filter="!performance" \
-        --junit-report=test-results/e2e-backend-junit.xml ./tests/e2e/ \
-        > test-results/e2e-backend.log 2>&1 &
-    E2E_BACKEND_PID=$!
-    echo "  [e2e-backend]  PID $E2E_BACKEND_PID"
-
-    ginkgo run -v --procs={{GINKGO_EXTPROC_PROCS}} \
-        --junit-report=test-results/e2e-extproc-junit.xml ./tests/e2e/extproc/ \
-        > test-results/e2e-extproc.log 2>&1 &
-    E2E_EXTPROC_PID=$!
-    echo "  [e2e-extproc]  PID $E2E_EXTPROC_PID"
-
-    E2E_FRONTEND_MODE=built E2E_CAPTURE_SCREENSHOTS={{E2E_CAPTURE_SCREENSHOTS}} ginkgo run -v --procs={{GINKGO_FRONTEND_PROCS}} --output-interceptor-mode=none \
-        --junit-report=test-results/e2e-frontend-junit.xml ./tests/e2e/frontend/ \
-        > test-results/e2e-frontend.log 2>&1 &
-    E2E_FRONTEND_PID=$!
-    echo "  [e2e-frontend] PID $E2E_FRONTEND_PID"
-
-    wait $E2E_BACKEND_PID;  E2E_BACKEND_EXIT=$?
-    wait $E2E_EXTPROC_PID;  E2E_EXTPROC_EXIT=$?
-    wait $E2E_FRONTEND_PID; E2E_FRONTEND_EXIT=$?
-
-    if [ $E2E_BACKEND_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- Backend E2E output (FAILED) ---"
-        cat test-results/e2e-backend.log
-    fi
-    if [ $E2E_EXTPROC_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- ExtProc E2E output (FAILED) ---"
-        cat test-results/e2e-extproc.log
-    fi
-    if [ $E2E_FRONTEND_EXIT -ne 0 ]; then
-        echo ""
-        echo "--- Frontend E2E output (FAILED) ---"
-        cat test-results/e2e-frontend.log
-    fi
-
-    if [ $E2E_BACKEND_EXIT -ne 0 ] || [ $E2E_EXTPROC_EXIT -ne 0 ] || [ $E2E_FRONTEND_EXIT -ne 0 ]; then
-        echo "✗ Stage 3 failed"
-        exit 1
-    fi
-
-    echo "✓ Stage 3 passed"
-
+    exit "$MERGE_EXIT"
 
 # Run the full local verification gate with security scanning and E2E as the final guard layer
 verify: check security test web-test cdk-test mock-sample-agent-test mock-upstream-oauth2-test test-integration-all test-e2e
@@ -569,7 +551,7 @@ verify: check security test web-test cdk-test mock-sample-agent-test mock-upstre
 fmt-check:
     #!/usr/bin/env bash
     set -euo pipefail
-    unformatted="$(gofmt -s -l .)"
+    unformatted="$(git ls-files -z --cached --others --exclude-standard -- '*.go' | xargs -0 gofmt -s -l)"
     if [ -n "$unformatted" ]; then
         echo "Files need gofmt -s:"
         printf '%s\n' "$unformatted"
@@ -642,9 +624,9 @@ build-all: build web-build
 # Create and push multi-architecture Docker images to registry.
 # Builds broker, migrate, and extproc images for linux/amd64 and linux/arm64.
 docker-push: build-linux-amd64 build-linux-arm64 extproc-build-linux-amd64 extproc-build-linux-arm64 web-build
-    docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --build-arg REVISION="{{REVISION}}" --build-arg CREATED="{{CREATED}}" --platform linux/amd64,linux/arm64 --push .
-    docker buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --build-arg REVISION="{{REVISION}}" --build-arg CREATED="{{CREATED}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --push .
-    docker buildx build --rm -t "{{IMAGE_NAME}}-extproc:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --build-arg REVISION="{{REVISION}}" --build-arg CREATED="{{CREATED}}" --platform linux/amd64,linux/arm64 --file Dockerfile.extproc --push .
+    docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg BASE_IMAGE="{{BASE_IMAGE}}" --build-arg VERSION="{{VERSION}}" --build-arg REVISION="{{REVISION}}" --build-arg CREATED="{{CREATED}}" --platform linux/amd64,linux/arm64 --file build/docker/Dockerfile --push .
+    docker buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg BASE_IMAGE="{{BASE_IMAGE}}" --build-arg VERSION="{{VERSION}}" --build-arg REVISION="{{REVISION}}" --build-arg CREATED="{{CREATED}}" --platform linux/amd64,linux/arm64 --file build/docker/Dockerfile.migrate --push .
+    docker buildx build --rm -t "{{IMAGE_NAME}}-extproc:{{VERSION}}" --build-arg BASE_IMAGE="{{BASE_IMAGE}}" --build-arg VERSION="{{VERSION}}" --build-arg REVISION="{{REVISION}}" --build-arg CREATED="{{CREATED}}" --platform linux/amd64,linux/arm64 --file build/docker/Dockerfile.extproc --push .
     @echo "✓ Multi-architecture images pushed:"
     @echo "  - {{IMAGE_NAME}}:{{VERSION}}"
     @echo "  - {{IMAGE_NAME}}-migrate:{{VERSION}}"
@@ -660,19 +642,19 @@ docker-promote:
 # Build multi-architecture migrate Docker image (validates both platforms, no output).
 docker-build-migrate:
     @echo "Building migrate image: {{IMAGE_NAME}}-migrate:{{VERSION}}..."
-    docker buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --build-arg REVISION="{{REVISION}}" --build-arg CREATED="{{CREATED}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate .
+    docker buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg BASE_IMAGE="{{BASE_IMAGE}}" --build-arg VERSION="{{VERSION}}" --build-arg REVISION="{{REVISION}}" --build-arg CREATED="{{CREATED}}" --platform linux/amd64,linux/arm64 --file build/docker/Dockerfile.migrate .
     @echo "✓ Migrate image validated: {{IMAGE_NAME}}-migrate:{{VERSION}}"
 
 # Build multi-architecture broker Docker image (validates both platforms, no output).
 docker-build-broker: build-linux-amd64 build-linux-arm64 web-build
     @echo "Building broker image: {{IMAGE_NAME}}:{{VERSION}}..."
-    docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --build-arg REVISION="{{REVISION}}" --build-arg CREATED="{{CREATED}}" --platform linux/amd64,linux/arm64 .
+    docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg BASE_IMAGE="{{BASE_IMAGE}}" --build-arg VERSION="{{VERSION}}" --build-arg REVISION="{{REVISION}}" --build-arg CREATED="{{CREATED}}" --platform linux/amd64,linux/arm64 --file build/docker/Dockerfile .
     @echo "✓ Broker image validated: {{IMAGE_NAME}}:{{VERSION}}"
 
 # Build multi-architecture extproc Docker image (validates both platforms, no output).
 docker-build-extproc: extproc-build-linux-amd64 extproc-build-linux-arm64
     @echo "Building extproc image: {{IMAGE_NAME}}-extproc:{{VERSION}}..."
-    docker buildx build --rm -t "{{IMAGE_NAME}}-extproc:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --build-arg REVISION="{{REVISION}}" --build-arg CREATED="{{CREATED}}" --platform linux/amd64,linux/arm64 --file Dockerfile.extproc .
+    docker buildx build --rm -t "{{IMAGE_NAME}}-extproc:{{VERSION}}" --build-arg BASE_IMAGE="{{BASE_IMAGE}}" --build-arg VERSION="{{VERSION}}" --build-arg REVISION="{{REVISION}}" --build-arg CREATED="{{CREATED}}" --platform linux/amd64,linux/arm64 --file build/docker/Dockerfile.extproc .
     @echo "✓ ExtProc image validated: {{IMAGE_NAME}}-extproc:{{VERSION}}"
 
 # Build broker and migrate multi-architecture images and smoke-test ExtProc's native release image
@@ -683,12 +665,12 @@ docker-build-all: docker-build-broker docker-build-migrate docker-build-extproc
 # Docker Compose - Development (Hot Reload)
 # =============================================================================
 
-# Create .env.compose from .env template if it doesn't exist
+# Create .env.compose from .env.compose.example if it doesn't exist
 compose-env:
     @if [ -f .env.compose ]; then \
         echo ".env.compose already exists"; \
     else \
-        cp .env .env.compose; \
+        cp .env.compose.example .env.compose; \
         echo "✓ Created: .env.compose (customize as needed)"; \
     fi
 
@@ -893,21 +875,21 @@ docs-deploy: docs-build
 extproc-build-linux-arm64:
     @echo "Building ExtProc Linux binary for arm64..."
     @mkdir -p bin/linux/arm64
-    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/arm64/extproc-token-exchange ./cmd/extproc-token-exchange
+    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="{{LDFLAGS}}" -o bin/linux/arm64/extproc-token-exchange ./cmd/extproc-token-exchange
     @echo "✓ Built: bin/linux/arm64/extproc-token-exchange"
 
 # Build ExtProc Linux binary for amd64
 extproc-build-linux-amd64:
     @echo "Building ExtProc Linux binary for amd64..."
     @mkdir -p bin/linux/amd64
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/amd64/extproc-token-exchange ./cmd/extproc-token-exchange
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="{{LDFLAGS}}" -o bin/linux/amd64/extproc-token-exchange ./cmd/extproc-token-exchange
     @echo "✓ Built: bin/linux/amd64/extproc-token-exchange"
 
 # Build the extproc-token-exchange binary
 extproc-build:
     @echo "Building extproc-token-exchange..."
     @mkdir -p bin
-    go build -ldflags="-s -w" -o bin/extproc-token-exchange ./cmd/extproc-token-exchange
+    go build -trimpath -ldflags="{{LDFLAGS}}" -o bin/extproc-token-exchange ./cmd/extproc-token-exchange
     @echo "✓ Built: bin/extproc-token-exchange"
 
 # Run the extproc-token-exchange binary (requires EXTPROC_* env vars)

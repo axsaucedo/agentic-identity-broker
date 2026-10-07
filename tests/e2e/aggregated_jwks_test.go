@@ -2,7 +2,12 @@ package e2e_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,6 +22,9 @@ import (
 	. "github.com/onsi/gomega"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
@@ -71,7 +79,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 
 		// Scenario 1.1 from specs/032-aggregated-jwks/spec.md
 		It("returns only local signing keys", func() {
-			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -84,9 +92,20 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			Expect(kids).ToNot(ContainElement("test-key"))
 		})
 
+		// FR-029 from specs/046-cimd-upstream-client/spec.md
+		It("excludes CIMD client-authentication keys while retaining token-signing keys", func() {
+			cimdKID := seedCIMDClientAuthenticationKey(testStorage)
+			tokenSigningKey, err := testStorage.SigningKeys().GetCurrentInDomain(context.Background(), domstorage.KeyDomainTokenSigning)
+			Expect(err).ToNot(HaveOccurred())
+
+			jwks := fetchJWKSJSON(server.BaseURL() + "/oauth2/jwks.json")
+			Expect(extractKids(jwks)).To(ConsistOf(tokenSigningKey.KID.String()))
+			Expect(extractKids(jwks)).ToNot(ContainElement(cimdKID))
+		})
+
 		// Scenario 1.7 from specs/032-aggregated-jwks/spec.md
 		It("never exposes private key material", func() {
-			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -106,7 +125,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 
 		// Scenario 1.8 from specs/032-aggregated-jwks/spec.md
 		It("includes Cache-Control: public, max-age=300", func() {
-			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -152,7 +171,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 
 		// Scenario 1.2 from specs/032-aggregated-jwks/spec.md
 		It("republishes only upstream keys", func() {
-			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -165,7 +184,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 
 		// Scenario 1.8 from specs/032-aggregated-jwks/spec.md
 		It("includes Cache-Control: public, max-age=300", func() {
-			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -233,7 +252,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 
 		// Scenario 1.3 from specs/032-aggregated-jwks/spec.md
 		It("returns union of local and upstream keys", func() {
-			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -251,7 +270,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			agent := fixtures.LocalAgent()
 			Expect(testStorage.Agents().Create(context.Background(), agent)).ToNot(HaveOccurred())
 
-			credResp, err := http.Post(
+			credResp, err := helpers.HTTPClient().Post(
 				adminServer.BaseURL()+"/api/agents/"+agent.ID.String()+"/client-credentials",
 				"application/json",
 				nil,
@@ -264,7 +283,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			Expect(json.NewDecoder(credResp.Body).Decode(&creds)).ToNot(HaveOccurred())
 			clientSecret := creds["client_secret"].(string)
 
-			tokenResp, err := http.Post(
+			tokenResp, err := helpers.HTTPClient().Post(
 				server.BaseURL()+"/oauth2/token",
 				"application/x-www-form-urlencoded",
 				strings.NewReader(url.Values{
@@ -288,7 +307,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 
 		// Scenario 1.8 from specs/032-aggregated-jwks/spec.md
 		It("includes Cache-Control: public, max-age=300", func() {
-			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -309,6 +328,17 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 
 			Expect(validateJWTWithJWKS(upstreamToken, fetchBrokerJWKS(server.BaseURL()))).To(Succeed())
 		})
+
+		// FR-029 from specs/046-cimd-upstream-client/spec.md
+		It("retains token and upstream keys while excluding CIMD client-authentication keys", func() {
+			cimdKID := seedCIMDClientAuthenticationKey(testStorage)
+			tokenSigningKey, err := testStorage.SigningKeys().GetCurrentInDomain(context.Background(), domstorage.KeyDomainTokenSigning)
+			Expect(err).ToNot(HaveOccurred())
+
+			jwks := fetchJWKSJSON(server.BaseURL() + "/oauth2/jwks.json")
+			Expect(extractKids(jwks)).To(ConsistOf(tokenSigningKey.KID.String(), "test-key"))
+			Expect(extractKids(jwks)).ToNot(ContainElement(cimdKID))
+		})
 	})
 
 	// ==================== User Story 2: Discovery Advertises Broker-Hosted JWKS ====================
@@ -328,7 +358,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer server.Close()
 
-			resp, err := http.Get(server.BaseURL() + "/.well-known/oauth-authorization-server")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/.well-known/oauth-authorization-server")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -356,7 +386,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer server.Close()
 
-			resp, err := http.Get(server.BaseURL() + "/.well-known/oauth-authorization-server")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/.well-known/oauth-authorization-server")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -387,7 +417,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer server.Close()
 
-			resp, err := http.Get(server.BaseURL() + "/.well-known/oauth-authorization-server")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/.well-known/oauth-authorization-server")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -416,7 +446,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			defer server.Close()
 
 			// Verify the discovery document includes a jwks_uri ending in /oauth2/jwks.json
-			discResp, err := http.Get(server.BaseURL() + "/.well-known/oauth-authorization-server")
+			discResp, err := helpers.HTTPClient().Get(server.BaseURL() + "/.well-known/oauth-authorization-server")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = discResp.Body.Close() }()
 
@@ -427,7 +457,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 
 			// Follow the path portion of jwks_uri against the test server
 			// (the config public URL may differ from the test server's bound address)
-			jwksResp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			jwksResp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = jwksResp.Body.Close() }()
 			Expect(jwksResp.StatusCode).To(Equal(http.StatusOK))
@@ -487,7 +517,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer server.Close()
 
-			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusServiceUnavailable))
@@ -511,7 +541,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer server.Close()
 
-			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusServiceUnavailable))
@@ -541,7 +571,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer server.Close()
 
-			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusServiceUnavailable))
@@ -567,7 +597,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer server.Close()
 
-			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -586,6 +616,8 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			defer func() { _ = storageFactory.CloseStorage(testStorage) }()
 
 			config := fixtures.HybridConfig(mockUpstream.URL())
+			config.OAuth2AuthServer.Proxy.UpstreamJWKSMinRefresh = time.Second
+			config.OAuth2AuthServer.Proxy.UpstreamJWKSMaxRefresh = 2 * time.Second
 			app, err := bootstrap.NewServerFactory(config, logger).BuildApp(testStorage)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -606,7 +638,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 
 			Eventually(func() map[string]string {
 				return fetchHealth(server.BaseURL()).Components
-			}, 8*time.Second, 200*time.Millisecond).Should(HaveKeyWithValue("upstream_jwks", "degraded"))
+			}, 30*time.Second, 200*time.Millisecond).Should(HaveKeyWithValue("upstream_jwks", "degraded"))
 		})
 	})
 
@@ -632,7 +664,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 
 			localSrv, err := bootstrap.NewEndUserTestServer(localApp, logger)
 			Expect(err).ToNot(HaveOccurred())
-			resp, err := http.Get(localSrv.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(localSrv.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			var jwksBody map[string]interface{}
 			Expect(json.NewDecoder(resp.Body).Decode(&jwksBody)).ToNot(HaveOccurred())
@@ -653,7 +685,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer server.Close()
 
-			resp, err = http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err = helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusServiceUnavailable))
@@ -715,7 +747,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 
 			localSrv, err := bootstrap.NewEndUserTestServer(localApp, logger)
 			Expect(err).ToNot(HaveOccurred())
-			resp, err := http.Get(localSrv.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(localSrv.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			var jwksBody map[string]interface{}
 			Expect(json.NewDecoder(resp.Body).Decode(&jwksBody)).ToNot(HaveOccurred())
@@ -736,7 +768,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer server.Close()
 
-			resp, err = http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err = helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusServiceUnavailable))
@@ -752,6 +784,8 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			defer func() { _ = storageFactory.CloseStorage(testStorage) }()
 
 			config := fixtures.HybridConfig(rotatingUpstream.URL())
+			config.OAuth2AuthServer.Proxy.UpstreamJWKSMinRefresh = time.Second
+			config.OAuth2AuthServer.Proxy.UpstreamJWKSMaxRefresh = 2 * time.Second
 			app, err := bootstrap.NewServerFactory(config, logger).BuildApp(testStorage)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -764,7 +798,7 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer server.Close()
 
-			resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -787,15 +821,15 @@ var _ = Describe("Aggregated JWKS Endpoint", func() {
 			rotatingUpstream.SetKID(localKid)
 
 			Eventually(func() int {
-				resp, err := http.Get(server.BaseURL() + "/oauth2/jwks.json")
+				resp, err := helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 				if err != nil {
 					return 0
 				}
 				defer func() { _ = resp.Body.Close() }()
 				return resp.StatusCode
-			}, 8*time.Second, 200*time.Millisecond).Should(Equal(http.StatusServiceUnavailable))
+			}, 30*time.Second, 200*time.Millisecond).Should(Equal(http.StatusServiceUnavailable))
 
-			resp, err = http.Get(server.BaseURL() + "/oauth2/jwks.json")
+			resp, err = helpers.HTTPClient().Get(server.BaseURL() + "/oauth2/jwks.json")
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 			Expect(resp.StatusCode).To(Equal(http.StatusServiceUnavailable))
@@ -809,7 +843,7 @@ type healthResponse struct {
 }
 
 func fetchHealth(baseURL string) healthResponse {
-	resp, err := http.Get(baseURL + "/health")
+	resp, err := helpers.HTTPClient().Get(baseURL + "/health")
 	Expect(err).ToNot(HaveOccurred())
 	defer func() { _ = resp.Body.Close() }()
 	Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -820,7 +854,7 @@ func fetchHealth(baseURL string) healthResponse {
 }
 
 func fetchBrokerJWKS(baseURL string) jwk.Set {
-	resp, err := http.Get(baseURL + "/oauth2/jwks.json")
+	resp, err := helpers.HTTPClient().Get(baseURL + "/oauth2/jwks.json")
 	Expect(err).ToNot(HaveOccurred())
 	defer func() { _ = resp.Body.Close() }()
 	Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -834,7 +868,7 @@ func fetchBrokerJWKS(baseURL string) jwk.Set {
 }
 
 func fetchJWKSJSON(url string) map[string]any {
-	resp, err := http.Get(url)
+	resp, err := helpers.HTTPClient().Get(url)
 	Expect(err).ToNot(HaveOccurred())
 	defer func() { _ = resp.Body.Close() }()
 	Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -881,4 +915,34 @@ func extractKeyByKid(jwks map[string]any, kid string) map[string]any {
 		}
 	}
 	return nil
+}
+
+func seedCIMDClientAuthenticationKey(store *storageadapter.Adapter) string {
+	kid := id.NewKeyID("cimd-client-authentication-jwks-test-key")
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	Expect(err).ToNot(HaveOccurred())
+	privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	Expect(err).ToNot(HaveOccurred())
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER})
+	Expect(privateKeyPEM).ToNot(BeNil())
+
+	encryptedPrivateKey, err := testutil.NewPanicTestEncryptionAdapter().Encrypt(
+		context.Background(),
+		privateKeyPEM,
+		map[string]string{"kid": kid.String()},
+	)
+	Expect(err).ToNot(HaveOccurred())
+
+	now := time.Now().UTC()
+	Expect(store.SigningKeys().Create(context.Background(), &domstorage.SigningKey{
+		ID:                  id.NewSigningKeyID(),
+		KID:                 kid,
+		KeyDomain:           domstorage.KeyDomainCIMDClientAuthentication,
+		Algorithm:           "ES256",
+		PrivateKeyEncrypted: encryptedPrivateKey,
+		ActivatesAt:         now,
+		CreatedAt:           now,
+	})).To(Succeed())
+
+	return kid.String()
 }
